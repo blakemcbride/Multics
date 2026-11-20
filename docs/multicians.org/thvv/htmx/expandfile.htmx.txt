@@ -1,0 +1,1581 @@
+%[** Expandfile **]%
+%[*include,=htmxlib.htmi]%
+%[**  **]%
+%[*set,&title,="expandfile"]%
+%[*set,&headingtitle,="expandfile"]%
+%[*set,&description,="Utility program that expands a text template."]%
+%[*set,&xxversion,="6"]%
+%[*set,&contentwidth,="800"]%
+%[*set,&maxwidth,="1000"]%
+%[*set,&minwidth,="200"]%
+%[*set,&in_arg,="\\<span class=\"argtag\"\\>(in)\\<\\/span\\>"]%
+%[*set,&out_arg,="\\<span class=\"argtag\"\\>(out)\\<\\/span\\>"]%
+%[*set,&inout_arg,="\\<span class=\"argtag\"\\>(inout)\\<\\/span\\>"]%
+%[**  **]%
+%[** Copyright (c) 2002-2025, Tom Van Vleck **]%
+%[** THVV 01/06/20 add *bindcsv **]%
+%[** THVV 01/12/20 reformat and macroize **]%
+%[** THVV 09/01/20 changes for expandfile3 **]%
+%[** THVV 04/13/21 changes to *bindcsv; allow *shell, *fwrite, *fappend, *htmlescape to concatenate multiple args; remove comma and vbar syntax **]%
+%[** ================================================================ **]%
+%[*block,&extrastyle,^END]%
+%[*include,=leftpanelstyle.htmi]%
+<style>
+  .bif {margin-left: 1em; border-collapse: collapse;}
+  .bif TD {border: 1px solid black; padding: 3px 7px; background-color: #ffeeff; font-size: 80%;}
+  .bif TH {border: 1px solid black; font-family: sans-serif; padding: 3px 7px; font-size: 90%;}
+  .in40 {margin-left: 40px;}
+  .in20 {margin-left: 20px;}
+  .bifname {font-weight: bold; font-family: monospace;}
+  .outs {}
+  .proto {font-weight: bold; font-family: monospace;}
+  .ioarg {font-style: italic; font-size: 70%;}
+  .introbox {padding-top: 2em;}
+  .argtag {font-weight: bold; font-family: sans-serif; font-size: 70%; font-style: italic;}
+</style>
+END
+%[** ================================================================ **]%
+%[*block,&bif,^END]%
+%[** Function to doc each builtin **]%
+%[**    *callv,bif,prototype,result,text **]%
+%[** **]%
+%[** .. where prototype is *functionname, then optional comma separated list of args followed by (in|out|inout) **]%
+%[** **]%
+%[** .. writes HTML to stdout and also concats to biflist **]%
+%[** .. increments bifcount **]%
+%[** **]%
+%[*set,&cmdname,param1]%
+%[*subst,&cmdname,=",.*$",=""]%
+%[*subst,&param1,="\\(inout\\)",inout_arg]%
+%[*subst,&param1,="\\(in\\)",in_arg]%
+%[*subst,&param1,="\\(out\\)",out_arg]%
+%[*format,&r1,="<dt id=\"$4\" class=\"bifname\">\%\[*$1]%</dt>\\n<dd>\\n<p>$3.</p>\\n<p class=\\\"outs\\\">Outputs $2.</p>\\n",param1,param2,param3,cmdname]%
+%[*format,&r1,="<dt id=\"$4\" class=\"bifname\">\%\[*$1]%</dt>\\n<dd>\\n<p>$3.</p>\\n<p class=\\\"outs\\\">Outputs $2.</p>\\n",param1,param2,param3,cmdname]%
+%[** </dd> **]%
+%[*format,&r2,="<tr><td>QQ:*$1:QQ</td><td>$3</td><td>$2</td></tr>\\n",param1,param2,param3]%
+%[*subst,&r2,="(\\(.*?\\))",="ZQ:\\1:ZQ"]%
+%[*subst,&r2,="QQ:",="<span class=\"proto\">"]%
+%[*subst,&r2,=":QQ",="<\\/span>"]%
+%[*subst,&r2,="ZQ:",="<span class=\"ioarg\">"]%
+%[*subst,&r2,=":ZQ",="<\\/span>"]%
+%[*concat,&biflist,r2]%
+%[*increment,&bifcount,=1]%
+%[r1]%
+END
+%[** ================================================================ **]%
+%[*block,&body,^ENDBODY$]%
+%[*set,&bifcount,=1]%
+%[*set,&biflist,="<table class=\"bif\">\\n<tr><th>Builtin</th><th>Function</th><th>Output</th></tr>\\n"]%
+%[*concat,&biflist,="<tr><td><span class=\"cmd\">**</span></td><td>Starts a comment</td><td>nothing</td></tr>"]%
+%[** ---------------------------------------------------------------- **]%
+<div id="leftpanel">
+  <span class="regtitle">Contents</span>
+  <br>
+  <br>
+  <span class="toc">
+    <a href="#tag_function">What expandfile does</a><br>
+    <a href="#tag_usage">How to use expandfile</a><br>
+    <a href="#tag_language">Expandfile's HTMX language</a><br>
+    <a href="#tag_builtins">Builtin Functions</a><br>
+    <a href="#bifsum">Builtins Summary Table</a><br>
+    <a href="#biv">&nbsp;&nbsp;&nbsp;Builtin Values</a><br>
+    <a href="#tag_install">How to install expandfile</a><br>
+  </span> 
+</div>
+
+<p class="introbox">
+  This note describes {:expandfile:}, a simple command line program for expanding text templates.
+  It is useful for many purposes, including enhancing HTML.
+</p>
+%[** ---------------------------------------------------------------- **]%
+<h2 id="tag_function" class="clr">What expandfile Does</h2>
+<p>
+  {:expandfile:} is a command line program that reads input files and writes output on standard output.
+  (It runs on MacOS, Linux, or Windows. It is an open source Perl program, MIT license, {!expandfile-gh available on GitHub!}.)
+</p>
+<p>
+  Characters in the input are copied to the output, except that
+  when {:expandfile:} sees {:\%[... something ...]%:} it <i>expands</i> it:
+  that is, replaces the bracketed expression by its <i>value</i> in the output.
+  {:expandfile:} keeps an internal table of named values.
+</p>
+<p>
+  Values come from variables set by input files,
+  command line parameters,
+  builtin functions,
+  macro execution,
+  external calls,
+  and shell environment variables set by {:export:}.
+</p>
+<p>
+  One of the main uses for {:expandfile:} is translating an extension language for HTML called <b>HTMX</b> into regular HTML.
+  {:expandfile:} enables you to 
+</p>
+<ul>
+  <li>Provide consistent formatting and features to multiple web pages.</li>
+  <li>Edit one file instead of many when making a global change.</li>
+  <li>Automatically generate content in one web page that refers to other pages' content or status.</li>
+  <li>Generate content and formatting from data files.</li>
+</ul>
+%[*callv,getimgdiv,="expandfile-context.jpg",="",="HTMX-&gt;expandfile-&gt;HTML",="",="in40",=""]%
+<p>
+  {:expandfile:} does not know the syntax of the text it is expanding.
+  I have used it for many kinds of text transformation, including structured data to data transformations,
+  e.g. CSV files =&gt; CSV files;
+  CSV files =&gt; XML files;
+  XML files =&gt; SQL files;
+  SQL data =&gt; XML (e.g. sitemaps);
+  SQL data =&gt; Procmail control files; 
+  SQL data =&gt; GraphViz input.
+</p>
+
+<div class="manpage">
+  <h3>Command Usage</h3>
+  <h4>NAME</h4>
+  <p>
+    expandfile -- expand a template file
+  </p>
+
+  <h4>SYNOPSIS</h4>
+  <p>
+    {:expandfile [var=value]... filename...:}
+  </p>
+
+  <h4>DESCRIPTION</h4>
+  <p>
+    {:expandfile:} reads template files and writes out text to standard output with variables and builtin functions expanded.
+  </p>
+  <p>
+    If a filename argument is {:-:}, standard input will be read.
+  </p>
+  <p>
+    You can optionally specify variable bindings on the command line in the format {:varname=value:}.
+  </p>
+  <p>
+    I usually make configuration files consisting only of {:\%[*set]\%:} commands for project parameters,
+    and provide them as the first filenames on the command line invocation of {:expandfile:}.
+    Expanding these files sets values that can be used in expansions of subsequent filenames.
+  </p>
+</div>
+
+%[** ---------------------------------------------------------------- **]%
+<h2 id="tag_usage">How To Use expandfile</h2>
+<p>
+  With {:expandfile:} installed, you can type the command line
+</p>
+<pre class="code">
+  expandfile template.htmx &gt; template.html
+</pre>
+<p>
+  to expand {:template.htmx:} and write its output into the file {:template.html:}.
+</p>
+<p>
+  {:expandfile:} doesn't know the syntax of HTML.
+  It just sees character input and writes character output.
+</p>
+<p class="dochist">
+  I rarely type {:expandfile:} on a command line;
+  usually I invoke it in scripts that expand template source files into object files.
+  For example, most HTML files on my websites are updated by the {:make:} utility,
+  driven by a Makefile that invokes {:expandfile:} to expand a source template
+  if the corresponding object file is out of date.
+  See <a href="expandfile-unix.html">Using Unix tools with expandfile</a>.
+</p>
+
+%[** - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  **]%
+<h3>File Suffixes</h3>
+<p>
+  Files with any suffix can be used as input or output files with {:expandfile:}: the program doesn't care.
+  You can call your files whatever you wish.
+  I use a set of conventions to remind myself of what files contain:
+</p>
+<ul>
+  <li>{:.htmx:} - HTML extended with variables and builtins.</li>
+  <li>{:.htmi:} - HTMX include files <a href="#include">{:*include:}</a>d by other HTMX files, e.g. macro libraries, configuration files.</li>
+  <li>{:.htmt:} - HTMX template files, usually used to generate {:.htmx:} files.</li>
+  <li>{:.tpt:} - template files used to generate other kinds of files, e.g. Procmail input, site maps, RSS feeds.</li>
+</ul>
+<p>
+  You can use whatever file suffix helps you organize your source.
+</p>
+<p>
+  In addition, {:expandfile:} provides builtin functions that read text files containing structured data files in two formats,
+  and apply templates to each structure element.
+  See <a href="#csvloop">{:*csvloop:}</a>
+  and <a href="#xmlloop">{:*xmlloop:}</a>.
+  You can use any file suffix for these files: I use
+</p>
+<ul>
+  <li>{:.csv:} - Text file in Comma Separated Values format, defined by <a href="https://tools.ietf.org/html/rfc4180">RFC-4180</a>.</li>
+  <li>{:.xml:} - Text file in Extensible Markup Language (XML), described in <a href="https://www.w3.org/XML/">W3C XML</a>.</li>
+</ul>
+<p>
+  {:expandfile:}'s <a href="#sqlloop">{:*sqlloop:}</a> builtin function can operate on data in SQL tables
+  (configuration files define the database server location, user ID, etc).
+  I use files with this suffix:
+</p>
+<ul>
+  <li>{:.sql:} - Text file containing CREATE TABLE and INSERT statements.</li>
+</ul>
+
+%[** ---------------------------------------------------------------- **]%
+<h2>Variables</h2>
+<p>
+  {:expandfile:} maintains an internal symbol table of variable <b>names</b> and their character string values.
+  A variable's name should not be blank. Letters, digits, and {:()_+-:} are allowed in variable names.
+  ({:expandfile:} prints a warning if a variable name is all digits, because this is often an error.)
+  Values are strings of characters, of any length.
+  A variable that has never been set has a value that is the same as a variable with a zero length string value.
+</p>
+<p>
+  When {:expandfile:} is invoked, it starts with an empty variable table.
+  The value of a variable is set by
+</p>
+<ul>
+  <li>Expanding the <a href="#set">{:*set:}</a> builtin:<br>{:\%[*set,&amp;fred,="this is a value"]\%:}</li>
+  <li>Expanding other builtin functions that set variables, for example <a href="#expandv">{:*expandv:}</a>, <a href="#sqlloop">{:*sqlloop:}</a>.</li>
+  <li>Expanding a <i>block</i> definiton: {:\%[*block,&amp;fredblock,^END]\%:} and some lines followed by END</li>
+  <li>Supplying command line arguments to the invocation of {:expandfile:}</li>
+  <li>{:expandfile:} initialization of builtin values, like<br>{:\%[date]\%:}</li>
+</ul>
+<p>
+  If {:expandfile:} does not find a symbol table entry for a variable name,
+  it looks for a <i>shell environment variable</i> with that name (set by the {:export:} command),
+  and if the variable is found, uses its value.
+  If neither the internal table nor the shell environment supply a value, the expansion is an empty string.
+</p>
+<p>
+  {:expandfile:} builtin functions that set a variable require a {:&amp;:} character in front of the variable name,
+  to make it clear that the function will modify the value.
+  If you leave the character out, a warning is printed.
+</p>
+<p>
+  When {:expandfile:} exits, the variable table is discarded.
+</p>
+
+%[** ---------------------------------------------------------------- **]%
+<h2>Expansion</h2>
+<p>
+  Examples of {:expandfile:}'s expansion are:
+</p>
+<ul>
+  <li>
+    {:\%[fred]%:} is replaced by the (string) value of the variable <i>fred</i>. If <i>fred</i> was never set, the result is an empty string.
+    (This is not an error, and no warning is printed.)
+  </li>
+  <li>
+    <b>Builtin functions</b> look like this: {:\%[*function,arguments...]%:}.
+    Some builtin functions expand to a value: others just change variables in the variable table.
+    For example:
+    <ul>
+      <li>
+	{:\%[*func,a,b,c,...]%:} is replaced by the result of executing builtin function <i>func</i> with arguments <i>a</i>, <i>b</i>, <i>c</i>, <i>...</i>
+      </li>
+      <li>
+	{:\%[*set,&amp;fred,="thumper"]%:} sets the value of the variable <i>fred</i> to the string <i>thumper</i>, and is replaced by nothing.
+	<a href="expandfile-tutorial.html#tag4">Tutorial example: setting variables</a>.
+      </li>
+      <li>
+	{:\%[*callv,macro,a,b,c,...]%:} is replaced by the result of {:*expand:}ing a (block) variable named {:macro:} with the values of arguments
+	<i>a</i>, <i>b</i>, <i>c</i>, <i>...</i>
+	temporarily bound to <i>param1</i>, <i>param2</i>, <i>param3</i>, <i>...</i>.
+      </li>
+      <li>
+	{:\%[*block,&amp;aaa,^EOF]%:} saves the raw text between the {:\%[*block]%:} statement and the next line beginning with EOF into variable <i>aaa</i>, and is replaced by nothing.
+      </li>
+    </ul>
+  </li>
+  <li>If a line contains only expansions {:\%[...]\%:}, the ending newline is not output.</li>
+</ul>
+
+%[** ---------------------------------------------------------------- **]%
+<h3 id="tag_algorithm">Expandfile algorithm</h3>
+<ol>
+  <li>Create an empty symbol table and initialize <a href="#biv">builtin values</a> like {:date:}.</li>
+  <li>Read the input file into memory.</li>
+  <li>Pass 1: invoke {:expandblocks:} to scan the memory copy for {:*block:} constructs. For each block,
+    <ol type="a">
+      <li>Note the block name and the ending regex.</li>
+      <li>Copy subsequent input lines until a line matching the regex into a variable in the symbol table named with the block name.</li>
+      <li>If the block already exists, append the contents to the end.</li>
+      <li>Remove the block construct and contents from the memory copy.
+      </li>
+    </ol>
+  </li>
+  <li>Pass 2: Call {:expandstring:} on the memory copy to
+    <ol type="a">
+      <li>Replace <a href="expandfile-multics.html">Multics formatting constructs</a> if {:_xf_expand_multics:} is set.
+	<ul>
+	  <li>
+	    Constructs like <span class="cmd">\{\:...\:\}</span> apply defined SPAN classes to text strings (4 variants).
+	  </li>
+	  <li>
+	    Constructs like <span class="cmd">\{\[tag anchor\]\}</span> look up a <i>tag</i> in Multics database tables and create HTML links (4 variants).
+	    (Database parameters must be defined.)
+	  </li>
+	</ul>
+      </li>
+      <li>Replace {:\%\[*builtin...\]\%:} function calls with their values.</li>
+      <li>Replace {:\%\[...\]\%:} variable references with their values.</li>
+    </ol>
+  </li>
+  <li>Write the expanded memory copy out to standard output.</li>
+</ol>
+
+%[** ---------------------------------------------------------------- **]%
+<h2 id="tag_language">HTMX Language</h2>
+<p>
+  {:expandfile:} was originally written in Perl, and inherits some Perl conventions,
+  like the equivalence of an unset variable and an empty string.
+</p>
+%[** - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  **]%
+<h3>Stream Processing</h3>
+<p>
+  {:expandfile:} reads character string input and writes output to STDOUT.
+  When reading input, the character {:\\:} is an escape character that is removed and removes the special meaning from the following character.
+  For example, use "{:\\\\:}" to output "{:\\:}".
+  As described above, {:expandfile:} replaces named variables inside {:\%[...]%:} by their values,
+  and executes builtin functions like {:\%[*builtin...]%:} that may take arguments, and may or may not output values.
+</p>
+%[** - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  **]%
+<h3>Values in Argument Lists</h3>
+<p>
+  Inside argument lists, literal values are preceded by {:=:} in order to distinguish them from variable names.  For example, {:\%[*set,&amp;foo,=1]%:}.
+</p>
+<p>
+  {:expandfile:} prints a warning if it encounters a variable name that is all digits, because this may be an incorrectly formatted literal.
+</p>
+<p>
+  A string surrounded by double quote characters in a literal value prevents the interpretation of special characters, and is replaced by the contents without the quotes.
+  Use quotes if the literal contains special characters such as {:,:} or {:\%:}.
+  To include a double quote character in a literal value, precede it with a backslash, e.g. {:\\":}.
+  <!-- " -->
+</p>
+<p>
+  For example, the value of {:\%[=say "hello \\"world\\"!"]\%:} is {:say hello "world"!:}.
+</p>
+<p>
+  The literal string 14 can be expressed as {:=14:} or {:="14":}.  Usually the second form is clearer.
+</p>
+<p class="example">
+  <i>Example:</i>
+  <br>If variable {:<i>mike</i>:} has the value {:nancy:} and variable {:<i>nancy</i>:} has the value {:14:}, then
+  <ul>
+    <li>
+      {:\%[*set,&amp;fred,\%[mike]%]%:} will expand to {:\%[*set,&amp;fred,nancy]%:} which will set variable <i>fred</i>'s value to {:nancy:} and return nothing.
+    </li>
+    <li>
+      {:\%[*set,&amp;fred,="\%[mike]%"]%:} will set variable {:<i>fred</i>:}'s value to the eight character string {:\%[mike]%:},
+      because the quotes prevent expansion of the inner expression.
+    </li>
+  </ul>
+</p>
+<p>
+  Outside of {:\%[ ...  ]%:}, double quotes are just characters, and {:expandfile:} just copies them.
+  ({:expandfile:} treats single quotes as ordinary characters.)
+</p>
+%[** - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  **]%
+<h3>Values and Types</h3>
+<p>
+  Variable values are character strings. They can be zero length, i.e. empty.
+  A reference to a variable that was never set is not an error: the value returned is an empty string.
+</p>
+<p>
+  Some operations perform arithmetic operations on values, using Perl semantics.
+  Addition, subtraction, and so forth are defined for values that contain digits only.
+</p>
+<p class="example">
+  <i>Example:</i> (reference to a variable containing a value)
+  <br>If variable {:<i>nancy</i>:} has the value {:14:} then
+  <br>{:\%[*set,&amp;fred,nancy]%:} will set variable {:<i>fred</i>:}'s value to {:14:}.
+</p>
+<p class="example">
+  <i>Example:</i>
+  <br>If variable {:<i>carol</i>:} has the value {:aaaa:} then
+  <br>{:\%[*increment,&amp;carol,=1]%:} will set {:<i>carol</i>:}'s value to {:1:}
+  <br>because Perl addition of an alphabetic string and an integer tries to convert {:aaaa:} to an integer and gets a value of zero.
+  This is not an error.
+</p>
+%[** - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  **]%
+<h3>Nested Brackets</h3>
+<p>
+  If expressions contain nested {:\%[...]%:} sequences, the innermost set is expanded first.
+</p>
+<p class="example">
+  <i>Example:</i>
+  <br>If {:<i>mike</i>:} has the value {:nancy:} and {:<i>nancy</i>:} has the value {:14:}, then
+  <br>{:\%[*set,&amp;fred,\%[mike]%]%:} will set {:<i>fred</i>:}'s value to {:14:}.
+  <br>{:\%[*set,&amp;fred,=\%[mike]%]%:} will set {:<i>fred</i>:}'s value to {:nancy:}.
+</p>
+%[** - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  **]%
+<h3 id="tag_builtins">Builtin Functions</h3>
+<p>
+  There are 37 builtin functions.
+  They are pretty simple, mostly less than 10 lines of Perl each.
+</p>
+<p>
+  Some builtin functions write text to the output expansion; other builtins only change variables or cause other side effects; some do both.
+</p>
+<p>
+  Each builtin is briefly explained.  See <a href="expandfile-tutorial.html">Expandfile Tutorial</a>
+  for more examples of many of these functions.
+  A <a href="#bifsum"><b>Builtin Summary</b></a> table is provided below.
+</p>
+<p>
+  Tutorial example: <a href="expandfile-tutorial.html#tag5">Quoting, Constants, and Escaping</a>.
+</p>
+<h4>Alphabetical List of builtins</h4>
+<dl>
+  %[** -------------------------------- **]%
+  <dt id="comment" class="bifname">
+    \%\[** ....]%
+  </dt>
+  <dd>
+    <p>Contains a comment.</p>
+    <p class="outs">Outputs nothing.</p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[** this is a remark **]%:}.
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+  <dt id="comment" class="bifname">
+    %[*callv,bif,="bindcsv,=file_or_url(in)",="nothing",="Read CSV file {:file_or_url:} and set variables"]%
+  </dt>
+  <dd>
+    <p>
+      Fetch the contents of the specified file, local or remote, and treat it as a two-line file Comma Separated Values file.
+      (<a href="https://tools.ietf.org/html/rfc4180">RFC-4180</a> defines this format.
+      {:expandfile:} allows NL, CR, or CRLF line terminations, but does not support quoted line separators.)
+    </p>
+    <p>
+      If the name given begins with "http" or "https", read the file from the Internet URL. Otherwise, read a local file.
+      If the name given ends with ".gz" or ".z", unzip the file contents.
+    </p>
+    <ul>
+      <li>The first line is a comma separated list of variable names.</li>
+      <li>The second line is a comma separated list of variable values.</li>
+      <li>Bind each variable name to its corresponding value.</li>
+    </ul>
+    <p>
+      The variable {:<i>_xf_colnames</i>:} is set to a space separated list of the column names.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*bindcsv,=inputfile.csv]%:}
+    </p>
+    <p>
+      The {:*bindcsv:} builtin will not set variables whose names begin with underscore or period.
+      A warning will be printed.
+      If the {:=:} sign is omitted before the name of the input file or URL, a warning is printed.
+    </p>
+    <p>
+      Be careful about security if you read external values from the Internet and expand them.
+      Sanitize your values before expanding.
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="block,&amp;blockname(out),regex(in)",="nothing",="Append unexpanded source lines to {:blockname:} until {:regex:}"]%
+    <p>
+      Read input lines following this command until a line matching the regular expression {:<i>regex</i>:} is found.
+      (For {:<i>regex</i>:}, use something like {:"^EOF$":}.)
+      Concatenates all of the lines read into {:<i>blockname</i>:}, and removes them from the input, until a line matching {:<i>regex</i>:} is read.
+      Text in {:\%[...]%:} is copied with its brackets without expansion into {:<i>blockname</i>:}:
+      when the block is expanded later, the bracketed constructs will be processed.
+      Specifying multiple blocks with the same {:<i>blockname</i>:} will append content to the block.
+      The {:*block:} builtin should be used alone on a line.
+    </p>
+    <p>
+      This construct is used to set up a variable containing text that can be expanded later,
+      or expanded many times as an <b>iterator</b>, or called as a <b>macro</b> with <a href="#callv">{:*callv:}</a>.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*block,&amp;iterblock,^END]%:}
+      <br>{:&lt;tr&gt;&lt;td&gt;\%[table1.name]%&lt;/td&gt;&lt;td&gt;\%[table1.addr]%&lt;/td&gt;&lt;/tr&gt;:}
+      <br>{:END:}
+    </p>
+    <p>
+      <a href="expandfile-tutorial.html#tag18">Tutorial example: {:*block:}</a>.
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="callv,block(in),args...(in)",="whatever is output by expanding {:block:}",="Expand {:block:} with arguments (subroutine call)"]%
+    <ol>
+      <li>Save all the variables {:<i>param1</i>,<i>param2</i>,<i>param3</i>,....:}</li>
+      <li>Assign each variable {:<i>param1</i>=<i>arg1</i>,<i>param2</i>=<i>arg2</i>,<i>param3</i>=<i>arg3</i>,...:}</li>
+      <li>Set {:<i>_xf_n_callv_args</i>:} to the number of arguments</li>
+      <li>Expand block {:<i>block</i>:}, which can refer to {:<i>param1</i>:} and so on.</li>
+      <li>Restore all the variables {:<i>param1</i>,<i>param2</i>,<i>param3</i>,....:}</li>
+    </ol>
+    <p>
+      Use the {:*block:} builtin to define subroutine blocks, or use {:*include:} to load macro libraries containing multiple blocks.
+      See <a href="expandfile-macros.html">Expandfile Macros</a> for more about macro calls.
+      The saving and restoring means that one block can invoke another block without arguments getting mixed up.
+    </p>
+    <p>
+      Execution of a block can set other variables in the symbol table that persist after {:callv:} ends.
+      This behavior can be useful or dangerous: a good convention is to name temporary variables with a leading underscore.
+    </p>
+    <p>
+      If {:*callv:} is called with an empty {:block:}, a warning is printed. (The first argument to {:*callv:} should not be quoted, since it is a block name.)
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*callv,gettwodigit,month]%\:}
+    </p>
+    <p>
+      See <a href="expandfile-macros.html">Macros in expandfile</a> for more information on macros.
+    </p>
+    <p>
+      <a href="expandfile-tutorial.html#tag29">Tutorial example: macros and {:*callv:}</a>.
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="concat,&amp;result(inout),valarg(in)...",="nothing, rewrites first argument",="Concatenate the values of each {:valarg:} onto {:result:}"]%
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*concat,&amp;line,cityname,=", ",statename]%:}
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="csvloop,&amp;result(out),iter_block(in),=filename(in)",="nothing",="Set {:result:} to concatenated expansions of {:iter_block:} for each data row in {:filename:}"]%
+  <dd>
+    <p>
+      {:<i>filename</i>:} is an ASCII text file in CSV (comma separated values) format,
+      like those produced by spreadsheet programs.
+      <a href="https://tools.ietf.org/html/rfc4180">RFC-4180</a> defines this format.
+    </p>
+    <p>
+      If the name given ends with ".gz" or ".z", the file contents are unzipped.
+    </p>
+    <p>
+      The first row in the file is a heading row containing variable names for each column.
+    </p>
+    <p>
+      For each subsequent row, bind column variables named in the heading row like {:<i>colname1</i>:} to corresponding values in the row;
+      and then expand {:<i>iter_block</i>:}, which can refer to these bound variables.
+      Append the result of the expansion to {:<i>result</i>:}.
+    </p>
+    <p>
+      If the CSV file is missing, {:expandfile:} exits with an error message.
+      <span class="sm">(Maybe it should keep going, or there should be a switch saying what to do.)</span>
+    </p>
+    <p>
+      The variable {:<i>_xf_nrows</i>:} is set to the count of rows found by the query.
+    </p>
+    <p>
+      The variable {:<i>_xf_colnames</i>:} is set to a space separated list of column names bound by the query.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*csvloop,&amp;report,btrr_iter,=btrr.csv]%:}
+    </p>
+    <p>
+      <a href="expandfile-tutorial.html#tag26">Tutorial example: {:*csvloop:}</a>.
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="decrement,&amp;variable(inout),value(in)",="nothing, rewrites first argument",="Decrement {:variable:}'s contents"]%
+    <p>
+      Subtract the value in {:<i>value</i>:} from the value in {:<i>result</i>:} and store the result back into {:<i>result</i>:}.
+      Uses Perl semantics.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*decrement,&amp;openfiles,="1"]%:}
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="dirloop,&amp;result(out),iter_block(in),=dir(in),starrex(in)",="nothing",="Set {:result:} to concatenated expansions of {:iter_block:} for each entry in {:dir:} matching {:starrex:}"]%
+    <p>
+      Operates on each file-system file in a directory {:<i>dirpath</i>:} whose name matches {:<i>starrex</i>:}.
+      For each file, do a Unix <b>stat()</b> operation on the file and
+      bind variables to the values of the file attributes,
+      and then expand {:<i>iter_block</i>:}, which can refer to these variables.
+      Append the result of the expansion to {:<i>result</i>:}.
+    </p>
+    <p>
+      The variables bound are
+    </p>
+    <table class="attab">
+      <tr><td>{:file_name:}</td><td>name of the file</td></tr>
+      <tr><td>{:file_type:}</td><td>'f' for file, 'd' for directory, 'l' for link</td></tr>
+      <tr><td>{:file_dev:}</td><td>device number</td></tr>
+      <tr><td>{:file_ino:}</td><td>inode number</td></tr>
+      <tr><td>{:file_mode:}</td><td>mode in Unix character format, e.g. "{:rwx--x---:}"</td></tr>
+      <tr><td>{:file_nlink:}</td><td>number of hardlinks to the file</td></tr>
+      <tr><td>{:file_uid:}</td><td>numeric file owner userid</td></tr>
+      <tr><td>{:file_gid:}</td><td>numeric file owner groupid</td></tr>
+      <tr><td>{:file_rdev:}</td><td>rdev (for special files)</td></tr>
+      <tr><td>{:file_size:}</td><td>size in bytes</td></tr>
+      <tr><td>{:file_atime:}</td><td>last access time</td></tr>
+      <tr><td>{:file_mtime:}</td><td>last mod time</td></tr>
+      <tr><td>{:file_ctime:}</td><td>inode change time</td></tr>
+      <tr><td>{:file_blksize:}</td><td>preferred block size</td></tr>
+      <tr><td>{:file_blocks:}</td><td>allocated blocks</td></tr>
+      <tr><td>{:file_sec:}</td><td>mtime  seconds (2 digits)</td></tr>
+      <tr><td>{:file_min:}</td><td>mtime  minutes (2 digits)</td></tr>
+      <tr><td>{:file_hour:}</td><td>mtime  hour (2 digits)</td></tr>
+      <tr><td>{:file_mday:}</td><td>mtime  day of month (2 digits)</td></tr>
+      <tr><td>{:file_mon:}</td><td>mtime  month (2 digits)</td></tr>
+      <tr><td>{:file_year:}</td><td>mtime  year (2 digits)</td></tr>
+      <tr><td>{:file_wday:}</td><td>mtime  day of week (0-6, Sunday is 0))</td></tr>
+      <tr><td>{:file_yday:}</td><td>mtime  day of year</td></tr>
+      <tr><td>{:file_isdst:}</td><td>1 if mtime is DST</td></tr>
+      <tr><td>{:file_datemod:}</td><td>mtime in the format "mm/dd/yy hh:mm"</td></tr>
+      <tr><td>{:file_modshort:}</td><td>mtime in the format "mm/dd/yy"</td></tr>
+      <tr><td>{:file_sizek:}</td><td>file size in K</td></tr>
+      <tr><td>{:file_age:}</td><td>age in days</td></tr>
+    </table>
+    <p>
+      The variable {:<i>_xf_nrows</i>:} is set to the count of files found.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*dirloop,&amp;content,fmt_one_file,=".",="."]%:}
+    </p>
+    <p>
+      <a href="expandfile-tutorial.html#tag28">Tutorial example: {:*dirloop:}</a>.
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="dump",="one line per defined variable",="Display the contents of all variables in the symbol table"]%
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*dump]%:}
+    </p>
+    <pre>
+  **dump quote**=**%[quote]%**
+  **dump fred**=**mike**
+  **dump mike**=**nancy**
+  **dump nancy**=**14**
+  ...
+    </pre>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="exit",="nothing",="Abort {:expandfile:} execution"]%
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*exit]%:}
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="expand,var(in)",="value of {:var:}, expanded",="Output the expansion the contents of {:var:} including variable and builtin references"]%
+    <p>
+      {:<i>var</i>:} may contain variable names and builtin invocations in {:\%[... ]%:}.
+      Nested expansions are possible if the variable invokes {:\%[*expand,...]%:} or other builtins.
+    </p>
+    <p>
+      Outputs the value of expanding {:<i>var</i>:}.
+      If {:<i>var</i>:} contains {:\%[ ... something ...]%:} constructs, they will be expanded.
+    </p>
+    <p class="example">
+      <i>Example:</i> output the contents of a variable
+      <br>{:\%[*expand,footnote_separator]%:}.
+      <br><br><i>Example:</i> output the contents of a variable whose name depends on another variable
+      <br>{:\%[*expand,footnote_\%[ftn]%]%:}.
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="expandv,&amp;result(out),var(in)",="nothing",="Set {:result:} to expansion of {:var:} including variable and builtin references"]%
+    <p>
+      {:<i>var</i>:} may contain variable names and builtin invocations in {:\%[... ]%:}.
+      Nested expansions are possible if the variable invokes {:\%[*expand,...]%:} or other builtins.
+    </p>
+    <p>
+      Sets its first argument to the expansion of {:var:}. Outputs nothing.
+      If {:<i>var</i>:} contains {:\%[ ... something ...]%:} constructs, they will be expanded.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*expandv,&amp;f_name,convert_cityname]%:}
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="fappend,=filename(in),value(in)...",="nothing",="Append concatenated {:value:} args to the contents of {:filename:}"]%
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*fappend,=tracefile.txt,timestamp,=" ",traceoutput]%:}
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="format,&amp;result(out),fmtstring(in),vars...(in)",="nothing",="Replace placeholders of the form \"{:$1:}\" .. \"{:$n:}\" in {:fmtstring:} with values of the {:vars:}"]%
+    <p class="example">
+      <i>Example:</i> combine cityname and statename:
+      <br>{:\%[*format,&amp;line,="$1, $2",cityname,statename]%:}
+      <br><br><i>Example:</i> Generate an HTML IMG tag:
+      <br>{:\%[*format,&amp;imgtag,="&lt;img src=\\"$1\\" width=\\"$2\\" height=\\"$3\\"&gt;",filename,height,width]%:}
+      <br><br><i>Example:</i> Generate GraphViz (dot) input:
+      <br>{:\%[*if,ne,t.st,="invis",*format,&amp;x,="$1 -&gt; $2 [xlabel=\\"$3\\",style=\\"$4\\",color=\\"$5\\"];\\n",y.n1,y.n2,y.b,y.e,t.o]%:}
+    </p>
+    <p>
+      The second example statement was used in an iterator block in an application that produced a block diagram from an SQL file.
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="fread,&amp;result(out),=filename(in)",="nothing",="Read the contents of {:filename:} into {:result:}"]%
+    <p>
+      If the input file is not found, set content to the empty string.
+      Does not expand blocks, builtins, or variables.
+    </p>
+    <p>
+      Sets its first argument. Outputs nothing.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*fread,&amp;pienumber,=pienumberfile]%:}
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="fwrite,=filename(in),value(in)...",="nothing",="Rewrite {:filename:} with concatenated {:value:} args"]%
+    <p>
+      Replaces any previous contents of {:<i>filename</i>:}.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*fwrite,=pienumberfile,counter]%:}
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="htmlescape,value(in)...",="the escaped string",="Output the HTML-escaped value of concatenated {:value:} args"]%
+    <p>
+      For instance, html-escaping "{:&lt;fred&gt;:}" yields "{:&amp;lt;fred&amp;gt;:}".
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*htmlescape,filename]%:}
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="if,relop(in),v1(in),v2(in),statement...(in)",="If condition is true, whatever the contained statement outputs",="if ({:v1:} {:relop:} {:v2:}), expand {:statement:}"]%
+    <p>
+      Perform the comparison <i>v1</i> <i>relop</i> <i>v2</i> and if it is TRUE, expand {:<i>statement</i>:}.
+      {:<i>statement</i>:} can be any set of HTMX evaluations, including more "if" builtins.
+      <i>relop</i> is the name of a comparison operator. The supported operators are:
+    </p>
+    <ul>
+      <li><b>eq</b> numeric equality</li>
+      <li><b>ne</b> numeric inequality</li>
+      <li><b>gt</b> numeric greater-than</li>
+      <li><b>lt</b> numeric less-than</li>
+      <li><b>ge</b> numeric greater-equal</li>
+      <li><b>le</b> numeric less-equal</li>
+      <li><b>=~</b> regular expression equality</li>
+      <li><b>!~</b> regular expression equality</li>
+      <li><b>teq</b> string equality</li>
+      <li><b>tne</b> string inequality</li>
+      <li><b>tgt</b> string greater-than</li>
+      <li><b>tlt</b> string less-than</li>
+      <li><b>eqlc</b> string equality, case independent</li>
+      <li><b>nelc</b> string equality, case independent</li>
+    </ul>
+    <p>
+      Outputs whatever {:<i>statement</i>:} outputs.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*if,eq,city,="Chicago",*set,&amp;arpt,="ORD"]%:}.
+      <br><br>Nested {:*if:} statements:
+      <br>{:\%[*if,ne,gnm,param1,*if,ne,tnms,="",*callv,rec_grpname2grpid,param1]%:}
+      <br><br>Another nested {:*if:} statement, setting up a format string for the {:*format:} builtin:
+      <br>{:\%[*if,gt,x3,param3,*if,gt,x1,=0,*set,&amp;fmt,=" &lt;span class=\"inred\"&gt;($1$2%)&lt;/a&gt;"]%:}
+    </p>
+    <p>
+      <a href="expandfile-tutorial.html#tag21">Tutorial example: {:*if:}</a>.
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="include,=filename(in)",="{:filename:} content, expanded",="Output the expanded content of {:filename:}"]%
+    <p>
+      Expands blocks, builtins, and variables.
+      Sets {:_xf_currentfilename:} to the file being included while processing the include.
+    </p>
+    <p>
+      If the file is not found, this is a fatal error and {:expandfile:} exits.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*include,=page-wrapper.htmi]%:}.
+    </p>
+    <p>
+      <a href="expandfile-tutorial.html#tag17">Tutorial example: {:*include:}</a>.
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="includeraw,=filename(in)",="{:filename:} content, unexpanded",="Output the content of {:filename:}, unexpanded"]%
+    <p>
+      Does not expand blocks, builtins, or variables.
+    </p>
+    <p>
+      If the file is not found, this is a fatal error and {:expandfile:} exits.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*includeraw,=data_table.txt]%:}.
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="increment,&amp;variable(inout),value(in)",="nothing, rewrites first argument",="Increment {:variable:}'s contents"]%
+    <p>
+      Add the value in {:<i>value</i>:} to the value in {:<i>result</i>:} and store the result into {:<i>result</i>:}.
+      Uses Perl semantics.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*increment,&amp;pageno,="1"]%:}
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="ncopies,&amp;result(out),value(in),n(in)",="nothing",="Set {:result:} to {:n:} copies of {:value:}"]%
+    <p>
+      Concatenate {:<i>n</i>:} copies of the value in {:<i>value</i>:} and store the result into {:<i>result</i>:}.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*ncopies,&amp;amt,="*",width]%:}
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="onchange,var(in),*statement(in)",="whatever is output by contained statements",="Execute {:statement:} when value of {:var:} changes"]%
+    <p>
+      If the value of {:<i>var</i>:} has changed, execute the {:<i>statement</i>:}. 
+      This builtin is useful in iterators invoked by {:*sqlloop:}, {:*csvloop:}, {:*xmlloop:}, {:*dirloop:}, and {:*csvloop:}.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*onchange,x,*callv,wrap,x,="&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&lt;dt&gt;",="&lt;/dt&gt;\\\\n"]%:}
+      <br>outputs a line that surrounds the value of {:<i>x</i>:} with &lt;dt&gt; and &lt;/dt&gt; if {:<i>x</i>:} is nonempty and changed.
+      (See the definition of the {:wrap:} macro in <a href="expandfile-macros.html">Macros in expandfile</a>).
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="onnochange,var(in),*statement(in)",="whatever is output by contained statements",="Execute {:statement:} when value of {:var:} is unchanged"]%
+    <p>
+      If the value of {:<i>var</i>:} has NOT changed, execute the {:<i>statement</i>:}.
+      This builtin is useful in iterators invoked by {:*sqlloop:}, {:*csvloop:}, {:*xmlloop:}, {:*dirloop:}, and {:*csvloop:}.
+    </p>
+    <p>
+      If an iterator block uses both {:*onchange:} and {:*onnochange:}, put the {:onnochange:} call first.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*onnochange,x,*increment,&amp;titles,=1]%:}
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="popssv,&amp;result(out),&amp;ssv(inout)",="nothing, rewrites second argument",="Set {:result:} to first element of {:ssv:}, and {:ssv:} to the remainder"]%
+    <p>
+      Variable {:<i>ssv</i>:} should contain a list of strings separated by a separator character whose value is in {:<i>_xf_ssvsep</i>:}.
+      (By default the character is a space -- SSV means "space separated values.")
+      Remove the leftmost element of {:<i>ssv</i>:}, store it in {:<i>result</i>:}, and rewrite {:<i>ssv</i>:} with the rest.
+      If {:ssv:} contains only one element, store it in {:<i>result</i>:} and leave {:<i>ssv</i>:} empty.
+    </p>
+    <p>
+      See also the {:*ssvloop:} builtin.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*popssv,&amp;next_player,&amp;jersey_numbers]\%:}
+    </p>
+    <p>
+      <a href="expandfile-tutorial.html#tag23">Tutorial example: SSVs</a>.
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="product,&amp;result(out),value(in),factor(in)",="nothing",="Set {:result:} to {:value:} times {:factor:}"]%
+    <p>
+      Multiply the value in {:<i>factor</i>:} by the value in {:<i>value</i>:} and store the result in {:<i>result</i>:}.
+      Uses Perl semantics.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*product,&amp;mins,hours,=60]%:}
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="quotient,&amp;result(out),dividend(in),divisor(in)",="nothing",="Set {:result:} to {:dividend:} divided by {:divisor:}"]%
+    <p>
+      Divide the value in {:<i>dividend</i>:} by the value in {:<i>divisor</i>:} and store the result in {:<i>result</i>:}.
+      Discard the fractional part.
+      Uses Perl semantics.
+     If divide by zero is attempted, the result is 0.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*quotient,&amp;cows,hooves,=4]%:}
+    </p>
+  </dd>
+%[** -------------------------------- **]%
+%[*callv,bif,="quotientrounded,&amp;result(out),dividend(in),divisor(in)",="nothing",="Set {:result:} to {:dividend:} divided by {:divisor:}, rounded"]%
+    <p>
+      Divide the value in {:<i>dividend</i>:} by the value in {:<i>divisor</i>:} and store the result in {:<i>result</i>:}, rounded to the nearest integer.
+      That is, compute {:int((<i>dividend</i> / <i>divisor</i>) + 0.5):};
+      If divide by zero is attempted, the result is 0.
+      Uses Perl semantics.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*quotientrounded,&amp;cows,hooves,=4]%:}
+    </p>
+  </dd>
+%[** -------------------------------- **]%
+%[*callv,bif,="scale,&amp;result(out),n(in),range(in),base(in)",="nothing",="Set {:result:} to {:int(((n*base)/range)+0.5):}"]%
+    <p>
+      Compute {:int(((n*base)/range)+0.5):} and store the result in {:<i>result</i>:}.
+      {:range:} is the maximum value for the variable {:n:} and {:base:} is the maximum scaled value.
+    </p>
+    <p>
+      For example, if you are drawing an HTML horizontal bar graph that will be 500 pixels wide (the base),
+      of variables that run from 0 to 1000 units, then each graph pixel will represent 2 units.
+    </p>
+    <p class="example">
+      <i>Example:</i> Computing the width of a bar in the graph:
+      <br>{:\%[*scale,&amp;barwidth_pixels,wtdayhist.dhits,.maxdhits,=500]%:}
+      <br>{:&lt;img src="redpixel.gif" height="10" width="\%[barwidth_pixels]%"&gt;:}
+      <br>This uses up to 500 pixels to display a graph bar whose longest bar represents {:<i>.maxdhits</i>:}.
+    </p>
+  </dd>
+%[** -------------------------------- **]%
+%[*callv,bif,="set,&amp;result(out),valarg(in)...",="nothing",="Set {:result:} to concatenated {:valarg:} arguments"]%
+    <p>
+      If a {:<i>value</i>:} begins with an {:=:} then it is a literal value.
+      Otherwise it is a variable name whose value is used.
+    </p>
+    <p class="example">
+      <i>Example:</i> set a variable to a constant string.
+      <br>{:\%[*set,&amp;title,="Expandfile Usage"]%:}.
+      <br><br><i>Example:</i> set a variable to the value of another variable.
+      <br>{:\%[*set,&amp;title,datafield]%:}.
+      <br><br><i>Example:</i> set a variable to the concatenated values of several arguments. ({:quote:} is a <a href="#biv">builtin value</a>.)
+      <br>{:\%[*set,&amp;htt,="https://multicians.org/thvv/htmx/expandfile.html"]%:}
+      <br>{:\%[*set,&amp;anchorstring,="Expandfile"]%:}
+      <br>{:\%[*set,&amp;test6,="&lt;a href=",quote,htt,quote,="&gt;",anchorstring,="&lt;/a&gt;"]%:}.
+    </p>
+     <p>
+      {:quote:} is a builtin value whose value is a double quote character.  I could have written {:="\\"":} instead.
+    </p>
+     <!-- " -->
+    <p>
+      <a href="expandfile-tutorial.html#tag4">Tutorial example: {:*set:}</a>.
+    </p>
+ </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="shell,&amp;result(out),command(in)...",="nothing",="Execute shell {:command:} and set {:result:} to its output"]%
+    <p>
+      The string sent to the command processor is the concatenation of the values of {:command:} arguments.
+    </p>
+    <p>
+      If multiple lines are returned, newline characters are replaced by the contents of {:<i>_xf_ssvsep</i>:}.
+      The command output is stored in {:<i>result</i>:}.
+    </p>
+    <p>
+      Be careful about security if you execute shell commands based on user input.
+    </p>
+    <p>
+      You can write your own functions, or use Unix programs such as {:grep:}, {:sed:}, {:awk:}, or {:sh:}.
+    </p>
+    <p>
+      Several <a href="#usefulutils">useful utility functions</a> are supplied with {:expandfile:}.
+    </p>
+    <p class="example">
+      <i>Example:</i> get the date modified of a file ({:*shell:} is called with one argument, which contains an expansion of the variable {:parm1:})
+      <br>{:\%[*shell,&amp;filed,=filemodshort \%[param1]%.htmx]%:}
+      <br><br><i>Example:</i> get the age in days of the index file in a directory (note the concatenation of constants and variable values)
+      <br>{:\%[*shell,&amp;xage,="filedaysold  ",obj_dir,="/",param1,="/index.html"]%:}
+      <br><br><i>Example:</i> use {:perl:} to modify a disk file to remove the string "NAMESP:" everywhere (note that double-quote is preceded by \\ inside a string)
+      <br>{:\%[*shell,&amp;xout,="perl -pi -e \\"s/NAMESP://g\\" ",filenamevar]%:}
+      <br><br><i>Example:</i> invoke the {:mysql:} command to load a disk file containing MySQL statements (note that we don't quote the argument)
+      <br>{:\%[*shell,&amp;xout,=mysql --execute \\"source \%[sqlloadfile]%\\"]%:}
+      <br><br><i>Example:</i> invoke the {:curl:} command to download output from a web service API
+      <br>{:\%[*shell,&amp;xout,=curl \%[endpoint]%/\%[cmd]% -X POST -d \%[JSON_rq]% -H \\"Content-type: application/json\\" > xx.json]%:}
+    </p>
+    <p>
+      <b>Performance</b> was not a consideration in the design of the {:*shell:} builtin.
+      Executing command lines this way is done by launching a fairly large shell process,
+      and then launching additional processes for each command in the arguments to the shell.
+      (I expand one template, {:sitemap.htmx:}, which invokes {:filemodshort:} and {:filesizek:} for each of over 1000 pages.
+      There is a pause of 10 seconds or so when the template is expanded.)
+    </p>
+    <p>
+      <a href="expandfile-tutorial.html#tag22">Tutorial example: {:*shell:}</a>.
+    </p>
+   </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="sqlloop,&amp;result(out),iter_block(in),query(in)",="nothing",="Set {:result:} to concatenated expansions of {:iter_block:} for each row returned by MySQL {:query:}"]%
+    <p>
+      Execute the MySQL query {:<i>query</i>:}, which returns a number of rows.
+      Each row returns a set of variables.
+      Bind the variables in the symbol table using names like {:<i>table.varname1</i>:},
+      and then expand {:<i>iter_block</i>:}, which will refer to these variables.
+      Append the result of the expansion to {:<i>result</i>:}.
+      (Because {:<i>_xf_colnames</i>:} is set before {:<i>iter_block</i>:} is expanded,
+      the iterator need not know the complete schema of the database.)
+    </p>
+    <p>
+      The variable {:<i>_xf_nrows</i>:} is set to the count of rows found by the query.
+    </p>
+    <p>
+      The variable {:<i>_xf_colnames</i>:} is set to a space separated list of column names bound by the query.
+    </p>
+    <p>
+      Computed values such as COUNT that have no tablename are bound to names like {:<i>.count</i>:}.
+    </p>
+    <p>
+      The variables {:<i>_xf_hostname</i>:}, {:<i>_xf_database</i>:}, {:<i>_xf_username</i>:},
+      and {:<i>_xf_password</i>:} must be set up to point to the MySQL database server
+      before {:sqlloop:} is invoked, or {:expandfile:} will exit with an error message.
+    </p>
+    <p>
+      Some database errors are retryable, for instance if the server goes down.
+      {:sqlloop:} will retry these errors 10 times before exiting with an error.
+    </p>
+    <p>
+      If there is a fatal database or query error, {:expandfile:} exits with an error message.
+    </p>
+    <p>
+      If the query is empty, a warning will be printed and <i>_xf_nrows</i> will be set to 0.
+      It is not an error for a query to return 0 rows, but a warning will be printed.
+    </P>
+    <p class="example">
+      <i>Example:</i> generate a bar chart summarizing population by country name from table "s":
+      <br>{:\%[*sqlloop,&amp;chartout,chart_iter,="SELECT country, COUNT(*) AS v FROM s WHERE fake=0 GROUP BY country"]%:}
+    </p>
+    <p class="example">
+      To execute a query just to set a total,
+      specify a variable for the loop output that you never use, and a null iterator, and refer to the query result, e.g.
+      <br>{:\%[*sqlloop,&amp;junk,="",="SELECT COUNT(*) AS minors FROM tbl WHERE age &lt; 21"]%:}
+      <br>{:\%[*set,&amp;minorcount,\%[.minors]%]%:}
+    </p>
+    <p>
+      <a href="expandfile-tutorial.html#tag25">Tutorial example: {:*sqlloop:}</a>.
+    </p>
+ </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="ssvloop,&amp;result(out),iter_block(in),ssv(in)",="nothing",="Set {:result:} to concatenated expansions of {:iter_block:} for each element of {:ssv:}"]%
+    <p>
+      An SSV (space separated values) list is a variable value composed of tokens separated by the value in {:<i>_xf_ssvsep</i>:} (usually space).
+    </p>
+    <p>
+      Operate on each token in the SSV {:<i>varname</i>:}.
+      For each token, bind {:<i>_xf_ssvitem</i>:} to the value (null tokens are skipped),
+      and then expand {:<i>iter_block</i>:}, which can refer to {:<i>_xf_ssvitem</i>:}.
+      Append the result of the expansion to {:<i>result</i>:}.
+      This loop works on a copy of {:<i>varname</i>:}, so the input SSV is not changed.
+    </p>
+    <p>
+      The variable {:<i>_xf_nssv</i>:} is set to the count of tokens found in the SSV.
+    </p>
+    <p>
+      See also the {:*popssv:} builtin.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*ssvloop,&amp;nextstorybody,nextstory-iter,filenamesbydate]%:}
+    </p>
+    <p>
+      <a href="expandfile-tutorial.html#tag23">Tutorial example: {:*ssvloop:}</a>.
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="subst,&amp;var(inout),leftside(in),rightside(in)",="nothing, rewrites first argument",="Substitute {:right:} for {:left:} in {:var:}"]%
+    <p>
+      Replace the value in {:<i>result</i>:} by the result of the Perl substitution {:s/left/right/ig:}.
+      Slashes in {:<i>left</i>:} and {:<i>right</i>:} must be escaped -- use {:\\\\:}.
+    </p>
+    <p>
+      {:<i>left</i>:} can contain parenthesized patterns, as in Perl substitutions;
+      these patterns can be referenced in {:<i>right</i>:} as \\\\1, \\\\2, etc.
+    </p>
+    <p class="example">
+      <i>Example:</i> truncate a name to its first 40 characters
+      <br>{:\%[*subst,&amp;name,="^(........................................).*$",="\\\\1"]%:}
+      <br><br><i>Example:</i> trim off the directory portions of a pathname
+      <br>{:\%[*subst,&amp;pname,="^.*\\\\/",=""]%:}
+    </p>
+    <p>
+      Be careful about security if you read external values from the Internet and use them in arguments to {:*subst:}.
+      Watch out for backticks.
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="urlfetch,&amp;result(out),url(in)",="nothing",="Set {:result:} to contents of {:url:}"]%
+    <p>
+      Fetch the contents of the Internet URL {:<i>url</i>:} into {:<i>result</i>:}.
+      If the target is not found, set content to the empty string.
+      Does not expand variables or blocks.
+    </p>
+    <p>
+      Be careful about security if you read external values from the Internet and expand them.
+      Sanitize your values before expanding.
+      Watch out for {:\%[]%:} and backticks.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*urlfetch,&amp;contents,=\%[_xf_ssvitem]%]%:}
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="xmlloop,&amp;result(out),iter_block(in),=filename(in),xpath(in)",="nothing",="Set {:result:} to concatenated expansions of {:iter_block:} for each XML item in {:filename:} matching {:xpath:}"]%
+    <p>
+      {:<i>filename</i>:} is an ASCII text file in XML format. It may be zipped.
+    </p>
+    <p>
+      Operate on each item the file as found by {:<i>Xpath</i>:}: if this argument is missing, the default is "{:/*/*:}".
+      For each item found by the Xpath, the loop binds the values of sub-items "{:./*:}" and binds the values of attributes "{:./@*:}",
+      and then expands {:<i>iter_block</i>:}, which will refer to these variables.
+      Append the result of the expansion to {:<i>result</i>:}.
+    </p>
+    <p>
+      If no {:<i>Xpath</i>:} is provided, the outermost structure in the file should be something like &lt;list&gt; ... &lt;/list&gt;
+      and it should contain repeated items &lt;item&gt; ... &lt;/item&gt;
+      which in turn contain multiple fields like &lt;person&gt; ... &lt;/person&gt;
+      and &lt;address&gt; ... &lt;/address&gt;.
+      For each item, bind the values of fields in the symbol table using names like {:<i>person</i>:}.
+    </p>
+    <p>
+      The variable {:<i>_xf_nxml</i>:} is set to the count of items found by the query.
+    </p>
+    <p>
+      The variable {:<i>_xf_xmlfields</i>:} is set to a space separated list of variable names bound by the query.
+    </p>
+    <p>
+      If the XML file is empty or malformed, {:<i>_xf_nxml</i>:} is set to 0 and nothing is done.
+      If the XML file is missing, {:expandfile:} exits with an error message.  This is ugly: I should think of a better solution.
+    </p>
+    <p>
+      <i>Example:</i>
+      <br>{:\%[*xmlloop,&amp;junk,iter_gacc,=gacc.xml,="*/computers/computer"]%:}
+    </p>
+    <p>
+      I use a simple Perl program called {:json2xml:} to translate JSON data (fetched from a web API) into XML data, which I then process with {:*xmlloop:}.
+    </p>
+    <p>
+      <a href="expandfile-tutorial.html#tag27">Tutorial example: {:*xmlloop:}</a>.
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+%[*callv,bif,="warn,args...(in)",="nothing",="Write {:args:} to STDERR"]%
+    <p>
+      Write a warning message of all concatenated {:args...:} on STDERR.
+    </p>
+    <p class="example">
+      <i>Example:</i>
+      <br>{:\%[*warn,No results for \%[query]%]%:}
+    </p>
+  </dd>
+  %[** -------------------------------- **]%
+</dl>
+%[*concat,&biflist,="<caption>"]%
+%[*concat,&biflist,bifcount]%
+%[*concat,&biflist,=" builtins</caption>\\n"]%
+%[*concat,&biflist,="</table>"]%
+
+
+%[** - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  **]%
+<h3 id="bifsum">Builtin Summary</h3>
+<p>
+  Some builtin functions write output to the output file.
+  Others produce no output but instead change an argument variable.
+  A few functions conditionally expand the rest of their arguments, so these produce wherever result the expanded arguments request.
+</p>
+<p>
+  Builtin functions that modify an argument use {:&:} before the variable name to remind you that the value will be modified.
+  If you omit the {:&:}, {:expandfile:} prints a warning.
+  Some builtins with {:&:} have in/out args, others are out.
+</p>
+%[biflist]%
+
+<p>
+  (If I had it to do over, I might make all functions take an output argument, and have none of them write to the output.)
+</p>
+
+%[** - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  **]%
+<h3 id="biv">Builtin Values</h3>
+<p>
+  These values are inserted in the symbol table by {:expandfile:} when it is invoked.
+  It is probably a bad idea to store into any of these.
+  (Example value in parentheses.)
+</p>
+<table class="attab">
+  <tr><td>{:%\[year]%:}</td><td>year (%[year]%)</td></tr>
+  <tr><td>{:%\[prevyear]%:}</td><td>previous year (%[prevyear]%)</td></tr>
+  <tr><td>{:%\[day]%:}</td><td>day (%[day]%)</td></tr>
+  <tr><td>{:%\[month]%:}</td><td>month (%[month]%)</td></tr>
+  <tr><td>{:%\[prevmonth]%:}</td><td>previous month (%[prevmonth]%)</td></tr>
+  <tr><td>{:%\[monthx]%:}</td><td>numeric month (%[monthx]%)</td></tr>
+  <tr><td>{:%\[hour]%:}</td><td>hour (%[hour]%)</td></tr>
+  <tr><td>{:%\[min]%:}</td><td>min (%[min]%)</td></tr>
+  <tr><td>{:%\[date]%:}</td><td>date in text format (%[date]%)</td></tr>
+  <tr><td>{:%\[timestamp]%:}</td><td>timestamp (%[timestamp]%)</td></tr>
+  <tr><td>{:%\[pct]%:}</td><td>percent (%[pct]%)</td></tr>
+  <tr><td>{:%\[lbkt]%:}</td><td>left bracket (%[lbkt]%)</td></tr>
+  <tr><td>{:%\[rbkt]%:}</td><td>right bracket (%[rbkt]%)</td></tr>
+  <tr><td>{:%\[lbrace]%:}</td><td>left brace (%[lbrace]%)</td></tr>
+  <tr><td>{:%\[rbrace]%:}</td><td>right brace (%[rbrace]%)</td></tr>
+  <tr><td>{:%\[quote]%:}</td><td>double quote (%[quote]%)</td></tr>
+  <tr><td>{:%\[_xf_currentfilename]%:}</td><td>current file name being expanded (%[_xf_currentfilename]%)</td></tr>
+  <tr><td>{:%\[_xf_version]%:}</td><td>version of {:expandfile:} (%[_xf_version]%)</td></tr>
+</table>
+
+%[** - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  **]%
+<h3>Special Values</h3>
+<p>
+  These values control the behavior of {:expandfile:} or are set as a result of executing a builtin function.
+</p>
+<table class="attab">
+  <tr><td>{:%\[_xf_expand_multics]%:}</td><td>user config</td><td>If nonblank, enable <a href="expandfile-multics.html">Multics expansions</a>.</td></tr>
+  <tr><td>{:%\[_xf_debug]%:}</td><td>user config</td><td>If nonblank, enable warnings about unset variables.</td></tr>
+  <tr><td>{:%\[_xf_tracebind]%:}</td><td>user config</td><td>If set to a nonblank value, causes {:*set:}, {:*block:}, {:*sqlloop:}, {:*csvloop:}, {:*xmlloop:}, {:*dirloop:}, and {:*csvloop:}
+      <br> to print a message on STDERR when they bind a value to a variable.</td></tr>
+  <tr><td>{:%\[_xf_ssvsep]%:}</td><td>user config</td><td>Separator between elements of a Space Separated Values list. Default is " ".</td></tr>
+  <tr><td>{:%\[_xf_nssv]%:}</td><td>Set by {:*ssvloop:}</td><td>Number of elements processed.</td></tr>
+  <tr><td>{:%\[_xf_ssvitem]%:}</td><td>Set by {:*ssvloop:}</td><td>Current item inside an iterator block being expanded.</td></tr>
+  <tr><td>{:%\[_xf_nrows]%:}</td><td>Set by {:*sqlloop:}, {:*csvloop:}, {:*dirloop:}</td><td>Rows read</td></tr>
+  <tr><td>{:%\[_xf_colnames]%:}</td><td>Set by {:*sqlloop:}, {:*csvloop:}, and {:bindcsv:}</td><td>SSV of column names bound.</td></tr>
+  <tr><td>{:%\[_xf_xmlfields]%:}</td><td>Set by {:*xmlloop:}</td><td>SSV of XML item names bound.</td></tr>
+  <tr><td>{:%\[_xf_nxml]%:}</td><td>Set by {:*xmlloop:}</td><td>Number of XML items read.</td></tr>
+  <tr><td>{:%\[_xf_n_callv_args]%:}</td><td>Set by {:*callv:}</td><td>Number of 'paramN' args to macro.</td></tr>
+  <tr><td>{:%\[_xf_currentfilename]%:}</td><td>Set by {:expandfile:}</td><td>Name of file currently being read.</td></tr>
+</table>
+
+%[** - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  **]%
+<h3>Macro Libraries</h3>
+<p>
+  One way to extend the function of {:expandfile:} is to write macros.
+  As mentioned above, you can define these macros using <a href="#block">{:*block:}</a>, and expand them using <a href="#callv">{:*callv:}</a>.
+  If you decide to use the macros for more than one file, it is natural to move the macros to a separate file
+  (I use the file suffix {:.htmi:} meaning "HTMX Include")
+  and incorporate them into the files that invoke them with a command like
+  {:\%[*include,=macro_lib.htmi]%:}.
+</p>
+<p>
+  A library of macros called {:htmxlib.htmi:} is provided with {:expandfile:}.
+  It contains macros you can use or adapt to your own needs.
+</p>
+<p>
+  For example, one macro is {:getimgdiv:}, which can generate HTML IMG tags with the WIDTH and HEIGHT of a graphic.
+  The IMG tag will use SRCSET when a graphic image is represented in multiple sizes,
+  to show the optimum image for the viewer's screen resolution. (see <a href="https://multicians.org/thvv/high-dpi.html">High DPI Pictures</a>.)
+  Call it by
+</p>
+<pre class="code">
+  \%[*callv,getimgdiv,path,target,alttag,titletag,class,caption]%
+</pre>
+
+<p>
+  See <a href="expandfile-macros.html">"Macros in Expandfile"</a> for more information.
+</p>
+
+%[** ---------------------------------------------------------------- **]%
+<h2>Multics Mode Formatting Expansions</h2>
+<p>
+  {:expandfile:} also expands nine special text formatting macros developed to simplify the source of the <b>multicians.org</b> website, its first application.
+  See <a href="expandfile-multics.html">"expandfile Features for Multicians.org"</a> for more information.
+  These macros are applied to all text, whether inside \%\[ ... ]% or not.
+</p>
+<p>
+  To prevent these macros from being expanded and interpret them as literal text, precede them by a backslash (\\).
+  For example,
+  <span class="cmd">
+    \\\{\: ... :},  \\\{\\\= ... =}, \\\{\\\+ ... +},  \\\{\\\- ... -},  \\\{\\\* ... *},
+    \\\{\\\[ ... ]},  \\\{\\\{ ... }},  \\\{\\\! ... !},  \\\{\\\@ ... @}
+  </span>.
+</p>
+
+%[** ---------------------------------------------------------------- **]%
+<h2 id="tag_install">How To Install expandfile</h2>
+
+<p>
+  Basically, you set up some OS tools and prerequisite software,
+  and then download {:expandfile:} and its Perl module files and some auxiliary files from {:github.com/thvv/expandfile:},
+  and install them on your search path.
+</p>
+
+<dl class="in20">
+  <dt><b>Macintosh</b></dt>
+  <dd>
+    The Mac <b>Terminal</b> program gives you a Unix command shell.
+    Install Apple {:Xcode:} to get command line tools such as {:make:}, {:git:}, and {:rsync:}.
+    Install Mac tools and Perl from {:homebrew:} to get up-to-date versions.
+    <ol>
+      <li>install Apple <b>Xcode</b> (free from Apple) from the App Store</li>
+      <li>install the Xcode command line tools from the Xcode menu</li>
+      <li>Set environment variables so your {:/bin:} is searched (see below)</li>
+      <li>install any programs and libraries you need from MacPorts or Homebrew</li>
+      <li>Install MySQL from Oracle (see below)</li>
+      <li>Install Perl (see below).</li>
+      <li>Install CPAN modules needed by expandfile (see below)</li>
+      <li>Visit the {!expandfile-gh {:expandfile github repository:}!} and clone the repository</li>
+      <li>Copy {:expandfile:} and its Perl modules to your {:/bin:}</li>
+    </ol>
+  </dd>
+  
+  <dt><b>Linux and Unix</b></dt>
+  <dd>
+    Unix distributions come with some command line tools already installed.
+    You may need to use your distribution's package manager to install additional programming tools
+    in order to get {:make:}, {:rsync:}, and so on. 
+    <ol>
+      <li>Set environment variables so your {:/bin:} is searched (see below)</li>
+      <li>install programs and libraries you need from your package manager, including MySQL</li>
+      <li>Install Perl if it is not already installed</li>
+      <li>Install CPAN modules needed by expandfile (see below)</li>
+      <li>Visit the {!expandfile-gh {:expandfile github repository:}!} and clone the repository</li>
+      <li>Copy {:expandfile:} and its Perl modules to your {:/bin:}</li>
+    </ol>
+  </dd>
+
+  <dt><b>Windows</b></dt>
+  <dd>
+    Use an environment like MINGW, MSYS2, or Cygwin to install a command shell, Perl, MySQL, CPAN Perl modules,
+    and then use the Unix instructions. (I haven't tried this in a long time. I have never tried PowerShell.)
+  </dd>
+</dl>
+
+%[** - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  **]%
+<h3>Set up a {:bin:} directory and Set Environment Variables</h3>
+<p>
+  Create a directory called {:/bin:} in your home directory,
+  and then add it to your PATH environment variable,
+  by issuing the following commands in a Terminal or shell window (assuming your shell is {:bash:}):
+</p>
+<pre class="code">
+  cd $HOME
+  mkdir bin
+  echo "export PATH=$HOME/bin:$PATH" &gt;&gt; .bash_profile
+  . .bash_profile
+</pre>
+%[** - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  **]%
+<h3>Set Values in Your Shell Environment</h3>
+<p>
+  Arrange to set configuration values for Perl in your shell environment.
+  Linux and Windows will be similar.
+  For example, if you are using Perl 5.38 on a 64-bit Mac using Homebrew, you would set up
+</p>
+<pre class="code">
+  export VERSIONER_PERL_PREFER_32_BIT="no"
+  export PERL5LIB=/Users/thvv/bin:/opt/homebrew/lib/perl5/5.38:/opt/homebrew/Cellar/perl/5.38.2_1/lib/perl5/site_perl/5.38
+  export PERL_LOCAL_LIB_ROOT="/usr/local/lib/perl5/5.34"
+  export PERL_MB_OPT="--install_base \"/usr/local/lib/perl5/5.38\""
+  export PERL_MM_OPT="INSTALL_BASE=/usr/local/lib/perl5/5.38"
+</pre>
+<p>
+  in your {:.bash_profile:}.
+</p>
+
+%[** - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  **]%
+<h3 id="perlinstall">Install Perl</h3>
+<p>
+  {:expandfile:} is written in the <b>Perl</b> language.
+  Your computer must have Perl installed, and your Perl library has to have a few modules installed.
+  Most Linux systems come with Perl, with the library set up.
+  To check if Perl is installed and what version it is, type {:perl -v:}; my computer says
+</p>
+<pre>
+  This is perl 5, version 38, subversion 2 (v5.38.2) built for darwin-thread-multi-2level
+</pre>
+<p>
+  For Macintosh on macOS Sequoia, I install Perl with <b>Homebrew</b>.
+  Once Homebrew is installed, you can add packages such as ImageMagick.
+  See <a href="https://formyfriendswithmacs.com/homebrew.html">{:https://formyfriendswithmacs.com/homebrew.html:}</a>.
+</p>
+<p>
+  {:expandfile:} and its helper programs in Perl have a "shebang" line of {:#!/usr/local/bin/perl:},
+  which selects which version of Perl will be executed when the shell executes a command.
+  <br>On my Mac, Homebrew sets up {:/usr/local/bin/perl:}.
+  <br>On Linux, I link {:/usr/local/bin/perl:} to {:/usr/bin/perl:}.
+</p>
+<p>
+  Ensure that your shell environment variable {:PERL5LIB:} points to your $HOME/bin and to libraries for the same version of Perl.
+  <br>On my Mac using Big Sur, my PERL5LIB is {:/Users/thvv/bin:/usr/local/lib/perl5/5.34.0:/usr/local/Cellar/perl/5.34.0/lib/perl5/site_perl/5.34.0:}.
+  <br>On Linux, my PERL5LIB is {:$HOME/bin:/usr/local/lib/perl5:}.
+</p>
+<p>
+  Set your shell environment variables VERSIONER_PERL_PREFER_32_BIT, PERL_LOCAL_LIB_ROOT, PERL_MB_OP, and PERL_MM_OPT for your local environment.
+</p>
+
+%[** - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  **]%
+<h3>Install MySQL</h3>
+<p>
+  {:expandfile:} needs MySQL even if you never invoke {:*sqlloop:},
+  because it loads the CPAN module {:DBD::mysql:}, which won't install unless MySQL is available.
+  (I am looking into a way to remove this dependency.)
+  There is no standard Perl way to only load a module if it is needed at runtime.
+  Download and install MySQL. 
+</p>
+<ul>
+  <li>On a Macintosh, see <a href="https://formyfriendswithmacs.com/mysql-sl.html">{:https://formyfriendswithmacs.com/mysql-sl.html:}</a>
+    for instructions about how to get MySQL from Oracle.</li>
+  <li>On Fedora Linux, install {:mysql-community-server:} and {:community-mysql-devel:} using the {:dnf:} package manager.</li>
+  <li>On Ubuntu Linux, install {:libdbd-mysql-perl:} and {:libmysqlclient-dev:} using the {:apt:} package manager.</li>
+  <li>Or consult the Oracle pages.</li>
+</ul>
+<p>
+  To configure MySQL,
+  define a "root" user and password, and create a database.
+  (Installing {:mysql:} may generate a temporary root password you have to change.  This seems to be different for each MySQL release.)
+  Then set up the file {:.my.cnf:} in your home directory so that you can access the database without giving your password every time.
+  You'll want to set up an {:expandfile:} configuration file like {:config.htmi:} that sets values for {:expandfile:},
+  so that your programs don't have to have the credentials baked in.
+</p>
+<p class="sm">
+  "On Unix, MySQL programs treat the host name {:localhost:} specially,
+  in a way that is likely different from what you expect compared to other network-based programs.
+  For connections to {:localhost:}, MySQL programs attempt to connect to the local server by using a Unix socket file.
+  This occurs even if a {:--port:} or {:-P:} option is given to specify a port number.
+  To ensure that the client makes a TCP/IP connection to the local server,
+  use {:--host:} or {:-h:} to specify a host name value of {:127.0.0.1:}, or the IP address or name of the local server.
+  You can also specify the connection protocol explicitly, even for localhost, by using the {:--protocol=TCP:} option."
+</p>
+
+%[** - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  **]%
+<h3>Install Perl Modules from CPAN</h3>
+<p>
+  Expandfile depends on having several Perl library modules installed. If these are not installed already, install them using CPAN:
+</p>
+<table class="attab">
+  <tr><th>Module</th><th>Description</th></tr>
+  <tr><td>{:LWP::Simple:}</td><td>Support for {:*urlfetch:} and {:*bindcsv:}</td></tr>
+  <tr><td>{:Term::ANSIColor:}</td><td>Support for error messages</td></tr>
+  <tr><td>{:DBI:} and  {:DBD::mysql:}</td><td>Support for {:*sqlloop:}</td></tr>
+  <tr><td>{:XML::LibXML:}</td><td>Support for {:*xmlloop:}</td></tr>
+  <tr><td>{:XML::Simple:}</td><td>If you use {:json2xml:}</td></tr>
+  <tr><td>{:JSON:}</td><td>If you use {:json2xml:}</td></tr>
+</table>
+<p>
+  Install and configure {:cpan:} if it is not installed, and then install these modules using the {:cpan:} command. e.g.
+</p>
+<pre class="code">
+     sudo -H cpan install XML::LibXML
+</pre>
+<p>
+  On a Mac, see <a href="https://formyfriendswithmacs.com/cpan-sl.html">{:https://formyfriendswithmacs.com/cpan-sl.html:}</a>.
+</p>
+<p>
+  On Fedora Linux, I found that {:XML::Simple::get:} was failing on {:https:} URLs.
+  A little test got the message {:501 Protocol scheme 'https' is not supported (LWP::Protocol::https not installed) at t.pl line 8:}.
+  Trying to install {:LWP::Protocol::https:} failed with CPAN errors.
+  I had to manually install {:Net::SSLeay:} to get it to work.
+</p>
+
+%[** - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  **]%
+<h3>Download {:expandfile:} from Git</h3>
+<p>
+  Visit {!expandfile-gh {:https://github.com/thvv/expandfile:}!} in your browser.
+  <br>Click the green "Code" button.
+  <br>Choose "Clone" or "Download ZIP."
+  <br>Move the downloaded files into your {:bin:} directory.
+</p>
+<p>
+  This will give you the following files in your {:/bin:} directory:
+</p>
+<table class="attab">
+  <tr><th>Filename</th><th>Description</th></tr>
+  <tr><td>{:expandfile:}</td><td>Command line program</td></tr>
+  <tr><td>{:expandfile.pm:}</td><td>Internals of expandfile</td></tr>
+  <tr><td>{:readbindsql.pm:}</td><td>Internals of expandfile for {:*sqlloop:}</td></tr>
+  <tr><td>{:readbindxml.pm:}</td><td>Internals of expandfile for {:*xmlloop:}</td></tr>
+</table>
+<p>
+  You also get some useful helper programs in Perl, for invocation by the <a href="#shell">{:*shell:}</a> builtin.
+</p>
+<table class="attab" id="usefulutils">
+  <tr><th>Filename</th><th>Description</th><th>Example</th></tr>
+  <tr><td>{:checknonempty:}</td><td>exit with error if arg is missing or empty; used in Makefiles</td><td></td></tr>
+  <tr><td>{:csv2sql.htmt:}</td><td>HTMX macro to convert a CSV file to a SQL table declaration</td><td>--</td></tr>
+  <tr><td>{:filedaysold:}</td><td>return file age</td><td>{:\%[*shell,&amp;x,=filedaysold example-page.htmx]%:}<br>{:%[*shell,&x,=filedaysold example-page.htmx]%%[x]%:}</td></tr>
+  <tr><td>{:filemodiso:}</td><td>return file mod date as {:yyyy-mm-dd:}/td><td>{:\%[*shell,&amp;x,=filemodiso example-page.htmx]%:}<br>{:%[*shell,&x,=filemodiso example-page.htmx]%%[x]%:}</td></tr>
+  <tr><td>{:filemodshort:}</td><td>return file mod date as {:mm/dd/yy:}</td><td>{:\%[*shell,&amp;x,=filemodshort example-page.htmx]%:}<br>{:%[*shell,&x,=filemodshort example-page.htmx]%%[x]%:}</td></tr>
+  <tr><td>{:filemodyear:}</td><td>return year of file modification</td><td>{:\%[*shell,&amp;x,=filemodyear example-page.htmx]%:}<br>{:%[*shell,&x,=filemodyear example-page.htmx]%%[x]%:}</td></tr>
+  <tr><td>{:filesizek:}</td><td>return file size</td><td>{:\%[*shell,&amp;x,=filesizek example-page.htmx]%:}<br>{:%[*shell,&x,=filesizek example-page.htmx]%%[x]%:}</td></tr>
+  <tr><td>{:firstletter:}</td><td>return first letter of a string</td><td>{:\%[*shell,&amp;x,=firstletter abcdef]%:}<br>{:%[*shell,&x,=firstletter abcdef]%%[x]%:}</td></tr>
+  <tr><td>{:firstofnextmonth:}</td><td>return date of the first of next month</td><td>{:\%[*shell,&amp;x,=firstofnextmonth]%:}<br>{:%[*shell,&x,=firstofnextmonth]%%[x]%:}</td></tr>
+  <tr><td>{:fmtnum:}</td><td>return a number formatted with commas, as a file size, or as a date</td><td>{:\%[*shell,&amp;x,=fmtnum 1234567 num]%:}<br>{:%[*shell,&x,=fmtnum 1234567 num]%%[x]%:}</td></tr>
+  <tr><td>{:fmtsql:}</td><td>return a string formatted so that it can be input safely to mysql</td><td>{:\%[*shell,&amp;x,=fmtsql "isn\'t"]%:}<br>{:%[*shell,&x,=fmtsql "isn\\'t"]%%[x]%:}</td></tr>
+  <tr><td>{:gifsize2:}</td><td>return image size: used by {:getimgdiv:} macro</td><td>{:\%[*shell,&amp;x,=gifsize2 tinymultics.gif]%:}<br>{:%[*shell,&x,=gifsize2 tinymultics.gif]%%[x]%:}</td></tr>
+  <tr><td>{:gifsize:}</td><td>display length of a graphic</td><td>{:\%[*shell,&amp;x,=gifsize tinymultics.gif]%:}<br>{:%[*shell,&x,=gifsize tinymultics.gif]%%[x]%:}</td></tr>
+  <tr><td>{:gth2x:}</td><td>shell script to generate 150x150 thumbnails (uses ImageMagick {:convert:})</td><td>--</td></tr>
+  <tr><td>{:gthumb:}</td><td>shell script to generate thumbnails (uses ImageMagick {:convert:})</td><td>--</td></tr>
+  <tr><td>{:htmxlib.htmi:}</td><td><a href="expandfile-macros.html">macro</a> library</td><td>--</td></tr>
+  <tr><td>{:lowercase:}</td><td>return lowercase version of a string</td><td>{:\%[*shell,&amp;x,=lowercase Boston]%:}<br>{:%[*shell,&x,=lowercase Boston]%%[x]%:}</td></tr>
+  <tr><td>{:nargs:}</td><td>return the number of args</td><td>{:\%[*shell,&amp;x,=nargs 1 2 3]%:}<br>{:%[*shell,&x,=nargs 1 2 3]%%[x]%:}</td></tr>
+  <tr><td>{:padstring:}</td><td>pad a text field with blanks to a given width</td><td>{:\%[*shell,&amp;x,=padstring 6 "X"]%:}<br>\"{:X&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:}\"</td></tr>
+  <tr><td>{:padleft:}</td><td>pad a text field with blanks on the left to a given width</td><td>{:\%[*shell,&amp;x,=padleft 6 "Q"]%:}<br>\"{:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Q:}\"</td></tr>
+  <tr><td>{:uppercase:}</td><td>return uppercase version of a string</td><td>{:\%[*shell,&amp;x,=uppercase hello]%:}<br>{:%[*shell,&x,=uppercase hello]%%[x]%:}</td></tr>
+  <tr><td>{:xml2sql:}</td><td>translate a simple XML file into a SQL table declaration</td><td>--</td></tr>
+</table>
+<p>  
+  You can write other little commands to invoke with {:\%\[*shell\]\%:} to extend HTMX,
+  as shell scripts or programs in C, Perl, Python, and so on, and place them in your {:/bin:} directory.
+  You can also invoke Unix commands with {:\%\[*shell\]\%:}, such as {:date:}, {:grep:}, {:sed:}, {:awk:}, {:cut:}, and {:sort:}.
+</p>
+
+%[** - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  **]%
+<h3>Try it out</h3>
+<p>
+  You should be able to type the command
+</p>
+<pre class="code">
+  expandfile
+</pre>
+<p>
+  and get a USAGE message, and no errors.
+  This will show that {:expandfile:} and its needed Perl modules are correctly installed.
+</p>
+<p>
+  Type the command
+</p>
+<pre class="code">
+  expandfile foo
+</pre>
+<p>
+  where {:foo:} is a plain text file without {:\%[...]\%:} or {:\\:} and you should get the same output as the contents of {:foo:}.
+</p>
+<p>
+  Then try some of the examples in the <a href="expandfile-tutorial.html">expandfile Tutorial</a>.
+</p>
+
+
+%[** - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  **]%
+<h3>HTMX source of this page</h3>
+<p>
+  The HTMX source file that generates this page is <a href="expandfile.htmx.txt">{:expandfile.htmx:}</a>.
+  Notice that the source includes the library file
+  <a href="htmxlib.htmi.txt">{:htmxlib.htmi:}</a>
+  and the wrapper file
+  <a href="xfwrapper.htmi.txt">{:xfwrapper.htmi:}</a>
+</p>
+<p>
+  A little explanation:
+</p>
+<ul>
+  <li>
+    Comments are indicated by {:\%\[** .... \]\%:}.
+  </li>
+  <li>
+    The last line of the source file includes the <a href="expandfile-wrappers.html">wrapper</a> file: {:\%\[*include,=xfwrapper.htmi\]\%:}.
+    A wrapper file provides the standard structure for many pages on the site.
+  </li>
+  <li>
+    The page source defines some {:*block:}s and then {:*include:}s the wrapper, which
+    provides basic page structure and expands the blocks in the right order.
+    One block that the source file defines is called <b>body</b>: it has most of the page contents.
+    The wrapper <i>expands</i> <b>body</b> in the proper sequence.
+    Variables and blocks in the page source can override or supplement items specified in the wrapper.
+  </li>
+  <li>
+    When this page's source describes a builtin function, it calls a <a href="expandfile-macros.html">macro</a> {:bif:} using {:*callv:}.
+    The macro appends HTML TR elements to a string variable called {:biflist:} which contains a TABLE with a row for each builtin.
+    The variable contents are inserted later in the source under the heading <b>Builtin Summary Table</b>.
+    Thus I only have to type the builtin description once, and each builtin's description will always match the table entry.
+    The macro also counts the number of builtins in {:bifcount:} and a CAPTION element containing this value is added to {:biflist:}
+    so that the table displays with a count of rows.
+  </li>
+  <li>
+    Notice the use of backslashes in the source to quote the percent and bracket characters.
+  </li>
+</ul>
+
+ENDBODY
+%[*include,=xfwrapper.htmi]%

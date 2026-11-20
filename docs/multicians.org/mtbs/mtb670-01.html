@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-670-01</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-670-01: Moving the PNT to Ring 1.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  Multics Technical Bulletin                             MTB-670-01
+  Ring 1 PNT
+
+  To:       Distribution
+
+  From:     Eric J. Swenson
+
+  Date:     08/28/84
+
+  Subject:  Moving the PNT to Ring 1
+
+  1 ABSTRACT
+
+       To meet  the requirement for a  B2 security rating, and
+       in  so  doing improve  system security,  integrity, and
+       assurance, we  have to provide ring  protection for the
+       Person Name Table (PNT).  This MTB describes the design
+       changes required.
+
+       This  is revision  1 of MTB670  previously published by      |
+       Benson  Margulies.   Change  bars   are  used  to  note      |
+       differences between this revision and the original MTB.      |
+
+  Comments should be sent to the authors:                           |
+
+  via Multics Mail:                                                 |
+     Swenson at either System-M, MIT, or CISL-SERVICE               |
+     and Margulies at either System-M, MIT, or CISL-SERVICE         |
+
+  via Forum:                                                        |
+     &gt;udd&gt;m&gt;mtgs&gt;B2 on System-M                                     |
+
+  via telephone:                                                    |
+     (HVN) 492-9365, or                                             |
+     (617) 492-9365                                                 |
+
+  _________________________________________________________________
+
+  Multics  project  internal  working  documentation.   Not  to  be
+  reproduced or distributed outside the Multics project without the
+  consent of the author or the author's management.
+
+
+  MTB-670-01                             Multics Technical Bulletin
+                                                         Ring 1 PNT
+
+  2 INTRO-INTRODUCTION
+
+       This MTB  is an experiment at  writing something that hasn't
+  always  been  written lately  --  a design  proposal.   While the
+  latter section does specify the  user interface changes, they are
+  small and could have been the subject of an MCR.
+
+       My  intent is  to describe the  changes to  the programs and
+  databases   to   a  sufficient   level   of  detail   that  other
+  knowledgeable contributors can understand and review them.
+
+       This  MTB  is  the  product  of  a  fair  amount  of initial
+  implementation.  In the Answering  Service environment, where the
+  design of  almost anything is highly  constrained by the existing
+  modularization,   it  is   very  difficult  to   get  a  complete
+  understanding of a design without starting the implementation.
+
+       Until now,  I have convened  various rump design  reviews of
+  one  or  two  people  to   discuss  particular  issues.   Now,  I
+  understand the design well enough to present it to others.  It is
+  certainly  possible that  a major  flaw in  our thinking  will be
+  found.   If that  happens, we  will rework  the implementation as
+  needed.
+
+       In short, this  is an experiment in finding  a middle ground
+  between "Always  complete all review  before implementation," and
+  "We'll write the MCR two weeks before the submission deadline."
+
+  3 DESIGN DISCUSSION
+
+  3.1 Introduction
+
+  Moving the  PNT to ring  1 will provide  the following functional
+  enhancements:
+
+     * Secure audit trails of changes to the PNT.
+
+     * Protection  from  user-ring bugs  in the  various subsystems
+       that need to read the PNT.
+
+     * Better separation  of privilege:  fewer  processes will have
+       enough access to do exhaustive  scans of the PNT looking for
+       passwords.   Currently, all  of the card  input daemons have
+       read access to the PNT, with  which they can scan it looking
+       for  users  whose  passwords encrypt  identically  to common
+       words.
+
+       The remainder of the MTB describes the specific changes.
+
+
+  Multics Technical Bulletin                             MTB-670-01
+  Ring 1 PNT
+
+  3.2 ms_table_mgr_
+
+  The  PNT,  URF,  and  MAIL_TABLE  all  use  the  common interface
+  ms_table_mgr_ to maintain their databases.
+
+  The ms_table_mgr_  has no real  data integrity.  Were  a crash to
+  damage  an  mstb,  the only  evidence  would be  faults  taken by
+  referencing programs.   Even that is  not reliable.  This  is not
+  acceptable  for   the  PNT.   If   a  crash  corrupts,   say,  an
+  authorization, we want to be able to detect it.
+
+  In  the  long  run,  FAMIS   facilities  will  be  available  for
+  high-integrity   administrative   databases.   Until   then,  the
+  strategy is to detect errors and  to rely on timely copies of the
+  entire database for recovery.
+
+  To this end, we will add checksums to each entry of the mstb, and
+  keep  a  checksum of  the  data in  the  header that  defines the
+  structure of  the table.  We  will retain the  existing date-time
+  updated  fields  in  the  components  of  the  table  as  a quick
+  validation that there has been no wholesale destruction.
+
+  ms_table_mgr_ provides no locking.   The mail table primitives do
+  their own  locking, but the existing  pnt_manager_ does none.  We
+  will  add a  conventional set_lock_ lock  to the  mstb to protect
+  writers  from each  other, and  a change  pseudo-clock to protect
+  readers.
+
+  To make  this locking and  checksumming work, we  must change the
+  calling  sequences  of ms_table_mgr_.   For the  entrypoints that
+  retrieve entries (find_entry, find_entry_case_ins, abs_entry), we
+  will add a two parameters:  a write_flag, and a change_clock.  If
+  the write_flag is on then the caller intends to modify the entry.
+  In  this case,  ms_table_mgr_ locks  the table,  finds the entry,
+  sets  the "inconsistent"  bit in  the entry,  and returns  to the
+  caller under the lock.  Setting the inconsistent bit guarantees a
+  checksum failure.   When the caller  has completed the  update it
+  calls ms_table_mgr_$update_entry.  This clears the "inconsistent"
+  bit, recalculates the checksum, and unlocks the database.
+
+  If  the  write_flag is  off,  then no  locking  is done,  but the
+  current value of the change p-clock is returned.  When the caller
+  has      finished      with      the      entry      it     calls
+  ms_table_mgr_$get_change_count to get the new value of the change
+  clock.  If it is different than the value returned from the first
+  call, then the caller must retry.
+
+  The  entrypoint ms_table_mgr_$unlock  allows cleanup  handlers to
+  unlock the database.
+
+
+  MTB-670-01                             Multics Technical Bulletin
+                                                         Ring 1 PNT
+
+  The entrypoint ms_table_mgr_$check_lock is  for use by inner ring
+  subsystems that  can NEVER legitimately return  to the outer ring
+  with their  table locked.  The caller  supplies their lock_id and
+  the  table pathname.   ms_table_mgr_ unlocks  the table  if it is
+  locked, and  returns a bit  flag that indicates that  it has done
+  so.  The caller can then log the event.
+
+  The checksum of the permanent information is checked at each call
+  to  ms_table_mgr_.   The  entrypoint  ms_table_mgr_$validate will
+  check  this  checksum and  the  date-time updated  fields  in the
+  component  headers.   This  quick  check can  be  used  at system
+  initialization time  to check the PNT.   Searching the entire PNT
+  for entries with checksum failures is much more time consuming.
+
+  If the checksum  fails for an entry, a  predictable error code is
+  returned from the find entrypoints.
+
+| The  current  version number  of  MSTBs will  become  3.  Version
+| numbers less than three will no longer be supported.  This should
+| not  be  any problem  since  MSTBs are  an  undocumented internal
+| interface.  Since the field currently has Version 1 and Version 2
+| PNTs, URFs, and MAIL_TABLEs,  conversion routines will be written
+| to perform  the conversion in  Initializer admin mode  before the
+| answering  service is  booted.  The  new routine convert_v2_mstb_
+| will convert  a version 1 or  2 MSTB to Version  3.  The commands
+| convert_MR10_2_pnt,            convert_MR10_2_urf,            and
+| convert_MR10_2_mail_table  will  call  convert_v2_mstb_  (through
+| gates in the cases of the lower ring PNTs, and MAIL_TABLEs).
+
+| The  commands display_mstb  and salvage_mstb will  be modified to
+| support  the new  format MSTBs.   The new  routine mstb_checksum_
+| (ALM) will calculate and validate checksums for MSTB entries.
+
+  3.3 Ring 1 crawlout handling
+
+       It would be disasterous for a process to crawl out of ring 1
+  with the  PNT lock held.   Because this is  just as true  of some
+  other ring  1 subsystems, like  RCP, we will  implement a general
+  mechanism to allow for non-ring 0 crawlout handlers.
+
+       The  gate_macros  macro  "gate_info" will  take  an optional
+  parameter, the name of a procedure  to call on crawlout.  If this
+  procedure is  supplied, an any_other handler  will be established
+  to call it and then continue to signal.
+
+
+  Multics Technical Bulletin                             MTB-670-01
+  Ring 1 PNT
+
+  3.4 mail_table_mgr_
+
+       Since  the mail_table_mgr_  already has its  own locking, we
+  will  make  the minimal  change, which  is to  call the  new find
+  calling sequence  with the write_flag  off and ignore  the change
+  clock.   We  must convert  mail_table_mgr_ to  the new  version 3 *
+  ms_table_info  structure.  The  command convert_MR10_2_mail_table |
+  will         call        the         new        gate        entry |
+  mail_table_priv_$convert_v2_mail_table to perform the conversion. |
+  The   subroutine  convert_v2_mail_table_   will  do   the  actual |
+  conversions and call upon convert_v2_mstb_ for table conversion.  |
+
+  At  a future  time, the  mail_table_mgr_ can  be changed  to take
+  advantage of the data integrity offered by the new facilities.
+
+  3.5 urf_manager_
+
+       We  will  change the  urf_manager_  to use  the  new calling
+  sequences.  We will add the  create_urf command to create a fresh
+  URF.
+
+  3.6 pnt_manager_
+
+       We will  change the program pnt_manager_  to an ALM transfer
+  vector to four different gates to ring 1.                         |
+
+       pnt_login_gate_$login_get_entry  will take  as input  a user |
+  name  and a  scrambled login  password.  It  will return  the PNT
+  entry with the passwords blanked out.  It must do this whether or
+  not the  password is correct,  to allow the  Answering Service to
+  continue  to maintain  the "last bad  password" information.  The
+  pnt_manager_ entrypoint "login_get_entry" will call this gate.
+
+      pnt_network_gate_$network_get_entry will take as input a user |
+  name and a network, or "card-input" password.  If the password is
+  correct,  the pnt_entry  is returned  with the  passwords blanked
+  out.  pnt_network_gate_$get_network_password provides an entry to |
+  retrieve the network password of a user.  This is used by IMFT to |
+  obtain a  password to send  across the link  to interauthenticate
+  systems.   It would  be better if  IMFT was  using special "site"
+  registrations  and  could be  prevented from  obtaining arbitrary
+  user    network   passwords.     The   pnt_manager_   entrypoints
+  "network_get_entry"  and  "get_network_password"  will  call this
+  gate.   While  the old  pnt_manager_  support for  these routines |
+  manipulated  an unscrambled  password passed as  a parameter, the |
+  new interface will expect the  supplied password to be scrambled. |
+  This  implies  that  the  callers of  these  entrypoints  will be |
+  modified to scramble the password before calling pnt_manager_.    |
+
+
+  MTB-670-01                             Multics Technical Bulletin
+                                                         Ring 1 PNT
+
+|     The entrypoints in pnt_admin_gate_  will return the entry for
+  any  user with  both passwords blanked  out, and  will update all
+  fields (including  the passwords) of any  entrypoint.  A user may
+  be given read-only access to the PNT, and access to this gate, in
+  order to see  the other fields of PNT  entries.  The pnt_manager_
+  entrypoints    "get_entry",    "abs_get_entry",   "update_entry",
+| "add_entry",  "table_data",  and  "remove_entry"  will  call this
+  gate.
+
+       pnt_priv_gate_  will return  the complete entry  for a user.
+  The only legitimate use of this would be a trusted application to
+  do analysis  on the quality  of passwords.  (How many  are in the
+  dictionary,  etc.).  The  default access  to this  gate should be
+  null to *.
+
+      All  of these  gates will  manipulate only  the standard PNT,
+  &gt;sc1&gt;PNT.pnt.
+
+      The  text   of  the  program   pnt_manager_.pl1  will  become
+| pnt_db_util_.pl1.  We will make the  necessary changes to use the
+| new  ms_table_mgr_  entrypoints  and  to  support  the  new  gate
+| entries.  The target of all the pnt_manager_ gate entries will be
+| the new program pnt_db_interface_.  This program will provide the
+| gate-level  parameter  copying  and checking  as  well validation
+| level  manipulation.  It  will call upon  pnt_db_util_ to perform
+| the work.  This program will assume it is being called in Ring-1.
+
+       We will expand  the space available for each  password to 32
+  characters, and  create a flag to  indicate whether each password
+  was  scrambled with  an 8  character scramble  or a  32 character
+  scramble.    This   makes  the   conversion  to   long  passwords
+| transparent  to  the  users.   No administrative  support  for 32
+| character passwords will be provided at this time, however.
+
+|      We will add a version number to the pnt_entry structure, and
+  padding space  at the end.   This will allow  future enhancements
+  without table conversion.
+
+|      The  new PNT  entry will  also maintain  a PNT authorization
+| range.   Currently  it  only  contains  a  maximum authorization.
+| lg_ctl_ will be modified to ensure processes are logged in within
+| the PNT AIM range.
+|
+| The  new_user  command  (and  its  various  entrypoints)  will be
+| modified  to  understand minimum  and maximum  authorizations and
+| keywords will be added to manipulate them.  Support for PDT, SAT,
+| and CDT AIM  ranges has been a subject of  a previous MTB and the
+| software  to  support  them  is  a  prerequisite  to  the changes
+| proposed here.
+
+
+  Multics Technical Bulletin                             MTB-670-01
+  Ring 1 PNT
+
+  3.7 Other PNT management interfaces
+
+       The  gate  pnt_fs_gate_  will  provide  the  interfaces  for
+  creating, deleting, renaming, copying, and rebuilding PNT's.  The |
+  target  of  this gate,  pnt_fs_interface_  will perform  the gate |
+  parameter  copying  and  checking  as  well  as  validation level |
+  manipulation.   Pnt_fs_util_ will  do the  actual inner-ring file |
+  system functions.  A suffix_pnt_ will allow the standard commands |
+  to be used for delete, rename, and copy.
+
+       We  will  create  the  create_pnt  command  to  create PNT's
+  initially.
+
+       We will create the rebuild_pnt command to compact/expand the
+  PNT.  This command  will copy the PNT to  a new file, potentially
+  of a different size.  This cleans up after deleted entries, which
+  eventually degrade the hash efficiency, and allows a site to make
+  space for more users.
+
+       We will  add a pnt_status  command, to return  statistics on
+  how full the PNT is.
+
+       We  will  add  the check_pnt  command  to scan  the  PNT for |
+  damaged entries and report the results.                           |
+                                                                    |
+       The convert_v2_pnt_ subroutine,  called through pnt_fs_gate_ |
+  will perform the actual conversion of a pre-MR11 PNT to a version |
+  2 PNT.  In addition to MSTB version changes, the PNT entries will |
+  be upgraded.  The command convert_MR10_2_pnt will call this gate. |
+
+  3.8 Auditing
+
+       All PNT  database operations will be  audited via the syserr
+  log.   We  will  depend  on ring  zero  auditing  of  file system
+  operations to audit name changes, deletes, and the like.
+
+  For updates  to entries, a  binary message structure  will record
+  both the old and the new pnt_entry.  Scrambled passwords will not
+  be left in the log, but we will note the fact that one or both of
+  the passwords changed.
+
+  The  actions to  be audited  will be  the subject  of another MTB |
+  which will  outline all the  changes necessary to  fulfill the B2 |
+  audit requirement.                                                |
+
+
+  MTB-670-01                             Multics Technical Bulletin
+                                                         Ring 1 PNT
+
+  3.9 pnt_manager_ callers
+
+       We will change  all callers of pnt_manager_ to  use the new,
+  more restrictive  calling sequences.  A list  of them is provided
+  here:
+
+        new_user.pl1
+        create_mail_table.pl1
+        list_extra_personids.pl1
+        new_proj.pl1
+        lg_ctl_.pl1
+        imft_pnt_interface_.pl1
+        remove_user.pl1
+        create_mail_table.pl1
+        validate_card_input_.pl1
+
+       We will, of course, delete the command make_MR8_PNT_URF.
+
+       The  programs cards_overseer_,  read_cards_, remote_driver_,
+  and iodd_ will be modified to scramble passwords as they are read
+  before  calling  validate_card_input_, which  will be  changed to
+  expect scrambled passwords.
+
+  4 USER INTERFACE
+
+  ----------
+  create_pnt
+  ----------
+
+      Syntax: create_pnt Pathname {-size Nentries}
+
+  The  create_pnt  command create  a  pnt segment.   If  the ".pnt"
+  suffix is  not included it is  supplied automatically.  Access to
+  the pnt_fs_gate_ is required to perform this operation.
+
+  If  you supply  the -size  control argument  the new  PNT will be
+  created  with  enough  space  for  Nentries  "entries".   A  user
+  registration uses one entry, and an alias uses another.
+
+  Ordinarily, you use this command create  a new PNT at a new site,
+  and not otherwise.
+
+  -----------
+  rebuild_pnt
+  -----------
+
+    Syntax: rebuild_pnt OldPath NewPath {-size Nentries}
+
+
+  Multics Technical Bulletin                             MTB-670-01
+  Ring 1 PNT
+
+  Use the rebuild_pnt command to recover dead space in your PNT, or
+  to expand it  to have room for more  user registrations.  You can
+  use the pnt_status command to see how mush dead, or wasted, space
+  you have, and how close to full you are.  Since the command makes
+  a new copy of the PNT, you  must use it in special session before
+  starting  the  answering  service.  Otherwise,  any  changes that
+  happen between the rebuild and the time that you copy the rebuilt
+  PNT into &gt;sc1&gt;PNT.pnt will get lost.
+
+  For example:
+
+          boot stan
+          Multics .......
+          R
+          admin
+          Password:
+          xxxxxxxx
+          r ... ... ...
+          rebuild_pnt &gt;sc1&gt;PNT &gt;udd&gt;sa&gt;dir_with_much_quota&gt;NEW_PNT
+          r ... ... ...
+          move &gt;sc1&gt;PNT.pnt &gt;udd&gt;sa&gt;a&gt;before_rebuild.[date]
+          r ... ... ...
+          copy &gt;udd&gt;sa&gt;dir_with_much_quota&gt;NEW_PNT.pnt &gt;sc1&gt;PNT.=
+          r ... ... ...
+          ame
+          R
+          star
+
+  ----------
+  pnt_status
+  ----------
+
+       Syntax: pnt_status Path
+
+  Use this command to find out  about space utilization of the PNT.
+  It will tell you  the how close to full the PNT  is, and how many
+  deleted entries it has.  Deleted entries use up space, and reduce
+  the efficiency of searches.
+
+  Example:
+
+        pnt_status &gt;sc1&gt;PNT.pnt
+
+  ---------
+  check_pnt
+  ---------
+
+     Syntax: check_pnt Path
+
+
+  MTB-670-01                             Multics Technical Bulletin
+                                                         Ring 1 PNT
+
+  This  command  makes  a complete  scan  of the  PNT  checking for
+  damaged  entries.   All  damaged  entries  are  reported  on your
+  terminal.  This command takes a LONG time.
+
+| ----------
+| create_urf
+| ----------
+|
+|    Syntax: create_urf Path {-size Nentries}
+|
+| This  command creates  a urf  segment.  If  you supply  the -size
+| control argument, the  new urf will be created  with enough space
+| for Nentries "entries".  A user registration uses one entry.
+|
+| This  command is  normally only  called by  acct_start_up.ec when
+| bringing up a Multics site for the first time.
+|
+| ------------------
+| convert_MR10_2_pnt
+| ------------------
+|
+|    Syntax: convert_MR10_2_pnt Path
+|
+| This command upgrades a pre-version 2 PNT to Version 2.  It moves
+| the PNT  to ring-1, upgrades  the MSTB to version  3, and updates
+| the PNT  entries to accommodate  the 32 character  passwords, PNT
+| authorization ranges, and a version number.
+|
+| This command is intended to be run in Initializer admin mode when
+| the  site first  brings up  MR11.  The  old PNT  is saved  with a
+| shriekname suffix is case reversion is necessary.
+|
+| -------------------------
+| convert_MR10_2_mail_table
+| -------------------------
+|
+|    Syntax: convert_MR10_2_mail_table Path
+|
+| This  command converts  a Version 2  MSTB format mail  table to a
+| Version 3 MSTB mail table.  No other changes are made.
+|
+| This  command is  intended to  be run in  admin mode  when a site
+| first brings up MR11.
+|
+| ------------------
+| convert_MR10_2_urf
+| ------------------
+|
+|    Syntax: convert_MR10_2_urf Path
+
+
+  Multics Technical Bulletin                             MTB-670-01
+  Ring 1 PNT
+
+  This command  converts a Version  1 or Version 2  MSTB format URF |
+  into a Version 3 MSTB URF.  No other changes are made.            |
+                                                                    |
+  This  command is  intended to  be run in  admin mode  when a site |
+  first brings up MR11.                                             |
+                                                                    |
+                                                                    |
+  5 BRINGING UP MR11                                                |
+                                                                    |
+                                                                    |
+  When  a site  brings up MR11  for the first  time, several tables |
+  must be converted  in admin mode before the  answering service is |
+  brought  up.  An  exec_com will  be provided  to aid  the site in |
+  doing this.                                                       |
+                                                                    |
+  This       exec_com      will       call      convert_MR10_2_pnt, |
+  convert_MR10_2_mail_table, and convert_MR10_2_urf.                |
+
+  6 OTHER DOCUMENTATION
+
+  The  system  checks  the  PNT  for  damage  at  answering service
+  initialization.   If  it finds  damage, it  prints a  message and
+  answering service initialization fails.  In this case, you should
+  rename &gt;sc1&gt;PNT.pnt,  and copy the saved  PNT from &gt;udd&gt;sa&gt;a into
+  &gt;sc1.
+
+  During operation, the system may discover that individual entries
+  in the PNT are damaged.  This  will result in error messages from
+  the  "new_user"  command,  and  logged  errors  in  the answering
+  service and  card input daemon  logs.  When an  entry is damaged,
+  you can use new_user$cga to correct its contents.
+
+  The  check_pnt  command  will  make an  exhaustive  check  of all
+  entries in  the PNT.  Since  this is a  very expensive operation,
+  you should only do it if you have had a serious non-ESD crash.
+
+  The  new_user  command  (and  the various  entrypoints)  will now |
+  accept the new keywords minauth and maxauth to select the minimum |
+  and  maximum  authorization  for modification.   The  old keyword |
+  "auth" will be  retained for compatibility and will  refer to the |
+  maximum authorization.                                            |
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

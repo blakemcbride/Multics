@@ -1,0 +1,3644 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : A Method to Extend the Multics File System.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  To:       Distribution
+
+  From:     Michael A.  Pandolf
+
+  Date:     84.09.21
+
+  Subject:  A Method to Extend the Multics File System
+
+  Abstract
+
+  This document  describes a method whereby  the presentation of the
+  Multics file system can be altered to include entries not directly
+  supported  by   the  Supervisor.   It  starts   with  the  current
+  implementation of  file processing found at  the user ring command
+  level and describes some of the limitations of this method.  Next,
+  an   alternate   mechanism   is  presented,   starting   with  its
+  architecture  and ending  with a  discussion of  its implications.
+  Finally,  information  is  provided  for  those  wishing  to  take
+  advantage of this facility.  This document also superceeds Multics
+  Technical Bulletin  615 (named "A Mechanism  for Managing Extended
+  Objects"), which is now to be considered obsolete.
+
+  Revision 1 includes changes to the original document brought about |
+  by  its  review.  Change  bars  are used  to  indicate differences |
+  between the two.                                                   |
+
+  Send comments on this MTB by one of the following means:
+
+       By Multics Mail, on System-M to:
+          Pandolf.Multics
+
+       By Multics forum, on System-M in:
+          &gt;site&gt;forum&gt;Extended_Objects.forum
+
+       By Telephone at:
+          (HVN) 492-9391 or (617) 492-9391
+
+  ------------------------------------------------------------------
+  Multics  Project  internal  working   documentation.   Not  to  be
+  distributed outside the Multics Project.
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  1  Background
+
+  1.1  Low Level Presentation of the File System
+
+  Consider, if you  will, the Multics hierarchy as  it is defined by
+  the  ring   zero  environment.   It  is   constructed  from  three
+  fundamental building  blocks:  the directory, the  segment and the
+  link.  As shall be shown, this may contrast with the perception of
+  the hierarchy when one is executing  in the user rings, rings four
+  and five.  Up  to this point in time,  additional types of entries
+  have  been  individually  implemented,  due   to  the  lack  of  a
+  programming  facility to  allow tailoring  of the  file system for
+  specific  applications.   As the  number of  entry types  that are
+  defined in the user ring  increases, the software support for file
+  system  entries  becomes more  difficult,  and almost  begs  for a
+  solution.
+
+  1.2  Inner Ring Entries
+
+  Several file  system objects that  are fabricated outside  of ring
+  zero  have  existed  for some  time  now.   We shall  use  them as
+  examples  of how  extra entry types  have been  implemented in the
+  past,  and  how continuing  to follow  such a  precedent can  be a
+  burden to both the user and the developer of these new components.
+  Let us firstly consider mailboxes.  These components reside within
+  ring one for  a variety of reasons.  What is  interesting to us is
+  that ring zero is not very helpful with mailboxes when interacting
+  with the user ring.  The ring one mailbox/message segment software
+  becomes our way of manipulating  these structures.  For example, a
+  call to the supervisor  interface hcs_$delentry_file will delete a
+  segment   from   the  hierarchy   for  us,   whereas  a   call  to
+  mailbox_$delete is required to delete  a mailbox even though it is
+  a segment to ring zero  software.  Conceptually, what has happened
+  in this situation  is that one command is used  as an interface to
+  hcs_ to  delete segments (delete)  and another command  is used to
+  interface to mailbox_ (mbx_delete).  Yet another command exists to
+  delete message segments, appropriately enough named ms_delete.
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  Clearly, if other  inner ring resident components are  to be added
+  to the user ring complement, one  pattern to follow is to generate
+  another set of commands to interface with some gate into the inner
+  ring.  Perhaps with two inner ring components the need to be aware
+  of  other sets  of commands  is no  great inconvenience,  but when
+  given four (as  is currently proposed) it may  very quickly become
+  tiring, and if given five or ten (not unreasonable for some future
+  time as Multics continues to  respond to new requirements) then it
+  may become downright ugly.  The  desired goal here is that Multics
+  be  made to  worry about the  identity of a  file system component
+  being  referenced, as  opposed to  the user  being concerned about
+  such.  In fact,  this convention has been used  to support another
+  type of file system component, the multisegment file.
+
+  1.3    User Ring Entries
+
+  Limited  by a  maximum size  of roughly  a quarter  million words,
+  segments  proved  to  be  too   small  a  storage  unit  for  many
+  applications.  To  answer this problem, the  multisegment file was
+  developed.   It  is  referenced  as  a  single  component  in  the
+  hierarchy,  and  (for the  purposes of  this discussion)  can grow
+  arbitrarily large.  Ring zero does not recognize this component as
+  a  single object,  as it  is manufactured  out of  a directory and
+  segments from the user ring.  Because it is a user ring construct,
+  the  multisegment  file  suffers  from  a  severe  limitation that
+  mailboxes and message segments don't:   it can be manipulated from
+  the  user  ring  in  an   arbitrary  manner.   In  this  way,  the
+  multisegment  file  is not  a complete  implementation of  a large
+  capacity  atomic  file  system component.   Nevertheless,  it does
+  behave in another  manner which is very desirable  from the user's
+  point of view:   it can be manipulated using  standard file system
+  commands.  For instance, the  delete command is intelligent enough
+  to ascertain the  identity of what it is to  delete and handle the
+  deletion  of  a  multisegment  file differently  than  that  for a
+  segment.  This is not without cost, however, as the developer must
+  maintain  a  separate execution  path  in the  delete  command for
+  multisegment files.
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  2  Command Level Integration
+
+  2.1  Integrating Current Entry Types
+
+  Some  file system  commands have  been modified  to allow  them to
+  manipulate mailboxes and message  segments.  Without a focal point
+  for managing  attributes of entries that  require access through a
+  gate other than  hcs_, these changed commands have  had to include
+  the code to  determine the identity the entry.   Upon the addition
+  of a new file system entry type,  this code would have to be added
+  to every command that knows about different entry types, resulting
+  in a significant amount of code duplication.
+
+  2.2  Projected Entry Types
+
+  Looking one step past the theoretical,  there is a current need to
+  expand the scope  of the file system.  Several  new components are
+  to  be  added,  and the  question  becomes,  "What path  is  to be
+  followed, that of the multisegment  file, or that of the mailbox?"
+  At this  point, a brief look  at the additions to  the file system
+  ought to be  helpful.  One new component is  the Forum meeting, an
+  inner ring data  base which bears some sort  of outward similarity
+  to mailboxes in  that it houses relatively small  items as textual
+  information,  and requires  general read/write  permission for all
+  users,  at  least while  they  are in  the  inner ring.   As such,
+  standard file  system commands will be  unable to manipulate these
+  meetings due to validation  level restrictions.  Another component
+  to be added is the Data  Management file.  This is also inner ring
+  resident,  but is  not used  for a  specific purpose  as are Forum
+  meetings.  Its proper classification is that of a "file", implying
+  that  there  is  no  single internal  structure  that  defines its
+  contents.  For its first application,  it is being used to replace
+  the  multisegment   file  in  many   Multics  relational  database
+  applications.  As  a file, it  may be thought of  as being grouped
+  with  the  (single  segment)  file,  and  the  multisegment  file.
+  Finally, there  is a component used  within Data Management called
+  the before journal used  for before-modification storage of images
+  of Data Management files.
+
+  2.3  Integrating New Entries
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  One may be tempted to say that the implementation of command level
+  interfaces  to  these components  has  already been  decided, that
+  there are only two avenues to  take:  that of the mailbox and that
+  of the multisegment file.  If so, then one would expect that there
+  be a  new set of  commands for Forum meetings  and before journals
+  and  that Data  Management files  be special  cased in  the "file"
+  commands.  The philosophy of this discussion says that while there
+  have  been   two  separate  methods  of   dealing  with  hierarchy
+  components in the past, the double standard is tolerable only to a
+  point:  the  scope of the inconsistency  has been relatively small
+  because  so  few  components  were  involved,  and  the  number of
+  components has not  changed for several years.  Now  the number of
+  components  is  on  the  increase  and  the  inconvenience becomes
+  greater for the  developer as well as for  the user.  The proposal
+  presented in  this discussion says  that all file  system terminal
+  nodes be accessed through the same set of commands.
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  3  A New Mechanism
+
+  3.1  General Description
+
+  What is now  proposed is a utility that allows  the user to access
+  file system components with little  forethought about what sort of
+  component it  is being accessed.  Multics  commands will no longer
+  interface  directly  with several  subsystems  in order  to access
+  files,  but  will  call  upon  a  centralized  procedure  that  is
+  responsible  for  determining  the   nature  of  a  component  and
+  forwarding the  call to an appropriate  handler.  This File System
+  Utility, as it is called, serves to standardize references to file
+  system  primitives  by  accepting  all file  system  related calls
+  through a  well defined interface.  The  Utility itself can handle
+  calls  for  five  types  of  hierarchy  components:   directories,
+  segments,  links, multisegment  files, and  Data Management files.
+  The  inclusion of  the latter  two file  types (though  neither is
+  currently a fundamental,  ring zero component) is due  to a design
+  consideration of  the File System  Utility, and will  become clear
+  shortly.
+
+  The Utility  is normally presented  with the pathname  of an entry
+  and  some pertinent  arguments passed  to one  of its entrypoints.
+  Upon receiving  the entryname of  the object (which  is a separate
+  parameter) it extracts  the suffix and uses it  to determine entry
+  type.  The suffix is used to  construct a virtual entry value that
+  identifies  a  support  routine   by  prefixing  the  string  with
+  "suffix_" and adding a "_$validate"  to the end.  For example, the
+  entryname   "McDonald.mbx"   will  generate   the   virtual  entry
+  "suffix_mbx_$validate."   The  Utility   then  calls  through  the
+  virtual entry  to receive confirmation on  the entry type.  Notice
+  that  if it  receives confirmation, the  type is  considered to be
+  "extended, " that is, not  supported by the supervisor.  There are
+  two ways in  which confirmation will not be  given:  either if the
+  search for the suffix support routine  produces no match or if the
+  validation program rejects the entry.
+
+  If an entry  cannot be validated it is  considered to be standard,
+  and  the  Utility processes  the  file system  request internally,
+  eventually calling  hcs_.  If the entry  was accepted, the Utility
+  does no processing; rather,  it calls the corresponding entrypoint
+  in  the  support routine.   It  is in  fact  the presence  of this
+  external support routine that defines  the new type of entry:  for
+  a given user, the hierarchy will  take on the appearance of a file
+  system  as  defined by  all  the support  routines that  have been
+  referenced in the currently active process.  Considering that this
+  support routine  is found using  the standard search  rules and is
+  relatively easy to write, the presentation of the hierarchy can be
+  tailored more closely to the needs of the individual user.
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  4  Support for the Mechanism
+
+  4.1  Hardcore
+
+  There is  very little support  that the user ring  can expect from
+  the hardcore  when creating this extended  file system.  As stated
+  at the  start of this  discussion, a components  type is specified
+  from  ring  zero by  two  bits, and  three components  are defined
+  through  this:   the directory,  the  segment, and  the  link.  At
+  present,  there  is  no  ring  zero  interface  to  pass arbitrary
+  information about a  file system component, and there  is no place
+  in  the supervisor  to store  such information,  anyway.  That is,
+  unless  one   considers  the  name   of  a  file   such  arbitrary
+  information.  The utility indeed uses  entry names as a repository
+  of "arbitrary"  information, the information  being the particular
+  type of  component a segment  or directory is.  This  usage is not
+  without precedent:   consider the use of  suffixes to indicate the
+  identity of  a language source  segment.  There is  mild typing of
+  the text segment in this case,  although the ultimate test of type
+  is a successful compile.
+
+  4.2  The Suffix Convention
+
+  The  File  System Utility's  use  of suffixes  proceeds  from this
+  point.  For a file system  component to be considered extended, it
+  must first have a suffix of  its type just as source segments have
+  a suffix of the name of the  compiler against which they are to be
+  run.   Whereas the  source segment  does not  need to  be compiled
+  before  it  is referenced,  the potential  extended entry  must be
+  validated  by  the support  routine  before it  can  be considered
+  "worthy of wearing its suffix" and have a name added or be deleted
+  or what have you.  This requirement that there must be a suffix on
+  the name of an entry for it to be considered extended implies that
+  any entry type  that does not require a suffix  on its object must
+  be regarded as a standard object.  Because multisegment files have
+  no suffix requirements and because they have been in existence for
+  so long with special case code in various commands, they have been
+  designated  as being  standard.  The argument  for Data Management
+  files to  be considered standard is  somewhat different:  although
+  they are not now completely implemented, they are planned to be an
+  entry  known  in  the  supervisor  and  thus  will  be  similar to
+  directories and segments to that extent.  They also have no suffix
+  requirements.
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  5  Software Architecture
+
+  5.1  Direct Utility Support
+
+  The Utility is  embodied in a single program known  by the name of
+  fs_util_.   It  contains  all  the  logic  necessary  to determine
+  whether or  not a component  is potentially extended,  to find and
+  forward references to a suffix  support routine, and to handle the
+  processing  of  standard  objects  itself.   There  are twenty-six
+  entrypoints available:  ten for ACL and ring bracket manipualtion,
+  five for  typing a component,  four for switch  manipulation, four
+  for  length  manipulation and  three for  miscellaneous functions.
+  For the most part, these entrypoints  are to replace calls to hcs_
+  by user ring programs.
+
+  5.2  Subsystem Support
+
+  When  fs_util_  determines that  it  is dealing  with  a potential
+  extended  component,  it  makes  as few  assumptions  as possible:
+  control  is  passed directly  to  the suffix  support  routine for
+  validation  of  its  type  and,  if  successful,  to  complete the
+  requested  operation.   In  a  way,  the  support  program  can be
+  considered  a  caretaker of  the  file.  It  is expected  that the
+  developer of  the subsystem that  uses the file  wrote the support
+  program.  Design of the  suffix program is fairly straightforward:
+  nineteen  of its  twenty-two entrypoints are  mapped directly from
+  fs_util_, and  the operation of its  "validate" entrypoint is well
+  defined.
+
+  5.3  Degree of Support
+
+  The extent  to which fs_util_ is  used can be as  little as in the
+  ACL commands alone, or as great  as in all commands that reference
+  an object  in the hierarchy.   Implications of the  latter are far
+  reaching, for such an implementation would require a whole new way
+  of  conceptualizing the  hierarchy.  For the  time being, fs_util_
+  will be called  by a small set of commands;  it is hoped that this
+  may expand  in the future  so that a  more consistent view  of the
+  file system is presented to its users.
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  6  Implementation
+
+  6.1  Areas Affected
+
+  The implementation that follows describes a three phase conversion
+  of the  Multics command level  to bring it under  the influence of
+  the Utility and extended entry  typing.  Each phase is designed to
+  require the installation of the previous phase, and implementation
+  can stop after  any of the phases.  Implementing  all three phases
+  will  probably  produce a  very  different command  level behavior
+  towards the hierarchy.
+
+  A  list  of  the  commands  that  will  be  obviously  affected by
+  implementation of one or more phases follows:
+
+       add_name             dump_segment         print
+       adjust_bit_count     edm                  qedx
+       canonicalize         emacs                rename
+       change_default_wdir  enter_output_request save_dir_info
+       change_wdir          exists               segments
+       compare_ascii        hunt                 set_acl
+       contents             hunt_dec             set_bit_count
+       convert_characters   list                 set_max_length
+       copy                 list_accessible      set_ring_brackets
+       copy_acl             list_acl             status
+       copy_dir             list_not_accessible  switch_off
+       copy_names           merge_ascii          switch_on
+       delete               move                 teco
+       delete_acl           move_dir             unlink
+       delete_dir           move_names           walk_subtree
+       do_subtree           nonzero_segments     zero_segments
+       dprint               overlay
+
+  6.2  Phase One
+
+  Phase  one  of  command   level  conversion  will  effect  several
+  commands.  The  changes necessary to  allow these programs  to use
+  the Utility will not require a  user visible change to the command
+  interfaces.
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  Two  fundamental  operations are  the first  to be  considered for
+  conversion:   file creation  and deletion.  Within  the context of
+  Multics, these two operations are  not especially symmetric.  As a
+  general rule of  thumb, a file is not  created through an explicit
+  request of  the user.  Text  files are implicitly  created by text
+  editors,  mailboxes by  the mail  facility on  an as  needed basis
+  (although the user is queried to whether a new mailbox ought to be
+  created),  multisegment  files by  vfile_ when  appropriate.  Some
+  file  system components  are explicitly  created:  directories and
+  links are  the prime examples.   On the other hand,  deletion of a
+  file is nearly always explicitly requested.  In addition, creation
+  usually concerns itself with the incarnation of one component at a
+  time; deletion  can cause a  mass extinction (note the  use of the
+  star convention  for the delete command).   For these reasons, the
+  File System Utility will not concern itself with creating objects,
+  but will have an interface for deleting objects.
+
+  There  will  be a  noticeable  difference in  the behavior  of the
+  delete  command:  up  to now, the  delete command  would fail when
+  trying  to delete  inner ring objects  such as was  once done with
+  mailboxes.  In one  sense this was pleasant behavior:   use of the
+  star  convention  when  deleting  would  not  accidentally include
+  mailboxes  in  the action  of the  delete command.   However, this
+  luxury  no  longer exists:   any inner  ring component  whose name
+  matches a  starname is destined  for hierarchy heaven.   It may be
+  appropriate for the delete command to  protest a little when it is
+  going to perform  any starname processing.  At the  same time that
+  the delete command is converted to use the Utility, the delete_dir
+  command should  also be converted  so that it might  not delete an
+  extended entry  that has a directory  as its underlying structure.
+  As  a  matter of  consistancy, unlink  ought to  be made  aware of
+  extended typing,  so that when  it reports that the  object of its
+  invocation was  not a link,  it can use  the extended type  of the
+  object in its message.
+
+  Considering  rename  next,  its  main  concern  with  file  system
+  extensions is  that the naming  convention be preserved,  that the
+  suffix is  not left off any  new name added to  a directory entry.
+  In  this  way,  any  new  or additional  name  for  a  file system
+  component  will  include the  suffix  of the  original  name.  The
+  copy_names,  move_names,  and  add_name  commands  operate  in  an
+  analogous manner when adding names to the target file.
+
+  Copying and moving files are considered together.  As with rename,
+  suffix preservation is necessary.   In addition, because the thing
+  to  be copied  may reside  in an  inner ring,  it will  have to be
+  copied  by  a call  to the  inner ring  subystem.  Past  these two
+  items, copying and  moving are the same as  they always have been.
+  Effected are copy, copy_dir, move, and move_dir.
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  Bit  count  manipulation   (adjust_bit_count,  set_bit_count)  and
+  length manipulation  (set_max_length) are also  performed by calls
+  to fs_util_,  and there is  no difference in  user interface.  The
+  suffix support routine may decide  that the bit count attribute is
+  not  meaningful  for the  object being  referenced, but  this will
+  merely result in an error message being printed.
+
+  Switch  manipulation is  also handled the  way it  has always been
+  from the command level, with  the call forwarded to fs_util_.  The
+  utility  will  determine which  switches  are appropriate  to set.
+  This  effects switch_on  and switch_off.   Additionally, the older
+  interfaces (safety_switch_on,  copy_switch_on, etc.)  ought  to be
+  updated.
+
+  Finally, the  status command can  be made to  use fs_util_ without
+  requiring  a  new  user  interface.   Status  will  query fs_util_
+  several  times to  obtain information about  what to  report for a
+  file, but will keep its report format unchanged.
+
+  6.3  Phase Two
+
+  In  the second  phase of converting  the command level  to use the
+  Utility, user interface changes are required, but the presentation
+  of the file  system as compared to its  traditional form is little
+  changed.   For the  most part,  these changes  will involve access
+  control commands.
+
+  The  ACL  commands  provide  a   good  example  of  the  need  and
+  implications of maintaining an arbitrary set of hierarchy objects.
+  Two of them, list_acl and set_acl,  will serve as a basis for this
+  example.   These  commands  are  to  be  modified  to  be  able to
+  manipulate   access  for   a  variety   of  hierarchy  components,
+  regardless of the type of access supported or of the ring in which
+  the  component resides.   Of the two,  it is set_acl  that will be
+  influenced more and  thus will be considered last.   As opposed to
+  set_acl, list_acl does not require  a mode string when referencing
+  the ACL of an entry, which  is why changing it is straightforward:
+  for the  most part, the  user interface is unchanged.   We add the |
+  "-select_entry_type" argument  which will have  a specific meaning |
+  when used  in relation to  file system extensions.  It  is used to |
+  select only those entries of  a specified type, being particularly
+  useful  to  filter  out  unwanted  entries  selected  by  the star
+  convention (e.g.  "**").
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  When setting  ACL, a problem arises:   the same mode specification
+  may  have different  meaning for different  entries.  Consider the
+  command line "set_acl ** sa".  Traditionally, the mode string "sa"
+  would  be  mapped to  directories;  however, it  is also  a valid,
+  although not  very useful, mode  string for mailboxes  and message
+  segments.  We  must prevent set_acl  from applying this  string to
+  the  latter two  entries.  For  this reason,  set_acl must process
+| star names  carefully.  The restriction it  follows is that access
+| is set on  entries whose type is extended only  when the suffix or
+| the  -select_entry_type  control  argument is  explicitly  used to
+| specify the given extended type, and that access is set on entries
+| whose  type   is  standard  whenever  the   starname  matches  and
+| -select_entry_type  has  not  been  used.  These  actions  will be
+  quiet;  that is,  if an  extended type  file matches  the supplied
+  starname (such as "**"), then we  will not report that we excluded
+  the file from the set_acl operation.
+
+  The  two  remaining  ACL  commands, copy_acl  and  delete_acl, are
+  similar to list_acl  in that they do not require  a mode string as
+| part  of their  command line.   The only  change in  their command
+| level  interface  is  the  addition of  "-select_entry_type"  as a
+| control     argument.      Analogously,     list_accessible    and
+  list_not_accessible will use the Utility to compute accessibility,
+  but will otherwise remain unchanged.
+
+  One may  wonder why IACL  commands are not listed  in section 6.1.
+  The   primary   reason  for   this  is   that  in   their  current
+  implementation, they  do not easily lend  themselves to outer ring
+  manipulation as ACLs do.  In  ring zero, IACLs are associated with
+  branch   creation.   As   previously  mentioned,   the  supervisor
+  recognizes  links, directories,  and segments as  the only storage
+  system entries, and provides an  interface to manage IACLs for the
+  branches.   Without  a  mechanism  that allows  the  supervisor to
+  recognize more  than three types,  IACLs will be  a feature absent
+  from the Utility.  Until such a time, the supervisor will continue
+  to honor  IACL setting when  creating a branch.   It is up  to the
+  suffix  support  routine  to  determine  how  apporpriate  the ACL
+  setting on a newly created entry is.
+
+  A  minor  change is  made to  the command  level interface  of the
+  set_ring_brackets command.  The subsystem that manages an extended
+  entry  may find  it necessary  to reference  only one  or two ring
+  numbers for the  entry.  At the command level,  the correct number
+  of ring numbers  must be supplied.  If not,  the command complains
+  and returns.
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  Considering  the change  in ACL modes  effected by  the Utility, a |
+  command level interface ought to be  supplied so that the user can |
+  determine exactly  with what sort  of beast he or  she is dealing. |
+  Two commands are to be added to  Multics to do just this.  The one |
+  named list_entry_types  peruses the caller's  search rules looking |
+  for suffix support routines.  For  each valid one found, it prints |
+  the name of the entry type and the suffix used by an entry of that |
+  type.  The  other, describe_entry_type, returns  information about |
+  the  characteristics of  an extended entry  type.  It  is by using |
+  this command that  a user would find out the  modes that are valid |
+  for a given type.                                                  |
+
+  It has proven to  be a labor of agony in the  choosing of a set of |
+  consistent short names for these two new commands.  Although there |
+  is  an historical  tendency to form  short names  from the leading |
+  letter of each  word in the command name,  a more recent agreement |
+  specifies that the first letter and next consonant be used to form |
+  the  first two  letters of the  short name, followed  by the first |
+  letter of each additional name.   It is also strongly desired that |
+  the  two  commands  form their  name  in  the same  manner.   In a |
+  definitive  stroke  of  arbitrariness,  the  following  names  are |
+  defined for  describe_entry_type and list_entry_type:   "dset" and |
+  "lset" respectively.                                               |
+
+  One last command to be included in phase two implementation of the
+  extended  file system  is the  list command.   While changing list
+  will present a  different picture of the file  system to the user,
+  it  is very  convenient to have  available, since it  does all the
+  work of deciding which entries are  really of an extended type and
+  which  have  some arbitrary  suffix.   The list  command currently
+  types directories with a non zero bit count as multisegment files,
+  but this is the extent of its special casing.  When changed, there
+  will be  no special cases;  rather, all entries will  be typed and
+  grouped  according to  type.  The  report for  each group  will be
+  tailored  for  the  attributes  of the  group.   As  with  the ACL |
+  commands, we  will add "-select_entry_type" as  a control argument |
+  so that we can select particular entries for display.  By default, |
+  list  will print  only those entries  that are typed  as "files" - |
+  (single)  segment (file),  multisegment file,  and Data Management |
+  file types.                                                        |
+
+  6.4  Phase Three
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  In the  third phase of implementation,  Multics commands will call
+  upon the Utility  to determine the validity of  using a particular
+  type of entry  for their operations.  One such  check is made when
+  preparing  to  send  a file  to  the high  speed  printer:  object
+  segments  are  excluded.   Although  there are  no  plans  for the
+  Utility to support an entry type  known as "Program", there may be
+  entry types which are not  suitable for direct printing (mailboxes
+  are  an obvious,  though not entirely  appropriate, example).  Yet
+  another check might be made  to prevent change_wdir from placing a
+  user into the middle fo a  multi segment file.  As a last example,
+  editors may  use information from  the Utility to  decide upon the
+  suitability of an entry for editing.
+
+  The list of commands that  lend themselves to the above convention
+  is grouped  according to what  the command is  looking for.  Those
+  commands that may want to use only entries that contain ASCII data
+  are:   canonicalize, compare_ascii,  contents, convert_characters,
+  dprint,  edm,  emacs, enter_output_request,  merge_ascii, overlay,
+  print, qedx, and teco.  Those commands that expect to reference an
+  entry  that  is   known  as  a  directory  to   the  Utility  are:
+  change_default_wdir,  change_wdir,   do_subtree,  hunt,  hunt_dec,
+  save_dir_info,  and  walk_subtree.  Finally,  those  commands that
+  expec  to reference  an entry  that is known  as a  segment to the
+  Utility are:  segments, nonzero_segments, and zero_segments.
+
+| A  change is  to be made  to the  "exists" command to  allow it to
+| selectively  determine the  existence of  an entry  based upon its
+| type.  Here, the control argument "-select_entry_type" is accepted
+| by  the  "entry"  keyword,  filtering out  those  entry  types not
+| desired.   It  is expected  that  its most  common  use is  in the
+| determination of the existence of some entries of an extended type
+| in a given directory.
+
+  What  may  be  the major  part  of phase  three  implementation is
+  embodied  in providing  a method  of dumping  file system objects.
+  Currently, there  is a great difficulty  in obtaining a consistent
+  dump  of  a  MRDS  data base.   With  the  implementation  of Data
+  Management files the pieces exist to build a mechanism to obtain a
+  consistent  saved image  of a relation.   It is  desired that this
+  dumping be  as automatic (i.e., system  directed) as possible.  If
+  the  first  thought  is  to  "make  the  dumper  know  about  Data
+  Management files" then we have  not divorced ourselves enough from
+  the idea  of special case  code.  Here is  an area that  can use a
+  File  System Utility  interface.  If  an entry  exists that  has a
+  special  dumping requirement,  be it that  the object  needs to be
+  synchronized  in some  way, or  that the  dump format  needs to be
+  different than the file system  format, this requirement should be
+  embodied in  a suffix support  routine.  It is  intended that this
+  facility  be  available to  the system  at the  level of  the user
+  visible hierarchy, which means that  the hierarchy dump tools need
+  be changed.
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  7  Other Issues
+
+  7.1  Control Arguments
+
+  The  Utility  provides  new  ways  of  referencing  entries  in  a |
+  directory.   In  order  to  specify  these  new  options,  control |
+  arguments are added to the command environment.  A couple of these |
+  were  informally introduced  in previous sections  of this report; |
+  now, they are formally defined.                                    |
+
+  The  need  to manipulate  an extended  entry  as if  it were  of a |
+  standard type  is an important  facility to system  developers, if |
+  not  simply  a  convenience to  standard  users, and  may  be more |
+  important  as the  masking of standard  types becomes increasingly |
+  comprehensive.   It ought  to be possible  to tell  a command that |
+  extended typing  for an entry  ought to be bypassed.   To this end |
+  two         control         arguments         are        proposed: |
+  "-interpret_as_standard_entry"            ("-inase")           and |
+  "-interpret_as_extended_entry" ("-inaee"), with the latter usually |
+  being the default.  The first control argument instructs a command |
+  that as it manipulates attribute information of an entry, it is to |
+  treat  the entry  as if  it were  one of  the five  standard entry |
+  types.  This essentially instructs the program to behave as it did |
+  before extended entry typing was implemented.                      |
+
+  Up  to  this time,  file system  commands that  allow the  user to |
+  select one or more entry types for manipulation use a standard set |
+  of  control arguments  to differentiate  between the  entry types. |
+  There   are  currently   four  control   arguments  in   the  set: |
+  "-segment", "-directory", "-multisegment_file",  and "-link" (Data |
+  Management files are new and of  this writing don't have a control |
+  argument assigned them).  With the Utility supporting an arbitrary |
+  number of  different entry types  it is not practical  to create a |
+  specific  control argument  for each  entry type.   A more general |
+  mechanism for  selecting entries by  type is employed  by commands |
+  using  the  Utility:  to  select  a particular  type of  entry (or |
+  entries),  one uses  "-select_entry_type" ("-slet")  followed by a |
+  string  of  suffixes delimited  by  commas.  In  the case  where a |
+  standard type is desired (since  there is no reserved suffix), the |
+  name of the type is printed out;  in fact, the name is formed from |
+  the  now obsolete  standard control  argument without  the hyphen. |
+  For the standard  types a short name is  permitted, also formed by |
+  dropping the hyphen from the short control argument.               |
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+| One  last  control argument  change  is for  the  control argument
+| currently  used  to obtain  the  type an  entry is.   The "status"
+| command interprets "-type"  to mean that it return  the entry type
+| of its object.  When extended entries are implemented, the "-type"
+| control  argument  will  be removed  from  documentation (although
+| still  recognized  by  commands)  and  replaced  by  "-entry_type"
+| ("-ettp").
+
+  7.2  The Star Convention
+
+  Starname processing will acquire an  added twist with the addition
+  of  extended  types  to  the file  system.   The  first  issue was
+  addressed in the discussion of ACLs.   Here, it was noticed that a
+  given mode string  had an ambiguous meaning when  being applied to
+  all the  entries that matched  a given star name.   It was decided
+  that the  mode string would be  applied to an entry  when a suffix
+  was  explicitly  provided or  when  an entry  type  was explicitly
+  specified.   Another  issue surfaces  with the  naming operations.
+  When  performing  wholesale naming  operations,  names constructed
+  from  the  equals convention  may  break the  suffix rules  and be
+  rejected by  the suffix support  routine.  Although this  will not
+  caause  as much  trouble as setting  a meaningless mode  on a file
+  system object, it will give rise  to a lot of complaining from the
+  file system.   If the print  command ever validates  its files for
+  suitability of printing, it may  complain that many of the entries
+  that matched its given starnames are not printable.
+
+  The rule for starname selection (of which, no doubt, there will be
+  exceptions) is as follows:
+
+|           OBTAIN_STARNAME_LIST
+|           if -select_entry_type_ARG_GIVEN
+|           then PRUNE_ALL_UNSPECIFIED_ENTRY_TYPES
+|           else if NO_SUFFIX_SELECTS_EXTENDED_TYPE or
+|                     -interpret_as_standard_entry_ARG_GIVEN
+|                then PRUNE_EXTENDED_TYPES.
+
+  For a suffix  to select an extended type, it  must have no special
+| starname  characters in  it (asterisks  or question  marks).  This
+| algorithm will differentiate between entries that have a suffix of
+| an  extended type  but are  not themselves  of that  type (e.g., a
+| directory named "mine.mbx")  when the "-select_entry_type" control
+| argument is supplied,  but will select all entries  having a given
+| suffix when the suffix is at  the end of a starname.  An exception
+  to this rule that immediately comes to mind is in the command line
+  "delete **" where everything is  to evaporate, regardless of type.
+  Such exceptions ought to be as rare as possible.
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  7.3  Switch Name Processing                                        |
+
+  The File System Utility allows a subsystem to define any number of |
+  switches for an  extended entry.  There is not yet  a set of rules |
+  governing  the naming  convention of switches,  something which to |
+  this point  has not created  much confusion because  there are not |
+  all  that  many  switches  defined by  the  standard  entry types. |
+  Within the context of the Utility, a set of rules shall be created |
+  to prevent switch naming from getting out of hand.                 |
+
+  Each switch supported by an entry  type shall be identified by its |
+  "primary  name", which  shall describe  that attribute  the switch |
+  enables.  The  primary name shall also  be considered the switch's |
+  "long name".  In addition to its  primary name, a switch must have |
+  one or more "secondary" or  "short" names.  The short names should |
+  be formed  using the same  rules that command  or control argument |
+  short  names use.   The string "switch"  should not  appear in the |
+  name  of  the  switch  if  its only  purpose  it  to  identify the |
+  attribute as a switch (e.g., the long name of the safety switch is |
+  "safety" and its short name is  "sf").  For those instances when a |
+  secondary  name  is  to  be  the same  as  the  primary  name, the |
+  secondary name  must be separately  listed, even though  it is the |
+  same  as  the  primary  name.  There  is  no  implicit  or default |
+  secondary name for the primary name of a switch.                   |
+
+  When a  command wants to  use the switch  name string, it  has the |
+  responsibility of  appending an "_switch"  at the end  of the long |
+  name.  In the  cases where it is desired that  there are more than |
+  one long-type names, the following convention shall be used:  if a |
+  command encounters  a secondary name containing  an underscore, it |
+  shall append "_switch" to the end of the name; otherwise, it shall |
+  append "s".   Essentially, the primary  name rule as  stated above |
+  provides  a mechanism  whereby a  (rather short)  switch name that |
+  contains no underscores can be referenced as "XXX_switch".         |
+
+  Current  command  level  convention  handles  switches  with short |
+  primary  names  differently than  switches  with long  names:  the |
+  copy,  damaged,  and safety  switches  form their  short  names by |
+  appending  "sw" to  the first  letter of  the switch  name, giving |
+  "csw", "dsw", and "ssw",  respectively.  Although these names will |
+  have  to be  recognized so as  to prevent  existing exec_coms from |
+  breaking,  the correct  switch name  abbreviations will  be "cps", |
+  "dms", and "sfs".                                                  |
+
+  7.4  ACL Mode Processing                                           |
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+| In the course  of providing a simpler ACL  interface for the user,
+| we  have  moved the  complications  of the  process to  the suffix
+| support  routine.   This routine  must  deal with  directory ACLs,
+| segment ACLs, extended segment  ACLs, extended directory ACLs, and
+| a couple other related structures.   To consider a simple example,
+| when a user wishes to set ACL on the mythical chessgame entry type
+| as defined in  the programming example at the  end of this report,
+| set_acl  creates a  general ACL  structure and  passes this  in to
+| fs_util_.  The chessgame stores its  "regular" ACL as the extended
+| ACL of  its base segment,  and must therefore  convert the general
+| ACL structure  to an extended ACL  structure.  Most ACL interfaces
+| to  fs_util_ involve  a similar conversion.   The set  of all such
+| conversions is  not exceedingly large  and may be  able to receive
+| support  from  fs_util_ itself.   In  this way,  these conversions
+| which  are common  to all suffix  support routines  won't be found
+| duplicated many times over.
+
+| Due to time limitations, a generalized ACL conversion mechanism as
+| suggested above will  not be in the first  release of the Utility;
+| however, it  is hoped that the  support will be soon  in coming so
+| that as few  suffix support routines as possible  will be required
+| to write ACL internal conversion subroutines.
+
+  7.5  Performance
+
+  Adding these extensions  to the file system requires  the layer of
+  fs_util_ accessing to be executed, and this represents some degree
+  of overhead.  There are two  paths within fs_util_ that are easily
+  identifiable as needing some sort of optimization in the future.
+
+  First,  there is  the search for  a suffix  support routine.  This
+  uses  the  dynamic searching  mechanism,  so that  past  the first
+  search  for  a  support routine  the  search will  be  short.  Our
+  concern  is when  we search for  the suffix support  routine of an
+  entry   carrying   an   unmatched  suffix.    The   potential  for
+  inefficiency may  be greatest here due  to the following behavior.
+  Given a suffix that is  not explicitly supported, the Utility will
+  search  for it  via the search  rules.  If not  found, the Utility
+  will simply  go on its  way, figuring that the  entry is standard.
+  Upon encountering the  suffix at any subsequent time  (on the same
+  or a different entry) the Utility will (again) search for a suffix
+  support routine  and again not  find it.  Searching  for something
+  and not finding it is expensive;  it should be tolerated only once
+| per  process.   To  bypass  this problem,  the  Utility implicitly
+| relies on  a property of  the dynamic search facility  to create a
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  list  of  unmatched  suffixes:   upon failing  to  find  a support |
+  routine,  the  Utility  will  add  the  entryname  portion  of the |
+  fabricated virtual entry as a  reference name to a procedure named |
+  "undefined_suffix_."   This  routine   has  only  one  entrypoint, |
+  "validate,"    which    always    returns    the    status    code |
+  "error_table_$not_seg_type."   Future  encounters  with  an  entry |
+  ending   in   the   unsupported    suffix   will   be   given   to |
+  undefined_suffix_ and the entry will be declared standard.         |
+
+  The second identifiable  overhead is in the validation  of a typed
+  entry.   The existence  of a  suffix is  not enough  to consider a
+  segment typed:  it must be accepted by the support routine.  After
+  a  suffix  support routine  is found,  its validate  entrypoint is
+  invoked  to  accept or  reject  the entry.   The overhead  here is
+  dependent upon the validation routine.  For illustration, consider
+  this rather absurd scenario:  there is  to be a typed entry called
+  "pl1  source"  with  its  required  support  routine, suffix_pl1_.
+  Whenever someone  wishes to reference  a pl1 source  segment (even
+  when  simply listing  it) suffix_pl1_$validate is  invoked and, to
+  properly validate the  file as being pl1 source,  compiles it with
+  the "-check"  argument.  Listing the contents  of a directory when
+  it contains even ten pl1 source files may take a very long time.
+
+  Experiments with access commands  have generated virtual cpu times
+  two to four times longer when using fs_util_ than when interfacing
+  directly  with  hcs_.  The  use  of an  experimental  list command
+  provides a greater variation:   depending on the options requested
+  of list,  execution can be  as brief as the  (very well optimized)
+  standard list  command or as  much as ten times  longer.  The only
+  conclusion that  can be drawn  from the second  experiment is that
+  use of fs_util_ can add  considerable processing time to a command
+  under  some  circumstances.  Overall  system degradation  has been
+  measured on  a test system using  a standard performance benchmark
+  script.  The results of this  test have shown almost no difference
+  in  response  times.   While  it  is  agreed  by  nearly  all that
+  individual uses of the Utility  will produce longer response times
+  in those programs that use it, it  seems that when used as part of
+  a larger scenario, the delays become acceptable.
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  8  Subroutine Interface
+
+  Name:  fs_util_
+
+  The fs_util_ subroutine provides for uniform handling of file
+  system entries.  The operations it performs are validate, copy,
+  delete, chname, get_switch, set_switch, get_max_length,
+  set_max_length, set_bit_count, and ACL manipulation.  The
+  subroutine first checks to see if the entry name provided is that
+  of an extended entry and if it is, calls the corresponding
+  entrypoint of the appropriate suffix_XXX_ subroutine.  If the name
+  is not that of an extended entry, then fs_util_ calls the
+  appropriate standard entry entrypoint handler for the entry.
+
+  Entry:  fs_util_$chname_file
+
+            This entry changes the name of an entry.
+
+  USAGE
+
+       declare fs_util_$chname_file entry (char(*), char(*),
+            char(*), char(*), fixed bin (35));
+
+       call fs_util_$chname_file (dir_name, entryname, old_name,
+            new_name, code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       old_name
+
+            is the entryname that is to be changed.  (Input)
+
+       new_name
+
+            is the new name to be given to the entry.  (Input)
+
+       code
+
+            is a standard system status code.  (Output)
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  Entry:  fs_util_$delentry_file
+
+            This entry deletes the name of an entry.
+
+  USAGE
+
+       declare fs_util_$delentry_file entry (char(*), char(*), fixed
+            bin (35));
+
+       call fs_util_$delentry_file (dir_name, entryname, code)
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       code
+
+            is a standard system status code.  (Output)
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  Entry:  fs_util_$copy
+
+            This entrypoint is used to copy an entry.
+
+  USAGE
+
+       declare fs_util_$copy entry (ptr, fixed bin (35));
+
+       call fs_util_$copy (copy_options_ptr, code);
+
+  ARGUMENTS
+
+       copy_options_ptr
+
+            is a pointer to the copy_options structure.  (Input)
+
+       code
+
+            is a standard system status code.  (Output)
+
+  NOTES
+
+            The copy_options structure and the named constant
+            COPY_OPTIONS_VERSION_1 are defined in the include file
+            copy_options.incl.pl1.
+
+            The copy_options structure is defined as follows:
+
+                 1 copy_options aligned based (copy_options_ptr),
+                 2 version char (8),
+                 2 caller_name char (32) unal,
+                 2 source_dir char (168) unal,
+                 2 source_name char (32) unal,
+                 2 target_dir char (168) unal,
+                 2 target_name char (32) unal,
+                 2 flags,
+                   3 no_name_dup bit (1) unaligned,
+                   3 raw bit (1) unaligned,
+                   3 force bit (1) unaligned,
+                   3 delete bit (1) unaligned,
+                   3 target_err_switch bit (1) unaligned,
+                   3 mbz bit (31) unaligned,
+                 2 copy_items like copy_flags;
+
+  STRUCTURE ELEMENTS
+
+       version
+
+            is the current version of this structure and has the
+            value of the named constant COPY_OPTIONS_VERSION_1.
+
+       caller_name
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+            is the name of the program calling fs_util_, required
+            when querying the user about duplicate names.  See
+            no_name_dup below.
+
+       source_dir
+
+            is the absolute pathname of the directory containing the
+            entry to be copied.
+
+       source_name
+
+            is the name of the entry to be copied.
+
+       target_dir
+
+            is the absolute pathname of the directory into which a
+            copy of the entry is to be placed.
+
+       target_name
+
+            is the name of the entry created to hold the copy of the
+            original entry.
+
+       no_name_dup
+
+            is set to "0"b if the user is to be queried in case of a
+            duplication of the target_name and "1"b if there is to
+            be no query, in which case an error code will be
+            returned.
+
+       raw
+
+            is set to "0"b if fs_util_ is to honor the extended type
+            of the entry, and "1"b if it is to bypass this by
+            calling hcs_.
+
+       force
+
+            is set to "1"b if access to the target is to be forced.
+
+       delete
+
+            is set to "1"b if the original is to be deleted after it
+            is copied.
+
+       target_err_switch
+
+            is set if an error occurred referencing the target.
+
+       mbz
+
+            is reserved for future use and must be set to zero.
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+       copy_items
+
+            is structured like the copy_flags structure, which is
+            defined in the include file copy_flags.incl.pl1.  The
+            structure is defined as follows:
+
+               1 copy_flags aligned based,
+                 2 names bit (1) unaligned,
+                 2 acl bit (1) unaligned,
+                 2 ring_brackets bit (1) unaligned,
+                 2 max_length bit (1) unaligned,
+                 2 copy_switch bit (1) unaligned,
+                 2 safety_switch bit (1) unaligned,
+                 2 dumper_switches bit (1) unaligned,
+                 2 entry_bound bit (1) unaligned,
+                 2 extend bit (1) unaligned,
+                 2 update bit (1) unaligned,
+                 2 mbz bit (26) unaligned;
+
+            When variables in the copy_flags structure have a value
+            of "1"b, the designated attribute are copied to the new
+            entry.  In the case of extend, the contents of the
+            original entry may be appended to the end of the target
+            entry.  In the case of update, the contents of the
+            original entry may replace the contents of the target
+            entry.
+
+|           Before the copy is performed, the copy_items members are
+|           ANDed with copy_flags members as defined by the
+|           suffix_info entrypoint.  Only those options specified by
+|           both structures are considered.
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  Entry:  fs_util_$get_max_length
+
+            This entry returns the maximum length setting for an
+            entry.
+
+  USAGE
+
+       declare fs_util_$get_max_length entry (char(*), char(*),      |
+            fixed bin (35), fixed bin (35));                         |
+
+       call fs_util_$get_max_length (dir_name, entryname,
+            max_length, code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       max_length
+
+            is the maximum length of the entry in machine words.     |
+            (Output)                                                 |
+
+       code
+
+            is a standard system status code.  (Output)
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  Entry:  fs_util_$set_max_length
+
+            This entry sets the maximum length that a particular
+            entry can be.
+
+  USAGE
+
+       declare fs_util_$set_max_length entry (dir_name, entryname,
+            max_length, code);
+
+|      call fs_util_$set_max_length (char(*), char(*), fixed
+|           bin(35), fixed bin(35));
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       max_length
+
+|           is the maximum length in machine words to which the
+|           entry is to be set.  (Input)
+
+       code
+
+            is a standard system status code.  (Output)
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  Entry:  fs_util_$get_bit_count
+
+            This entry returns the number of useful bits in an
+            entry.
+
+  USAGE
+
+       declare fs_util_$get_bit_count entry (char(*), char(*), fixed |
+            bin(41), fixed bin (35));                                |
+
+       call fs_util_$get_bit_count (dir_name, entryname, bit_count,
+            code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       bit_count
+
+            is the number of bits considered useful in the entry.
+            (Output)
+
+       code
+
+            is a standard system status code.  (Output)
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  Entry:  fs_util_$set_bit_count
+
+            This entry sets the number of bits considered useful for
+            the entry.
+
+  USAGE
+
+|      declare fs_util_$set_bit_count entry (char (*), char (*),
+|           fixed bin (41), fixed bin (35);
+
+       call fs_util_$set_bit_count (dir_name, entryname, bit_count,
+            code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       bit_count
+
+            is the number of bits to be considered useful in the
+            entry.  (Input)
+
+       code
+
+            is a standard system status code.  (Output)
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  Entry:  fs_util_$get_user_access_modes
+
+  USAGE
+
+       declare fs_util_$get_user_access_modes entry (char(*),
+            char(*), char(*), fixed bin, bit(36) aligned, bit(36)
+            aligned, fixed bin(35));
+
+       call fs_util_$get_user_access_modes (dir_name, entryname,
+            user_name, ring, modes, exmodes, code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       user_name
+
+            is the name of the user in the form
+            User_id.Project_id.instance_tag.  (Input)
+
+       ring
+
+            is the ring number in which the program is running.
+            (Input)
+
+       modes
+
+            are the standard ACL modes of an entry.  (Output)
+
+       xmodes
+
+            are the extended ACL modes of an entry.  (Output)
+
+       code
+
+            is a standard system status code.  (Output)
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  Entry:  fs_util_$get_ring_brackets
+
+            This entry returns the ring brackets of an entry.
+
+  USAGE
+
+       declare fs_util_$get_ring_brackets entry (char(*), char(*),
+            (*)fixed bin(3), fixed bin(35));
+
+       call fs_util_$get_ring_brackets (dir_name, entryname,
+            ring_brackets, code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       ring_brackets
+
+            are the upper and lower bounds of the ring structure
+            from which an entry is accessible.  (Output)
+
+       code
+
+            is a standard system status code.  (Output)
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  Entry:  fs_util_$set_ring_brackets
+
+            This entry sets the ring brackets for an entry.
+
+  USAGE
+
+       declare fs_util_$set_ring_brackets entry (char(*), char(*),
+            (*)fixed bin(3), fixed bin(35));
+
+       call fs_util_$set_ring_brackets (dir_name, entryname,
+            ring_brackets, code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       ring_brackets
+
+            are the upper and lower bounds of the ring structure
+            from which an entry is accessible.  (Input)
+
+       code
+
+            is a standard system status code.  (Output)
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  Entry:  fs_util_$get_switch
+
+            This entry returns the value of a storage system switch
+            for an entry.
+
+  USAGE
+
+       declare fs_util_$get_switch entry (char(*), char(*), char(*),
+            bit(1) aligned, fixed bin(35));
+
+       call fs_util_$get_switch (dir_name, entryname, switch_name,
+            value, code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       switch_name
+
+            is the name of the switch whose value is sought.  This
+            may be either "copy," "complete_volume_dump," "damaged,"
+            "incremental_volume_dump," "safety," "synchronized," or
+            any switch on an entry.  (Input)
+
+       value
+
+            is the value of the requested switch.  (Output)
+
+       code
+
+            is a standard system status code.  It should be set to
+            error_table_$argerr if switch_name is invalid.  (Output)
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  Entry:  fs_util_$set_switch
+
+            This entry sets the value of a storage system switch for
+            an entry.
+
+  USAGE
+
+       declare fs_util_$set_switch entry (char(*), char(*), char(*),
+            bit(1) aligned, fixed bin(35));
+
+       call fs_util_$set_switch (dir_name, entryname, switch_name,
+            value, code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       switch_name
+
+            is the name of the switch whose value is to be set.
+            This may be either "copy," "complete_volume_dump,"
+            "damaged," "incremental_volume_dump," "safety,"
+            "synchronized," or any switch on an entry.  (Input)
+
+       value
+
+            is the value to which the switch is to be set.  (Input)
+
+       code
+
+            is a standard system status code.  It should be set to
+            error_table_$argerr if switch_name is invalid.  (Output)
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  Entry:  fs_util_$add_acl_entries
+
+|           This entrypoint is used to add to the Access Control
+|           List of an entry.
+
+  USAGE
+
+       declare fs_util_$add_acl_entries entry (char(*), char(*),
+            ptr, fixed bin(35));
+
+       call fs_util_$add_acl_entries (dir_name, entryname, acl_ptr,
+            code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       acl_ptr
+
+            is a pointer to the general_acl structure.  (Input)
+
+       code
+
+            is a standard system status code.  (Output)
+
+  NOTES
+
+            The general_acl structure and the named constant
+            GENERAL_ACL_VERSION_1 are defined in the include file
+            acl_structures.incl.pl1.
+
+            The general_acl structure is defined as follows:
+
+               1 general_acl aligned based (acl_ptr),
+                 2 version char (8) aligned,
+                 2 count fixed bin,
+                 2 entries (acl_count refer (general_acl.count))
+                      aligned like general_acl_entry;
+
+               1 general_acl_entry based,
+                 2 access_name character (32) unaligned,
+                 2 mode bit (36) aligned,
+                 2 status_code fixed bin (35);
+
+  STRUCTURE ELEMENTS
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+       version
+
+            is the current version of this structure and has the
+            value of the named constant GENERAL_ACL_VERSION_1.
+
+       count
+
+            is the size of the entries array in general_acl.
+
+       access_name
+
+            is the name of a user in the form of
+            Person_id.Project_id.instance_tag.
+
+       mode
+
+            is a bit string where each bit represents a possible
+            access mode which, when true, indicates an allowed
+            access for the file.
+
+       status_code
+
+            is a standard system status code indicating success or
+            the reason for failure to set the ACL entry.
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  Entry:  fs_util_$add_extended_acl_entries
+
+|           This entrypoint is used to add to the Extended Access
+|           Control List of a standard entry.
+
+  USAGE
+
+       declare fs_util_$add_extended_acl_entries entry (char(*),
+            char(*), ptr, fixed bin(35));
+
+       call fs_util_$add_extended_acl_entries (dir_name, entryname,
+            acl_ptr, code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       acl_ptr
+
+            is a pointer to the structure general_extended_acl.
+            (Input)
+
+       code
+
+            is a standard system status code.  (Output)
+
+  NOTES
+
+|           This interface is intended to be used only by extended
+|           entry type support routines which map an ACL mode
+|           provided to fs_util_ into a standard mode/extended mode
+|           pair to be placed on the underlying standard entry or
+|           entries which are being used to implement the extended
+|           entry type.
+
+            The general_extended_acl structure and the named
+            constant GENERAL_EXTENDED_ACL_VERSION_1 are defined in
+            the include file acl_structures.incl.pl1.
+
+            The general_extended_acl structure is defined as
+            follows:
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+               1 general_extended_acl aligned based (acl_ptr),
+                 2 version char (8) aligned,
+                 2 count fixed bin,
+                 2 entries (acl_count refer
+                      (general_extended_acl.count))
+                      aligned like general_extended_acl_entry;
+
+               1 general_extended_acl_entry aligned based,
+                      2 access_name character (32) unaligned,
+                      2 mode bit (36) aligned,
+                      2 extended_mode bit (36) aligned,
+                      2 status_code fixed bin (35);
+
+  STRUCTURE ELEMENTS
+
+       version
+
+            is the current version of this structure and has the
+            value of the named constant
+            GENERAL_EXTENDED_ACL_VERSION_1.
+
+       count
+
+            is the size of the entries array in
+            general_extended_acl.
+
+       access_name
+
+            is the name of a user in the form of
+            Person_id.Project_id.instance_tag.
+
+       mode
+
+            is a bit string where each bit represents a possible
+            access mode which, when true, indicates an allowed
+            access for the file.
+
+       extended_mode
+
+            is a bit string where each bit represents a possible
+            extended access mode which, when true, indicates an
+            allowed access for the file.
+
+       status
+
+            is a standard system status code indicating success or
+            the reason for failure to set the extended ACL entry.
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  Entry:  fs_util_$delete_acl_entries
+
+|           This entrypoint deletes a member of an entry's Access
+|           Control List.
+
+  USAGE
+
+       declare fs_util_$delete_acl_entries entry (char(*), char(*),
+            ptr, fixed bin(35));
+
+       call fs_util_$delete_acl_entries (dir_name, entryname,
+            acl_ptr, code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       acl_ptr
+
+            is a pointer to the structure general_delete_acl.
+            (Input)
+
+       code
+
+            is a standard system status code.  (Output)
+
+  NOTES
+
+            The general_delete_acl structure and the named constant
+            GENERAL_DELETE_ACL_VERSION_1 are defined in the include
+            file acl_structures.incl.pl1.
+
+            The general_delete_acl structure is defined as follows:
+
+               1 general_delete_acl aligned based (acl_ptr),
+                 2 version char (8) aligned,
+                 2 count fixed bin,
+                 2 entries (acl_count refer
+                      (general_delete_acl.count))
+                      aligned like delete_acl_entry;
+
+            declare 1 general_delete_acl_entry aligned based,
+                      2 access_name character (32) unaligned,
+                      2 status_code fixed bin (35);
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  STRUCTURE ELEMENTS
+
+       version
+
+            is the current version of this structure and has the
+            value of the named constant
+            GENERAL_DELETE_ACL_VERSION_1.
+
+       count
+
+            is the size of the entries array in general_delete_acl.
+
+       access_name
+
+            is the name of a user in the form of
+            Person_id.Project_id.instance_tag
+
+       status_code
+
+            is a standard system status code indicating success or
+            the reason for failure to set the extended ACL entry.
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  Entry:  fs_util_$list_acl
+
+|           This entry lists the components of an entry's Access
+|           Control List.
+
+  USAGE
+
+       declare fs_util_$list_acl entry (char(*), char(*), char(*),
+            ptr, ptr, fixed bin(35));
+
+       call fs_util_$list_acl (dir_name, entryname, version,
+            area_ptr, acl_ptr, fixed bin(35));
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       version
+
+            is the version of the acl structure.  (Input)
+
+       area_ptr
+
+|           is a pointer to an area where fs_util_ can allocate the
+|           general_acl structure.  If area_ptr is null, then the
+|           user wants access modes for certain ACL entries; these
+|           will be specified by the structure pointed to by
+|           acl_ptr.  (Input)
+
+       acl_ptr
+
+|           is a pointer to the general_acl structure.  (Input or
+|           Output)
+|           Input:  if area_ptr is null, then acl_ptr points to a
+|           general_acl structure filled with access names and into
+|           which modes will be placed.
+|           Output:  if area_ptr is non null, then acl_ptr will
+|           point to the start of a newly allocated general_acl
+|           structure.
+
+       code
+
+            is a standard system status code.  (Output)
+
+  NOTES
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+            If acl_ptr is used to obtain modes for specified access  |
+            names (rather than for all access names on an entry),    |
+            then each ACL entry in the general_acl structure either  |
+            has status_code set to 0 and contains the entry's mode   |
+            or has status_code set to error_table_$user_not_found    |
+            and contains a mode of 0.                                |
+
+            The general_acl structure and the named constant         |
+            GENERAL_ACL_VERSION_1 are defined in the include file    |
+            acl_structures.incl.pl1.  For a description of the       |
+            general_acl structure, see the add_acl_entries           |
+            entrypoint above.                                        |
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  Entry:  fs_util_$list_extended_acl
+
+|           This entrypoint returns the contents of the Extended
+|           Access Control List of a standard entry.
+
+  USAGE
+
+       declare fs_util_$list_extended_acl entry (char(*), char(*),
+            char(*), ptr, ptr, fixed bin(35));
+
+       call fs_util_$list_extended_acl (dir_name, entryname,
+            version, area_ptr, acl_ptr, code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       version
+
+            is the version of the acl structure.  (Output)
+
+       area_ptr
+
+|           is a pointer to an area where fs_util_ can allocate the
+|           general_extended_acl structure.  If area_ptr is null,
+|           then the user wants access modes for certain extended
+|           ACL entries; these will be specified by the structure
+|           pointed to acl_ptr.  (Input)
+
+       acl_ptr
+
+|           is a pointer to the general_acl structure.  (Input or
+|           Output)
+|           Input:  if area_ptr is null, then acl_ptr points to a
+|           general_extended_acl structure filled with access names
+|           and into which modes will be placed.
+|           Output:  if area_ptr is non null, then acl_ptr will
+|           point to the start of a newly allocated
+|           general_extended_acl structure.
+
+       code
+
+            is a standard system status code.  (Output)
+
+  NOTES
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+            This interface is intended to be used only by extended   |
+            entry type support routines which map an ACL mode        |
+            provided to fs_util_ into a standard mode/extended mode  |
+            pair to be placed on the underlying standard entry or    |
+            entries which are being used to implement the extended   |
+            entry type.                                              |
+
+            If acl_ptr is used to obtain modes for specified access  |
+            names (rather than for all access names on an entry),    |
+            then each ACL entry in the general_extended_acl          |
+            structure either has status_code set to 0 and contains   |
+            the entry's mode or has status_code set to               |
+            error_table_$user_not_found and contains a mode of 0.    |
+
+            The general_extended_acl structure and the named         |
+            constant GENERAL_EXTENDED_ACL_VERSION_1 are defined in   |
+            the include file acl_structures.incl.pl1.  The           |
+            general_extended_acl structure is described in the       |
+            add_extended_acl_entries entrypoint described above.     |
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  Entry:  fs_util_$replace_acl
+
+|           This entrypoint is used to replace Access Control List
+|           components for an entry.
+
+  USAGE
+
+       declare fs_util_$replace_acl entry (char(*), char(*), ptr,
+            bit(1), fixed bin(35));
+
+       call fs_util_$replace_acl (dir_name, entryname, acl_ptr,
+            no_sysdaemon, code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       acl_ptr
+
+            is a pointer to the structure general_extended_acl.
+            (Input)
+
+       no_sysdaemon
+
+            is a switch that indicates whether an rw *.SysDaemon.*
+            entry is to be put on the ACL of the segment after the
+            existing ACL has been deleted and before the
+            user-supplied general_acl entries are added.  (Input)
+            "0"b adds rw *.SysDaemon.* entry
+            "1"b replaces the existing ACL with only the
+            user-supplied general_acl
+
+       code
+
+            is a standard system status code.  (Output)
+
+  NOTES
+
+            The general_acl structure and the named constant
+            GENERAL_ACL_VERSION_1 are defined in the include file
+            acl_structure.incl.pl1.  The general_acl structure is
+            described above in the entrypoint add_acl_entries.
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  Entry:  fs_util_$replace_extended_acl
+
+            This entry is used to replace Extended Access Control    |
+            List components for a standard entry.                    |
+
+  USAGE
+
+       declare fs_util_$replace_extended_acl entry (char(*),
+            char(*), ptr, bit(1), fixed bin(35));
+
+       call fs_util_$replace_extended_acl (dir_name, entryname,
+            acl_ptr, no_sysdaemon, code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       acl_ptr
+
+            is a pointer to the structure general_extended_acl.
+            (Input)
+
+       no_sysdaemon
+
+            is a switch that indicates whether an rw *.SysDaemon.*
+            entry is to be put on the ACL of the segment after the
+            existing ACL has been deleted and before the
+            user-supplied general_acl entries are added.  (Input)
+            "0"b adds rw *.SysDaemon.* entry
+            "1"b replaces the existing ACL with only the
+            user-supplied general_acl
+
+       code
+
+            is a standard system status code.  (Output)
+
+  NOTES
+
+            This interface is intended to be used only by extended   |
+            entry type support routines which map an ACL mode        |
+            provided to fs_util_ into a standard mode/extended mode  |
+            pair to be placed on the underlying standard entry or    |
+            entries which are being used to implement the extended   |
+            entry type.                                              |
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+            The structure general_extended_acl and the named
+            constant GENERAL_EXTENDED_ACL_VERSION_1 are defined in
+            the include file acl_structures.incl.pl1.  The structure
+            general_extended_acl is described in the
+            add_extended_acl_entries entrypoint above.
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  Entry:  fs_util_$suffix_info
+
+            This entry returns information about an entry's type.
+
+  USAGE
+
+       declare fs_util_$suffix_info entry (char(*), char(*), ptr,
+            fixed bin(35));
+
+       call fs_util_$suffix_info (dir_name, entryname,
+            suffix_info_ptr, code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       suffix_info_ptr
+
+            is a pointer to the suffix_info structure.  (Input)
+
+       code
+
+            is a standard system status code.  (Output)
+
+  NOTES
+
+            The suffix_info structure and the named constant
+            SUFFIX_INFO_VERSION_1 are defined in the include file
+            suffix_info.incl.pl1.
+
+            The suffix_info structure is defined as follows:
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+               1 suffix_info aligned based (suffix_info_ptr),
+                 2 version char (8),
+                 2 type char (32) unaligned,
+                 2 type_name char (32) unaligned,
+                 2 plural_name char (32) unaligned,
+                 2 flags unaligned,
+                   3 standard_object bit (1) unaligned,
+                   3 extended_acl bit (1) unaligned,
+                   3 has_switches bit (1) unaligned,
+                   3 mbz1 bit (33) unaligned,
+                 2 modes char (36),
+                 2 max_mode_len fixed bin,
+                 2 num_ring_brackets fixed bin,
+                 2 copy_flags like copy_flags,
+                 2 info_pathname char (168) unaligned;
+
+  STRUCTURE ELEMENTS
+
+       version
+
+            is the current version of this structure and has the
+            value of the named constant SUFFIX_INFO_VERSION_1.
+
+       type
+
+            is the suffix found on entry names of entries if this
+            type (e.g., "mbx").
+
+       type_name
+
+            is the singular name of the entry type (e.g.,
+            "mailbox").
+
+       plural_type
+
+            is the plural name of the entry type (e.g.,
+            "mailboxes").
+
+       standard_object
+
+            is set to indicate that the entry is to be handled by
+            fs_util_ itself.
+
+       extended_acl
+
+            is a switch indicating whether or not the entry type
+            supports an extended Access Control List.  The switch
+            should be on if the type sufforts extended ACLs, and off
+            otherwise.
+
+       has_switches
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+            is on if the entry type supports the get_switch and
+            set_switch entries.
+
+       mbz1
+
+            is reserved for future use and must be zero.
+
+       modes
+
+            is a string containing the access modes for the entry
+            type.  This string contains one character for each mode
+            bit.  The position of the character in the string
+            indicates which bit in the ACL represents that mode.
+
+       max_mode_len
+
+            is the maximum number of modes on a single entry of this
+            type.  This is used by the list_acl command for
+            formatting.
+
+       num_ring_brackets
+
+            is the number of ring brackets on an entry.
+
+       copy_flags
+
+            for its format, see the copy_flags structure described
+            above.
+
+            The flags configuration provided by suffix_info define   |
+            what copy operations are valid for the extended entry    |
+            type.  During the copy operation, these flags are ANDed  |
+            with the copy flags provided with the call to fs_util_.  |
+            Only the operations allowed by suffix_info and requested |
+            by the copy call are performed.  fs_util_ does not       |
+            notify its caller that certain flags were ignored;       |
+            however, the identity of these flags is computable via a |
+            call to suffix_info.                                     |
+
+       info_pathname
+
+            is the pathname of an info segment containing more
+            information.
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  Entry:  fs_util_$suffix_info_for_type
+
+            This entrypoint returns information about the
+            characteristics of an entry that is of a given type.  It
+            behaves exactly as the suffix_info entrypoint except
+            that a directory and entry name are not used to
+            determine the type for which suffix info is to be
+            returned.
+
+  USAGE
+
+       declare fs_util_$suffix_info_for_type entry (char(*), ptr,
+            fixed bin(35));
+
+       call fs_util_$suffix_info_for_type (type, suffix_info_ptr,
+            code);
+
+  ARGUMENTS
+
+       type
+
+            is the suffix for the type for which information is to
+            be returned.  (Input)
+
+       suffix_info_ptr
+
+            is a pointer to the suffix_info structure.  (Input)
+
+       code
+
+            is a standard system status code.  (Output)
+
+  NOTES
+
+            The suffix_info structure and the named constant
+            SUFFIX_INFO_VERSION_1 are defined in the include file
+            suffix_info.incl.pl1.  The suffix_info structure is
+            described in the suffix_info entrypoint above.
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  Entry:  fs_util_$list_switches
+
+            This entry returns a list of switches supported by the
+            entry type.
+
+  USAGE
+
+       declare fs_util_$list_switches entry (char(*), char(*),
+            char(*), ptr, ptr, fixed bin(35)));
+
+       call fs_util_$list_switches (dir_name, entryname, version,
+            area_ptr, switch_list_ptr, code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       version
+
+            is the version of the switch list structure.  (Input)
+
+       area_ptr
+
+            is a pointer to an area where fs_util_ can allocate the
+            structure switch_list.  (Input)
+
+       switch_list_ptr
+
+            is a pointer to the switch_list structure.  (Input)
+
+       code
+
+            is a standard system status code.  (Input)
+
+  NOTES
+
+            The list_switches structure and the named constant
+            SWITCH_LIST_VERSION_1 are defined in the include file
+            suffix_info.incl.pl1.
+
+            The list_switches structure is defined as follows:
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+               1 switch_list aligned based (switch_list_ptr),
+                 2 version char (8),
+                 2 switch_count fixed bin,
+                 2 switch_name_count fixed bin,
+                 2 switches (alloc_switch_count
+                      refer (switch_list.switch_count)),
+                   3 name_index fixed bin,
+                   3 name_count fixed bin,
+                   3 default_value bit (1) aligned,
+                   3 mbz1 bit (36) aligned,
+                 2 names (alloc_switch_name_count refer
+                      (switch_list.switch_name_count)) char (32);
+
+  STRUCTURE ELEMENTS
+
+       version
+
+            is the current version of this structure and has the
+            value of the named constant SWITCH_LIST_VERSION_1.
+
+       switch_count
+
+            is the number of switches defined for this entry type.
+
+       switch_name_count
+
+            is the total number of names of the switches; a switch
+            can have multiple names.
+
+       name_index
+
+            is the index into suffix_list.names aray of the first
+            name for this switch.
+
+       name_count
+
+            is the number of names for this switch.  The names for
+            this switch are located in switch_list.names(name_index)
+            through switch_list.names(name_index + name_count - 1).
+
+       default_value
+
+            is the default setting for this switch when the entry is
+            created.
+
+       names
+
+            is the array of switch names.
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  Entry:  fs_util_$list_switches_for_type
+
+            This entry returns a list of switches for a particular
+            type of entry.
+
+  USAGE
+
+       declare fs_util_$list_switches_for_type entry (char(*),
+            char(*), ptr, ptr, fixed bin(35));
+
+       call fs_util_$list_switches_for_type (type, version,
+            area_ptr, switch_list_ptr, code);
+
+  ARGUMENTS
+
+       type
+
+            is the type of entry for which a list of switches is
+            desired.  (Input)
+
+       version
+
+            is the version of the switch_list structure.  (Input)
+
+       area_ptr
+
+            is a pointer to an area where fs_util_ can allocate the
+            structure switch_list.  (Input)
+
+       switch_list_ptr
+
+            is a pointer to the switch_list structure.  (Input)
+
+       code
+
+            is a standard system status code.  (Input)
+
+  NOTES
+
+            The list_switches structure and the named constant
+            SWITCH_LIST_VERSION_1 are defined in the include file
+            suffix_info.incl.pl1.  The list_switches structure is
+            described in the list_switches entrypoint above.
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  Entry:  fs_util_$make_entry
+
+            This entry constructs an entry variable to a specified
+            suffix support subroutine entry for a specified extended
+            entry.
+
+  USAGE
+
+       declare fs_util_$make_entry entry (char(*), char(*), char(*),
+            entry, fixed bin(35));
+
+       call fs_util_$make_entry (dir_name, entryname, entrypoint,
+            entry_to_call, code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       entrypoint
+
+            is the name of the entrypoint that is is to be
+            constructed.  (Input)
+
+       entry_to_call
+
+            is the entry variable constructed.  (Output)
+
+       code
+
+            is a standard system status code.  (Output)
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  Entry:  fs_util_$make_entry_for_type
+
+            This entry constructs an entry variable to a specified
+            suffix support subroutine entry for a specified type of
+            extended entry.
+
+  USAGE
+
+       declare fs_util_$make_entry_for_type entry (char(*), char(*),
+            entry, fixed bin(35));
+
+       call fs_util_$make_entry_for_type (type, entrypoint,
+            entry_to_call, code);
+
+  ARGUMENTS
+
+       type
+
+            is the type of entry for which a list of switches is
+            desired.  (Input)
+
+       entrypoint
+
+            is the name of the entrypoint that is is to be
+            constructed.  (Input)
+
+       entry_to_call
+
+            is the entry variable constructed.  (Output)
+
+       code
+
+            is a standard system status code.  (Output)
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  Entry:  fs_util_$get_type
+
+            This entry returns the type of a specified entry.
+
+  USAGE
+
+       declare fs_util_$get_type entry (char(*), char(*), char(*),
+            fixed_bin(35));
+
+       call fs_util_$get_type (dir_name, entryname, type, code);
+
+  ARGUMENTS
+
+       dir_name
+
+            is the absolute pathname of the directory containing the
+            entry.  (Input)
+
+       entryname
+
+            is the name of the entry.  (Input)
+
+       type
+
+            is the type of entry for which a list of switches is
+            desired.  (Input)
+
+       code
+
+            is a standard system status code.  (Output)
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  9  Command Level Interfaces
+
+  describe_entry_type, dset
+
+  Syntax:  dset suffix {-control_args}
+
+  Syntax as an active function:  [dset suffix -control_arg]
+
+  Function:  prints  or returns information about  an extended entry
+  type.
+
+  Argument:
+
+  suffix
+       is the suffix that identifies the entry type to be described.
+
+  Control arguments:
+
+  -all, -a
+       prints all  information about the entry  type.  This includes
+       name,  plural name,  access modes,  supported attributes, and
+       the default values and all  names for switches.  This control
+       argument may not be used if invoked as an active function.
+
+  -attributes, -attr
+       prints or returns the names  of the storage system attributes
+       that this entry type supports.  These are the attributes that
+       may be copied or moved by the copy and move commands.
+
+  -default NAME
+       prints or  returns the default value  of the specified switch
+       for  this  entry type.   Only  one -default  argument  may be
+       given.  This  control argument is incompatible  with -all and
+       -switches.
+
+  -extended_acl, -xacl
+       returns "true" if the entry  type supports extended ACLs, and
+       "false" if it does not.  This may not be used if invoked as a
+       command.
+
+  -info_pathname, -ipn
+       prints or returns the pathname  of an info segment containing
+       more  information  about  the  entry type,  if  such  an info
+       segment is available
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  -modes
+       prints or returns the acceptable  access modes for this entry
+       type.
+
+  -name, -nm
+       prints or returns the name of an entry of this type.
+
+  -plural_name, -plnm
+       prints or returns the name of a group of entry of this type.
+
+  -switches
+       prints the names and default values of all switches supported
+       by this entry type.
+
+  Notes:   When invoked  with no  arguments, the  command prints the
+  name,  plural name,  modes, attributes, info  seg pathname, switch
+  names and default values.
+
+  This interface is intended to be  used only by extended entry type
+  support routines which map an ACL mode provided to fs_util_ into a
+  standard mode/extended  mode pair to  be placed on  the underlying
+  standard entry  or entries which  are being used  to implement the
+  extended entry type.
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  list_entry_types, lset
+
+  Syntax:  lset
+
+  Function:  Prints or  returns a list of all  of the extended entry
+  types that can be found using the caller's search rules.
+
+  Syntax as an active function:  [lset]
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  10 Writing a Suffix Support Routine
+
+  What follows is a very elementary  example of using the Utility to
+  support  an  extended  entry  type.   A  hypothetical  object  for
+  representing  the progression  of a chessgame  between two Multics
+  users  is  stored in  a segment  and is  defined by  the following
+  structure:
+
+       dcl chessgame_ptr pointer;
+       dcl CHESSGAME_VERSION_1 char (8) internal static
+            options (constant) init ("CHESS1.0");
+
+       dcl 1 chessgame based (chessgame_ptr) aligned,
+           2 version char (8),
+           2 board dim (1:8, 1:8) char (2) unaligned,
+           2 white aligned like participant,
+           2 black aligned like participant;
+
+       dcl participant_ptr pointer;
+
+       dcl 1 participant based (participant_ptr) aligned,
+           2 name char (32),
+           2 clock fixed bin (35),
+           2 move dim (1:150) aligned,
+             3 from char (2) unaligned,
+             3 to char (2) unaligned;
+
+  The chessgame  segment has a  suffix of "chess".   A chessgame has
+  two ACL modes,  participant (p) and spectator (s),  which map into
+  read/write and read privilege,  respectively.  Note how the suffix
+  support routine performs the conversion.
+
+  The support routine  is not written with any  sort of optimization
+  in  mind, but  with the  goal of  demonstrating general  issues of
+  supporting extended  entries.  For instance, most  of the calls to
+  fs_util_$make_entry_for_type and  handler could be  replaced by an
+  appropriate hcs_ call (remember that the suffix support routine is
+  allowed  to  be  cognizant  of  the  underlying  structure  of its
+  object).
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+   
+  /* ***********************************************************
+     *                                                         *
+     * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+     *                                                         *
+     *********************************************************** */
+  suffix_chess_$validate:
+       procedure (p_dir_name, p_entry_name, p_code);
+   
+  /*
+     suffix_chess_ - sample typed file support routine.
+   
+     written 1984.09.20 by M. Pandolf
+  */
+   
+  /*
+  validate:
+       procedure (p_dir_name, p_entry_name, p_code);
+   
+  this entrypoint called by fs_util_ to certify the identity of
+  a suffixed entry.  To be considered a valid chess game, the
+  entry must be readable by the user, and the version must be
+  current.
+  */
+   
+       call validate_chessgame (p_dir_name, p_entry_name, p_code);
+   
+       return;
+   
+  suffix_info:
+       entry (p_suffix_info_ptr);
+   
+  /*
+     this entrypoint called to obtain information about
+     an entry type.
+   
+     a more efficient way to fill in suffix info is to copy
+     it from a previously compiled data segment, such as:
+   
+     p_suffix_info_ptr -&gt; suffix_info = chess_info_$suffix_info;
+  */
+   
+       suffix_info_ptr = p_suffix_info_ptr;
+   
+       suffix_info.type = "chess";
+       suffix_info.type_name = "Chess game";
+       suffix_info.plural_name = "Chess games";
+   
+       suffix_info.flags = ""b;
+       suffix_info.flags.has_switches = "1"b;
+   
+       suffix_info.modes = "ps";
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+       suffix_info.max_mode_len = 2;
+   
+       suffix_info.num_ring_brackets = 1;
+   
+       suffix_info.copy_flags = ""b;
+       suffix_info.copy_flags.names = "1"b;
+       suffix_info.copy_flags.acl = "1"b;
+       suffix_info.copy_flags.safety_switch = "1"b;
+       suffix_info.copy_flags.dumper_switches = "1"b;
+       suffix_info.copy_flags.update = "1"b;
+   
+       suffix_info.info_pathname = "";
+   
+       return;
+   
+  list_switches:
+       entry (p_desired_version, p_area_ptr, p_switch_list_ptr,
+              p_code);
+   
+  /*
+     this entrypoint called to obtain a list
+     of switches supported for an entry type.
+   
+     unlike segments, we don't support the copy switch
+     or synchronized switch.
+  */
+   
+       if p_area_ptr = null ()
+       then user_area_ptr = get_user_free_area_ ();
+       else user_area_ptr = p_area_ptr;
+       if p_desired_version ^= SWITCH_LIST_VERSION_1
+       then do;
+                 p_code = error_table_$unimplemented_version;
+                 return;
+            end;
+   
+       alloc_switch_count = 4;
+       alloc_switch_name_count = 6;
+   
+       allocate switch_list
+            in (user_area);
+   
+       switch_list.version = SWITCH_LIST_VERSION_1;
+   
+       switch_list.switches (1).name_index = 1;
+       switch_list.switches (1).name_count = 2;
+       switch_list.switches (1).default_value = "0"b;
+       switch_list.names (1) = "damaged";
+       switch_list.names (2) = "dm";
+   
+       switch_list.switches (2).name_index = 3;
+       switch_list.switches (2).name_count = 2;
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+       switch_list.switches (2).default_value = "0"b;
+       switch_list.names (3) = "safety";
+       switch_list.names (4) = "sf";
+   
+       switch_list.switches (3).name_index = 5;
+       switch_list.switches (3).name_count = 2;
+       switch_list.switches (3).default_value = "0"b;
+       switch_list.names (5) = "complete_volume_dump";
+       switch_list.names (6) = "cvd";
+   
+       switch_list.switches (4).name_index = 7;
+       switch_list.switches (4).name_count = 2;
+       switch_list.switches (4).default_value = "1"b;
+       switch_list.names (7) = "incremental_volume_dump";
+       switch_list.names (8) = "ivd";
+   
+       p_switch_list_ptr = switch_list_ptr;
+   
+       return;
+   
+  chname_file:
+       entry (p_dir_name, p_entry_name,
+            p_old_name, p_new_name, p_code);
+   
+  /*
+     entrypoint to change/add/delete a name of a file.
+   
+     after checking the new name, we forward the call
+     to the handler for segments.
+  */
+   
+       call validate_chessgame (p_dir_name, p_entry_name, p_code);
+       if p_code ^= 0
+       then return;
+   
+       call fs_util_$make_entry_for_type (FS_OBJECT_TYPE_SEGMENT,
+            FS_CHNAME_FILE, handler, p_code);
+   
+       if p_code = 0
+       then if valid_chessgame_name (p_new_name) | p_new_name = ""
+            then call handler (p_dir_name, p_entry_name,
+                      p_old_name, p_new_name, p_code);
+            else p_code = error_table_$badstar;
+       else;
+   
+       return;
+   
+  copy:
+       entry (p_copy_options_ptr, p_code);
+   
+  /*
+     entrypoint to copy a chess game.
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+   
+     forward the call to the handler for segments.
+  */
+   
+  /* make a copy of copy_options so that we can validate it */
+   
+       if p_copy_options_ptr = null ()
+       then do;
+                 p_code = error_table_$argerr;
+                 return;
+            end;
+   
+       my_copy_options = p_copy_options_ptr -&gt; copy_options;
+       unspec (my_copy_options.copy_items) =
+            COPY_FLAGS_MASK &amp;
+                 unspec (p_copy_options_ptr -&gt; copy_options.copy_items);
+   
+       call validate_chessgame (my_copy_options.source_dir,
+            my_copy_options.source_name, p_code);
+       if p_code ^= 0
+       then return;
+   
+       if ^valid_chessgame_name (my_copy_options.target_name)
+       then do;
+                 p_code = error_table_$badstar;
+                 return;
+            end;
+   
+  /* forward the copy operation to fs_util_ */
+   
+       call fs_util_$make_entry_for_type (FS_OBJECT_TYPE_SEGMENT,
+            FS_COPY, handler, p_code);
+   
+       if p_code = 0
+       then call handler (addr (my_copy_options), p_code);
+   
+       return;
+   
+  delentry_file:
+       entry (p_dir_name, p_entry_name, p_code);
+   
+  /*
+     entrypoint to delete a chess game.
+   
+     delete the chess game as a segment.
+  */
+   
+       call validate_chessgame (p_dir_name, p_entry_name, p_code);
+       if p_code ^= 0
+       then return;
+   
+       call fs_util_$make_entry_for_type (FS_OBJECT_TYPE_SEGMENT,
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+            FS_DELENTRY_FILE, handler, p_code);
+   
+       if p_code = 0
+       then call handler (p_dir_name, p_entry_name, p_code);
+   
+       return;
+   
+  /*
+     then next listed entrypoints have no meaning for
+     chess games, and should not appear in the object.
+   
+  get_max_length:
+       entry (p_dir_name, p_entry_name, p_max_length, p_code);
+   
+  set_max_length:
+       entry (p_dir_name, p_entry_name, p_max_length, p_code);
+   
+  get_bit_count:
+       entry (p_dir_name, p_entry_name, p_bit_count, p_code);
+   
+  set_bit_count:
+       entry (p_dir_name, p_entry_name, p_bit_count, p_code);
+   
+  */
+   
+  get_ring_brackets:
+       entry (p_dir_name, p_entry_name,
+            p_ring_brackets, p_code);
+   
+  /*
+     entrypoint to return the ring bracket for the chess game.
+   
+     get them directly from the segment entry type manager.
+  */
+   
+       call validate_chessgame (p_dir_name, p_entry_name, p_code);
+       if p_code ^= 0
+       then return;
+   
+       call fs_util_$make_entry_for_type (FS_OBJECT_TYPE_SEGMENT,
+            FS_GET_RING_BRACKETS, handler, p_code);
+   
+       if p_code = 0
+       then do;
+                 call handler (p_dir_name, p_entry_name,
+                      ring_brackets, p_code);
+                 based_ring_bracket (1) = ring_brackets (1);
+            end;
+   
+       return;
+   
+  set_ring_brackets:
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+       entry (p_dir_name, p_entry_name,
+            p_ring_brackets, p_code);
+   
+  /*
+     entrypoint to set the ring bracket of a chess game.
+   
+     there is only one ring bracket for chess games,
+     so we massage the parameter a bit.
+  */
+   
+       call validate_chessgame (p_dir_name, p_entry_name, p_code);
+       if p_code ^= 0
+       then return;
+   
+       ring_brackets (*) = based_ring_bracket (1);
+   
+       call fs_util_$make_entry_for_type (FS_OBJECT_TYPE_SEGMENT,
+            FS_SET_RING_BRACKETS, handler, p_code);
+   
+       if p_code = 0
+       then call handler (p_dir_name, p_entry_name,
+            ring_brackets, p_code);
+   
+       return;
+   
+  get_switch:
+       entry (p_dir_name, p_entry_name,
+            p_switch_name, p_switch_value, p_code);
+   
+  /*
+     entrypoint to return the value of a chess game switch.
+   
+     we pass only those switches we recognize to the
+     segment entry type manager.
+  */
+   
+       call validate_chessgame (p_dir_name, p_entry_name, p_code);
+       if p_code ^= 0
+       then return;
+   
+       if p_switch_name = "damaged" |
+            p_switch_name = "dm" |
+            p_switch_name = "safety" |
+            p_switch_name = "sf" |
+            p_switch_name = "complete_volume_dump" |
+            p_switch_name = "cvd" |
+            p_switch_name = "incremental_volume_dump" |
+            p_switch_name = "ivd"
+       then do;
+                 call fs_util_$make_entry_for_type (
+                      FS_OBJECT_TYPE_SEGMENT, FS_GET_SWITCH,
+                      handler, p_code);
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+   
+                 if p_code = 0
+                 then call handler (p_dir_name, p_entry_name,
+                      p_switch_name, p_switch_value, p_code);
+            end;
+       else p_code = error_table_$argerr;
+   
+       return;
+   
+  set_switch:
+       entry (p_dir_name, p_entry_name,
+            p_switch_name, p_switch_value, p_code);
+   
+  /*
+     entrypoint to set one of the chess game switches.
+   
+     we pass only those switches which we recognize to the
+     segment entry type manager.
+  */
+   
+       call validate_chessgame (p_dir_name, p_entry_name, p_code);
+       if p_code ^= 0
+       then return;
+   
+       if p_switch_name = "damaged" |
+            p_switch_name = "dm" |
+            p_switch_name = "safety" |
+            p_switch_name = "sf" |
+            p_switch_name = "complete_volume_dump" |
+            p_switch_name = "cvd" |
+            p_switch_name = "incremental_volume_dump" |
+            p_switch_name = "ivd"
+       then do;
+                 call fs_util_$make_entry_for_type (
+                      FS_OBJECT_TYPE_SEGMENT, FS_SET_SWITCH,
+                      handler, p_code);
+   
+                 if p_code = 0
+                 then call handler (p_dir_name, p_entry_name,
+                      p_switch_name, p_switch_value, p_code);
+            end;
+       else p_code = error_table_$argerr;
+   
+       return;
+   
+  /*
+     there is not extended ACL defined for chess games;
+     therefore, the entrypoints should not be available.
+   
+  add_extended_acl_entries:
+       entry (p_dir_name, p_entry_name, p_acl_ptr, p_code);
+   
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+  list_extended_acl:
+       entry (p_dir_name, p_entry_name, p_desired_version,
+              p_area_ptr, p_acl_ptr, p_code);
+   
+  replace_extended_acl:
+       entry (p_dir_name, p_entry_name,
+            p_acl_ptr, p_no_sysdaemon, p_code);
+   
+  */
+   
+  add_acl_entries:
+       entry (p_dir_name, p_entry_name, p_acl_ptr, p_code);
+   
+  /*
+     entrypoint to add ACL entries for a chess game.
+   
+     the chess game ACL is mapped onto the extended
+     ACL of a standard segment, which means we
+     forward the call to segment support.  we receive
+     a non-extended ACL array, and convert it to an
+     extended ACL array for the call.
+  */
+   
+  /* perform initial validation of the ACL structure */
+   
+       call validate_chessgame (p_dir_name, p_entry_name, p_code);
+       if p_code ^= 0
+       then return;
+   
+       if p_acl_ptr = null ()
+       then do;
+                 p_code = error_table_$null_info_ptr;
+                 return;
+            end;
+   
+       acl_ptr = p_acl_ptr;
+       if general_acl.version ^= GENERAL_ACL_VERSION_1
+       then do;
+                 p_code = error_table_$unimplemented_version;
+                 return;
+            end;
+   
+  /* validate mode bits */
+   
+       acl_count = acl_ptr -&gt; general_acl.count;
+       if acl_count = 0
+       then return;
+   
+       do mode_no = 1 to acl_count;
+            if (acl_ptr -&gt; general_acl.mode (mode_no) &amp; MODE_MASK) ^= ""b
+            then do;
+                      p_code = error_table_$bad_acl_mode;
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+                      return;
+                 end;
+       end;
+   
+  /* get an entry value for the ACL function */
+   
+       call fs_util_$make_entry_for_type (FS_OBJECT_TYPE_SEGMENT,
+            FS_ADD_EXTENDED_ACL_ENTRIES, handler, p_code);
+       if p_code ^= 0
+       then return;
+   
+  /* prepare for the allocation of the XACL structure */
+   
+       xacl_ptr = null ();
+       on cleanup
+            begin;
+                 if xacl_ptr ^= null ()
+                 then free xacl_ptr -&gt; general_extended_acl
+                           in (get_system_free_area_ () -&gt; system_area);
+                 xacl_ptr = null ();
+            end;
+   
+  /* allocate and fill in the XACL structure */
+   
+       allocate general_extended_acl
+            set (xacl_ptr) in (get_system_free_area_ () -&gt; system_area);
+       xacl_ptr -&gt; general_extended_acl.version =
+            GENERAL_EXTENDED_ACL_VERSION_1;
+   
+       do mode_no = 1 to acl_count;
+            xacl_ptr -&gt; general_extended_acl.access_name (mode_no) =
+                 acl_ptr -&gt; general_acl.access_name (mode_no);
+            xacl_ptr -&gt; general_extended_acl.mode (mode_no) =
+                 translate (acl_ptr -&gt; general_acl.mode (mode_no));
+            xacl_ptr -&gt; general_extended_acl.extended_mode (mode_no) =
+                 acl_ptr -&gt; general_acl.mode (mode_no);
+            xacl_ptr -&gt; general_extended_acl.status_code (mode_no) = 0;
+       end;
+   
+  /* forward the call to the handler with the XACL structure */
+   
+       call handler (p_dir_name, p_entry_name, xacl_ptr, p_code);
+   
+  /* pass on the status codes */
+   
+       acl_ptr -&gt; general_acl.status_code (*) =
+            xacl_ptr -&gt; general_extended_acl.status_code (*);
+   
+       return;
+   
+  delete_acl_entries:
+       entry (p_dir_name, p_entry_name, p_acl_ptr, p_code);
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+   
+  /*
+     entrypoint to delete ACL entries from a chess game.
+   
+     forward directly to segment support.
+  */
+   
+       call validate_chessgame (p_dir_name, p_entry_name, p_code);
+       if p_code ^= 0
+       then return;
+   
+       call fs_util_$make_entry_for_type (FS_OBJECT_TYPE_SEGMENT,
+            FS_DELETE_ACL_ENTRIES, handler, p_code);
+   
+       if p_code = 0
+       then call handler (p_dir_name, p_entry_name, p_acl_ptr, p_code);
+   
+       return;
+   
+  list_acl:
+       entry (p_dir_name, p_entry_name, p_desired_version, p_area_ptr,
+            p_acl_ptr, p_code);
+   
+  /*
+     entrypoint to list some or all ACL entries for a chess game.
+   
+     we must convert from general ACL to extended ACL so
+     that we can pass this to segment support using
+     extended ACLs.
+  */
+   
+  /* perform initial validation of the ACL structure */
+   
+       call validate_chessgame (p_dir_name, p_entry_name, p_code);
+       if p_code ^= 0
+       then return;
+   
+       if p_acl_ptr = null ()
+       then if p_desired_version ^= GENERAL_ACL_VERSION_1
+            then do;
+                      p_code = error_table_$unimplemented_version;
+                      return;
+                 end;
+            else;
+       else if p_acl_ptr -&gt; general_acl.version ^=
+                 GENERAL_ACL_VERSION_1
+            then do;
+                      p_code = error_table_$unimplemented_version;
+                      return;
+                 end;
+            else;
+   
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  /* get an entry value for he ACL function */
+   
+       call fs_util_$make_entry_for_type (FS_OBJECT_TYPE_SEGMENT,
+            FS_LIST_EXTENDED_ACL, handler, p_code);
+       if p_code ^=0
+       then return;
+   
+  /* prepare for the allocation of the XACL structure */
+   
+       xacl_ptr = null ();
+       on cleanup
+            begin;
+                 if xacl_ptr ^= null ()
+                 then free xacl_ptr -&gt; general_extended_acl
+                           in (get_system_free_area_ () -&gt; system_area);
+                 xacl_ptr = null ();
+            end;
+   
+  /* if caller did not provide acl_ptr, the list everything */
+   
+       if p_acl_ptr = null ()
+       then do;
+                 call handler (p_dir_name, p_entry_name,
+                      GENERAL_EXTENDED_ACL_VERSION_1,
+                      get_system_free_area_ (), xacl_ptr, p_code);
+   
+                 if p_area_ptr = null ()
+                 then user_area_ptr = get_user_free_area_ ();
+                 else user_area_ptr = p_area_ptr;
+   
+  /* allocate and fill in the ACL structure we will return */
+   
+                 acl_count = xacl_ptr -&gt; general_extended_acl.count;
+                 allocate general_acl
+                      set (acl_ptr) in (user_area);
+   
+                 acl_ptr -&gt; general_acl.version =
+                      GENERAL_ACL_VERSION_1;
+   
+                 if acl_count = 0
+                 then do;
+                           free xacl_ptr -&gt; general_extended_acl;
+                           return;
+                      end;
+   
+                 acl_ptr -&gt; general_acl.access_name (*) =
+                      xacl_ptr -&gt; general_extended_acl.access_name (*);
+                 acl_ptr -&gt; general_acl.mode (*) =
+                      xacl_ptr -&gt; general_extended_acl.extended_mode (*);
+                 acl_ptr -&gt; general_acl.status_code (*) =
+                      xacl_ptr -&gt; general_extended_acl.status_code (*);
+                 free xacl_ptr -&gt; general_extended_acl
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+                      in (get_system_free_area_ () -&gt; system_area);
+                 p_acl_ptr = acl_ptr;
+            end;
+   
+  /* caller wants only some of the ACL entries */
+   
+       else do;
+   
+  /* transfer ACL info to XACL structure */
+   
+                 acl_count = p_acl_ptr -&gt; general_acl.count;
+                 allocate general_extended_acl
+                      set (xacl_ptr) in (get_system_free_area_ () -&gt; system_area);
+                 xacl_ptr -&gt; general_extended_acl.version =
+                      GENERAL_EXTENDED_ACL_VERSION_1;
+                 xacl_ptr -&gt; general_extended_acl.count = acl_count;
+                 xacl_ptr -&gt; general_extended_acl.access_name (*) =
+                      p_acl_ptr -&gt; general_acl.access_name (*);
+                 xacl_ptr -&gt; general_extended_acl.status_code (*) = 0;
+   
+  /* get the info */
+   
+                 call handler (p_dir_name, p_entry_name,
+                      GENERAL_EXTENDED_ACL_VERSION_1,
+                      null (), xacl_ptr, p_code);
+   
+  /* convert back to ACL form */
+   
+                 p_acl_ptr -&gt; general_acl.mode (*) =
+                      xacl_ptr -&gt; general_extended_acl.extended_mode (*);
+                 p_acl_ptr -&gt; general_acl.status_code (*) =
+                      xacl_ptr -&gt; general_extended_acl.status_code (*);
+   
+                 free xacl_ptr -&gt; general_extended_acl
+                      in (get_system_free_area_ () -&gt; system_area);
+            end;
+   
+       return;
+   
+  replace_acl:
+       entry (p_dir_name, p_entry_name, p_acl_ptr, p_no_sysdaemon,
+            p_code);
+   
+  /*
+     entrypoint to replace (change) the ACL of a chess game.
+   
+     after accepting a general ACL structure, fabricate an
+     extended ACL structure and pass it on to segment
+     support for extended ACLs.
+  */
+   
+  /* get an entry value for the ACL function */
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+   
+       call validate_chessgame (p_dir_name, p_entry_name, p_code);
+       if p_code ^= 0
+       then return;
+   
+       call fs_util_$make_entry_for_type (FS_OBJECT_TYPE_SEGMENT,
+            FS_REPLACE_EXTENDED_ACL, handler, p_code);
+   
+       if p_code ^= 0
+       then return;
+   
+  /* the job is easy if acl_ptr is null */
+   
+       if p_acl_ptr = null ()
+       then do;
+                 call handler (p_dir_name, p_entry_name,
+                      p_acl_ptr, p_code);
+                 return;
+            end;
+   
+  /* validate ACL structure */
+   
+       acl_ptr = p_acl_ptr;
+       if acl_ptr -&gt; general_acl.version ^= GENERAL_ACL_VERSION_1
+       then do;
+                 p_code = error_table_$unimplemented_version;
+                 return;
+            end;
+   
+  /* prepare for the allocation of the XACL structure */
+   
+       acl_count = acl_ptr -&gt; general_acl.count;
+   
+       if acl_count = 0
+       then return;
+   
+       xacl_ptr = null ();
+       on cleanup
+            begin;
+                 if xacl_ptr ^= null ()
+                 then free xacl_ptr -&gt; general_extended_acl
+                           in (get_system_free_area_ () -&gt; system_area);
+            end;
+   
+  /* allcoate and fill in the XACL structure */
+   
+       allocate general_extended_acl
+            set (xacl_ptr) in (get_system_free_area_ () -&gt; system_area);
+   
+       xacl_ptr -&gt; general_extended_acl.version =
+            GENERAL_EXTENDED_ACL_VERSION_1;
+   
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+       do mode_no = 1 to acl_count;
+            xacl_ptr -&gt; general_extended_acl.access_name (mode_no) =
+                 acl_ptr -&gt; general_acl.access_name (mode_no);
+            xacl_ptr -&gt; general_extended_acl.mode (mode_no) =
+                 translate (acl_ptr -&gt; general_acl.mode (mode_no));
+            xacl_ptr -&gt; general_extended_acl.extended_mode (mode_no) =
+                 acl_ptr -&gt; general_acl.mode (mode_no);
+            xacl_ptr -&gt; general_extended_acl.status_code (*) = 0;
+       end;
+   
+  /* forward call to the handler and copy back results */
+   
+       call handler (p_dir_name, p_entry_name,
+            xacl_ptr, p_no_sysdaemon, p_code);
+   
+       acl_ptr -&gt; general_acl.status_code (*) =
+            xacl_ptr -&gt; general_extended_acl.status_code (*);
+   
+       free xacl_ptr -&gt; general_extended_acl
+            in (get_system_free_area_ () -&gt; system_area);
+   
+       return;
+   
+  get_user_access_modes:
+       entry (p_dir_name, p_entry_name, p_user_name, p_ring,
+            p_modes, p_exmodes, p_code);
+   
+  /*
+     entrypoint to return the effective access to a
+     chessgame given a user name and ring number.
+   
+     the effective mode for a chessgame is the same as
+     its effective extended mode when viewed as a segment,
+     so we get segment support to do most of the work.
+  */
+   
+       p_modes, p_exmodes = ""b;
+   
+       call validate_chessgame (p_dir_name, p_entry_name, p_code);
+       if p_code ^= 0
+       then return;
+   
+       call fs_util_$make_entry_for_type (FS_OBJECT_TYPE_SEGMENT,
+            FS_GET_USER_ACCESS_MODES, handler, p_code);
+   
+       if p_code = 0
+       then call handler (p_dir_name, p_entry_name, p_user_name, p_ring,
+            modes, p_modes, p_code);
+   
+       return;
+   
+   
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+  /* INTERNAL PROCEDURES */
+   
+  validate_chessgame:
+       procedure (dir_name, file_name, status);
+   
+  /*
+     this procedure validates the format of a potential chess game.
+  */
+   
+  dcl  dir_name char (*) parameter;
+  dcl  file_name char (*) parameter;
+  dcl  status fixed bin (35) parameter;
+   
+       chessgame_ptr = null ();
+   
+       on cleanup
+            begin;
+                      if chessgame_ptr ^= null ()
+                      then call terminate_file_ (chessgame_ptr, 0, ""b, code);
+            end;
+   
+       call initiate_file_ (dir_name, file_name, R_ACCESS,
+            chessgame_ptr, bit_count, status);
+       if chessgame_ptr = null ()
+       then return;
+   
+       if chessgame_ptr -&gt; chessgame.version ^= CHESSGAME_VERSION_1
+       then p_code = error_table_$not_seg_type;
+       else p_code = 0;
+   
+       call terminate_file_ (chessgame_ptr, 0, ""b, code);
+   
+       return;
+   
+  end validate_chessgame;
+   
+  valid_chessgame_name:
+       procedure (file_name)
+       returns (bit (1) aligned);
+   
+  /*
+     the suffix on a chessgame must exactly be "chess".
+     check length, then contents of entryname suffix.
+  */
+   
+  dcl  file_name char (*) parameter;
+   
+       if (length (rtrim (file_name)) &gt; 32) |
+            (length (rtrim (file_name)) &lt; 7)
+       then return ("0"b);
+   
+       if substr (reverse (rtrim (file_name)), 1, 6) ^= "ssehc."
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+       then return ("0"b);
+       else return ("1"b);
+   
+  end valid_chessgame_name;
+   
+  translate:
+       procedure (ps_mode)
+       returns (bit (36) aligned);
+   
+  dcl  ps_mode bit (36) aligned parameter;
+  dcl  rw_mode (0:3) bit (36) aligned internal static
+       options (constant) init ("000"b, "100"b, "101"b, "101"b);
+   
+  /*
+     translation from chessgame modes to segment modes:
+   
+     ^s^p -&gt; null
+     s^p  -&gt; r
+     ^sp  -&gt; rw
+     sp   -&gt; rw
+  */
+   
+       return (rw_mode (binary (substr (ps_mode, 1, 2))));
+   
+  end translate;
+   
+  /* DECLARATIONS */
+   
+  /* Parameter */
+   
+  dcl (
+       p_dir_name char (*),
+       p_entry_name char (*),
+       p_old_name char (*),
+       p_new_name char (*),
+       p_code fixed bin (35),
+       p_copy_options_ptr pointer,
+  /*   p_max_length fixed bin (19),  not used in this procedure */
+  /*   p_bit_count fixed bin (24),   not used in this procedure */
+       p_user_name char (*),
+       p_ring fixed bin,
+       p_modes bit (36) aligned,
+       p_exmodes bit (36) aligned,
+       p_ring_brackets (*) fixed bin (3),
+       p_switch_name char (*),
+       p_switch_value bit (1) aligned,
+       p_acl_ptr pointer,
+       p_area_ptr pointer,
+       p_desired_version char (*),
+       p_no_sysdaemon bit (1),
+       p_suffix_info_ptr pointer,
+       p_switch_list_ptr pointer) parameter;
+
+
+  MTB-671                                 MULTICS TECHNICAL BULLETIN
+
+   
+  /* Automatic */
+   
+  dcl (
+      1 my_copy_options aligned like copy_options,
+       bit_count fixed bin (24),
+       modes bit (36) aligned,
+       user_area_ptr pointer,
+       ring_brackets (1:3) fixed bin (3),
+       xacl_ptr pointer,
+       code fixed bin (35),
+       mode_no fixed bin) automatic;
+   
+  /* Based */
+   
+  dcl  based_ring_bracket (1) fixed bin (3)
+       based (addr (p_ring_brackets));
+  dcl  user_area area based (user_area_ptr);
+  dcl  system_area area based;
+   
+  /* Static, External */
+   
+  dcl (
+       error_table_$not_seg_type fixed bin (35),
+       error_table_$unimplemented_version fixed bin (35),
+       error_table_$badstar fixed bin (35),
+       error_table_$argerr fixed bin (35),
+       error_table_$bad_acl_mode fixed bin (35),
+       error_table_$null_info_ptr fixed bin (35)) external static;
+   
+  /* Constant */
+   
+  dcl (COPY_FLAGS_MASK init ("110001100100000000000000000000000000"b),
+       MODE_MASK init ("110000000000000000000000000000000000"b))
+            bit (36) aligned internal static options (constant);
+   
+  /* Entry (in order of appearance, well almost) */
+   
+  dcl  handler entry variable options (variable);
+   
+  dcl  initiate_file_ entry (char(*), char(*), bit(*), ptr,
+       fixed bin(24), fixed bin(35));
+  dcl  terminate_file_ entry (ptr, fixed bin(24), bit(*),
+       fixed bin(35));
+  dcl  fs_util_$make_entry_for_type entry (char(*), char(*), entry,
+       fixed bin(35));
+  dcl  get_user_free_area_ entry () returns (ptr);
+  dcl  get_system_free_area_ entry () returns (ptr);
+   
+  /* Condition */
+   
+  dcl  cleanup condition;
+
+
+  MULTICS TECHNICAL BULLETIN                                 MTB-671
+
+   
+  /* Builtin */
+   
+  dcl (
+       null,
+       length,
+       rtrim,
+       binary,
+       substr) builtin;
+   
+  /* Include Files */
+   
+  %page;%include chessgame;
+  %page;%include copy_options;
+  %page;%include copy_flags;
+  %page;%include file_system_operations;
+  %page;%include suffix_info;
+  %page;%include acl_structures;
+  %page;%include access_mode_values;
+   
+  end suffix_chess_$validate;
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

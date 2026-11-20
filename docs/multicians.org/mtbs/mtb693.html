@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-693</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-693: Improving the Security of Multics IPC.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-693
+Improved Security IPC
+
+To:       Distribution
+
+From:     Eric J. Swenson
+
+Date:     11/11/84
+
+Subject:  Improving the Security of Multics IPC
+
+1 ABSTRACT
+
+     This  MTB  describes  some  of  the  problems  with the
+     current   implementation   of  Multics   Inter  Process
+     Communications (IPC) and suggests several changes which
+     will improve its reliability and security.  The changes
+     proposed  will  be  completely  invisible  to  users of
+     Multics.
+
+     Comments should be sent to the author:
+
+     via Multics Mail:
+        Swenson at either System-M, MIT, or CISL-SERVICE.
+
+     via Forum:
+        &gt;udd&gt;m&gt;mtgs&gt;B2 on System-M
+
+     via telephone:
+        (HVN) 492-9365, or
+        (617) 492-9365
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+MTB-693                                Multics Technical Bulletin
+                                            Improved Security IPC
+
+2 PROBLEMS IN THE CURRENT IMPLEMENTATION
+
+     In the  current implementation of IPC,  the hardcore is
+     unable to validate completely  a user's request to send
+     an IPC wakeup to another  process.  To send a wakeup, a
+     sending  process  needs  to  know the  process-id  of a
+     target process,  and the name of  an event channel over
+     which  to  send  the  wakeup.  While  the  hardcore can
+     easily  determine the  validity of the  process-id of a
+     target process, it has no mechanism to verify the event
+     channel  name other  than a few  very primitive checks.
+     It is  not difficult for a  malicious user to construct
+     event channel names which pass these incomplete checks.
+     Since the hardcore is unable to perform the validation,
+     it  relies  on  the  target  process  to  do  so.  This
+     necessarily  means that  a malicious  user can  send an
+     arbitrary  number of  wakeups to a  target process, and
+     the target process must  spend arbitrary amounts of CPU
+     time  (for  which  it  is charged)  verifying  that the
+     wakeups   are   indeed  for   event  channels   it  has
+     established.  Even then, the target process has no sure
+     way  to  validate the  wakeup and  can be  tricked into
+     performing actions not expected or desired on behalf of
+     the sending process.
+
+          Further,  due  to  various  bugs  in  the hardcore
+     handling  of wakeups,  it is  possible for  a malicious
+     user to construct mal-formed  event channel names which
+     will  result  in  the  target process'  taking  a fatal
+     process error when attempting to process the wakeup.
+
+          The  security of  the current  IPC depends  on the
+     fact  that  the  process-ids  of  other  processes  are
+     difficult to determine unless explicitly made available
+     by a  process.  Although not  within the scope  of this
+     MTB, it  can be demonstrated  that guessing process-ids
+     is a trivial programming  effort.  In all fairness, IPC
+     security  is also  based on the  fact that  in order to
+     send a wakeup over a  particular event channel, one has
+     to  know  its  name,  or  handle.   However,  as stated
+     previously, enough  mischief can be caused  on the part
+     of a malicious process, by carefully constructing event
+     channel names, which, when  processed, will bring about
+     the desired effect.
+
+          A  side  effect  of  the  hardcore's  inability to
+     validate IPC wakeups is  its inability to audit invalid
+     wakeups.   Due  to  the   lack  of  a  secure  auditing
+     mechanism  in   the  user-ring  IPC   software,  it  is
+
+
+Multics Technical Bulletin                                MTB-693
+Improved Security IPC
+
+     currently  impossible  to perform  the auditing  in the
+     target process either.
+
+3 EFFECT OF THE PROPOSED IPC CHANGES
+
+     The effect of the changes  proposed in this MTB will be
+     to  provide  wakeup-time  validation  of  IPC  wakeups,
+     auditing  of invalid  wakeups, an  event channel naming
+     scheme  which will  greatly increase  the difficulty of
+     fabricating event  channel names, and  fixes to various
+     IPC bugs  currently known to exist.   The validation of
+     wakeups  and  the  auditing  of  invalid  ones  will be
+     performed by the sending process in ring-0, eliminating
+     much of  the need for  the target process  to spend its
+     own resources rejecting invalid wakeups.
+
+4 PROPOSED CHANGES TO IPC
+
+     The  security  problems surrounding  IPC stem  from the
+     format  of  event channel  names  and the  inability of
+     Ring-0  IPC  and user-ring  IPC to  completely validate
+     them.   There  are two  types  of event  channels, fast
+     channels and regular event channels.  The format of the
+     event channel names for  each is different and detailed
+     below by way of a PL/I structure declaration:
+
+       dcl 1 fast_event_channel_name structure aligned,
+             2 ecte_ptr pointer unaligned,
+             2 ring fixed bin (3) unsigned unaligned,
+             2 mbz bit (15) unaligned,
+             2 channel_index fixed bin (17) unaligned;
+
+       dcl 1 regular_event_channel_name structure aligned,
+             2 ecte_ptr pointer unaligned,
+             2 ring fixed bin (3) unsigned unaligned,
+             2 unique_id fixed bin (33) unsigned unaligned;
+
+     Both  event channel  name formats  include an ecte_ptr.
+     For regular  channels, this is a  packed pointer to the
+     Event Channel Table Entry  (ECTE) in the ring specified
+     by the  "ring" in the  event channel name.   It is very
+     difficult  for either  Ring-0 IPC  or user-ring  IPC to
+     validate that the ecte_ptr  does indeed address an ECTE
+     created  by IPC.   For fast  channels, the  ecte_ptr is
+     null  and  the  channel_index  is used  to  locate data
+     associated with the fast channel.
+
+
+MTB-693                                Multics Technical Bulletin
+                                            Improved Security IPC
+
+          The new  IPC will remove  the ECTE pointer  in the
+     event channel  name.  Instead will be  an encoded index
+     into  the new  Event Channel Index  Table (ECIT).  This
+     table, whose entries contain  solely packed pointers to
+     the  actual ECTEs,  will be created  and initialized at
+     ECT initialization.  The index  will be encoded using a
+     special algorithm,  described below, so that  it can be
+     validated both at wakeup time and at handling time.  In
+     addition to encoding the index,  a new 3-bit flag field
+     will be  encoded as well.  While  the flag field serves
+     no  purpose  and  is  ignored  in  this implementation,
+     future  changes  to  IPC  will  utilize  this  field to
+     specify channels  which require special  handling.  The
+     following PL/I declaration specifies  the format of the
+     new event channel names:
+
+       dcl 1 event_channel_name structure aligned,
+             2 encoded_index_and_flags bit (18) unaligned,
+             2 verifier bit (18) unaligned,
+             2 ring fixed bin (3) unsigned unaligned,
+             2 type bit (1) unaligned,
+             2 mbz bit (14) unaligned,
+             2 unique_id fixed bin (18) unsigned unaligned;
+
+     The "encoded_index_and_flags" field  will contain in an
+     encoded fashion, the index into  the ECIT and the 3-bit
+     flag field.  The encoding algorithm is described later.
+     The "verifier"  field will be used  in conjunction with
+     the  "encoded_index_and_flags"  field  to  validate the
+     event  channel name.   "ring" contains,  as before, the
+     ring number where the event channel originated.  "type"
+     specifies  whether  the event  channel  is a  "fast" or
+     "regular"  event  channel.  The  unique_id is  used, as
+     before,  to make  regular event channels  unique and to
+     index into the arrays of fast event channel data.
+
+          Because  the  proposed change  could result  in an
+     encoded  index and  verifier with  the value  of a null
+     packed   pointer,   it   is  no   longer   possible  to
+     distinguish, for certain, a fast channel from a regular
+     channel simply  by examining the  former ecte_ptr field
+     for  equivalence with  a null packed  pointer.  The new
+     "type" field within the  event channel name will become
+     the method of distinguishing fast channels from regular
+     channels.  Ring-0 will be  modified appropriately to do
+     this.
+
+
+Multics Technical Bulletin                                MTB-693
+Improved Security IPC
+
+4.1 R-Offset and R-Factor
+
+     The  encoding algorithm,  whose description  follows in
+     the  next  section, makes  use  of the  operands termed
+     "R-Offset"   and   "R-factor".    These   operands  are
+     initialized  at  process  creation time  by  the ring-0
+     programs  act_proc  and  init_proc  and  stored  in the
+     process' Active  Process Table Entry  (APTE).  They are
+     in the  APTE so that  ring-0 will be  able to reference
+     these values  for a specified target  process at wakeup
+     time  (call  to  hcs_$wakeup).  These  values  are also
+     retrieved   from  ring-0   by  user-ring   IPC  at  ECT
+     initialization time  and stored in  the ECT for  use in
+     event  channel  name decoding.   R-Offset is  an 18-bit
+     unsigned  integer,  and R-Factor  is a  36-bit unsigned
+     integer.  All arithmetic algorithms  to be described is
+     unsigned  and  modular   arithmetic  --  overflows  are
+     ignored.
+
+          For best  results, these values  should be random.
+     However, adequate effects can be achieved by generating
+     both numbers by keying off  bit substrings of the clock
+     value.  In order to minize the ability for a process to
+     guess the value of R-Factor for a process given that it
+     has knowlege of R-Offset, a delay is introduced between
+     generating  R-Offset  and   R-Factor.   This  delay  is
+     accomplished  by  having act_proc  create  R-Offset and
+     init_proc  create  R-Factor.   init_proc  is  the first
+     ring-0 program  to run in  a process after  it receeves
+     the   initial  wakeup   from  the   answering  service.
+     Act_proc is run in the  answering service to set up the
+     process.   There is  an unpredictable  time lag between
+     these program's running.
+
+4.2 Encoding ECIT Indices and Flags
+
+     When an event channel is created, a free ECIT slot will
+     be located  by the user-ring  IPC.  The index  into the
+     ECIT  (a  15-bit value)  and  the 3-bit  flags  will be
+     combined  to produce  an 18-bit  unencoded index.  This
+     index is added to the value of R-Offset for the process
+     to  produce  the  encoded  index  stored  in  the event
+     channel  name.  The  "verifier" is  generated by taking
+     the  middle  18-bits  from  the 54-bit  product  of the
+     unencoded  index  and  R-Factor.   The  verifier,  too,
+     becomes  part  of the  event  channel name.   Note that
+     R-Offset and R-Factor will be  stored in the ECT header
+     for easy access by the  process and will be unavailable
+     to any process other than the owner of the ECT.
+
+
+MTB-693                                Multics Technical Bulletin
+                                            Improved Security IPC
+
+4.3 Validating Event Channel Names
+
+     When a process calls hcs_$wakeup  to send a wakeup to a
+     target process,  Ring-0 will extract  the encoded_index
+     and verifier from the event channel name supplied.  The
+     target  process  will  be  located, and  the  values of
+     R-Offset and R-Factor found in the target process' APTE
+     will be used in the validation algorithm which follows:
+     The unencoded index is derived by subtracting the value
+     of R-Offset from the encoded index in the event channel
+     name.   A verifier  is generated by  the same algorithm
+     described in the proceeding section and compared to the
+     verifier supplied  in the event channel  name.  If they
+     match,  then ring-0  will perform  the same  actions as
+     currently  done.   If  the  computed  verifier  and the
+     verifier in  the event channel name  do not match, then
+     the wakeup is rejected and an audit message logged.
+
+4.4 Guessing Event Channel Names
+
+     The new event channel  naming scheme will make guessing
+     event  channel  names   more  difficult.   Without  the
+     knowledge  of any  event channel  names for  a process,
+     guessing  an  event  channel  name  will  be  difficult
+     because R-Offset and R-Factor are not known.  Given one
+     event  channel name,  it is  not terribly  difficult to
+     guess event  channel names by making  assumptions as to
+     what  the value  of R-Offset  is and  then, from there,
+     determining  an  appropriate  R-factor.   However,  for
+     processes  with  many event  channels, the  guessing is
+     much more  difficult than for processes  with few event
+     channels.   All  in all,  while guessing  event channel
+     names is not impossible,  the proposed scheme is better
+     than the current scheme.
+
+5 CHANGES NECESSARY TO IMPLEMENT THE NEW IPC
+
+     All  the programs  which comprise  user-ring and ring-0
+     IPC must  be recompiled with the  new include files and
+     modified slightly  to accommodate the  changes in event
+     channel names  and the datatypes of  the various fields
+     in  the  include  files.   In  addition,  ipc_real_ and
+     ipc_util_  must be  changed to  generate the new-format
+     event channel  names and to  allow location of  an ECTE
+     given an event channel  name.  This includes setting up
+     the  new  ECIT.  Ring-0  IPC (hc_ipc,  fast_hc_ipc, and
+     pxss) must be changed to recognize the new format event
+     channel names.  They must include calls to validate the
+
+
+Multics Technical Bulletin                                MTB-693
+Improved Security IPC
+
+     event channel name (by extracting R-Offset and R-Factor
+     from the target APTE  and performing the computations).
+     The   Ring-0  module   act_proc  must   be  changed  to
+     initialize  R-Offset.   init_proc  must  be  changed to
+     initialize  R-Factor.   tc_util  will  be  modified  to
+     extract  the values  of R-Offset  and R-Factor  from an
+     APTE  and  an  hcs_  entrypoint, hcs_$get_ipc_operands,
+     will be created to return  these values for the calling
+     process.
+
+6 COMPLICATIONS
+
+     The TCP/IP  networking software has its  own version of
+     IPC which implements the changes needed for the tasking
+     software.  Making the proposed changes to the installed
+     IPC  will cause  the network  software (tasking)  to no
+     longer  function.    Therefore,  it  is   necessary  to
+     integrate the  new IPC validation  functionality in the
+     version  of  IPC used  by  the tasking  software.  This
+     involves  modifying several  programs in  the a similar
+     manner as for the installed version of IPC.
+
+7 SPECIAL CONCERNS FOR THE INITIALIZER PROCESS
+
+     Currently, when the ECT is  created, an area is created
+     which  is  large  enough  for  approximately  30  event
+     channels.  The area  software automatically expands the
+     area if an attempt is made to allocate channels into it
+     which  would  exceed  the  current  size.   In  the new
+     implementation, the  ECIT is created with  a size of 30
+     and  expanded if  it is  overflowed.  Because  it is an
+     allocated  structure  in the  ECT area,  a new  ECIT is
+     created  and  all  the  entries  copied  into  the new,
+     larger,  ECIT,  and  the  old one  freed.   Because the
+     Initializer process uses so  many event channels, a new
+     entrypoint  will  be  provided,  ipc_$create_ect, which
+     will allow create  an ECT and ECIT with  enough room to
+     accommodate  the  expected  number  of  event channels.
+     This  will  improve  the  efficiency  of  event channel
+     creation in the Initializer process.  This entry may be
+     used by  other applications (before  any event channels
+     are created) to  set the size of the  ECT and ECIT.  If
+     the entry is called  after ECT initialization, the size
+     specified in the call will  be stored in the ECT header
+     for  use  the  next  time  the  ECIT  is  expanded,  if
+     necesssary.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

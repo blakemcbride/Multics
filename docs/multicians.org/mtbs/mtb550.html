@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-550</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-550: Data Managment: Index Manager Design.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-550
+DM: index_manager_ design
+
+To:       Distribution
+
+From:     Lindsey Leroy Spratt
+
+Date:     01/12/83
+
+Subject:  Data Managment: Index Manager Design
+
+1 ABSTRACT
+
+     This document describes various facets of the implementation
+of the index manager.
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project.
+
+
+MTB-550                                Multics Technical Bulletin
+                                        DM: index_manager_ design
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Spratt.Multics on either MIT Multics or System M.
+
+via US Mail:
+   Lindsey Spratt
+   Honeywell Information Systems, inc.
+   575 Tech Square
+   Cambridge, Massachusetts 02139
+
+via telephone:
+   (HVN) 261-9321, or
+   (617) 492-9321
+
+
+
+                             CONTENTS
+
+                                                         Page
+
+                 1 Abstract . . . . . . . . . . . . . .     i
+                 2 Introduction . . . . . . . . . . . .     1
+                 3 B-Trees  . . . . . . . . . . . . . .     1
+                 4 Index manager utilities  . . . . . .     2
+                 5 Storage techniques . . . . . . . . .     2
+                    5.1 Index control intervals . . . .     3
+                    5.2 Key structure . . . . . . . . .     3
+                    5.3 Key prefixes  . . . . . . . . .     4
+                    5.4 Determining an appropriate set
+                     of prefixes  . . . . . . . . . . .     6
+                 6 Interface for manipulating keys in
+                  control intervals . . . . . . . . . .     6
+                 7 Key layout . . . . . . . . . . . . .     6
+                    7.1 The field_table structure . . .     7
+                 8 Allocation of keys . . . . . . . . .     9
+                    8.1 Allocation of keys to control
+                     intervals  . . . . . . . . . . . .     9
+                       8.1.1 Rotating keys  . . . . . .     9
+                       8.1.2 Splitting control
+                        intervals . . . . . . . . . . .    10
+                       8.1.3 Overlength keys  . . . . .    10
+                    8.2 Allocation of a key within a
+                     control interval . . . . . . . . .    10
+                 9 The search algorithm . . . . . . . .    11
+                    9.1 Basic approach  . . . . . . . .    11
+
+Multics Technical Bulletin                                MTB-550
+DM: index_manager_ design
+
+2 INTRODUCTION
+
+     The  index_manager_ subsystem  maintains a  "sorting" index,
+where the keys of which the index is composed may be composed, in
+turn, of several fields of  differing data types.  Strategies are
+implemented which reduce the number  of pages touched in a search
+of the index, and which  reduce the overall storage requirements.
+The  algorithm  for  building  and  maintaining  the  index  is a
+modified form of the B-tree  algorithm.  The storage reduction is
+due  to the  use of a  "prefix extraction"  algorithm.  The basic
+concept behind  this is to store  data only once which  is at the
+beginning of several keys.  The data which is stored only once in
+this fashion is a "prefix".
+
+3 B-TREES
+
+     In a survey of B-tree algorithms, "The Ubiquitous B-Tree" by
+Douglas Comer in Computing Surveys,  Vol.  11, No.  2, June 1979,
+the  various  B-tree algorithms  are  divided into  several major
+categories; the  basic B-tree, the B*-tree  and the B+-tree.  The
+technique employed by index_manager_ is in the B+-tree category.
+
+     There are  two basic ideas  in the B-tree.   First, keys are
+allocated in "control intervals"  or "pages".  A control interval
+is a piece  of storage which can be read  from or written to disk
+in a single  operation.  Consecutive keys are placed  in the same
+control interval.  If  a key wont fit in  the control interval of
+the keys  which are to  either side of  it, then it  is placed in
+another  control  interval which  is pointed  to by  the "branch"
+pointer which lies between the lesser and greater keys which this
+key  was  to be  placed  between.  "Nodes"  in  a B-tree  are the
+control intervals in which keys are placed.
+
+     The second idea is to allocate the storage of keys in such a
+way as to keep the tree of control intervals, or nodes, balanced.
+The nodes at  the bottom of the tree are  the leaf nodes.  In the
+basic  B-tree, a  key can be  stored in  a branch node  or a leaf
+node, depending on  where there happens to be  room and where the
+key falls in the sort of the keys already in the index.
+
+     The   B+-tree   has   the   primary   difference   that  all
+user-specified keys  are stored in  the leaf nodes.   The keys in
+the branch nodes  serve only to provide a roadmap  to the keys in
+the  leaves.   The  leaf  nodes  are  linked  together  to  speed
+sequential access of the keys.  Since  a key in a branch node may
+have  any value  as long as  its value  discriminates between the
+keys which are its children, the primary criterion for choosing a
+value  for  a branch  key  is to  choose  the shortest  value.  A
+convenient technique for determing the  shortest value is to find
+
+
+MTB-550                                Multics Technical Bulletin
+                                        DM: index_manager_ design
+
+the common prefix which the  two keys being discriminated between
+have (which may  well be nothing) and add one  more piece of data
+beyond the prefix from the higher  of the two keys.  Depending on
+the data type involved, this one more piece of data may be a bit,
+a  character,  or an  entire field.   Comer refers  to this  as a
+"Prefix  B+-tree".   ("Prefix extraction",  as used  elsewhere in
+this MTB, refers  to a technique of key  compression and the term
+"prefix"  will  henceforth  only be  used  to refer  to  this key
+compression technique and not in the sense which Comer uses it.)
+
+4 INDEX MANAGER UTILITIES
+
+     The index manager uses three utilities, collection_manager_,
+data_mgmt_util_,   and  vector_util_.    The  storage  management
+utility, collection_manager_,  deals directly with  the page file
+manager and talks in terms of "elements" of the index collection.
+These  elements  are  undifferentiated   bit  strings,  they  are
+allocated  in "control  intervals".  A  control interval  is 1024
+words long, one  Multics page.  At some point  in the future this
+size will become settable on a per-page file basis, approximately
+in the  range of 512  to 4096 words.   The collection_manager_ is
+documented  in  MTBs 551,  "Data Management:   Collection Manager
+Functional   Specification.",   and    552,   "Data   Management:
+Collection Manager Design.".
+
+     The   key   data  is   presented  to   the  caller   of  the
+index_manager_ as a typed_vector structure (see MTB-541 "Toward a
+unification  of  data  manipulation  on  Multics."   for  a brief
+discussion  of data  vectors).  The  vector_util_ module provides
+tools for creating and manipulating vectors of data.
+
+     The  internal  representation of  keys  is as  a continuous,
+peculiarly  formatted,   bit  string.   This   representation  is
+sometimes referred to as the "string" representation, in contrast
+to  the  "vector"  representation  used to  communicate  with the
+caller  of the  index_manager_.  Converting  between the "vector"
+representation and the  "string" representation, and manipulating
+and interpreting the contents  of the "string" representation are
+all  functions performed  by data_mgmt_util_ (which  is also used
+for this purpose by the record_manager_).
+
+5 STORAGE TECHNIQUES
+
+     Keys   are   stored   as  elements   in   collections  using
+collection_manager_.   The  elements  are  a  storage abstraction
+managed as  undifferentiated bit strings.   The control intervals
+in  an index  collection are  either branch  control intervals or
+leaf control  intervals.  The branching  keys stored in  the same
+
+
+Multics Technical Bulletin                                MTB-550
+DM: index_manager_ design
+
+control interval may have some amount  of data in common in their
+"most  significant  bits".  The  optimum  set of  common prefixes
+between keys in a control interval is used to minimize storage.
+
+5.1 Index control intervals
+
+     Each  of the  two kinds  of index  control intervals  has an
+associated data structure.  The  branch control interval uses the
+branch_ci_header  structure and  the leaf  control intervals uses
+the  leaf_ci_header  structure.    These  control  intervals  are
+threaded together in a tree.  Each level of the tree, in addition
+to being threaded to its  parents, is threaded in a doubly-linked
+list to its immediate siblings to aid sequential access.
+
+     The  headers  are stored  as  elements with  slot  number 1.
+Every control interval  in an index collection has  either a leaf
+or   a   branch   header.     The   headers   are   declared   in
+dm_im_ci_header.incl.pl1 as shown below:
+     dcl     1 common_ci_header     based (common_ci_header_ptr),
+               2 flags              unaligned,
+                 3 is_leaf          bit (1) unaligned, /* ON for leaf_ci. */
+                 3 pad              bit (17) unaligned,     /* Must be zero. */
+               2 key_tail_space_used_since_last_prefix_compaction
+                                    fixed bin (18) unsigned unal,
+               2 key_range          unaligned,
+                 3 first            fixed bin (18) unsigned,
+                 3 last             fixed bin (18) unsigned,
+               2 parent_id_string   bit (36) aligned,
+               2 previous_id        fixed bin (24) unsigned unaligned,
+               2 next_id            fixed bin (24) unsigned unaligned,
+               2 pad                bit (24) unaligned;
+
+     dcl     1 leaf_ci_header       based (leaf_ci_header_ptr),
+               2 common             like common_ci_header;
+
+     dcl     1 branch_ci_header     based (branch_ci_header_ptr),
+               2 common             like common_ci_header,
+               2 low_branch_id      fixed bin (24) unsigned unaligned,
+               2 pad                bit (12) unaligned;
+
+5.2 Key structure
+
+     The   keys  are   allocated  within   the  control  interval
+structures.  Every  key which is inserted  into the index appears
+in its entirety  in the leaf control intervals.   The data in the
+branch control  intervals is only  present to guide  the searches
+against the keys.  The values of the branching keys are chosen to
+
+
+MTB-550                                Multics Technical Bulletin
+                                        DM: index_manager_ design
+
+be  the minimum  necessary length  to differentiate  between leaf
+keys.   Every  branching key  has  a branch  control  interval id
+associated with  it.  This identifies the  control interval which
+contains keys  which are between  the branching key  and the next
+higher branching key in the same control interval.
+
+     There are  different key structures  for the branch  and the
+leaf control intervals.  The keys in the branch control intervals
+are formatted according to the  branch_key structure, the keys in
+the  leaf  control  intervals  are  formatted  according  to  the
+leaf_key structure.  In both cases,  the field_table must be used
+to  decode the  "contents" of  the key.   The key  structures are
+declared in dm_im_key.incl.pl1 as shown below:
+
+     dcl     1 leaf_key             based (leaf_key_ptr) unaligned,
+               2 string             bit (lk_string_length) unal;
+
+     dcl     1 branch_key           based (branch_key_ptr) unaligned,
+               2 branch_id          fixed bin (24) unsigned unaligned,
+               2 last_field_idx     fixed bin (12) unaligned unsigned,
+               2 string             bit (bk_string_length) unal;
+
+5.3 Key prefixes
+
+     There  may  be several  prefix  groupings of  keys,  where a
+"prefix grouping" is  all of the keys in  a control interval with
+the  same prefix.   This prefix  is stored  as an  element of the
+branch_index_control_interval,  with   an  element_position_table
+slot less than  the value of first_key_in_element_position_table.
+If there  aren't enough slots,  the keys have to  be shifted down
+one  in  the  element_position_table  to make  room  for  the new
+prefix.     The    prefixes    are    placed    first    in   the
+element_position_table because they are less volatile than keys.
+
+           dcl 1  prefix            based (prefix_ptr)
+                                    aligned,
+               2 first_slot
+                                    fixed bin(12)
+                                    unsigned unaligned,
+               2 last_slot
+                                    fixed bin(12)
+                                    unsigned unaligned,
+               2 number_of_fields fixed bin (17) unaligned,
+               2 final_field_is_fragment
+                                    bit(1) unaligned,
+               2 pad                bit(5) unaligned,
+               2 contents           bit  (prefix_contents_length);
+
+     Only the "tails" of the  branching keys need be stored, now,
+
+
+Multics Technical Bulletin                                MTB-550
+DM: index_manager_ design
+
+since the  entire branching key  can be reconstructed  at need by
+prefixing the "tail" portion with  its prefix.  It is possible to
+break a prefix and a tail across  a field of the key if the field
+is of a string data-type.
+
+     Since the prefix may include any number of fields, from none
+to all, the number of fields  actually present in the prefix must
+be stored with the prefix.  If  there are N fields present in the
+prefix, they  must be the fields  with field ids of  1 through N.
+Also,  a bit  is set  to indicate  whether the  Nth field  of the
+prefix is  complete, or a  fragment completed in each  of the key
+tails.  Since  only the Nth  field can be  fragmented, there only
+needs to be one "field_is_fragmented" bit.
+
+     The worst case  possible for a set of  keys, with respect to
+number of keys  having a common prefix, is  0.  However, a subset
+may  exist for  which there is  a common prefix.   This prefix is
+"factored" out of  the keys This is done for  each subset of keys
+with a common prefix in the control interval.  In this fashion it
+is  possible to  have several prefixes  for the keys  in a single
+control interval (each key having only one prefix, of course).
+
+     Since  the  intent of  the  prefixing technique  is  to save
+storage space by not replicating  data, it is appropriate to only
+do  prefix-extraction  when space  will  actually be  saved.  The
+space saved  is the amount  of space the replication  of the data
+would take minus the amount of space for storing the prefix, or:
+
+     prefix_space_saving
+          = replication_space_use - prefix_space_use,
+
+          = (prefix_length * number_of_keys_with_prefix)
+               - (prefix_overhead + prefix_length),
+
+          = prefix_length * (number_of_keys_with_prefix - 1)
+               - prefix_overhead.
+
+     Prefixes  are only  extracted if  the prefix_space_saving is
+great enough to make it worthwhile.  This means not only that the
+prefix_space_saving must be greater than  0, but it must be great
+enough to compensate for the  extra indirection (to construct the
+whole key).  Prefixes can provide a small savings in computation,
+when two  successive comparisons are  against keys with  the same
+prefix.  In this situation, the result of the previous comparison
+can be  re-used.  In general,  however, the use  of prefixes will
+increase cpu cost.
+
+     Prefixes are determined under two circumstances.  When a key
+is being inserted,  it is known (from the  search process used to
+determine where to insert the key)  what, if any, of the existing
+
+
+MTB-550                                Multics Technical Bulletin
+                                        DM: index_manager_ design
+
+prefixes apply to  it.  The appropriate value is  recorded in the
+previous_prefix_index  variable.   The  other   case  is  when  a
+compaction is being done of the entire control interval.
+
+     Compaction is  done when there  is insufficient room  in the
+free space  pool to do  an insertion.  In  the simplest situation
+compaction is only used to  recover scatterred free space left by
+deleting  key   contents.   Prefix  extraction   is  done  during
+compaction,  but  only  if  scattered  free  space  compaction is
+insufficient                        and                       the
+key_tail_space_used_since_last_prefix_extraction is  greater than
+or equal  to the reqired  amount of space  to successfully insert
+the new  key.  This will  require rebuilding the  set of prefixes
+and the key "tails".
+
+5.4 Determining an appropriate set of prefixes
+
+     The algorithm for  selecting the set of prefixes  to be used
+within a given control interval starts  with a sorted list of all
+of the keys  in the control interval.  This  list is passed over,
+from  first key  to last, building  a list of  prefixes which are
+applicable to the  keys seen so far, testing  the prefixes of the
+list against the  current key to keep the  current prefix list up
+to date.  When done with this set of comparisons, there is a list
+of  all of  the prefixes  which are  sufficiently common  to bear
+extraction.  The mapping of keys-to-prefixes is used to get a set
+of key tails.  Finally, the whole  mess of key tails and prefixes
+is      put     into      the     control      interval     using
+collection_manager_$put_element.
+
+6 INTERFACE FOR MANIPULATING KEYS IN CONTROL INTERVALS
+
+     When a key  is stored in the index  collection, it is broken
+up  into  as  many  datums  as  necessary,  where  each  datum is
+contained within a control interval.   All of the datums together
+make  a  single  "element" of  the  index collection.   A  set of
+primitives  exists for  allocating keys,  freeing them, rewriting
+and retrieving.  The  key is known to these  primitives as only a
+
+_________________________________________________________________
+
+The   key_tail_space_used_since_last_prefix_extraction    is   an
+approximate value, which is only useful as an optimization aid in
+determining when to do a prefix analysis.
+
+
+Multics Technical Bulletin                                MTB-550
+DM: index_manager_ design
+
+string of bits, an "element".  The  structure of the key as a set
+of fields is known and used by the data_mgmt_util_ utility.
+
+7 KEY LAYOUT
+
+     The key is layed out within  the element.  The layout of the
+key is  the either the  branch_key or the  leaf_key structure, as
+appropriate.   The  layout of  the contents  is described  in the
+"field_table" structure, described below.   The layout of the key
+is  divided into  the fixed portion  of the key  and the variable
+portion,  this  being divided  yet again  among prefixes  and the
+"tail".  The fixed portion is composed of all of the fixed-length
+fields,  and  the  length  data for  the  variable  fields.  This
+minimizes  the   expense  of  accessing  the   fixed  fields,  as
+intermingling  fixed-length  and   varying-length  data  requires
+calculating each field's position for each key and separating the
+fixed and varying field data  eliminates the need for calculating
+the location of the fixed fields.
+
+     The  variable  portion  of  the  key  consists  only  of the
+contents  of  the  variable   length  fields.   The  field  table
+describes the beginning location for  the fixed length fields and
+the location of the length  value for the variable length fields.
+It also describes the type of  each field, and the location where
+the first variable field's contents start.
+
+7.1 The field_table structure
+
+     The field_table structure is  stored in the index_manager_'s
+per-index-collection header information,  along with the location
+of the root node of the index and  a set of counts of the keys in
+the     index.      The     field_table     is     declared    in
+dm_field_table.incl.pl1 as shown below:
+     dcl     1 field_table          aligned based (field_table_ptr),
+               2 version            fixed bin (17) unal,
+               2 number_of_fields   fixed bin (17) unal,
+               2 maximum_field_name_length
+                                    fixed bin (17) unal,
+               2 location_of_first_varying_field
+                                    fixed bin (17) unal,
+               2 field              (ft_number_of_fields
+                                    refer (field_table.number_of_fields)),
+                 3 name             char (ft_maximum_field_name_length
+                                    refer
+                                    (field_table
+                                    .maximum_field_name_length)) var,
+                 3 flags            unal,
+                   4 descriptor_is_varying
+
+
+MTB-550                                Multics Technical Bulletin
+                                        DM: index_manager_ design
+
+                                    bit (1) unal,
+                   4 length_is_in_characters
+                                    bit (1),
+                   4 must_be_zero   bit (7) unal,
+                 3 location         fixed bin (35),
+                 3 descriptor       bit (36) aligned,
+                 3 length_in_bits   fixed bin (35),
+               2 varying_field_map  (ft_number_of_fields
+                                    refer (field_table
+                                    .number_of_fields)),
+                 3 field_id         fixed bin (17) unal,
+                 3 varying_field_index
+                                    fixed bin (17) unal;
+
+     The field_table.field array has one  entry for each field in
+the  key, varying  and non-varying.  The  varying and non-varying
+fields may be intermingled in this array.
+
+     The  field_table.field.location variable,  for a non-varying
+field, identifies  the starting offset  in the key_string  of the
+data  for the  field.  field_table.field.type  identifes the data
+type of  the field which  is sufficient to  know the size  of the
+value  for most  types.  For  some types,  e.g.  char_nonvar, the
+field_table.field.size value  is used to determine  the length of
+the value.
+
+     For  a varying  field, field_table.field.location identifies
+the  location  of  the  length   value  for  the  field  (in  the
+key_string).   The actual  value of the  field is  found (for the
+first               varying               field)               at
+field_table.location_of_first_varying_field  in  the  key_string.
+The      second      varying      field      is      found     at
+field_table.location_of_first_varying_field  +  (length  of first
+varying field).
+
+     The length and contents of  varying fields are separated out
+in  this  fashion to  help speed  references to  specific varying
+fields,  by  allowing quicker  references to  the lengths  of the
+preceding  varying  fields  than  that  allowed  by  the  obvious
+alternative of storing:
+
+length1 + contents1 + length2 + contents2 + length3 + contents3 +
+...
+
+where:  to pick up contents3  one positions to length1, reads it,
+adds  it  in  and  positions to  length2,  reads  it,  skips over
+contents2, reads length3, reads contents3.  Also, this allocation
+technique allows  storing the fields  in the same  order as their
+definition by the caller at index-creation time.
+
+
+Multics Technical Bulletin                                MTB-550
+DM: index_manager_ design
+
+     The varying_field_map array speeds the location of any given
+field, which is of a varying type.
+
+     The varying_field_map (ordinality_of_varying_field).field_id
+is used  to determine the index  into field_table.field array for
+the Nth varying field.
+
+     The                                        varying_field_map
+(field_array_index).varying_field_index is used  to determine the
+ordinality  among varying  fields of  a varying  field given it's
+field_id, it's position in the field_table.field array.
+
+8 ALLOCATION OF KEYS
+
+     The technique for allocating keys  has two parts; finding an
+appropriate control  interval and allocating  keys within control
+intervals.
+
+8.1 Allocation of keys to control intervals
+
+     The basic  scheme for determining which  control interval in
+which  to  allocate  a  key follows:   The  tree  is  searched to
+determine the correct position for  the new key.  This results in
+a control interval id and a  slot being selected for the new key.
+If  there  is sufficient  room  for the  new  key in  the control
+interval  selected,  a  single  element  containing  the  key  is
+allocated in  this control interval at  the selected slot.  There
+are  two  cases  which arise  when  the  key doesn't  fit  in the
+selected control  interval:  there is enough  room in the control
+interval on  the same level of  the index to either  the right or
+the left  of the selected  control interval, or  there isn't.  In
+the first  case, a rotation of  keys is used to  make room in the
+selected  control  interval.   In  the second  case  the selected
+control interval is split into two.
+
+8.1.1 ROTATING KEYS
+
+     If  room  exists  in  the preceding  or  following "sibling"
+control  intervals,  then keys  are "rotated"  out of  the target
+control  interval  and into  the  one with  room.   This rotation
+requires  changing  the  value  of   the  parent  key  which  was
+previously used to discriminate the control intervals involved in
+the  rotation, which  is dealt with  as a new  "insertion" in the
+parent's level.   The key being  rotated into the  parent control
+interval  is  placed  in  the same  slot  as  the old  key  it is
+replacing.
+
+
+MTB-550                                Multics Technical Bulletin
+                                        DM: index_manager_ design
+
+8.1.2 SPLITTING CONTROL INTERVALS
+
+     If there is no room for  a rotation, then the target control
+interval  must  be  "split".   This  consists  of  a  new control
+interval being allocated, half of  the keys of the target control
+interval being placed in the new  control interval, and a new key
+being  inserted in  the parent  control interval  to discriminate
+between the target control interval and the new control interval.
+
+8.1.3 OVERLENGTH KEYS
+
+     The   above   scenario  is   somewhat  complicated   by  the
+possibility that  a key will  be too long  to fit in  one control
+interval.  To store an overlength key it is necessary to break it
+into multiple elements.  The number of elements required to store
+a key is equal to the least  greater integer of the length of the
+key  divided  by  the   maximum  allowed  element  size.   (i.e.,
+number_of_elements        =       ceil        (key_length       /
+maximum_allowed_element_size)   If   key_length  is   not  evenly
+divisible  by the  maximum_allowed_element_size, then  one of the
+elements of the key  is less than maximum_allowed_element_size in
+length.  Otherwise,  all of the  elements are maximum  sized.  If
+there  is  a  less-than-maximum  sized element,  it  is allocated
+first, and in the same fashion  as an element which is the entire
+key  as discussed  above.  For the  maximum-sized elements, which
+necessarily  occupy  entire  control  intervals, a  set  of empty
+control intervals is used.
+
+8.2 Allocation of a key within a control interval
+
+     Once the control interval has been selected in which the key
+is to be inserted, it may  be necessary to alter the construction
+of   the   control  interval   to  give   the  key   the  correct
+element_position_table  index,  and  to  make  room  for  the key
+contents.  The  first situation arises  because the key  order is
+kept   by   storing   keys   within   a   control   interval   in
+element_position_table index  order.  If a key  is being inserted
+which must have  an index already in use,  then the existing keys
+with  that index  and higher  must be  shifted down.   The second
+situation, making room for the  key's contents, arises when there
+is  insufficient  room  in  the  "unused"  space  of  the control
+interval for  its contents.  This  is solved by  "compacting" the
+control  interval.   There  are  two  kinds  of  compaction, used
+according to circumstances; scatterred  free space compaction and
+common prefix compaction.
+
+     Scatterred free space compaction is accomplished by making a
+"logical" copy of  the control interval by inserting  each of the
+
+
+Multics Technical Bulletin                                MTB-550
+DM: index_manager_ design
+
+keys  in the  control interval in  a temp  control interval, then
+physically  copying  this  "compacted"  version  of  the  control
+interval back into the original control interval.  This increases
+the  unused  space  of  the control  interval  because  there was
+scattered free  space in the  original copy.  The  scattered free
+space comes  from deleting (or rewriting  larger) keys and simply
+leaving the storage their contents  occupy behind to be recovered
+in this fashion.
+
+     Common prefix compaction is extracting  from the keys in the
+control  interval  all of  the  common prefixes,  for  storage as
+mentioned above.  The basic problem in this kind of compaction is
+to determine what the common  prefixes are which, when extracted,
+will realize a savings in space.
+
+9 THE SEARCH ALGORITHM
+
+     The   algorithm   for  searching   the  index   has  several
+determining factors; the clustering  of keys in control intervals
+to  reduce paging,  the presence of  multiple fields,  the use of
+ranges in constraining the search,  the use of search constraints
+which require sequential comparisons  of keys, and the possiblity
+of more than one set of  constraints (the results of which are to
+be or'ed together)  identifying the same key.  An  example of the
+next to last  determining factor is:  "last name  ends in ""s""".
+An example of the last determining  factor is:  "(name = Daniel &amp;
+age &gt; 15) or (age &lt;  30)".  The algorithm for satisfying a search
+specification must take into account all of these things.
+
+9.1 Basic approach
+
+     The   search_specification   provided  by   the   caller  of
+index_manager_      is      analyzed      to      produce      an
+"interval_specification".  The interval_specification consists of
+an  array  of  "intervals"  (about   one  per  and_group  in  the
+search_specification).  Each interval has a  low value and a high
+value.  An  interval is specified  to be all of  the keys greater
+than the  low value and less  than the high value  (keys equal to
+the end points are optionally  included in an interval, depending
+on  the  and_group(s)  associated  with the  interval).   The key
+closest  to each  end point  (and on  the appropriate  "side") is
+found   using   the  basic   search  algorithm   (implemented  by
+im_basic_search).    It   may  be   necessary  to   complete  the
+determination of  which keys satisfy  the search_specification by
+doing a  sequential search over  one or more of  the intervals of
+keys    found     by    the    above     application    of    the
+interval_specification.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

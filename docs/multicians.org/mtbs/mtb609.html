@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : More on improvements to the Multics search facility.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+MULTICS TECHNICAL BULLETIN 609
+
+To:       Distribution
+
+From:     E. J. Wallman
+
+Date:     January 26, 1983
+
+Subject:  More on improvements to the Multics search facility
+
+ABSTRACT
+
+    In MTB-565,  Benson Margulies pointed out  two major deficiencies
+in the Multics search facility (search_paths_, etal.), and proposed a
+technology and implementation to overcome those deficiencies.
+
+    This paper presents an alternative to the proposal in MTB-565.
+
+    Please address comments to the author:
+
+via Multics mail:
+    Wallman.Multics at System M
+
+via forum meeting:
+    &gt;udd&gt;Multics&gt;C&amp;F&gt;C&amp;F_Maintenance (C&amp;F) on System M
+
+via hardcopy mail:
+    Ed Wallman, MS Z-30 (AZ05)
+    PO Box 8000,
+    Phoneix, AZ 85066
+
+via telephone:
+    (602) 862-6637 (HVN 357)
+
+_____________________________________________________________________
+
+Multics Project internal working  documentation.  Not to be reproduced
+or distributed outside the Multics Project.
+
+page 2                         MTB-609
+
+INTRODUCTION
+
+    In  MTB-565,  Margulies  points  out  two  major  search facility
+deficiencies:
+
+    1)  Manipulation  of a  search list with  the *_search_paths com-
+        mands is clumsy and tedious due to the necessity to reference
+        existing paths exactly  as they are recorded in  the the list
+        (and displayed by print_search_paths).
+
+    2)  There is no feature that provides verification that a path to
+        be entered into a search list is valid for the purpose of the
+        list.  For example,  some lists may need to  preclude the use
+        of -referencing_dir, others may require that only directories
+        be searched, and still others  may require only segments with
+        specific suffices (eg., the dictionaries).
+
+    This  MTB  addresses  each  of these  points  in  greater detail,
+answering the first completely and the second in part.
+
+Manipulation of Search Lists
+
+    There  are three  different objects  that can  be entered  into a
+search list:
+
+    o   keywords
+        Keywords present  no problem.  Since  they are few  in number
+        and  completely  determined by  the  *_search_paths commands,
+        their representation in the search  list can be coerced to be
+        their unique long forms.  Thus,  they need no further identi-
+        fication.
+
+    o   storage system objects
+        Similarly, storage system objects  present no problem.  Since
+        they exist, the storage system  can be queried for their UIDs
+        and  the  UIDs  used  to determine  if  the  random pathnames
+        returned  by  expand_pathname_  (or   the  use  of  different
+        addnames  by  the  user) do  indeed  refer to  the  same real
+        object.  There is a 36 bit  pad word in the sl_info structure
+        that can be used for  UIDs compatibly.  Since the search list
+        structure is  to be changed for  support of path verification
+        (see discussion following), a UID  datum can be added to that
+        structure.  Note that the search  list is maintained soley by
+        the search_paths_  entrypoints so that  any structure changes
+        are  transparent  to callers  using  the search  facility for
+        searching.
+
+        This approach  suffers one flaw:   if the owner  of a storage
+        system object recreates it (thus changing the UID) during the
+        life of a process, the  UID recorded in that process's search
+        segment becomes invalid and references  to the path will have
+        to revert to the "exact path" techinque.
+
+                               MTB-609                         page 3
+
+    o   nonobjects
+        The creation  of pseudo-UIDs for  nonobjects (in this  MTB, a
+        "nonobject"  is  anything that  is not  known to  the storage
+        system;   examples   are  pathnames   containing  nonexistent
+        entrynames,  archive  component  pathnames,  and  FNP channel
+        numbers)  appears to  be an insoluble  problem.  For example,
+        consider a  search list that contains  the paths &gt;udd&gt;a&gt;b&gt;foo
+        and  &gt;exl&gt;a&gt;b&gt;foo,  where  both  "b"  directories  exist  and
+        neither  "foo"  exists.  If  a user  has &gt;udd&gt;a&gt;b  as working
+        directory and references "foo",  get_wdir_ could quite easily
+        return  &gt;user_dir_dir&gt;a&gt;b  (since it,  like expand_pathname_,
+        gets  paths from  the pathname associative  store).  Which of
+        the   nonexistent  "foo"s   is  being   referenced?   Several
+        possibilities have been suggested:
+
+        1)  Refuse to enter nonobjects into the search list.  This is
+            the  solution enforced  by set_search_rules  and "solves"
+            the  problem by  avoiding it.  However,  this solution is
+            unacceptable  for  search  lists  (even for  the  case of
+            nonexistent  entrynames)  since  the  search  facility is
+            intended  to  be able  to search  for "anything"  that an
+            application using may want to search for.  If all objects
+            not known to the storage system were ruled out, the basic
+            intent of the search facility would be subverted.
+
+        2)  Record the UID for each real entryname in the search path
+            in  the  process  search segment.   While  feasible, this
+            solution  is very  unattractive because of  the amount of
+            implementation work  needed and the high  cost in perfor-
+            mance  due  to the  addition  of more  arrays  with refer
+            extents.  Further, this makes  the problem of search path
+            referencing even  more obscure since  all names appearing
+            after  the  last real  entryname would  still have  to be
+            given exactly  and the point  in the pathname  where this
+            need arises is not visible  to the user.  Someday, it may
+            be  desirable  to  add  starname  support  to  the search
+            facility.   If  this  happens, the  number  of nonobjects
+            appearing in search lists will escalate drastically.
+
+        3)  Provide  a  "regular  expression" feature  like  the text
+            editors.  This is a feasible solution and far less costly
+            than 2).  If the user types, say, "dsp list /.*foo/", the
+            program will scan the search  list for hits and query for
+            action  on  each  hit.   However,  the  proper  action in
+            response to "asp list bar -after /.*foo/" is not clear.
+
+        4)  Do nothing.  Although it  retains the current undesirable
+            behavior of path manipulation  with regard to nonobjects,
+            this  is the  expedient solution.  Indeed,  the user will
+            penalized  for  inaccurate  typing  of  paths,  but  such
+            penalization  is  certainly  not unknown  in  the Multics
+            command environment.
+
+page 4                         MTB-609
+
+        Thus, since there seem to  be no criteria for determining the
+        unique identity of nonobjects, we choose the last alternative
+        and do nothing.
+
+Implementation
+
+    The support of UIDs for storage system objects can be implemented
+with the  following trivial change  in the sl_info  structure and the
+addition  of a  UID datum to  the structure  of a search  list in the
+process search  segment (see discussion of  path verification follow-
+ing):
+
+/* Modified  12/21/82 by Ed Wallman: Changed sl_info.paths.pad2 to
+             sl_info.paths.uid in support of relative pathnames.
+             This is a compatible change; no new version number.
+*/
+dcl 1 sl_info       aligned based (sl_info_p),
+      2 version     fixed bin,     /* Must be 1 */
+      2 num_paths   fixed bin,     /* Number of search paths */
+      2 change_index_p             /* Pointer to list's update count */
+                    pointer,       /* IN THE PROCESS SEARCH SEG */
+      2 change_index               /* This list's update count */
+                    fixed bin (71),
+      2 pad1        (6) bit (36),  /* Must be zero */
+      2 paths       (sl_info_num_paths refer (sl_info.num_paths)),
+        3 type      fixed bin,     /* Type of search path */
+        3 code      fixed bin (35),/* Standard status code for path */
+        3 uid       bit (36) aligned,/* Unique id of path */
+        3 pathname  char (168) unaligned;/* Search pathname */
+
+Verification of Search Paths
+
+    This is the more serious of the two deficiencies and deserves the
+more work.   If a user  enters an inappropriate path,  for example, a
+directory  named "foo.dict"  into the  dictionary search  list, there
+will no notice given until the dictionary commands attempt to use the
+path.   That subsequent  notice can  be quite  abrupt and unfriendly.
+For the example given, the error is:
+
+    Error: This operation is not allowed for a directory. &gt;udd&gt;...
+           (by &gt;unb&gt;find_dictionary_word ...)
+           etc. ...
+
+followed by failure of the  dictionary command to proceed through the
+rest of the search list.
+
+                               MTB-609                         page 5
+
+    Thus, two new needed features are suggested:(1)
+
+    1)  control over the type of path to be entered
+        This  can be  supported by the  addition of a  word of switch
+        bits  with  specific bit  positions  assigned to  the various
+        allowable objects.
+
+    2)  a list of allowed/required suffices
+        This list is clearly needed.   Currently, there are two lists
+        defined  in  search_list_defaults_  (dictionary  and declare)
+        that require segments with a specific suffix.
+
+Where to Store the New data?
+
+    These new data must be kept in the default search list since that
+is the  only place that  allows the control  to be exercised  for the
+entire system.  It cannot be kept  in sl_info because the storage for
+that structure is destroyed after  each invocation of a *_search_path
+command; it  cannot be kept  in the process search  list because that
+would require the sharing of active search segments, an approach that
+does not seem feasible.
+
+_____________________________________________________________________
+
+(1) This  MTB  addresses  only  control  over  valid  keywords, valid
+    storage system  objects, and suffixes on  storage system objects.
+    Control  over  nonobjects  and  the  contents  of  storage system
+    objects, although  addressed by Margulies, are  not covered here;
+    they are left for the next round of search facility enhancements.
+
+    Note  that  the  switch  bit  word  is  sufficiently  powerful to
+    encompass  a  great number  of  different objects,  and  that the
+    suffix  technology proposed  could be  modified into  a much more
+    general "name type" technology.
+
+    In  particular,  Margulies  suggests  that  an  entry  point into
+    LISTNAME_sl_  could be  designed to  provide verification  of the
+    contents  of  a  search  object.   For  example,  the  dictionary
+    commands can only make effective  use of non-empty keyed files, a
+    list for searching for a dial_out channel should contain only FNP
+    channel id strings, certain search  archives could be required to
+    contain components named, say, "frobus_*.*", etc.  However, since
+    the dictionary commands (the premier  candidate as caller of this
+    new  interface) currently  does no  internal checking  on its own
+    behalf, creation  of the interface  is not judged to  have a high
+    priority.
+
+    (As evidence of the lack of  checking, simply create an empty MSF
+    or SSF  named foo.dict, add  that path to  your dictionary search
+    list,  and  use "find_dictionary_word  barfo".  The  command will
+    blandly tell you it could not find the word!)
+
+page 6                         MTB-609
+
+    Margulies suggests  that the data  be kept and enforced  by a new
+per-list support module, LISTNAME_sl_.  Although feasible and techni-
+cally correct, this approach is  unattractive because it requires the
+creation and maintenance of several new system modules.
+
+How to Support ad hoc Search Lists?
+
+    The next  question is that  of support for  path verification for
+search  lists that  are not  defined in  search_list_defaults_.  If a
+developer wants to create a new or replacement search list, s/he need
+merely replicate the code  found in search_list_defaults_.cds for the
+new list.
+
+    However, if the new default list is a replacement for a list that
+is already defined in search_list_defaults_  or is in a directory not
+in the user's  current search rules, the search  facility cannot find
+it!  It uses the dynamic  linker (without -referencing_dir) to locate
+the  default  list   ONLY  after  it  fails  to   find  the  list  in
+search_list_defaults_.  Even  then, it will  not be found  unless the
+user  has taken  overt action (like  initiating or setting  a link in
+wdir)  to make  it findable by  the linker.  This  shortcoming can be
+overcome  by  providing  a  new  control  argument, -default_pathname
+(-dpn), for (set add)_search_paths.  The usage would be:
+
+    ssp list -dft -dpn path&gt;list.search
+    asp list foo {-modifiers} -dpn path&gt;list.search
+
+The  presence of  this path  in the  command line  would override the
+prior use of search_list_defaults_.
+
+    Note  that  this  proposal  does  not  support  verification  for
+dynamically  created  lists, that  is,  lists that  are  created with
+set_search_paths but dont have a list.search anywhere.(1)
+
+Implementation
+
+    Since the  details of the  search structure must now  be known to
+both search_paths_  and the *_search_paths  commands, the declaration
+of  the structure  has been taken  out of  search_paths_.pl1 and made
+into  a  new include  file.   That include  file is  presented below.
+Further,  the  code  in   &lt;list&gt;_default.cds  must  be  significantly
+expanded.   Excerpts  from a  modified  search_list_defaults_.cds are
+also shown below.
+
+    There  are  no new  system  modules, no  new entrypoints,  and no
+changes to any  of the interfaces to search_paths_;  the only changes
+_____________________________________________________________________
+
+(1) Such support could be added  with more new control arguments, but
+    the complexity of the implementation doesnt seem justified by the
+    expected utility of the feature.
+
+                               MTB-609                         page 7
+
+are to the actions performed by those various entrypoints.  Thus, all
+callers of those search_paths_ entrypoints need no work.
+
+Compatibility and Flag Days
+
+    Although  there  are no  changes in  the interfaces  involving in
+searching, there  are in those involving  management of search lists.
+The version of the process search segment will change and the default
+search lists will acquire a brand new version number.
+
+    The  first  version change  poses  no problems  since  the search
+facility  is already  able to  cope with  a dynamic  change in search
+segment version (there  is a flaw in that  the process search segment
+will be recreated with defaults instead of the paths that were in the
+existing search segment, but the problem is thought to be minor since
+dynamic version switching of search  facility versions is not a usual
+user action).
+
+    The second version change has  an eventual flag day.  To minimize
+the trauma  of that day,  code has been added  (and clearly delimited
+for  ease  of  removal)  to support  both  version  SRCH0001  and the
+obsolete un-version and  a warning will be issued  when an un-version
+default search list is used (this  warning will be deactivated in the
+EXL  installation).  Thus,  users will  get at  least one  release of
+noisome warning  messages to clean  up their default  search list act
+before the obsolete version support is removed.
+
+page 8                         MTB-609
+
+/*                  BEGIN search_segment.incl.pl1           */
+
+/*        search segment data structures
+
+Created 12/31/82 by Ed Wallman with declarations taken from search_paths_.pl1
+Modified 12/31/82 by Ed Wallman: Added list control feature - version 3 of
+          search_seg and version SRCH0001 of default_search_list.
+
+          The list_header must remain in the same generation of storage because
+          users are given pointers to list_header.update_count */
+
+/* format: style2,ind3,ll80,dclind4,idind16,comcol41,linecom */
+
+dcl 1 search_seg    based (search_seg_ptr),
+      2 header,
+        3 version   fixed binary,  /* search segment version */
+        3 first_list_header_off    /* offset of first list's list_header */
+                    offset (search_seg.area),
+        3 last_list_header_off     /* offset of last list's list_header */
+                    offset (search_seg.area),
+      2 area        area (sys_info$max_seg_size
+                    - divide (length (unspec (search_seg.header)), 36, 19))
+                    ;
+
+dcl 1 list_header   based (search_list_header_ptr),
+      2 link                       /* offset of next list's list_header */
+                    offset (search_seg.area),
+      2 back_link                  /* offset of last list's list_header */
+                    offset (search_seg.area),
+      2 list_control_off           /* offset of list_control */
+                    offset (search_seg.area),
+      2 list_name_off              /* offset of list_name */
+                    offset (search_seg.area),
+      2 search_list_off            /* offset of search_list */
+                    offset (search_seg.area),
+      2 update_count               /* number of search list updates */
+                    fixed binary (71);
+
+dcl 1 list_control  based (search_list_control_ptr),
+      2 sws         bit (36),      /* allowed keyword switches */
+      2 suffix_count               /* number of required suffixes */
+                    fixed bin,
+      2 suffixes    (list_control_suffix_count
+                    refer (list_control.suffix_count)) char (32);
+
+dcl 1 list_name     based (search_list_name_ptr),
+      2 name_count  fixed binary,  /* number of synonyms */
+      2 names       (list_name_name_count refer (list_name.name_count))
+                    char (32);     /* search list names */
+
+dcl 1 search_list   based (search_list_ptr),
+      2 path_count  fixed binary,  /* number of search paths */
+      2 paths       (search_list_path_count refer (search_list.path_count))
+
+                               MTB-609                         page 9
+
+                    ,
+        3 type      fixed binary,  /* search path type */
+                                   /* FS UID, if any */
+        3 uid       bit (36) aligned,
+        3 pathname  char (168),    /* search pathname */
+        3 mark      bit (1);       /* temporary */
+
+dcl 1 default_search_list
+                    based (default_search_list_ptr),
+      2 version     char (8),      /* structure version id */
+      2 control_sws bit (36),      /* list control switches */
+      2 name_count  fixed binary,  /* number of synonyms */
+      2 path_count  fixed binary,  /* number of search paths */
+      2 suffix_count
+                    fixed bin,     /* number of suffixes */
+      2 names       (0 refer (default_search_list.name_count)) char (32),
+      2 suffixes    (0 refer (default_search_list.suffix_count)) char (32),
+      2 paths       (0 refer (default_search_list.path_count)),
+        3 type      fixed binary,  /* search path type */
+        3 pathname  char (168);    /* search pathname */
+
+dcl 1 v0_default_search_list            /* OLD (V0) DEFAULT SEARCH LIST */
+                    based (default_search_list_ptr),
+      2 name_count  fixed binary,       /* number of synonyms */
+      2 path_count  fixed binary,       /* number of search paths */
+      2 names            (0 refer (v0_default_search_list.name_count))
+                    char (32),
+      2 paths       (0 refer (v0_default_search_list.path_count)),
+        3 type      fixed binary,       /* search path type */
+        3 pathname  char (168);         /* search pathname */
+
+dcl search_seg_ptr  ptr init (null);
+                                   /* pointer to the search segment */
+dcl search_seg_version_3
+                    fixed binary internal static options (constant)
+                    initial (3);
+dcl search_list_header_ptr         /* pointer to a list header */
+                    ptr init (null);
+dcl search_list_control_ptr        /* pointer to a list control structure */
+                    ptr init (null);
+dcl list_control_suffix_count
+                    fixed bin init (0);
+dcl search_list_name_ptr           /* pointer to a list name structure */
+                    ptr init (null);
+dcl list_name_name_count
+                    fixed bin init (0);
+dcl search_list_ptr                /* pointer to a search list */
+                    ptr init (null);
+dcl search_list_path_count
+                    fixed bin init (0);
+dcl default_search_list_ptr        /* pointer to a default search list */
+                    ptr init (null);
+dcl DEFAULT_SEARCH_LIST_VERSION_1
+
+page 10                        MTB-609
+
+                    char (8) int static options (constant)
+                    init ("SRCH0001");
+
+dcl RDIR_SW                        /* ref dir keyword switch bit */
+                    bit (36) init ("400000000000"b3);
+dcl WDIR_SW                        /* working dir keyword switch bit */
+                    bit (36) init ("200000000000"b3);
+dcl PDIR_SW                        /* process dir keyword switch bit */
+                    bit (36) init ("100000000000"b3);
+dcl HDIR_SW                        /* home dir keyword switch bit */
+                    bit (36) init ("040000000000"b3);
+dcl DIR_PATH_SW                    /* directory pathname switch bit */
+                    bit (36) init ("020000000000"b3);
+dcl SEG_PATH_SW                    /* segment pathname switch bit */
+                    bit (36) init ("010000000000"b3);
+dcl MSF_PATH_SW                    /* MSF pathname switch bit */
+                    bit (36) init ("004000000000"b3);
+dcl KEYS_OK                        /* keywords allowed */
+                    bit (36) init ("740000000000"b3);
+dcl KEYS_DIRS_OK                   /* keywords and directories allowed */
+                    bit (36) init ("760000000000"b3);
+
+/*                  END search_segment.incl.pl1             */
+
+   Modified 01/01/83 by Ed Wallman: Added info for list control feature.
+*/
+
+search_list_defaults_:                  /* exerpts ONLY */
+     procedure;
+
+/* automatic */
+
+          dcl     1 lists                aligned,
+                    2 comp               bit (0) aligned,
+                    2 compose,
+                      3 version          char (8),
+                      3 control_sws      bit (36),
+                      3 name_count       fixed binary,
+                      3 path_count       fixed binary,
+                      3 suffix_count     fixed bin,
+                      3 names            (2) char (32),
+                      3 suffixes         (1) char (32),
+                      3 paths            (4) like search_path,
+                    2 dcl                bit (0) aligned,
+                    2 declare,
+                      3 version          char (8),
+                      3 control_sws      bit (36),
+                      3 name_count       fixed binary,
+                      3 path_count       fixed binary,
+                      3 suffix_count     fixed bin,
+                      3 names            (2) char (32),
+                      3 suffixes         (1) char (32),
+
+                               MTB-609                        page 11
+
+                      3 paths            (1) like search_path,
+                    2 dict               bit (0) aligned,
+                    2 dictionary,
+                      3 version          char (8),
+                      3 control_sws      bit (36),
+                      3 name_count       fixed binary,
+                      3 path_count       fixed binary,
+                      3 suffix_count     fixed bin,
+                      3 names            (2) char (32),
+                      3 suffixes         (1) char (32),
+                      3 paths            (1) like search_path,
+                        ...
+/* program */
+
+          lists.compose.version = DEFAULT_SEARCH_LIST_VERSION_1;
+          lists.compose.control_sws = KEYS_DIRS_OK;
+          lists.compose.name_count = hbound (lists.compose.names, 1);
+          lists.compose.path_count = hbound (lists.compose.paths, 1);
+          lists.compose.suffix_count = hbound (lists.compose.suffixes, 1);
+          lists.compose.suffixes (*) = "";
+          lists.compose.names (1) = "compose";
+          lists.compose.names (2) = "comp";
+          lists.compose.paths (1).type = WORKING_DIR;
+          lists.compose.paths (1).pathname = "-working_dir";
+          lists.compose.paths (2).type = UNEXPANDED_PATH;
+          lists.compose.paths (2).pathname = "&gt;udd&gt;[user project]&gt;compose_macros";
+          lists.compose.paths (3).type = REFERENCING_DIR;
+          lists.compose.paths (3).pathname = "-referencing_dir";
+          lists.compose.paths (4).type = ABSOLUTE_PATH;
+          lists.compose.paths (4).pathname = "&gt;unb";
+
+          lists.declare.version = DEFAULT_SEARCH_LIST_VERSION_1;
+          lists.declare.control_sws = SEG_PATH_SW;
+          lists.declare.name_count = hbound (lists.declare.names, 1);
+          lists.declare.path_count = hbound (lists.declare.paths, 1);
+          lists.declare.suffix_count = hbound (lists.declare.suffixes, 1);
+          lists.declare.suffixes (1) = ".dcl";
+          lists.declare.names (1) = "declare";
+          lists.declare.names (2) = "dcl";
+          lists.declare.paths (1).type = ABSOLUTE_PATH;
+          lists.declare.paths (1).pathname = "&gt;sss&gt;pl1.dcl";
+
+          lists.dictionary.version = DEFAULT_SEARCH_LIST_VERSION_1;
+          lists.dictionary.control_sws = SEG_PATH_SW;
+          lists.dictionary.name_count = hbound (lists.dictionary.names, 1);
+          lists.dictionary.path_count = hbound (lists.dictionary.paths, 1);
+          lists.dictionary.suffix_count = hbound (lists.dictionary.suffixes, 1);
+          lists.dictionary.suffixes (1) = ".dict";
+          lists.dictionary.names (1) = "dictionary";
+          lists.dictionary.names (2) = "dict";
+          lists.dictionary.paths (1).type = ABSOLUTE_PATH;
+          lists.dictionary.paths (1).pathname = "&gt;unb&gt;standard.dict";
+
+page 12                        MTB-609
+
+          ...
+
+CONCLUSION
+
+Finally, the  concepts discussed have been  implemented and are ready
+for exposure in EXL when it is deemed advisable to do so.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

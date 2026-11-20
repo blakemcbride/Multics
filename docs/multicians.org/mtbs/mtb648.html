@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Improvements to Subsystem Metering.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+MULTICS TECHNICAL BULLETIN                                MTB-648
+
+To:       MTB Distribution
+
+From:     Gary M. Palter
+
+Date:     21 February 1984
+
+Subject:  Improvements to Subsystem Metering
+
+     This  MTB  presents a  proposal to  enhance the  metering of
+interactive subsystems  provided through the  subsystem utilities
+(ssu_).   The   enhancements  described  in   this  proposal  are
+essential to the mail system performance project which is part of
+the MR11 release.
+
+Please direct any comments on this proposal to the author
+
+     by the forum teleconferencing system to the meeting:
+          &gt;site&gt;forum_dir&gt;Subsystem_Utilities on System-M
+
+     by electronic mail to:
+          Gary M. Palter &lt;GMP@HIS-PHOENIX-MULTICS.ARPA&gt;
+
+     or by the U.S. Postal service to:
+          Honeywell Information Systems
+          4 Cambridge Center
+          Cambridge, Mass.  02142
+
+_________________________________________________________________
+
+Multics  Project  internal  working  documentation.   Not  to  be
+distributed outside the project without the consent of the author
+or the Director of Multics System Development.
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+WHY CHANGE SUBSYSTEM METERING?
+
+     The  MR10.2 Multics  Mail System  has been  measured as 1.46
+times slower than the MR10.1 system.   This ratio is based on the
+comparison  of the  CPU time  used by each  mail system  to run a
+"standard"  script   of  read_mail  and   send_mail  invocations.
+However, there  is no evidence  which proves either  way that our
+standard script is an accurate reflection  on the use of the mail
+system.   In  other  words, we  really  don't know  how  the user
+communities will perceive the performance of the new mail system.
+
+     The performance of the mail  system must be improved as much
+as possible before the MR11 release.
+
+Gathering the Necessary Data
+
+     In  order  to  improve  the  performance  of  an interactive
+subsystem, it is  necessary to know which requests  are used most
+often.  Once these requests are  identified, they can be analyzed
+in detail  in order to improve  their performance and, therefore,
+improve  the  overall  performance  of  the  subsystem.  However,
+simply  knowing  which requests  are executed  most often  is not
+sufficient.  One  must also know  which of these  frequently used
+requests use  the most resources (CPU,  paging, etc).  Otherwise,
+one could spend considerable effort optimizing the performance of
+a  request  which,  while  used far  more  often  than  any other
+request,  contributes  very  little  to  the  total  cost  of the
+subsystem (eg:  the self_identify request).
+
+     The subsystem  utilities could easily gather  the data sited
+above as  part of the standard  subsystem request loop.  However,
+the only  data that the  utilities collect at present  is who has
+used a subsystem and how often.
+
+     Therefore, we must change the subsystem metering facility to
+record more data.
+
+Security
+
+     The current subsystem metering facility is insecure.
+
+     The  data  segments  maintained  by  the  subsystem metering
+facility are kept  in the user-ring with write  access granted to
+all users.  Thus,  any user can destroy the  metering data either
+accidentally or maliciously.
+
+     Therefore, the metering data must  be moved to an inner ring
+to be made more secure.
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+AIM
+
+     As  a  consequence of  being  stored in  the  user-ring, the
+subsystem metering data can only be recorded by processes running
+at  a  specific AIM  authorization (normally  system_low).  Thus,
+metering data is needlessly lost.
+
+     Therefore, the  metering data must be  moved to ring-1 where
+it  can be  kept in a  multi-class segment to  allow recording by
+processes at multiple authorizations.
+
+     However,  care  must  be  excersized when  making  this data
+multi-class to  insure that no new  write-down paths are created.
+In  the present  design of  the subsystem  metering facility, the
+subsystem utilities use the record of how many times the user has
+invoked a  given version of  the subsystem to  control whether to
+print the message announcing a  new version of the subsystem.  If
+this facility  were left intact  with multi-class data,  a rather
+large write-down path would be created.
+
+     Therefore, the mechanism used to control when version change
+announcements are displayed must be separated from the collection
+of metering data.   The simplest way to make  this split would be
+to  store  the  data  required  to  control  the  version  change
+announcements in the user's value segment.
+
+THE PROPOSAL
+
+     This MTB proposes the creation of two separate facilities --
+a   subsystem   metering   facility  and   a   subsystem  version
+announcement  facility.   These  facilities  are  designed  to be
+upwards-compatible for  existing subsystems.  In  other words, no
+subsystem maintainer will be required  to make any changes to the
+code of their subsystem in order to use these new facilities.
+
+Subsystem Metering
+
+     The new  subsystem metering facility will  store its data in
+ring-1, multi-class metering segments.   By default, all metering
+segments     will     be      stored     in     the     directory
+&gt;site&gt;subsystem_usage_dir.    For   private  subsystems,   a  new
+entrypoint, ssu_$set_usage_meters_path, will be provided to allow
+the subsystem  maintainer to specify a  non-standard location for
+his subsystem's metering segment.
+
+     A  new  command,  subsystem_usage_meters,  will  be  used to
+create  or delete  these metering  segments.  The  maximum access
+class  of  data  to be  recorded  in  a metering  segment  may be
+specified     when     the    segment     is     created.     The
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+subsystem_usage_meters  command will  also be  able to  reset the
+metering segment to its initial state (ie:  empty).
+
+WHAT DATA WILL BE METERED?
+
+     Three different  sets of metering  data will be  recorded in
+the metering segment.  The subsystem_usage_meters command will be
+able  to selectively  enable/disable recording  of any  or all of
+these sets of  data.  With the increase in the  amount of data to
+be displayed,  the syntax of  the display_subsystem_usage command
+would become incomprehensible.  Rather  than face this situation,
+the display_subsystem_usage  command will be retired  in favor of
+several distinct options of the subsystem_usage_meters command.
+
+     The first set of metering  data will be per-user data.  This
+data  will  correspond exactly  to  the data  which  is currently
+recorded by the present facility.  However, as the formats of the
+metering segments  are completely different and  the current data
+can not  really be trusted,  no conversion of  old style metering
+segments will be made.
+
+     The second  set of metering  data will be  per-version data.
+There  will be  one "record"  for each  different version  of the
+subsystem  which has  been used  at the  site.  This  record will
+contain  the version  number, total number  of invocations, total
+number  of  users  who  have used  this  version,  and  the total
+resource usage data accumlated  for this version.  Resource usage
+data is the data  returned by hcs_$get_process_usage and includes
+virtual  CPU time,  page faults,  segment faults,  bounds faults,
+VTOC reads, and VTOC  writes.  The subsystem_usage_meters command
+will display per-invocation averages for the resource usage data.
+
+     The  third set  of metering  data will  be per-request data.
+There will be  one "record" for each pairing  of request name and
+subsystem  version.  This  record will contain  the request name,
+version number,  number of invocations  in which the  request was
+defined, number of times the request was invoked, number of times
+the request  called ssu_$abort_line, and the  resource usage data
+listed     above     for    the     per-version     data.     The
+subsystem_usage_meters command will display the average number of
+times the  request was used  in an invocation,  the percentage of
+invocations of  the request which  aborted, and averages  for the
+resource usage data.
+
+     The per-user data mentioned above  will contain a bit map of
+which versions the user has invoked to allow the per-version user
+counts to be  maintained accurately.  This bit map  limits to 200
+the  number  of  distinct versions  which  may be  recorded  in a
+metering segment.   This limit should  not be a  problem.  If, in
+some  future release,  we find that  this limit is  a problem, it
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+will  be  possible  to provide  a  mechanism to  delete  the data
+associated with older versions of the subsystem.
+
+WHEN WILL THE DATA BE GATHERED?
+
+     For non-standalone  invocations (ie:  the  normal case), the
+subsystem   utilities   will  collect   the  metering   data  and
+automatically enter it into the subsystem's metering segment when
+the  invocation  is destroyed.   In other  words, if  a subsystem
+metering segment has been created  for a subsystem, the subsystem
+will  always  be metered.   Any calls  to ssu_$record_usage  in a
+non-standalone invocation will be ignored.
+
+     Standalone invocations  will have to  be treated differently
+as  they are  often created simply  to record an  invocation of a
+subsystem  (eg:  video)  or to simplify  argument processing (eg:
+the mail system).  Therefore, metering data will not be collected
+automatically for standalone invocations.  Instead, metering data
+consisting of  the per-user information and  the per-version user
+counts will be added to the  metering segment only when a call to
+ssu_$record_usage   or   ssu_$print_blast  (or   its  replacement
+described  below) is  made.  Resource  usage is  not recorded for
+standalone  invocations  as  the  values  obtained  may  bear  no
+relationship  to the  actual resource utilization  of the program
+being metered.
+
+     The  metering  facility  will  automatically  add  per-user,
+per-version, and per-request records to the metering segment when
+needed.   In other  words, no  administrative action  is required
+when a new  version of a subsystem is made  available or when new
+requests are added to a subsystem.
+
+HOW WILL METERING AFFECT PERFORMANCE?
+
+     The  metering  facility  should have  the  smallest possible
+impact on the performance of a subsystem.
+
+     To  achieve the  above goal,  the number  of times  during a
+subsystem invocation that the utilities  will be forced to access
+the  metering  segment  must  be  minimized.   By  collecting the
+per-request data in per-invocation  storage in the user-ring, the
+utilities will only have to  access the metering segment once per
+invocation when the invocation  is destroyed.  All data collected
+by  the  utilities will  be added  to the  metering segment  in a
+single call to the ring-1 ssu_meters_ gate.
+
+     In order to minimize the time requred to actually update the
+metering  segment,  hash  tables  will  be  used  to  locate  the
+per-user, per-version,  and per-request data records  that are to
+be updated.
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+Version Change Announcements
+
+     As  mentioned  above,  the  data  needed  by  the  subsystem
+utilities  for determining  when to announce  a new  version of a
+subsystem will be recorded in the user's value segment.  The data
+will be placed  in the value segment's data  space under the name
+SUBSYSTEM.version._ where SUBSYSTEM is  the name of the subsystem
+as   given    in   the   call    to   ssu_$create_invocation   or
+ssu_$standalone_invocation.  (E.g:  read_mail.version._).
+
+     A  new entrypoint,  ssu_$announce_version, will  be added to
+replace  ssu_$print_blast.   However,  ssu_$print_blast  will  be
+retained  as  an  undocumented interface  for  compatibility with
+existing subsystems.
+
+     The  calling sequence  of ssu_$announce_version  will differ
+from  that of  ssu_$print_blast for two  reasons.  First, several
+parameters  of ssu_$print_blast  will no longer  have any meaning
+(eg:   ref_ptr).   Second, ssu_$announce_version  will  accept an
+ioa_  control  string  and   optional  arguments  to  format  the
+subsystem-specific portion of the version announcement.
+
+     In order  to insure that  users continue to  receive version
+announcements,  the  subsystem utilities  will print  the version
+announcement once per process if the user's default value segment
+does  not exist.   However, the  utilities themselves  will never
+create  the  default value  segment.  If  a user  complains about
+seeing  a  version  announcement  too many  times,  he  should be
+instructed to create his default  value segment in order to allow
+the version announcement facility to operate properly.
+
+DOCUMENTATION CHANGES
+
+     The  remainder  of  this  MTB consists  of  the Programmer's
+Reference  Manual  writeup  for  subsystem  metering  and version
+announcements,     the     Commands     Manual     writeup    for
+subsystem_usage_meters, and  the Subroutines Manual  writeups for
+ssu_$announce_version,           ssu_$record_usage,           and
+ssu_$set_usage_meters_path.
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+                           APPENDIX A
+
+                 MULTICS PROGRAMMING ENVIRONMENT
+
+INTERACTIVE SUBSYSTEM PROGRAMMING ENVIRONMENT
+
+Subsystem Invocations
+
+SUBSYSTEM METERING
+
+     The  subsystem  utilities  provide  the  ability  to collect
+several  forms   of  metering  data  for   any  given  subsystem.
+Collection  and  display  of  this data  is  performed  using the
+subsystem_usage_meters command described in the Commands Manual.
+
+     The metering data for a subsystem is recorded in a subsystem
+metering  segment.     Metering   segments  are  created  by  the
+subsystem_usage_meters command's create operation and are deleted
+by the delete operation.  In  addition, a metering segment may be
+reinitialized  through  the  use  of  the  subsystem_usage_meters
+command's reset operation.
+
+     A subsystem metering segment is a ring-1 multi-class segment
+which  may  contain  data  collected  at  several  different  AIM
+authorizations.  Therefore,  a user is only  permitted to display
+the  metering data  for a given  subsystem either  if his process
+authorization is  greater than the  access class of  the metering
+segment or if he has the AIM seg privilege enabled.
+
+     By default, the metering segment used by the utilities for a
+given      subsystem      resides      in      the      directory
+&gt;site&gt;subsystem_usage_dir  and  is   named  SUBSYSTEM.ssum  where
+SUBSYSTEM   is  the   subsystem  name   given  in   the  call  to
+ssu_$create_invocation   or   ssu_$standalone_invocation.   (E.g:
+read_mail.ssum).  The pathname of the metering segment to be used
+in a single invocation of  the subsystem may be changed, however,
+by calling  ssu_$set_usage_meters_path which is  described in the
+Subroutines Manual.
+
+     Three  different  classes of  data  may be  collected  for a
+subsystem  --  per-version data,  per-user data,  and per-request
+data.   The recording  of each  class of  data may  be controlled
+independently  through  the  use  of  the  subsystem_usage_meters
+command's enable and disable operations.
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+     The   per-version  data   supplies  information   about  the
+different versions  of the subsystem.  This  data is displayed by
+the subsystem_usage_meters  command's display_versions operation.
+Per-version data is only collected  for the first 200 versions of
+a subsystem.  The  data recorded for each version  of a subsystem
+includes
+  o  the subsystem version number,
+  o  the number of invocations of this version of the subsystem,
+  o  the number  of  users  who  have used  this  version  of the
+          subsystem, and
+  o  the per-invocation average for this version of the subsystem
+          of the following:
+            o  virtual CPU time,
+            o  page faults,
+            o  segment faults,
+            o  bounds faults,
+            o  VTOC reads, and
+            o  VTOC writes.
+
+     The per-user  data supplies information  about the different
+users  of   the  subsystem.   This  data   is  displayed  by  the
+subsystem_usage_meters  command's  display_users  operation.  The
+data recorded for each user of a subsystem includes
+  o  the user's Person_id,
+  o  the total number of times that he has used this subsystem,
+  o  the version number of the version  of this subsystem that he
+          has used most recently,
+  o  the number of  times that he  has used the  above version of
+          this subsystem in succession, and
+  o  the date/time that he last used this subsystem.
+
+     The   per-request  data   supplies  information   about  the
+different  requests  defined  by   a  subsystem.   This  data  is
+displayed     by     the     subsystem_usage_meters     command's
+display_requests  operation.   The  data   for  each  request  is
+recorded on  a per-subsystem version basis  to allow the analysis
+of the changes  in the usage and performance  of requests between
+releases.   The  data  recorded  for each  request  defined  by a
+subsystem for a single version of said subsystem includes
+  o  the request name,
+  o  the subsystem version number,
+  o  the average number  of times this  request was used  in each
+          invocation of this version of the subsystem,
+  o  the percentage  of  invocations  of  this  request  in  this
+          version of  the subsystem which were  aborted by a call
+          to ssu_$abort_line,
+  o  the per-invocation average for this  request in this version
+          of the subsystem of the following:
+            o  virtual CPU time,
+            o  page faults,
+            o  segment faults,
+            o  bounds faults,
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+            o  VTOC reads, and
+            o  VTOC writes.
+
+     Once a subsystem metering  segment is created, the utilities
+will automatically collect the appropriate data provided that the
+subsystem  invocation is  not a  standalone invocation;  ie:  the
+subsystem  maintainer  need not  include  any extra  code  in his
+subsystem  to  enable  metering.   For  a  standalone invocation,
+however,  the  subsystem  maintainer   must  include  a  call  to
+ssu_$record_usage in the subsystem to request that the invocation
+be metered.
+
+SUBSYSTEM VERSION ANNOUNCEMENTS
+
+     The  subsystem utilities  provide a  convenient mechanism to
+inform users when a new version of a subsystem is made available.
+This mechanism  is called a  version announcement.    The version
+announcement  consists of  the subsystem name  and version number
+and  an  optional   subsystem-specific  message.   The  subsystem
+message usually  briefly describes the major  new features of the
+new  version  along  with  a reference  to  more  detailed online
+documentation.
+
+     A   version    announcement   is   displayed    by   calling
+ssu_$announce_version.  This  entrypoint uses data  stored in the
+user's default  value segment to  decide whether or  not to print
+the version announcement.  Said data  is stored in the data space
+of  the value  segment under  the name  SUBSYSTEM.version._ where
+SUBSYSTEM   is  the   subsystem  name   given  in   the  call  to
+ssu_$create_invocation   or   ssu_$standalone_invocation.   (E.g:
+read_mail.version._).
+
+     If the previously used version  of the subsystem as recorded
+in   the   value   segment    is   not   the   current   version,
+ssu_$announce_version  will print  the version  announcement.  If
+the   previously   used   version   is   the   current   version,
+ssu_$announce_version will  still print the  version announcement
+if  said announcement  has not  been issued  the number  of times
+requested by the caller unless said announcement has already been
+issued in this process.  After displaying a version announcement,
+ssu_$announce_version will  automatically update the  data stored
+in the value segment.
+
+     If  the  user's  default   value  segment  does  not  exist,
+ssu_$announce_version  will print  the version  announcement once
+per  process  regardless  of how  often  the user  has  seen said
+announcement.
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+______________________                     ______________________
+
+subsystem_usage_meters                     subsystem_usage_meters
+______________________                     ______________________
+
+                           APPENDIX B
+
+                            COMMANDS
+
+Name:  subsystem_usage_meters, ssum
+
+     This command is the user and administrative interface to the
+metering facilities supplied by the subsystem utilities.  See the
+description of interactive subsystem metering in the Programmer's
+Reference Manual for additional information.
+
+SYNTAX
+
+     ssum operation ssum_path {-control_args}
+
+ARGUMENTS
+
+operation identifies  the  operation  to  be  performed  by  this
+          invocation    of    subsystem_usage_meters.    Detailed
+          descriptions of the supported operations follow.
+
+ssum_path is the pathname of the  metering segment which is to be
+          processed.  The  suffix ssum is  supplied if necessary.
+          If  an entryname  is used  (ie:  the  pathname does not
+          contain a "&gt;" or "&lt;"), the metering segment must reside
+          in the directory &gt;site&gt;subsystem_usage_dir.
+
+-control_args
+          are  control   arguments  specific  to   the  requested
+          operation and are described below.
+
+NOTES
+
+     By  default,  the  metering  segment for  a  given subsystem
+resides in  the directory &gt;site&gt;subsystem_usage_dir  and is named
+SUBSYSTEM.ssum where SUBSYSTEM is the subsystem name given in the
+call  to  ssu_$create_invocation  or  ssu_$standalone_invocation.
+Thus,  using  just  the  subsystem   name  as  the  ssum_path  is
+sufficient for most subsystems.
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+______________________                     ______________________
+
+subsystem_usage_meters                     subsystem_usage_meters
+______________________                     ______________________
+
+subsystem_usage_meters Operation:  create, cr
+
+     This  operation  creates  the  specified  subsystem metering
+segment.
+
+SYNTAX
+
+     ssum create ssum_path {-control_args}
+
+CONTROL ARGUMENTS
+
+-access_class STR, -acc STR
+          specifies the maximum access class of data that will be
+          recorded  in this  metering segment.   The access class
+          specified  by STR  must be  less than  or equal  to the
+          user's   maximum  process   authorization.   (Default--
+          system_low)
+
+ACCESS REQUIRED
+
+     The user must have sma access  to the directory in which the
+metering segment is to be created.
+
+NOTES
+
+     All three classes of  metering -- per-version, per-user, and
+per-request -- will be enabled by default in the metering segment
+created  by  this  operation.   Use  the  enable  and/or  disable
+operations of this  command to change the state  of recording for
+the various classes of metering.
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+______________________                     ______________________
+
+subsystem_usage_meters                     subsystem_usage_meters
+______________________                     ______________________
+
+subsystem_usage_meters Operation:  delete, dl
+
+     This  operation  deletes  the  specified  subsystem metering
+segment.
+
+SYNTAX
+
+     ssum delete ssum_path {-control_args}
+
+CONTROL ARGUMENTS
+
+-force, -fc
+          deletes the  metering segment without  first asking for
+          confirmation.
+
+-no_force, -nfc
+          asks  for  confirmation  before  actually  deleting the
+          metering segment.  (Default)
+
+ACCESS REQUIRED
+
+     The user  must have sma  access to the  directory containing
+the metering segment.
+
+            ________________________________________
+
+subsystem_usage_meters Operation:  enable
+
+     This  operation  enables  the  subsequent  recording  of the
+requested  classes of  metering data  in the  specified subsystem
+metering segment.
+
+SYNTAX
+
+     ssum enable ssum_path -control_args
+
+CONTROL ARGUMENTS
+
+-all, -a  specifies  that  all  classes  of  metering  are  to be
+          enabled.  This  control argument is  mutually exclusive
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+______________________                     ______________________
+
+subsystem_usage_meters                     subsystem_usage_meters
+______________________                     ______________________
+
+          with  all  other  control  arguments  accepted  by this
+          operation.
+
+-requests, -rq
+          specifies that the recording  of per-request data is to
+          be enabled.
+
+-versions specifies that the recording  of per-version data is to
+          be enabled.
+
+-users    specifies that the recording of  per-user data is to be
+          enabled.
+
+ACCESS REQUIRED
+
+     The user  must have sma  access to the  directory containing
+the metering segment.
+
+NOTES
+
+     Use of this operation will  not disable the recording of any
+class  of metering  which is not  specified on  the command line.
+The  disable  operation  must   be  used  to  explicitly  disable
+recording.
+
+            ________________________________________
+
+subsystem_usage_meters Operation:  disable
+
+     This  operation  disables  the subsequent  recording  of the
+requested  classes of  metering data  in the  specified subsystem
+metering segment.
+
+SYNTAX
+
+     ssum disable ssum_path -control_args
+
+CONTROL ARGUMENTS
+
+-all, -a  specifies  that  all  classes  of  metering  are  to be
+          disabled.  This control  argument is mutually exclusive
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+______________________                     ______________________
+
+subsystem_usage_meters                     subsystem_usage_meters
+______________________                     ______________________
+
+          with  all  other  control  arguments  accepted  by this
+          operation.
+
+-requests, -rq
+          specifies that the recording  of per-request data is to
+          be disabled.
+
+-versions specifies that the recording  of per-version data is to
+          be disabled.
+
+-users    specifies that the recording of  per-user data is to be
+          disabled.
+
+ACCESS REQUIRED
+
+     The user  must have sma  access to the  directory containing
+the metering segment.
+
+NOTES
+
+     Use of this  operation will not enable the  recording of any
+class  of metering  which is not  specified on  the command line.
+The enable operation must be used to explicitly enable recording.
+
+            ________________________________________
+
+subsystem_usage_meters Operation:  reset, rs
+
+     This operation resets the  meters in the specified subsystem
+metering  segment to  their initial  (ie:  empty)  state.  Use of
+this  operation  is  equivalent  to deleting  and  recreating the
+metering segment.
+
+SYNTAX
+
+     ssum reset ssum_path {-control_args}
+
+CONTROL ARGUMENTS
+
+-force, -fc
+          specifies  that  the  user  is not  to  be  queried for
+          confirmation before the meters are reset.
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+______________________                     ______________________
+
+subsystem_usage_meters                     subsystem_usage_meters
+______________________                     ______________________
+
+-no_force, -nfc
+          specifies   that  the   user  is  to   be  queried  for
+          confirmation  before  the  meters  are  actually reset.
+          (Default)
+
+ACCESS REQUIRED
+
+     The user  must have sma  access to the  directory containing
+the metering segment.
+
+            ________________________________________
+
+subsystem_usage_meters Operation:  display_users, dsu
+
+     This  operation displays  the per-user  data which  has been
+recorded in the specified subsystem metering segment.
+
+SYNTAX
+
+     ssum dsu ssum_path {-control_args}
+
+CONTROL ARGUMENTS
+
+-header, -he
+          prints  a  header  defining   each  column  of  output.
+          (Default)
+
+-no_header, -nhe
+          does not print the header.
+
+-reverse, -rv
+          prints the entries in reverse order from that selected.
+
+-no_reverse, -nrv
+          prints the entries in the selected order.  (Default)
+
+-totals, -tt
+          prints  only  the totals  line  described below  in the
+          "Notes".   This control  argument is  incompatible with
+          -sort and -first.
+
+-sort STR sorts  the individual  entries before  displaying them.
+          This  control  argument is  incompatible  with -totals.
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+______________________                     ______________________
+
+subsystem_usage_meters                     subsystem_usage_meters
+______________________                     ______________________
+
+          See "List of sorting types" below.
+
+-user STR prints  only  those entries  for users  whose Person_id
+          matches   STR.    The  star   convention   is  allowed.
+          (Default-- all Person_ids)
+
+-version STR
+          prints only those entries for users whose most recently
+          used  version of  the subsystem matches  STR.  The star
+          convention is allowed.  (Default-- all versions)
+
+-first N  prints  only  the  first  N  entries  which  match  the
+          selection  criteria;  when combined  with  the -reverse
+          control argument, prints only  the last N entries.  The
+          entries are sorted, if requested, before application of
+          this  control  argument.    This  control  argument  is
+          incompatible with -totals.
+
+LIST OF SORTING TYPES
+
+     The individual  user entries may be  sorted according to one
+of the following four criteria:
+
+name      sorts by the entry's Person_id.
+
+count     sorts  by the  entry's total number  of invocations for
+          this subsystem.
+
+date_time_used, dtu
+          sorts by the entry's date/time used for this subsystem.
+
+version   sorts by the entry's most recently used version of this
+          subsystem.
+
+ACCESS REQUIRED
+
+     Either the user's process authorization must be greater than
+or equal to the access class of the subsystem metering segment or
+the user must have enabled the AIM seg privilege.
+
+NOTES
+
+     The  information  displayed for  an  individual user  of the
+subsystem includes
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+______________________                     ______________________
+
+subsystem_usage_meters                     subsystem_usage_meters
+______________________                     ______________________
+
+  o  the user's Person_id,
+  o  the total number of times that he has used this subsystem,
+  o  the version number of the version  of this subsystem that he
+          has used most recently,
+  o  the number of  times that he  has used the  above version of
+          this subsystem in succession, and
+  o  the date/time that he last used this subsystem.
+
+     The totals line reflects only those user entries which match
+the selection  criteria given by  -user and/or -version.   If all
+versions  of  the subsystem  are selected,  the totals  line will
+consist  of  the total  number  of selected  users and  the total
+number of  invocations of the  subsystem by said  users.  If only
+some versions of the subsystem are selected, the totals line will
+consist of the  total number of selected users,  the total number
+of  invocations of  the subsystem  by said  users, and  the total
+number of invocations  of said versions of the  subsystem by said
+users who most recently used one of the selected versions.
+
+            ________________________________________
+
+subsystem_usage_meters Operation:  display_versions, dsv
+
+     This operation displays the  per-version data which has been
+recorded in the given subsystem metering segment.
+
+SYNTAX
+
+     ssum dsv ssum_path {-control_args}
+
+CONTROL ARGUMENTS
+
+-header, -he
+          prints  a  header  defining   each  column  of  output.
+          (Default)
+
+-no_header, -nhe
+          does not print the header.
+
+-totals, -tt
+          prints  only  the totals  line  described below  in the
+          "Notes".
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+______________________                     ______________________
+
+subsystem_usage_meters                     subsystem_usage_meters
+______________________                     ______________________
+
+-version STR
+          selects  only  those  versions  of  the  subsystem  for
+          display  whose  version number  matches STR.   The star
+          convention is allowed.  (Default-- all versions)
+
+ACCESS REQUIRED
+
+     Either the user's process authorization must be greater than
+or equal to the access class of the subsystem metering segment or
+the user must have enabled the AIM seg privilege.
+
+NOTES
+
+     The  information  displayed  for  a  single  version  of the
+subsystem includes
+  o  the subsystem version number,
+  o  the number of invocations of this version of the subsystem,
+  o  the number  of  users  who  have used  this  version  of the
+          subsystem, and
+  o  the per-invocation average for this version of the subsystem
+          of the following:
+            o  virtual CPU time,
+            o  page faults,
+            o  segment faults,
+            o  bounds faults,
+            o  VTOC reads, and
+            o  VTOC writes.
+
+     The totals line contains the  same fields as the per-version
+detail  lines  described  above.  Furthermore,  the  averages and
+totals  in  the  totals line  reflect  only that  data  which was
+accumulated for  those versions selected by  the -version control
+argument (if any).
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+______________________                     ______________________
+
+subsystem_usage_meters                     subsystem_usage_meters
+______________________                     ______________________
+
+subsystem_usage_meters Operation:  display_requests, dsrq
+
+     This operation displays the  per-request data which has been
+recorded in the given subsystem metering segment.
+
+SYNTAX
+
+     ssum dsrq ssum_path {-control_args}
+
+CONTROL ARGUMENTS
+
+-header, -he
+          prints  a  header  defining   each  column  of  output.
+          (Default)
+
+-no_header, -nhe
+          does not print the header.
+
+-totals, -tt
+          prints  only  the totals  line  described below  in the
+          "Notes" for each request.
+
+-request STR, -rq STR
+          selects  only those  requests defined  by the subsystem
+          whose request name matches STR.  The star convention is
+          allowed.  (Default-- all requests)
+
+-version STR
+          restricts the data displayed  for each selected request
+          to  that  collected  only  for  those  versions  of the
+          subsystem whose  version number matches  STR.  The star
+          convention is allowed.  (Default-- all versions)
+
+ACCESS REQUIRED
+
+     Either the user's process authorization must be greater than
+or equal to the access class of the subsystem metering segment or
+the user must have enabled the AIM seg privilege.
+
+NOTES
+
+     The data displayed for each selected request consists of the
+request's name,  a line of information  for each selected version
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+______________________                     ______________________
+
+subsystem_usage_meters                     subsystem_usage_meters
+______________________                     ______________________
+
+in which the request is  defined unless -totals is specified, and
+a totals line which summarizes the data in the per-version detail
+lines.
+
+     The  information  displayed  for  a  given  request  in  the
+per-version detail line includes
+  o  the subsystem version number,
+  o  the average number  of times this  request was used  in each
+          invocation of this version of the subsystem,
+  o  the percentage  of  invocations  of  this  request  in  this
+          version of  the subsystem which were  aborted by a call
+          to ssu_$abort_line,
+  o  the per-invocation average for this  request in this version
+          of the subsystem of the following:
+            o  virtual CPU time,
+            o  page faults,
+            o  segment faults,
+            o  bounds faults,
+            o  VTOC reads, and
+            o  VTOC writes.
+
+     The  totals  line for  a  single request  contains  the same
+fields   as  the   per-version  detail   lines  described  above.
+Furthermore,  the  averages and  percentages  in the  totals line
+reflect only  that data which was  accumulated for those versions
+selected by the -version control argument (if any).
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+____                                                         ____
+
+ssu_                                                         ssu_
+____                                                         ____
+
+                           APPENDIX C
+
+                           SUBROUTINES
+
+Name:  ssu_
+
+Entry:  ssu_$announce_version
+
+     This entrypoint prints a message announcing a new version of
+a subsystem  if appropriate.  See the  description of interactive
+subsystem  version  announcements in  the  Programmer's Reference
+Manual for additional information.
+
+USAGE
+
+     dcl  ssu_$announce_version entry () options (variable);
+
+     call ssu_$announce_version (sci_ptr, threshold, ioa_string,
+               optional_arguments);
+
+ARGUMENTS
+
+sci_ptr             (pointer, Input)
+          is  a pointer  to the  subsystem control  structure for
+          this  invocation as  returned by ssu_$create_invocation
+          or ssu_$standalone_invocation.
+
+threshold           (fixed binary, Input)
+          is the maximum number of times that the announcement of
+          a new version should be printed for a given user.
+
+ioa_string          (character (*), Input, optional)
+          is an ioa_  control string which is used  to format the
+          subsystem-specific   portion   of   the   new   version
+          announcement.  This argument may be either a varying or
+          nonvarying  string.  If  this argument  is not present,
+          the  announcement  will consist  only of  the subsystem
+          name and version.
+
+optional_arguments  (Input, optional)
+          are arguments  to be substituted into  the ioa_ control
+          string  and  may  only  be  present  if  the ioa_string
+          argument is given.  These arguments  may be of any data
+          type required by the control string.
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+____                                                         ____
+
+ssu_                                                         ssu_
+____                                                         ____
+
+Entry:  ssu_$record_usage
+
+     This  entrypoint  records  the  invocation  of  a standalone
+subsystem  in the  per-user section  of the  system-wide metering
+database for  the subsystem.  See the  description of interactive
+subsystem  metering  in  the  Programmer's  Reference  Manual for
+additional information.
+
+USAGE
+
+     dcl  ssu_$record_usage entry (pointer);
+
+     call ssu_$record_usage (sci_ptr);
+
+ARGUMENTS
+
+sci_ptr             (Input)
+          is  a pointer  to the  subsystem control  structure for
+          this       invocation        as       returned       by
+          ssu_$standalone_invocation.
+
+NOTES
+
+     For  compatibility  with earlier  releases,  this entrypoint
+will also accept three arguments  in which case the last argument
+will be assumed to be a status  code and will be set to zero.  In
+addition,  any  call  to  this entrypoint  from  a  subsystem not
+created as a standalone invocation will be ignored.
+
+            ________________________________________
+
+Entry:  ssu_$set_usage_meters_path
+
+     This entrypoint changes the pathname of the metering segment
+to  be  used  by  this  invocation  of  the  subsystem.   See the
+description of interactive subsystem metering in the Programmer's
+Reference Manual for additional information.
+
+USAGE
+
+     dcl  ssu_$set_usage_meters_path entry (pointer,
+               character (*), character (*), fixed binary (35));
+
+
+MTB-648                Subsystem Metering                 MTB-648
+
+____                                                         ____
+
+ssu_                                                         ssu_
+____                                                         ____
+
+     call ssu_$set_usage_meters_path (sci_ptr, ssum_dirname,
+               ssum_ename, code);
+
+ARGUMENTS
+
+sci_ptr             (Input)
+          is  a pointer  to the  subsystem control  structure for
+          this  invocation as  returned by ssu_$create_invocation
+          or ssu_$standalone_invocation.
+
+ssum_dirname        (Input)
+          is  the absolute  pathanme of  the directory containing
+          the metering  segment to be used  by this invocation of
+          the subsystem.
+
+ssum_ename          (Input)
+          is the entryname of the  metering segment to be used by
+          this  invocation.   The  suffix  ssum  is  supplied  if
+          necessary.
+
+code                (Output)
+          is a standard system status code.
+
+NOTES
+
+     By  default,  the  metering  segment for  a  given subsystem
+resides in  the directory &gt;site&gt;subsystem_usage_dir  and is named
+SUBSYSTEM.ssum where SUBSYSTEM is the subsystem name given in the
+call to ssu_$create_invocation or ssu_$standalone_invocation.
+
+     This  entrypoint  does not  check for  the existence  of the
+requested  metering segment.   If the  metering segment  does not
+exist,  no  data  will be  recorded  for this  invocation  of the
+subsystem.
+
+     In order  to change the  pathname of the  subsystem metering
+segment  for  a standalone  invocation,  this entrypoint  must be
+invoked before calling the ssu_$record_usage entrypoint.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

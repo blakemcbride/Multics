@@ -1,0 +1,2651 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-559 Revision 1</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-559 Revision 1: Data Management: Before Journal Manager Specifications.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  Multics Technical Bulletin                     MTB-559 Revision 1
+  DM: Before Journal Spec
+
+  To:       Distribution
+
+  From:     Andre Bensoussan &amp; R. Michael Tague
+
+  Date:     05/21/84
+
+  Subject:  Data Management: Before Journal Manager Specifications
+
+  ABSTRACT
+
+       The  Before  Journal  Manager  is a  component  of  the Data
+  Management Integrity  Services.  It is called  by the Transaction
+  Manager  to  record  the  beginning  of  a  transaction,  i.e.  a
+  sequence of gets and puts on  files, which have to appear atomic.
+  It is then  called by the File Manager  each time the transaction
+  requests a put operation, to log  the value of the portion of the
+  file about to be modified.  It  is then called by the Transaction
+  Manager again,  at the end  of the transaction,  either to commit
+  the  transaction,  which  causes   all  modifications  to  become
+  permanent,  or  to  abort   the  transaction,  which  causes  all
+  modifications to be rolled back.
+
+       This document describes the functions provided by the Before
+  Journal Manager.   For each of these  functions, a description of
+  what  the  function  accomplishes,  and what  the  caller  of the
+  function is  supposed to know  is given.  The  description of how
+  the function accomplishes  its task is not part  of this document
+  and  will be  the purpose  of the  Before Journal  Manager Design
+  document (MTB 560).
+
+       This revision contains a few new  entry points to be used by |
+  the Data Management Daemon to  open and close before journals for |
+  recovery, and a new entry point for journal status.  Include file |
+  descriptions have been placed in appendix A.                      |
+
+  _________________________________________________________________
+
+  Multics  project  internal  working  documentation.   Not  to  be
+  reproduced or distributed outside the Multics project without the
+  consent of the author or the author's management.
+
+
+  MTB-559 Revision 1                     Multics Technical Bulletin
+                                            DM: Before Journal Spec
+
+  Comments should be sent to the author:
+
+  via Forum:
+     &gt;udd&gt;Multics&gt;Spratt&gt;mtgs&gt;DMS_Development.
+
+  via Multics Mail:
+     Tague.Multics on either System M or MIT Multics.
+
+  via telephone:
+     (HVN) 261-9358 or (617) 492-9358
+
+
+
+                            CONTENTS
+
+                                                         Page
+
+                 Abstract . . . . . . . . . . . . . . .     i
+                 1 Introduction . . . . . . . . . . . .     1
+                 2 Design decisions . . . . . . . . . .     1
+                    2.1 Before journal and transaction      1
+                    2.2 Before journal and files  . . .     1
+                    2.3 Before journal organization . .     1
+                    2.4 Logical vs physical
+                     journalization . . . . . . . . . .     2
+                 3 Before journal manager primitives  .     3
+                    before_journal_manager_ . . . . . .     4
+                       $abandon . . . . . . . . . . . .     5
+                       $adjust_process_id . . . . . . .     6
+                       $adopt . . . . . . . . . . . . .     7
+                       $clear_txn_tables  . . . . . . .     8
+                       $close_bj  . . . . . . . . . . .     9
+                       $close_bj_after_recovery . . . .    10
+                       $create_bj . . . . . . . . . . .    11
+                       $delete_bj . . . . . . . . . . .    13
+                       $find_old_uid_pn_table . . . . .    14
+                       $find_txns_after_crash . . . . .    15
+                       $flush_all . . . . . . . . . . .    17
+                       $flush_transaction . . . . . . .    18
+                       $get_bj_oid  . . . . . . . . . .    19
+                       $get_bj_path_from_oid  . . . . .    20
+                       $get_bj_path_from_uid  . . . . .    21
+                       $get_default_bj  . . . . . . . .    22
+                       $get_journal_status  . . . . . .    23
+                       $open_all_after_crash  . . . . .    25
+                       $open_bj . . . . . . . . . . . .    27
+                       $open_bj_force . . . . . . . . .    29
+                       $open_bj_for_recovery  . . . . .    30
+                       $per_system_init_1 . . . . . . .    31
+                       $per_system_init_2 . . . . . . .    32
+                       $rebuild_after_crash . . . . . .    33
+                       $rollback  . . . . . . . . . . .    34
+                       Notes on Rollback  . . . . . . .    35
+                       $set_default_bj  . . . . . . . .    37
+                       $user_shutdown . . . . . . . . .    38
+                       $write_aborted_mark  . . . . . .    39
+                       $write_before_image  . . . . . .    40
+                       $write_begin_mark  . . . . . . .    42
+
+
+
+                         CONTENTS (cont)
+
+                                                         Page
+
+                       $write_committed_mark  . . . . .    44
+                       $write_rollback_handler  . . . .    45
+                       $write_rolled_back_mark  . . . .    46
+                 Appendix A - Before Journal Include
+                  Files Used  . . . . . . . . . . . . .    47
+                       ci_parts structure . . . . . . .    47
+                       tm_tdt structure . . . . . . . .    47
+     bj_txt structure . . . . . . . .    48
+     bj_txte structure  . . . . . . .    49
+     bj_pste structure  . . . . . . .    52
+     bj_status structure  . . . . . .    59
+     bj_global_meters structure . . .    59
+
+  Multics Technical Bulletin                     MTB-559 Revision 1
+  DM: Before Journal Spec
+
+  1 INTRODUCTION
+
+       The purpose of  a Before Journal is to keep  a record of all
+  modifications  done  by a  transaction,  in such  a way  that the
+  modifications  can  be  undone   if  the  transaction  cannot  be
+  completed.  A  Before Journal is  manipulated by a  collection of
+  procedures which make up the Before Journal Manager.  Among these
+  procedures,  some  are  used  internally  by  the  Before Journal
+  Manager itself to perform its job, and are of no interest in this
+  memo.  Some  other procedures are used  by the various components
+  of the Data Management  Architecture and represent the primitives
+  of the  Before Journal Manager, i.e.,  the interface presented by
+  the Before Journal Manager to the  rest of the system.  It is the
+  purpose of this memo to describe these primitives.
+
+  2 DESIGN DECISIONS
+
+       Some   design  decisions   have  been   made  regarding  the
+  relationships between Before Journals and the rest of the system.
+  It is  useful to describe  these decisions before  going into the
+  detail of the Before Journal operations.
+
+  2.1 Before journal and transaction
+
+       The entire system may use one or several Before Journals.  A
+  given process  may use one  or several Before  Journals.  A given
+  transaction may use only one Before Journal.
+
+       The  Before  Journal  to be  used  by a  transaction  can be
+  explicitly  specified  when  calling the  Transaction  Manager to
+  begin  the  transaction.  If  no Before  Journal is  specified, a
+  "default" Before  Journal will be  defined by the  Before Journal
+  Manager  the first  time the  transaction needs  to write  in the
+  journal.
+
+  2.2 Before journal and files
+
+       A Before Journal is a file.   It has a pathname and a branch
+  in  a  directory.  It  is made  of Control  Intervals and  can be
+  accessed through the File Manager like any other file.
+
+  2.3 Before journal organization
+
+       A  Before  Journal  is  written as  a  sequential  file with
+  variable length logical records,  physically grouped into Control
+  Intervals.   Logical  records  are produced  by  all transactions
+
+
+  MTB-559 Revision 1                     Multics Technical Bulletin
+                                            DM: Before Journal Spec
+
+  sharing the same before journal, and  are entered in a journal in
+  the order in which they are produced.
+
+       When  a Before  Journal is  used to  rollback a transaction,
+  random  access  to the  journal  is needed.   That is  why Before
+  Journals  are on  disk and not  on tape.   The rollback procedure
+  needs to read all logical records produced by the transaction, in
+  reverse chronological order.  All logical records produced by the
+  same transaction  are chained together in  reverse order, to ease
+  the rollback operation.
+
+       Logical  records  produced by  a  transaction are  no longer
+  needed after  the transaction terminates.  In  order to reuse the
+  space  occupied  by  useless  information,  a  Before  Journal is
+  organized as a circular sequential file.
+
+  2.4 Logical vs physical journalization
+
+       When a  component of the Data  Management Architecture calls
+  upon  the Before  Journal Manager and  requests that  a record be
+  appended to a journal, the following scenario usually happens:
+
+    - The Before Journal Manager logically writes the record in the
+      specified journal but does not  force the new record to disk.
+      This step is referred to as logical journalization.
+
+    - The  Before  Journal Manager  returns to  its caller  with no
+      guarantee that the new record is on disk yet.
+
+    - Some  time later  the record  is physically  written to disk,
+      causing the physical journalization of the record.
+
+  The reason for not doing physical journalization before returning
+  to  the  caller is  to save  I/O's and  waiting time.   There are
+  cases, however, where the caller needs to wait until the physical
+  journalization is completed.  The Before Journal Manager provides
+  for this synchronization function.
+
+
+  Multics Technical Bulletin                     MTB-559 Revision 1
+  DM: Before Journal Spec
+
+  3 BEFORE JOURNAL MANAGER PRIMITIVES
+
+       All before journal manager  primitives are provided as entry
+  points  in  the before_journal_manager_  module.  This  module is
+  described   below,   in  the   standard   format  used   for  MPM
+  documentation.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Name:  before_journal_manager_
+
+  The before_journal_manager_  module provides one  entry point for
+  each before_journal_manager_ primitive.  The  list of these entry
+  points is given  below and is followed by  a detailed description
+  of what each of them does.
+
+|      o  abandon
+       o  adjust_process_id
+|      o  adopt
+       o  clear_txn_tables
+       o  close_bj
+|      o  close_bj_after_recovery
+       o  create_bj
+       o  delete_bj
+       o  find_old_uid_pn_table
+       o  find_txns_after_crash
+|      o  flush_all
+       o  flush_transaction
+       o  get_bj_oid
+       o  get_bj_path_from_oid
+       o  get_bj_path_from_uid
+       o  get_default_bj
+|      o  get_journal_status
+       o  open_all_after_crash
+       o  open_bj
+|      o  open_bj_force
+|      o  open_bj_for_recovery
+       o  per_system_init_1
+       o  per_system_init_2
+       o  rebuild_after_crash
+       o  rollback
+       o  set_default_bj
+|      o  user_shutdown
+       o  write_aborted_mark
+       o  write_before_image
+       o  write_begin_mark
+       o  write_committed_mark
+       o  write_rollback_handler
+       o  write_rolled_back_mark
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$abandon
+
+  This procedure  is supposed to  be called by  the Data Management
+  Daemon only.
+
+  When the Daemon receives a request to "adjust" a transaction left
+  unfinished by another  process, it tries to abort  it, unless the
+  transaction was in  the middle of being committed,  in which case
+  it tries  to commit it.   In order to  do the abort  or commit on
+  behalf  of the  other process,  the Daemon  "pretends" it  is its
+  transaction,  by initializing  some data used  by the Transaction
+  Manager,   the   File   Manager,   the  Lock   Manager   and  the
+  before_journal_manager_.   After  the  adjustment  is  done,  the
+  Daemon disassociates itself from the transaction by resetting the
+  data initialized at the beginning.
+
+  before_journal_manager_$adopt   initializes  the   data  used  by
+  before_journal_manager_ during the adjustment.
+
+  before_journal_manager_$abandon   resets   the   data   used   by
+  before_journal_manager_ during the adjustment.
+
+  Usage
+
+       dcl before_journal_manager_$abandon entry (bit(36) aligned,
+            fixed bin, fixed bin(35));
+
+       call before_journal_manager_$abandon (txn_id, txn_ix, code);
+
+  where:
+
+  txn_id                       (Input)
+     is the transaction id of the transaction to be abandoned.
+
+  txn_ix                       (Input)
+     is the transaction index in the transaction table.
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$adjust_process_id
+
+  This procedure is supposed to  be executed by the Data Management
+  Daemon only.
+
+  When a  process using the  Data Management System  "dies", the DM
+  Daemon is responsible for cleaning up.  If the dead process had a
+  transaction in progress, the Daemon "adjusts" it, that is, aborts
+  it  or  commits  it.   When  the dead  process  no  longer  has a
+  transaction in progress, any information about that process still
+  kept in  any table used  by the Data Management  System should be
+  cleaned up.
+
+  This    procedure    cleans    up     the    tables    used    by
+  before_journal_manager_;  in  particular,  it  simulates  a close
+  operation  for all  Before Journals  that were  open in  the dead
+  process.
+
+  Usage
+
+       dcl before_journal_manager_$adjust_process_id entry (bit(36)
+            aligned, fixed bin (35));
+
+       call before_journal_manager_$adjust_process_id (process_id,
+            code);
+
+  where:
+
+  process_id                   (Input)
+     is the process  id of the dead process,  whose information has
+     to be cleaned up in the before_journal_manager_ tables.
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$adopt
+
+  This procedure  is supposed to  be called by  the Data Management
+  Daemon only.
+
+  When the Daemon receives a request to "adjust" a transaction left
+  unfinished by another  process, it tries to abort  it, unless the
+  transaction was in  the middle of being committed,  in which case
+  it tries  to commit it.   In order to  do the abort  or commit on
+  behalf of the other process, the  Daemon "pretends" it is its own
+  transaction,  by initializing  some data used  by the Transaction
+  Manager,    the    File   Manager,    the   Lock    Manager   and
+  before_journal_manager_.   After  the  adjustment  is  done,  the
+  Daemon disassociates itself from the transaction by resetting the
+  data initialized at the beginning.
+
+  before_journal_manager_$adopt   initializes  the   data  used  by
+  before_journal_manager_ during the adjustment.
+
+  before_journal_manager_$abandon   resets   the   data   used   by
+  before_journal_manager_ during the adjustment.
+
+  Usage
+
+       dcl before_journal_manager_$adopt entry (bit(36) aligned,
+            fixed bin, fixed bin(35));
+
+       call before_journal_manager_$adopt (txn_id, txn_ix, code);
+
+  where:
+
+  txn_id                       (Input)
+     is the transaction id of the transaction to be adopted.
+
+  txn_ix                       (Input)
+     is the transaction index in the transaction table.
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$clear_txn_tables
+
+  This  procedure  is  intended  to  be  called  only  by  the Data
+  Management Daemon process, at the  end of recovery after a system
+  crash.
+
+  It initializes the system  tables used by before_journal_manager_
+  showing  that  no  transaction  is  currently  using  any  Before
+  Journal,  in  order  to start  with  clear tables  when  the Data
+  Management system is enabled.
+
+  Usage
+
+       dcl before_journal_manager_$clear_txn_tables entry (fixed
+            bin(35));
+
+       call before_journal_manager_$clear_txn_tables (code);
+
+  where:
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$close_bj
+
+  This function closes the Before  Journal specified by its opening
+  id  in  the  current process.   Upon  return from  this  call the
+  current  process cannot  use this  journal any  longer, unless it
+  opens it again or it had been  opened more times than it has been
+  closed.   If  a close_bj  request  is issued  by  a process  on a |
+  journal while the process still has an active transaction in that |
+  journal,  the  journal  cannot be  closed  and an  error  code is |
+  returned  to the  caller.  If  the journal  to be  closed was the |
+  default Before Journal for the  process, the Before Journal which
+  was  last  opened in  the  process (if  any) becomes  the default
+  Before Journal (see note at entry set_default_bj).
+
+  Usage
+
+       dcl before_journal_manager_$close_bj entry (bit(36) aligned,
+            fixed bin(35));
+
+       call before_journal_manager_$close_bj (bj_opening_id, code);
+
+  where:
+
+  bj_opening_id                (Input)
+     is the opening identifier of the Before Journal.
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+| Entry:  before_journal_manager_$close_bj_after_recovery
+
+| This  entry is  called by the  Data Management Daemon  to close a
+| Before Journal  after recovery.  This procedure  differs from the
+| usual  close_bj  in that  it  removes any  erroneous data  in the
+| system and  process tables, and  Before Journal header  about the
+| number of  users that have  opened the specified  Before Journal.
+| After  a  close_bj_after_recovery all  information  will indicate
+| that the journal is not currently open for any user.
+
+| Usage
+
+|      dcl before_journal_manager_$close_bj_after_recovery entry
+|           (bit(36) aligned, fixed bin(35));
+
+|      call before_journal_manager_$close_bj_after_recovery
+|           (bj_opening_id, code);
+
+| where:
+
+| bj_opening_id                (Input)
+|    is the opening identifier of the Before Journal.
+
+| code                         (Output)
+|    is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$create_bj
+
+  This function creates  a Before Journal file as  specified by the
+  input arguments.
+
+  Usage
+
+       dcl before_journal_manager_$create_bj entry (char(*),
+            char(*), fixed bin, fixed bin, fixed bin(35));
+
+       call before_journal_manager_$create_bj (dir_name,
+            entry_name, n_control_intervals, control_interval_size,
+            code);
+
+  where:
+
+  dir_name                     (Input)
+     is the pathname  of the directory in which  the Before Journal
+     is to be created.
+
+  entry_name                   (Input)
+     is the entry name of the Before Journal to be created.
+
+  n_control_intervals          (Input)
+     is the size of the journal  expressed in the number of control
+     intervals.  When the journal becomes  full, the journal can be
+     garbage collected since all information  put on the journal by
+     committed transactions is no longer useful.  In evaluating the
+     size  of a  journal, the  creator must  take into  account the
+     number of transactions that will be using the journal, as well
+     as the  profile of these  transactions, i.e.  their  length in
+     time and the rate at which they modify data.
+
+  control_interval_size        (Input)
+     is the size of the  Before Journal control intervals in number
+     of bytes.  The  size is important for tuning  purposes.  If it
+     is too small, it may cause the number of I/O's for the journal
+     to be  too high.  If  it is too  large, it may  cause too much
+     space in the journal to  be wasted when control intervals need
+     to be physically written while they are not full.  The "right"
+     size  for  the  control  interval  depends  on  the  number of
+     transactions  using  the journal,  on the  rate at  which they
+     produce before  images and on  the rate at  which they commit.
+     There is no good size a priori, and metering will be available
+     to determine if the size is adequate.  If no size is specified
+     by  the  caller,  1K will  be  chosen by  default.   Under the
+     current implementation, this can only be set to 1K.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$delete_bj
+
+  This  function  deletes  the  Before  Journal  specified  by  its
+  pathname.  If  the journal is  open in at least  one process, the
+  deletion cannot be performed and an error code is returned.
+
+  Usage
+
+       dcl before_journal_manager_$delete_bj entry (char(*),
+            char(*), fixed bin(35));
+
+       call before_journal_manager_$delete_bj (dir_name,
+            entry_name, code);
+
+  where:
+
+  dir_name                     (Input)
+     is the pathname  of the directory in which  the Before Journal
+     resides.
+
+  entry_name                   (Input)
+     is the entry name of the Before Journal.
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$find_old_uid_pn_table
+
+  This program  is given the  pathname of a  Data Management System
+  bootload directory  and returns a  pointer to the  Before Journal
+  pathname table associated with the directory.
+
+  Its primary use is during recovery after crash.
+
+  Usage
+
+       dcl before_journal_manager_$find_old_uid_pn_table entry
+            (char(*), ptr, fixed bin(35));
+
+       call before_journal_manager_$find_old_uid_pn_table
+            (old_boot_dir, bj_pn_table_ptr, code);
+
+  where:
+
+  old_boot_dir                 (Input)
+     is  the  pathname  of  the  Data  Management  System  bootload
+     directory  under  which  the  Before  Journal  pathname  table
+     resides.
+
+  bj_pn_table_ptr              (Output)
+     is the address of the table.
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$find_txns_after_crash
+
+  This procedure is intended to be called by Data Management Daemon
+  process when recovering from a system crash.
+
+  It operates on a single  Before Journal, specified by its opening
+  id.  It reads the  journal sequentially, in reverse chronological
+  order, starting  from the last record.   Each record contains the
+  type of the  record (commit type, abort type,  Before Image type,
+  etc.),  and  the transaction  id.   Using this  information, this
+  procedure  determines  what   transactions  were  finished  (i.e.
+  committed  or  aborted),  and  what  transactions  were  still in
+  progress  at  the  time  of   the  crash.   For  each  unfinished
+  transaction, it finds, in the  journal, the information needed by
+  the Transaction Manager and  before_journal_manager_ to abort the
+  transaction, and  stores this information  in 2 tables  that have
+  the same format as the tables used by the Transaction Manager and
+  before_journal_manager_.
+
+  Usage
+
+       dcl before_journal_manager_$find_txns_after_crash entry
+            (ptr, ptr, bit(36)aligned, bit(1)aligned, fixed
+            bin(35));
+
+       call before_journal_manager_$find_txns_after_crash
+            (old_tm_tdt_p, old_bj_txt_p, bj_oid, check_mode, code);
+
+  where:
+
+  old_tm_tdt_p                 (Input)
+     is a pointer to a based structure which has the same format as
+     the transaction  table used by the  Transaction Manager.  This
+     structure is described in  the include file dm_tm_tdt.incl.pl1
+     (see Appendix A).
+
+  old_bj_txt_p                 (Input)
+     is a pointer to a based structure which has the same format as
+     the transaction  table used by  before_journal_manager_.  This
+     structure is described in  the include file dm_bj_txt.incl.pl1
+     (see Appendix A).
+
+  bj_oid                       (Input)
+     is the opening id defining the Before Journal to be used.
+
+  check_mode                   (Input)
+     if  check_mode  is OFF,  the first  error encountered  by this
+     procedure causes  it to report  the error and  return, without
+     storing  any  information  in  the  2  tables  pointed  to  by
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+     old_tm_tdt_p and  old_bj_txt_p.  If check_mode is  ON, when an
+     error is encountered, the  procedure reports it and continues;
+     before returning to the caller, it stores whatever information
+     it  found  about  unfinished  transactions  in  the  2  tables
+     mentioned above.
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$flush_all                         |
+
+  This function is called by the Data Management Daemon.  It causes |
+  all Before Journal pages in memory  to be written to disk for all |
+  the Before Journals in the entire Data Management System.         |
+
+  Usage                                                             |
+
+       dcl before_journal_manager_$flush_all entry ();              |
+
+       call before_journal_manager_$flush_all ();                   |
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$flush_transaction
+
+  This function is called mainly by the Transaction Manager, when
+  executing the commit or abort transaction function.  It initiates
+  as many I/O requests as necessary to cause all Before Journal
+  records produced by the specified transaction to be written to
+  disk if they are not already written.  The function returns to
+  its caller only after all Before Journal records for the
+  transaction are effectively on disk.
+
+  Usage
+
+       dcl before_journal_manager_$flush_transaction entry (bit(36)
+            aligned, fixed bin, fixed bin(35));
+
+       call before_journal_manager_$flush_transaction (txn_id,
+            txn_ix, code);
+
+  where:
+
+  txn_id                       (Input)
+     is the  identifier of the transaction  whose Before Images are
+     to be flushed.
+
+  txn_ix                       (Input)
+     is the transaction index in the transaction table.
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$get_bj_oid
+
+  This procedure returns the opening id of the journal specified by
+  the caller.  If  the journal is not open  in the current process,
+  it does not  open it and returns a null  opening id and a nonzero
+  code.  If the  code returned is zero, the  opening id returned is
+  nonnull.
+
+  Usage
+
+       dcl before_journal_manager_$get_bj_oid entry (char(*),
+            char(*), bit(36) aligned, fixed bin(35));
+
+       call before_journal_manager_$get_bj_oid (dir_name,
+            entry_name, bj_oid, code);
+
+  where:
+
+  dir_name                     (Input)
+     is the pathname  of the directory in which  the Before Journal
+     resides.
+
+  entry_name                   (Input)
+     is the entry name of the Before Journal.
+
+  bj_oid                       (Output)
+     is the opening id of  the Before Journal specified by dir_name
+     and entry_name.  If the journal is not open in this process, a
+     null value is returned.  If a nonnull value is returned, it is
+     a valid opening id for the specified journal.
+
+  code                         (Output)
+     is a standard  system error code.  If the  journal is not open
+     in     this     process      the     value     returned     is
+     dm_error_$bj_journal_not_open.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$get_bj_path_from_oid
+
+  This procedure returns the directory  pathname and the entry name
+  of the Before Journal specified by its opening id in the process.
+  For this operation  to be successful, the Before  Journal must be
+  open in the current process.
+
+  If a zero  code is returned, the operation  is successful and the
+  dir_name and entry_name parameters are  set to the proper values.
+  If a nonzero  code is returned the operation  did not succeed and
+  the values of dir_name and entry_name are left unchanged.
+
+  Usage
+
+       dcl before_journal_manager_$get_bj_path_from_oid entry
+            (bit(36) aligned, char(*), char(*), fixed bin(35));
+
+       call before_journal_manager_$get_bj_path_from_oid (bj_oid,
+            dir_name, entry_name, code);
+
+  where:
+
+  bj_oid                       (Input)
+     is the opening id of the Before Journal for which the pathname
+     is requested.
+
+  dir_name                     (Output)
+     is the pathname  of the directory in which  the Before Journal
+     resides.
+
+  entry_name                   (Output)
+     is the entry name of the Before Journal.
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$get_bj_path_from_uid
+
+  This  procedure  is called  by  the Data  Management  Daemon.  It
+  returns the directory  pathname and the entry name  of the Before
+  Journal  specified by  its unique id.   For this  operation to be
+  successful,  the  Before Journal  must  be opened  at least  by 1
+  process in the system.
+
+  If a zero  code is returned, the operation  is successful and the
+  dir_name and entry_name parameters are  set to the proper values.
+  If a nonzero  code is returned the operation  did not succeed and
+  the values of dir_name and entry_name are left unchanged.
+
+  This entry point does not search the entire Multics hierarchy for
+  a  journal with  the specified unique  id.  It  searches only the
+  table of pathnames maintained  by before_journal_manager_ for all
+  journals that are currently open in the system.
+
+  Usage
+
+       dcl before_journal_manager_$get_bj_path_from_uid entry
+            (bit(36) aligned, char(*), char(*), fixed bin(35));
+
+       call before_journal_manager_$get_bj_path_from_uid (bj_uid,
+            dir_name, entry_name, code);
+
+  where:
+
+  bj_uid                       (Input)
+     is the unique id of the  Before Journal for which the pathname
+     is requested.
+
+  dir_name                     (Output)
+     is the pathname  of the directory in which  the Before Journal
+     resides.
+
+  entry_name                   (Output)
+     is the entry name of the Before Journal.
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$get_default_bj
+
+| This procedure returns the opening  id of the Before Journal that
+| would be used by those entry  points that expect a Before Journal
+| to  be  specified, but  when  not specified  will use  a specific
+| Before  Journal  as a  default.  The  rules for  determining this
+| default  Before  Journal are  described  in the  notes  under the
+| set_default_bj entry point.  If the  journal which is to serve as
+| the default Before Journal is not  open at the time of this call,
+| it is opened automatically.
+
+  Usage
+
+       dcl before_journal_manager_$get_default_bj entry (bit(36)
+            aligned, fixed bin(35));
+
+       call before_journal_manager_$get_default_bj (bj_oid, code);
+
+  where:
+
+  bj_oid                       (Output)
+     is the opening id of the current default Before Journal.
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$get_journal_status                |
+
+  This procedure returns information about before journals in space |
+  allocated in an area provided by the caller.                      |
+
+  Usage                                                             |
+
+       dcl before_journal_manager_$get_journal_status entry         |
+            (char(*), char(*), ptr, ptr, ptr, fixed bin (35));      |
+
+       call before_journal_manager_$get_journal_status (dir_name,   |
+            entry_name, area_ptr, bj_status_ptr, global_meters_ptr, |
+            code);                                                  |
+
+  where:                                                            |
+
+  dir_name                     (Input)                              |
+     is the pathname  of the directory in which  the Before Journal |
+     resides.                                                       |
+
+  entry_name                   (Input)                              |
+     is the entry name of the Before Journal.                       |
+
+  area_ptr                     (Input)                              |
+     is a  pointer to a  caller supplied area  where this procedure |
+     can  allocate  information  structures  to  pass  back  to the |
+     caller.                                                        |
+
+  bj_status_ptr                (Output)                             |
+     is a  pointer to a  structure describing the  current state of |
+     the Before  Journal as related  to control interval  usage and |
+     demand.  The bj_status structure  is described in include file |
+     dm_bj_status.incl.pl1 (see Appendix A).                        |
+
+  bj_global_meters_ptr         (Output)                             |
+     is  a  pointer to  a  page control/Before  Journal information |
+     returned  from  ring  2.    The  global  meters  structure  is |
+     described in dm_bj_global_meters.incl.pl1 (see Appendix A).    |
+
+  code                         (Output)                             |
+     is a standard system error code.                               |
+
+  Notes                                                             |
+
+  This  procedure  will return  either  information about  a single |
+  journal  (if p_dir  and p_entry  are nonnull  strings), about the |
+  journals  in the  process table (if  p_dir is null  and p_entry = |
+  "process"), or about  the journals in the system  table (if p_dir |
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+| is   null  and   p_entry  =  "system").    When  specifying  that
+| information from a single journal  be obtained, if the journal is
+| currently unused, the information will  come from its header.  If
+| the journal is in use, the  information will come from the system
+| table entry, which is really just a recent copy of the header.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$open_all_after_crash
+
+  This  procedure  is  intended  to  be  called  only  by  the Data
+  Management Daemon process, during recovery after a system crash.
+
+  During   normal  operation,   before_journal_manager_  keeps  the
+  pathnames of  all Before Journals currently  opened in the system
+  (see  the  description  of  the  open  primitive).   The  list of
+  pathnames  is  kept  in  a  segment  created  under  a  directory
+  associated  with each  bootload (see MTB-592:   Data Management -
+  System  Structure  &amp;  Initialization).    The  pathname  of  that
+  directory is given as input  to this procedure, whose function is
+  to find the  list of pathnames for all  Before Journals that were
+  opened at  the time of the  system crash, and to  open them.  For
+  each journal it  opens, it returns its opening  id and its unique
+  id  to the  caller.  It  also returns  the number  of journals it
+  opened.
+
+  Usage
+
+       dcl before_journal_manager_$open_all_after_crash entry
+            (char(*), ptr, ptr, fixed bin, fixed bin (35));
+
+       call before_journal_manager_$open_all_after_crash
+            (old_boot_dir, bj_oid_array_ptr, bj_uid_array_ptr,
+            n_journals, code);
+
+  where:
+
+  old_boot_dir                 (Input)
+     is the pathname of the  directory used as a bootload directory
+     by the Data Management System at the time of the crash.
+
+  bj_oid_array_ptr             (Input)
+     is a pointer passed by the caller, specifying the base address
+     of an array  of bit(36) aligned elements, in  which the caller
+     expects the Before Journal opening id's to be returned.
+
+  bj_uid_array_ptr             (Input)
+     is a pointer passed by the caller, specifying the base address
+     of an array  of bit(36) aligned elements, in  which the caller
+     expects the Before Journal uid's to be returned.
+
+  n_journals                   (Output)
+     is the number of Before Journals opened by this procedure.
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+| Notes
+
+| The  caller  should take  care  to provide  arrays  of sufficient
+| length  for the  oid's and  uid's to  be returned  in.  Temporary
+| segments are recommended.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$open_bj
+
+  This function makes the Before Journal specified by the pathname,
+  ready  for  use by  any  transaction of  the current  process.  A
+  process may have  several Before Journals open at  the same time,
+  and  may also  have the same  journal opened more  than one time.
+  When a transaction  is started, one of the  open journals must be
+  associated  with  the  transaction,  if the  transaction  needs a
+  Before  Journal.  One  can expect that  in most  cases, a process
+  will open only one Before Journal,  which will be used by all its
+  transactions.
+
+  open_bj also  changes the process'  default Before Journal  to be
+  the newly opened journal (see note at entry set_default_bj).
+
+  Usage
+
+       dcl before_journal_manager_$open_bj entry (char(*), char(*),
+            bit(36) aligned, fixed bin(35));
+
+       call before_journal_manager_$open_bj (dir_name, entry_name,
+            bj_opening_id, code);
+
+  where:
+
+  dir_name                     (Input)
+     is the pathname  of the directory in which  the Before Journal
+     to be opened resides.
+
+  entry_name                   (Input)
+     is the entry name of the Before Journal to be opened.
+
+  bj_opening_id                (Output)
+     is the opening identifier of the journal.  This specifier must
+     be used  subsequently by the current  process to identify this
+     journal.
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Notes
+
+  When a Before Journal is opened, it is remembered in a per system
+  table, containing the pathnames and  uid's of all Before Journals
+  opened in the system.  This table is used after a system crash to
+  determine  what  are  the  journals  that  must  be  reopened and
+  examined in order  to rollback.  It is important  that this table
+  be  safe  and consistent;  it  is modified  by  carefully written
+  programs that leave the table  consistent at all time and flushed
+  after each modification.
+
+| If a  process opens the  same Before Journal more  than one time,
+| the  opening id  received from the  open_bj on  the several calls
+| will be  the same.  The  process must close a  Before Journal the
+| same  number  of times  as it  has opened  it, before  the Before
+| Journal will no  longer be accessable via the  opening id by that
+| process.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$open_bj_force                     |
+
+  This  procedure  is called  by  the Data  Management  Daemon when |
+  enabling  a Data  Management System.   It opens  a Before Journal |
+  regardless  of  any existing  or  inconsistent journal  data that |
+  would  prevent the  successful functioning of  open_bj, namely an |
+  active status  flag in the  Before Journal which  due to failure, |
+  has  remained set.   The flag  is turned  off and  the journal is |
+  opened.                                                           |
+
+  Usage                                                             |
+
+       dcl before_journal_manager_$open_bj_force entry (char(*),    |
+            char(*), bit(36) aligned, fixed bin(35));               |
+
+       call before_journal_manager_$open_bj_force (dir_name,        |
+            entry_name, bj_opening_id, code);                       |
+
+  where:                                                            |
+
+  dir_name                     (Input)                              |
+     is the pathname  of the directory in which  the Before Journal |
+     to be opened resides.                                          |
+
+  entry_name                   (Input)                              |
+     is the entry name of the Before Journal to be opened.          |
+
+  bj_opening_id                (Output)                             |
+     is the  opening identifier of the  journal.  This specifier is |
+     used subsequently to identify this journal.                    |
+
+  code                         (Output)                             |
+     is a standard system error code.                               |
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+| Entry:  before_journal_manager_$open_bj_for_recovery
+
+| This  procedure  is  called  by  the  Data  Management  Daemon at
+| recovery time to open a Before  Journal.  If the journal had been
+| in use  at the time  of system failure, then  this procedure will
+| open the  journal in such  a way as to  preserve valuable journal
+| information so that recovery may take place.
+
+| Usage
+
+|      dcl before_journal_manager_$open_bj_for_recovery entry
+|           (char(*), char(*), bit(36) aligned, fixed bin(35));
+
+|      call before_journal_manager_$open_bj_for_recovery (dir_name,
+|           entry_name, bj_opening_id, code);
+
+| where:
+
+| dir_name                     (Input)
+|    is the pathname  of the directory in which  the Before Journal
+|    to be opened resides.
+
+| entry_name                   (Input)
+|    is the entry name of the Before Journal to be opened.
+
+| bj_opening_id                (Output)
+|    is the  opening identifier of the  journal.  This specifier is
+|    used subsequently to identify this journal.
+
+| code                         (Output)
+|    is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$per_system_init_1
+
+  This  procedure  is  intended  to  be  called  only  by  the Data
+  Management Daemon  process, when initializing the  DM system.  It
+  creates  and   initializes  the  per  system   tables  needed  by
+  before_journal_manager_.
+
+  Usage
+
+       dcl before_journal_manager_$per_system_init_1 entry (fixed
+            bin (35));
+
+       call before_journal_manager_$per_system_init_1 (code);
+
+  where:
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$per_system_init_2
+
+  This  procedure  is  intended  to  be  called  only  by  the Data
+  Management Daemon process, when  initializing the DM system.  Its
+  function is  to create the  system Before Journal,  before the DM
+  system is  enabled.  For this procedure  to operate correctly, it
+  must be  executed only after  part one system  initialization has
+  finished (see MTB592:  System Structure and Initialization).
+
+  Usage
+
+       dcl before_journal_manager_$per_system_init_2 entry (fixed
+            bin (35));
+
+       call before_journal_manager_$per_system_init_2 (code);
+
+  where:
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$rebuild_after_crash
+
+  This  procedure is  intended to  be used  by the  Data Management
+  Daemon  only,  when  doing  recovery after  a  system  crash.  It
+  stores, in the transaction table used by before_journal_manager_,
+  all the information available  about those transactions that were
+  unfinished at the time of the crash.
+
+  Usage
+
+       dcl before_journal_manager_$rebuild_after_crash entry (ptr,
+            fixed bin (35));
+
+       call before_journal_manager_$rebuild_after_crash
+            (temp_txt_p, code);
+
+  where:
+
+  temp_txt_p                   (Input)
+     is a pointer to the temporary  table with the same format as a
+     real bj_txt table.  The entire temporary table is to be copied
+     to the  real one.  The  structure of a bj_txt  is described in
+     the include file dm_bj_txt.incl.pl1 (see Appendix A).
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$rollback
+
+  This  function  undoes  the  modifications  done  by  a specified
+  transaction  by  applying  the  Before  Images  recorded  in  the
+  associated Before Journal, up to a specified checkpoint (see note
+  at entry write_begin_mark).
+
+  Usage
+
+       dcl before_journal_manager_$rollback entry (bit(36) aligned,
+            fixed bin, fixed bin, fixed bin(35));
+
+       call before_journal_manager_$rollback (txn_id, txn_ix,
+            checkpoint_number, code);
+
+  where:
+
+  txn_id                       (Input)
+     is the identifier of the transaction to be rolled back.
+
+  txn_ix                       (Input)
+     is the index of the transaction in the transaction table.
+
+  checkpoint_number            (Input)
+     is  the  number of  the checkpoint  within the  transaction to
+     rollback to.  By convention,  the beginning of the transaction
+     is  checkpoint number  0, and  checkpoints are  numbered using
+     consecutive  integers  (1,2,3...).  The  caller may  request a
+     rollback to the most recent checkpoint by passing a checkpoint
+     number  equal  to  -1.   In the  MR11  system,  the checkpoint
+     facility  is  not provided,  and  the rollback  procedure will
+     always  undo the  transaction up  to the  beginning.  The only
+     valid values for the checkpoint  number argument will be 0 and
+     -1.
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Notes on Rollback
+
+       1.  The rollback procedure  reads all Before Journal records
+  produced  by  the  transaction, in  reverse  chronological order,
+  starting from  the last record  to the begin mark  record (or the
+  checkpoint mark  record specified by  the caller).  Each  time it
+  reads a record,  it performs the appropriate action  to undo what
+  the  transaction  had  done.   In order  to  undo  the  data base
+  modifications, the  rollback procedure has  to write in  the data
+  base.  It  does so by  calling the File Manager,  like for normal
+  modifications.  No Before Images are produced during rollback.
+
+       2.   The  rollback procedure  is  called by  the Transaction
+  Manager  as  one  of its  steps  in  aborting or  rolling  back a
+  transaction.  To rollback a  transaction, the Transaction Manager
+  first  calls  before_journal_manager_  to   undo  the  data  base
+  modifications (this function), then it  calls the Lock Manager to
+  release  the   locks  set  by   the  transaction.   To   abort  a
+  transaction,  the  Transaction Manager  first  rolls it  back, as
+  described above,  then calls before_journal_manager_  to write an
+  "Aborted" mark.
+
+       3.   The  rollback procedure  may  be executed  by  the same
+  process  that  was  executing  the Transaction,  or  by  the Data
+  Management  Daemon  process.  While  this function  is performed,
+  other  transactions  may  be in  progress  concurrently.  Several
+  transactions  may be  being rolled back  concurrently, by several
+  processes.
+
+       4.  The Rollback procedure returns  to its caller only after
+  all data  base and Before  Journal I/O's generated to  do its job
+  have been physically completed.
+
+       5.   Each  Before  Image  record produced  by  a transaction
+  before modifying  a file contains the  identification of the file
+  in two forms:  the file opening  id and the file unique id.  When
+  the rollback is  performed by the process that  was executing the
+  transaction,  the  file  opening  id  is  used  by  the  rollback
+  procedure  to refer  to the file  when calling  the File Manager.
+  However, when the  rollback is not performed by  the process that
+  was  executing  the transaction,  the file  opening id  cannot be
+  used, since it  is meaningful only in one  process.  Instead, the
+  file uid is used to search a uid to pathname conversion table, in
+  which all protected files are registered,  as long as they may be
+  needed  by   the  rollback  mechanism.   This   uid  to  pathname
+  conversion table is necessary to be  able to rollback and must be
+  as safe as  the Before Journal itself.  It  may be implemented as
+  an Index in a protected file, whose modifications are journalized
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  in a well known After Journal; or as a segment in virtual memory,
+  carefully modified and flushed after each modification.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$set_default_bj
+
+  This function causes the Before  Journal specified by its opening
+  id to become the default Before Journal.  That is, when no Before
+  Journal is explicitly specified by the user at the beginning of a
+  transaction, the  default Before Journal for  the process will be
+  assigned to the transaction.  The  default Before Journal must be
+  one of the Before Journals open in the process.
+
+  Usage
+
+       dcl before_journal_manager_$set_default_bj entry (bit(36)
+            aligned, fixed bin(35));
+
+       call before_journal_manager_$set_default_bj (bj_opening_id,
+            code);
+
+  where:
+
+  bj_opening_id                (Input)
+     is the opening identifier of the Before Journal.
+
+  code                         (Output)
+     is a standard system error code.
+
+  Notes                                                             |
+
+  Several before_journal_manager_ entries expect a bj_opening_id to |
+  specify  which Before  Journal to  use.  If  the bj_opening_id is |
+  null,  the following  default assignments  are attempted,  in the |
+  order  in  which  they are  mentioned  below, until  one  of them |
+  succeeds:                                                         |
+
+    - The current default Before Journal  in this process, if there |
+      is one; otherwise,                                            |
+
+    - The most  recently open Before  Journal among those  that are |
+      still open, if there is one; otherwise,                       |
+
+    - The system Before Journal.  If  the system Before Journal has |
+      not  been   opened  yet  in   the  current  process,   it  is |
+      automatically opened.                                         |
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$user_shutdown
+
+  This function is  called by the Transaction Manager  on behalf of
+  the user in the inner ring to close all before journals that have
+  been opened by the user's process (see MTB634:  DM Shutdown).
+
+  Usage
+
+       dcl before_journal_manager_$user_shutdown entry ();
+
+       call before_journal_manager_$user_shutdown ();
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$write_aborted_mark
+
+  This function is called by the Transaction Manager as the final
+  step to abort a transaction.  It writes a "transaction aborted"
+  mark for the transaction specified by the caller, on the Before
+  Journal associated with the aborting transaction.  It returns to
+  the caller only after the mark is physically written on disk.
+  The transaction becomes "aborted" at the very instant the
+  "aborted" mark physically appears on disk (see note at entry
+  write_begin_mark).
+
+  Usage
+
+       dcl before_journal_manager_$write_aborted_mark entry
+            (bit(36) aligned, fixed bin, fixed bin(35));
+
+       call before_journal_manager_$write_aborted_mark (txn_id,
+            txn_ix, code);
+
+  where:
+
+  txn_id                       (Input)
+     is the  identifier which specifies the  transaction that is to
+     be aborted.  It  is stored as part of the  aborted mark on the
+     journal.
+
+  txn_ix                       (Input)
+     is the index of the transaction in the transaction table.
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$write_before_image
+
+  This function  is called by  the File Manager  before modifying a
+  control interval of a protected  file.  It records in the journal
+  the  values of  those portions of  the control  interval that are
+  about  to  be modified  in  a before  image  record, used  by the
+  rollback mechanism  to undo the  modification (see note  at entry
+  write_begin_mark).
+
+  Usage
+
+       dcl before_journal_manager_$write_before_image entry
+            (bit(36) aligned, bit(36) aligned, fixed bin (24) uns,
+            ptr, fixed bin(71) aligned, fixed bin(35));
+
+       call before_journal_manager_$write_before_image (file_id,
+            file_opening_id, control_interval_number, ci_parts_ptr,
+            time_stamp, code);
+
+  where:
+
+  file_id                      (Input)
+     is the  unique identifier of  the file being  modified.  It is
+     written  in the  Before Journal  as part  of the  Before Image
+     record and is used by  the Rollback procedure to determine the
+     file in which the modification has to be undone.  The rollback
+     procedure must therefore  be able to convert a  file id into a
+     pathname,  for  each  before  image  it  may  use  to  undo  a
+     modification.
+
+  file_opening_id              (Input)
+     is the opening identifier of  the file being modified.  The id
+     is meaningful only  in the process that got  it when it opened
+     the  file.   It is  also stored  as part  of the  Before Image
+     record and is used by  the rollback procedure when the process
+     that made the modification rolls itself back, instead of using
+     the file id.
+
+  control_interval_number      (Input)
+     is  the   number  of  the   control  interval  in   which  the
+     modification may have  to be undone.  It is  stored as part of
+     the Before Image.
+
+  ci_parts_ptr                 (Input)
+     is a pointer to a structure array describing what parts of the
+     control interval have  to be taken a picture  of, in order for
+     the  rollback procedure  to be able  to restore  them to their
+     current  values.   Each element  of  the list  consists  of an
+     offset and length delimiting the part of the control interval,
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+     and a  pointer to its  current value.  This list  is stored in
+     the Before  Image record, after replacing  the pointers by the
+     values they point to.  The  ci_parts structure include file is
+     dm_ci_parts.incl.pl1 (see Appendix A).
+
+  time_stamp                   (Output)
+     is the time at which the Before Image was logically entered in
+     the journal.   This time is  returned to the  caller, which is
+     the File Manager, so that the synchronization protocol between
+     page control  and before_journal_manager_ can  be implemented.
+     The File Manager  is supposed to store this  time stamp in the
+     control interval header before  doing the actual modification.
+     A detailed description  of how this time stamp  is used can be
+     found  in  MTB-564:  "DM  -  Phasing Page  Control  and Before
+     Journal".
+
+  code                         (Output)
+     is a standard system error code.
+
+  Notes
+
+       This  procedure manufactures  the Before Image  record to be
+  stored  in the  appropriate Before Journal  and writes  it on the
+  Journal.   It  returns  to  its caller  without  waiting  for the
+  physical  write to  happen.  It  also updates  the Before Journal
+  information associated with the  current transaction, that is the
+  record id of  the last record written by  the current transaction
+  on  the  Before  Journal,  and  its  sequence  number  within the
+  transaction.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$write_begin_mark
+
+  This  function  is  called  by the  Transaction  Manager,  at the
+  beginning of a transaction.  This entry does not actually write a
+  begin mark, but sets up all  the internal tables for the begining
+  of a transaction.
+
+  Usage
+
+       dcl before_journal_manager_$write_begin_mark entry (bit(36)
+            aligned, fixed bin, bit(36) aligned, fixed bin(35));
+
+       call before_journal_manager_$write_begin_mark (txn_id,
+            txn_ix, bj_opening_id, code);
+
+  where:
+
+  txn_id                       (Input)
+     is  a  transaction  identifier  generated  by  the Transaction
+     Manager and which identifies the  new transaction.  It will be
+     stored as part of the Begin Mark.
+
+  txn_ix                       (Input)
+     is the index of the entry  assigned to this transaction in the
+     system's transaction table.  For each transaction in progress,
+     before_journal_manager_ maintains a few  values related to the
+     associated before journal in the transaction table.
+
+     The Before  Journal information associated  with a transaction
+     consists of items such as:
+
+       - The Before Journal opening  id which specifies what Before
+         Journal the transaction is using.
+
+       - The  Before  Journal unique  id.   This id  identifies the
+         Before Journal in a way that is process independent.
+
+       - The  first  record id.   This  is the  CI number  and slot
+         number  of  the  first   record  written  by  the  current
+         transaction in the Before Journal.
+
+       - The last record id.  This is the CI number and slot number
+         of the  last record written by  the current transaction in
+         the Before Journal.
+
+       - Sequence number.   This is the  sequence number associated
+         with the last record written by the current transaction in
+         the Before Journal.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+     In addition to  writing the Begin mark on  the Before Journal,
+     this function  initializes the Before  Journal info associated
+     with the new transaction.
+
+  bj_opening_id                (Input)
+     is the opening  identifier of the Before Journal  used by this
+     transaction.  This id was returned by the $open_bj entry point
+     when the journal  was opened in this process.   It is supplied |
+     by  the  caller of  transaction_manager_$begin_txn.  If  it is |
+     null, the default before journal  for the process is used (see |
+     $set_default_bj); transaction_manager_  does no interpretation |
+     of  the id,  but passes it  through to before_journal_manager_ |
+     unmodified.                                                    |
+
+  code                         (Output)
+     is a standard system error code.
+
+  Notes
+
+  The  caller's  validation level  must  be equal  to or  less than
+  sys_info$data_management_ringno.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$write_committed_mark
+
+  This function is  called by the Transaction Manager  as the final
+  step  to   commit  a  transaction.   It   writes  a  "transaction
+  committed" mark  for the transaction specified  by the caller, on
+  the  Before Journal  associated with  the committing transaction.
+  It  returns  to  the caller  only  after the  mark  is physically
+  written on disk.  The transaction becomes "committed" at the very
+  instant the committed mark physically appears on disk.
+
+  Usage
+
+       dcl before_journal_manager_$write_committed_mark entry
+            (bit(36) aligned, fixed bin, fixed bin(35));
+
+       call before_journal_manager_$write_committed_mark (txn_id,
+            txn_ix, code);
+
+  where:
+
+  txn_id                       (Input)
+     is an identifier which specifies the transaction that is to be
+     committed; it is  stored as part of the  committed mark on the
+     journal.
+
+  txn_ix                       (Input)
+     is the index of the transaction in the transaction table.
+
+  code                         (Output)
+     is a standard system error code.
+
+  Notes
+
+  The  caller's  validation level  must  be equal  to or  less than
+  sys_info$data_management_ringno.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$write_rollback_handler
+
+  It is not always possible to  undo the effect of a transaction by
+  merely  restoring  a portion  of  the data  base to  its original
+  value.   An  example  is  rolling back  modifications  done  by a
+  transaction  to  a  directory.   In  presence  of  this  kind  of
+  situation, before  performing a function F  that cannot be rolled
+  back by  the Before Image  mechanism, the transaction  records in
+  the Before Journal the fact that  it is going to perform function
+  F  and that  the effect  of this function  can be  rolled back by
+  performing the  reverse of function  F.  This is  accomplished by
+  journalizing the name  of the procedure tailored to  undo F, with
+  the appropriate input  information it needs to do  its job.  What
+  is recorded in the journal is referred to as a "rollback handler"
+  record.   This  entry point  of before_journal_manager_  writes a
+  rollback handler  record in the Before  Journal, according to the
+  caller's specifications (see note at entry write_begin_mark).
+
+  This is not currently implemented do  to the problem of having to
+  trust the rollback handler to do the correct thing.
+
+  Usage
+
+       dcl before_journal_manager_$write_rollback_handler entry
+            (char(*), bit(*), fixed bin(35));
+
+       call before_journal_manager_$write_rollback_handler
+            (proc_name, info_bits, code);
+
+  where:
+
+  proc_name                    (Input)
+     is the name  of the procedure to be  called if the transaction
+     has to be  rolled back; this name is of  the form "a" or "a$b"
+     where "a" is the name of  a data management module and "b" the
+     entry point in this module.
+
+  info_bits                    (Input)
+     is  the  bit string  representation  of the  input information
+     expected by the entry point a$b to do its job.
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  Entry:  before_journal_manager_$write_rolled_back_mark
+
+  This function  is called by  the rollback procedure,  as its last
+  step.  It writes  a "transaction rolled back" mark  in the Before
+  Journal  associated with  the transaction which  was rolled back.
+  This mark indicates  how far the transaction was  rolled back; it
+  also  indicates  that  all  control  intervals  modified  by this
+  rollback operation,  and all after  images it has  produced, have
+  been  physically  written to  disk  and tape  (see note  at entry
+  write_begin_mark).
+
+  Usage
+
+       dcl before_journal_manager_$write_rolled_back_mark entry
+            (bit(36) aligned, fixed bin, fixed bin, fixed bin(35));
+
+       call before_journal_manager_$write_rolled_back_mark (txn_id,
+            txn_ix, checkpoint_no, code));
+
+  where:
+
+  txn_id                       (Input)
+     is  the transaction  identifier of  the transaction  which has
+     been rolled back.
+
+  txn_ix                       (Input)
+     is the transaction index in the transaction definition table.
+
+  checkpoint_no                (Input)
+     is  the  checkpoint number  up  to which  the  transaction was
+     rolled back.  If the entire  transaction was rolled back, this
+     number  is  zero,  since  the begin  mark  plays  the  role of
+     checkpoint number 0.
+
+  code                         (Output)
+     is a standard system error code.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+           Appendix A - Before Journal Include Files Used           |
+
+  The ci_parts structure                                            |
+
+  Following is the ci_parts structure from dm_bj_ci.incl.pl1.       |
+
+  dcl 1 ci_parts                aligned based (ci_parts_ptr),       |
+        2 number_of_parts       fixed bin (17),                     |
+        2 part                  (cip_number_of_parts refer          |
+                                (ci_parts.number_of_parts)),        |
+          3 offset_in_bytes     fixed bin (17),                     |
+          3 length_in_bytes     fixed bin (17),                     |
+          3 local_ptr ptr;                                          |
+
+  where:                                                            |
+
+  offset_in_bytes                                                   |
+     is the byte  offset, relative to the beginning  of the control |
+     interval,  which indicates  where the  data to  be journalized |
+     begins.                                                        |
+
+  length_in_bytes                                                   |
+     is the byte length of the datum being journalled.              |
+
+  local_ptr                                                         |
+     is a pointer to the value this field is to be restored to if a |
+     rollback is performed.                                         |
+
+  The tm_tdt structure                                              |
+
+  Following  is  the  Transaction Definition  Table  structure from |
+  dm_tm_tdt.incl.pl1.                                               |
+
+  dcl 1 tm_tdt                  aligned based (tm_tdt_ptr),         |
+        2 version               char (8), /* = "TM-TDT 3" */        |
+        2 lock                  fixed bin (71),                     |
+        2 last_uid              bit (27) aligned,                   |
+        2 flags,                                                    |
+          3 no_begins           bit (1) unaligned,                  |
+          3 mbz1                bit (35) unaligned,                 |
+        2 entry_count fixed bin,                                    |
+        2 mbz2                  fixed bin,                          |
+        2 entry                 (tdt_max_count refer                |
+                                (tm_tdt.entry_count))               |
+                                like tm_tdt_entry;                  |
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+| where:
+
+| version
+|    is the version mark for this structure.
+
+| lock
+|    can be used to lock the table.  It is not currently used.
+
+| last_uid
+|    is the last  unique id assigned to a  transaction.  The unique
+|    id  for  a  new  transaction is  generated  by  adding  one to
+|    last_uid.
+
+| flags.no_begins
+|    is turned on temporarily by tm_$recover_after_crash to prevent
+|    any new  transactions from beginning while  recovery is taking
+|    place.
+
+| entry_count
+|    is the total number of entry slots allocated.
+
+| entry
+|    is the  entry describing each transaction  in the system.  See
+|    the tm_tdt_entry structure defined in dm_tm_tdt.incl.pl1.
+
+| The bj_txt structure
+
+| Following  is  the per  system  transaction table  structure from
+| dm_bj_txt.incl.pl1.
+
+| dcl 1 bj_txt                  aligned based (bj_txt_ptr),
+|       2 version               fixed bin,
+|       2 max_n_entries         fixed bin,
+|       2 n_entries_used        fixed bin,
+|       2 pad_header_to_32_words
+|                               bit (36) dim (29),
+|       2 entry                 dim (dm_system_data_$max_n_transactions
+|                               refer (bj_txt.max_n_entries))
+
+| where:
+
+| version
+|    is a version number associated with this stucture.
+
+| max_n_entries
+|    is  the  maximum  number  of entries  in  this  table.   It is
+|    initialized to the value of dm_system_data$max_n_transactions,
+|    when  the   table  is  created,  at   Data  Management  system
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+     initialization.                                                |
+
+  n_entries_used                                                    |
+     is the number of entries currently used.                       |
+
+  entry                                                             |
+     is  an  array  each  element of  which  has  the  structure of |
+     bj_txte.   See  dm_bj_txt.incl.pl1 for  the definition  of the |
+     bj_txte structure.                                             |
+
+  The bj_txte structure                                             |
+
+  Following  is the  per system  transaction table  entry structure |
+  from dm_bj_txt.incl.pl1.                                          |
+
+  dcl 1 bj_txte                 based (bj_txte_ptr) aligned,        |
+        2 tid                   bit (36),                           |
+        2 bj_uid                bit (36),                           |
+        2 entry_state           aligned,                            |
+          3 last_completed_operation                                |
+                                char (4),                           |
+          3 ok_to_write         bit (1),                            |
+        2 owner_info            aligned,                            |
+          3 process_id          bit (36),                           |
+        2 operator_info         aligned,                            |
+          3 process_id          bit (36),                           |
+          3 ppte_ptr            ptr,                                |
+          3 bj_oid              bit (36),                           |
+        2 records_info          aligned,                            |
+          3 curr_checkpoint_rec_id                                  |
+                                bit (36),                           |
+          3 first_bj_rec_id     bit (36),                           |
+          3 last_bj_rec_id      bit (36),                           |
+          3 n_rec_written       fixed bin (35),                     |
+          3 n_bytes_written     fixed bin (35),                     |
+          3 last_fm_postcommit_handler_rec_id                       |
+                                bit (36),                           |
+        2 append_state          aligned,                            |
+          3 current_operation   char (4),                           |
+          3 pending_bj_rec_id   bit (36),                           |
+          3 pending_n_rec_written                                   |
+                                fixed bin (35),                     |
+          3 pending_n_bytes_written                                 |
+                                fixed bin (35),                     |
+        2 pad_entry_to_32_words bit (36) dim (13);                  |
+
+  where:                                                            |
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+| tid
+|    is  the  transaction  id  of  the  transaction  that  has been
+|    assigned  this  entry.   It  is  initialized  at  the  time  a
+|    transaction  begins.    The  entry  number  as   well  as  the
+|    transaction  id are  assigned by  the transaction  manager and
+|    passed as input argument to the before journal manager.
+
+| bj_uid
+|    is the uid of the before journal used by this transaction.
+
+| entry_state.last_completed_operation
+|    is the last operation the before journal manager performed for
+|    this transaction.  It is used for consistency checking.
+
+| entry_state.ok_to_write
+|    is  a  switch  which  is set  ot  1  at the  beginning  of the
+|    transaction and  turned off after a  committed or aborted mark
+|    has been written.
+
+| owner_info.process_id
+|    is  the   process  id  of   the  process  which   started  the
+|    transaction.   It  is  kept  in the  bj_txte  even  though the
+|    process may be dead.
+
+| operator_info.process_id
+|    is  the   process  id  of   the  process  operating   on  this
+|    transaction.  In  general this process  id is the  same as the
+|    owner's process id.  However, if  the process that started the
+|    transaction  dies  or  abandons   the  transaction  while  the
+|    transaction is  still in progress,  it is the  Data Management
+|    Daemon's  responsibility  to  abort  that  transaction.   When
+|    performing its duty on the  transaction, the Daemon is said to
+|    be the "operator" of the transaction, and before being able to
+|    do  any  before journal  operation,  the bj_txte.operator_info
+|    items have to be initialized  with information relevant to the
+|    Daemon process.
+
+| operator_info.ppte_ptr
+|    is  a  pointer to  the bj_ppte  structure associated  with the
+|    before journal used by this  transaction, in the process which
+|    is currently operating the transaction.
+
+| operator_info.bj_oid
+|    is  the before  journal opening id  used to  access the before
+|    journal.  When a process opens  a before journal, that process
+|    is given an  opening id to refer to the  journal with.  If the
+|    Data Management  Daemon has taken over  a transaction, it will
+|    have a different opening id.
+
+| record_info.current_checkpoint_rec_id
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+     is the record id of the current checkpoint record.  At the end |
+     of a checkpoint, a checkpoint  record is written in the before |
+     journal.                                                       |
+
+  records_info.first_bj_rec_id                                      |
+     is  the  record  id of  the  earliest record  written  by this |
+     transaction and which is still of interest to the transaction. |
+     The  before journal  manager uses  the following optimization: |
+     when a transaction begins, the  bj_txte is initialized, but no |
+     "begin"  record  is  actually  written  in  the  journal.  The |
+     first_bj_rec_id is null.  If the transaction commits or aborts |
+     without having written in the journal, no commit/abort mark is |
+     actually written in the journal.  The first time a transaction |
+     writes a record (other  than commit or abort), first_bj_rec_id |
+     is set to be the record  id of the record.  When a transaction |
+     is  rolled  back, a  "rolled_back"  record is  written  in the |
+     journal, and its record id becomes the first_bj_rec_id, unless |
+     the transaction was rolled back to a checkpoint, in which case |
+     first_bj_rec_id retains its value.                             |
+
+  records_info.last_bj_rec_id                                       |
+     is the record id of the  last record written in the journal by |
+     this transaction.  If no record  was written yet, this item is |
+     null.                                                          |
+
+  records_info.n_rec_written                                        |
+     is the number  of records written by this  transaction.  It is |
+     used for consistency and metering purposes.                    |
+
+  records_info.n_bytes_written                                      |
+     is  the number  of bytes this  transaction has  written in the |
+     before  journal.   It  is  used for  consistency  and metering |
+     purposes.                                                      |
+
+  records_info.last_fm_postcommit_handler_rec_id                    |
+     is the record id of the  last file manager post commit handler |
+     record written by this transaction.  For economy of mechanism, |
+     the information  needed at post  commit time is  stored in the |
+     before  journal  as post_commit_handler  records.   The before |
+     journal manager threads them together and keeps the end of the |
+     thread in this item of the bj_txte.                            |
+
+  append_state                                                      |
+     contains  some information  to implement the  atomicity of the |
+     append operation, with respect to  the bj_txte items.  When an |
+     append operation  is interrupted, either the  record is in the |
+     journal or it is not.  The  storage manager part of the before |
+     journal manager is  capable of finding out; if  the record was |
+     written,  it  updates  the  bj_pste  items  accordingly.   The |
+     bj_txte.items relevant to the appended record are also updated |
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+|    using the same method as for the bj_pste.
+
+| append_state.current_operation
+|    is  a  character string  which is  null when  no append  is in
+|    progress.  It is non-null when an append is in progress.
+
+| append_state.pending_bj_rec_id
+|    is the record  id of the record which  has just been appended.
+|    It   appears  here   just  after   the  storage   manager  has
+|    successfully  appended  the  last  element  of  a  new record,
+|    indicating to  the bj_txte manager  that the record  is in the
+|    journal  and that  the bj_txte  items relevant  to this record
+|    must be  updated.  If the  append operation is  interrupted in
+|    the little window after the  record is appended and before its
+|    record id appears  in this item of the  bj_txte, the mechanism
+|    described  for bj_pste.append_state  causes the  bj_txte to be
+|    adjusted.
+
+| append_state.pending_n_rec_written
+|    is  the  value that  bj_txte.records_info.n_rec_written should
+|    have after the record is  successfully appended.  This item is
+|    initialized before  calling the storage manager  to append the
+|    record.   If  the append  operation  is interrupted  after the
+|    record  appears  in  the  journal, this  item  is  copied into
+|    bj_txte.records_info.n_rec_written  by   the  bj_txte  manager
+|    adjustment mechanism.
+
+| append_state.pending_n_bytes_written
+|    is the value  that bj_txte.records_info.n_bytes_written should
+|    have after  the record is successfully  appended.  Used as the
+|    previous item.
+
+| The bj_pste structure
+
+| Following   is  the   per  system  table   entry  structure  from
+| dm_bj_pste.incl.pl1.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  dcl 1 bj_pste                 based (bj_pste_ptr) aligned,        |
+        2 version               fixed bin,                          |
+        2 bj_ix                 fixed bin,                          |
+        2 lock                  aligned,                            |
+          3 pid                 bit (36),                           |
+          3 event               bit (36),                           |
+        2 bj_uid                bit (36),                           |
+        2 ci_size               fixed bin,                          |
+        2 max_size              fixed bin,                          |
+        2 active                bit (1) aligned,                    |
+        2 time_header_updated   fixed bin (71),                     |
+        2 earliest_meaningful_time                                  |
+                                fixed bin (71),                     |
+        2 update_frequency      fixed bin,                          |
+        2 last_rec_id           bit (36),                           |
+        2 n_processes           fixed bin,                          |
+        2 n_txn                 fixed bin,                          |
+        2 last_ci_info          aligned,                            |
+          3 last_ci_buffered    fixed bin (24) uns,                 |
+          3 last_ci_put         fixed bin (24) uns,                 |
+          3 last_ci_flushed     fixed bin (24) uns,                 |
+          3 last_ci_on_disk     fixed bin (24) uns,                 |
+          3 stamp_for_last_ci_put                                   |
+                                fixed bin (71),                     |
+          3 stamp_for_last_ci_on_disk                               |
+                                fixed bin (71),                     |
+        2 n_bi_still_unsafe     fixed bin,                          |
+        2 n_bi_being_saved      fixed bin,                          |
+        2 buffer_offset         fixed bin (18) uns,                 |
+        2 pad1                  fixed bin,                          |
+
+        2 cl                    aligned,                            |
+          3 origin_ci           fixed bin (24) uns,                 |
+          3 lowest_ci           fixed bin (24) uns,                 |
+          3 highest_ci          fixed bin (24) uns,                 |
+          3 number_ci           fixed bin (24) uns,                 |
+        2 append_state          aligned,                            |
+          3 current_operation   char (4),                           |
+          3 pending_n_txn       fixed bin,                          |
+          3 pending_last_rec_id bit (36),                           |
+          3 pending_last_element_id                                 |
+                                bit (36),                           |
+          3 txte_rec_id_relp    bit (18),                           |
+
+        2 pad_to_even_word1     bit (36) aligned,                   |
+
+        2 meters                aligned,                            |
+          3 n_bi_written        fixed bin (71),                     |
+          3 n_bi_bytes_written  fixed bin (71),                     |
+          3 n_journal_full      fixed bin (71),                     |
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+|         3 n_successful_recycles
+|                               fixed bin (71),
+|         3 n_ci_recycled       fixed bin (71),
+|         3 n_txn_started       fixed bin (71),
+|         3 n_non_null_txn      fixed bin (71),
+|         3 meter               (8:10) fixed bin (71),
+
+|       2 pad_to_64_words (6)   bit (36);
+
+| where:
+
+| version
+|    is   the  version   number  of  the   bj_pste  structure.   By
+|    convention, if version  = 0, the entry is  not used.  While an
+|    entry  is  being  initialized  to  describe  a  journal  being
+|    activated, the  value of version is  0.  It is set  to the non
+|    null value only as the last step of the journal activation.
+
+| bj_ix
+|    is the index  of this entry in the array  of bj_pste's.  It is
+|    used for consistency checking and also to get the index of the
+|    entry when one has a pointer to the bj_pste.
+
+| lock
+|    is  a  2-word lock  in  the format  assumed  by the  fast lock
+|    facility  of  the  lock  manager.  It  is  used  always  as an
+|    exclusive lock.  All storage operations, i.e.  append, get and
+|    flush  must acquire  this lock.  A  process can  be working on
+|    only  1  bj_pste at  a  time, so  there  is no  possibility of
+|    deadlock due to locks on  2 bj_pste's.  The bj_pst.lock is set
+|    by a process  that does an open or  close operation; this does
+|    not  prevent  another process  from  acquiring the  lock  on a
+|    particular bj_pste for the purpose  of doing an append, get or
+|    flush operation  on a journal already  active and not involved
+|    in an open or close operation.
+
+| bj_uid
+|    is  the  unique id  of  the before  journal described  by this
+|    entry.  It  is copied from  the before journal  header kept in
+|    CI, when the journal is activated.
+
+| ci_size
+|    is the  control interval size  for this journal,  expressed in
+|    number of bytes.
+
+| max_size
+|    is  the maximum  size of  the journal  file, expressed  in the
+|    number of control intervals.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  active                                                            |
+     is a switch showing that the  journal is active, i.e.  that it |
+     is being used by at least 1 process.  This switch is always ON |
+     in the  bj_pste.  The before  journal header, bj_header  in CI |
+     zero, has the same structure as the bj_pste.  When this switch |
+     is ON in bj_header, it indicates that the journal is currently |
+     active, or that it was active  in a previous invocation of the |
+     data  management  system, while  the  system crashed,  and may |
+     contain information about unfinished transactions.             |
+
+  time_header_updated                                               |
+     is the calendar clock time  at which the before journal header |
+     was last updated.  The header  is updated periodically to help |
+     finding the end of the journal after a system crash.           |
+
+  earliest_meaningful_time                                          |
+     is  a  calendar clock  time also  kept in  the header  to help |
+     finding the end  of the journal after a  system crash.  Any CI |
+     whose     time     modified    is     smaller     than    this |
+     "earliest_meaningful_time"  contains  no  useful  information. |
+     This  time  is set  to the  current time  when the  journal is |
+     activated.                                                     |
+
+  update_frequency                                                  |
+     is a number indicating how often  the header is to be updated. |
+     Updating   the   header  consists   of  writing   the  bj_pste |
+     information  into  the  bj_header  structure in  CI  zero.  An |
+     update frequency of N means  that the header should be updated |
+     after N control intervals have been written.                   |
+
+  last_rec_id                                                       |
+     is  the  record  identifer  of  the  last  record successfully |
+     appended to the journal.                                       |
+
+  n_processes                                                       |
+     is the number of processes that have opened this journal.  The |
+     journal cannot  be "deactivated" while  n_processes is greater |
+     than  zero.   The  list  of  processes  using  the  journal is |
+     recorded in the bj_check_in_table.   Each process that has the |
+     journal   opened   has  its   process_id  registered   in  the |
+     check_in_table.  Dead processes  have their process_id removed |
+     from  the  check_in_table  by   a  "garbage  collector"  which |
+     automatically  adjusts  bj_pste.n_processes to  the  number of |
+     alive processes.                                               |
+
+  n_txn                                                             |
+     is the  number of unfinished transactions  that have stored at |
+     least  1  record  in  the  journal.   The  journal  cannot  be |
+     deactivated  while  this item  is greater  than zero,  even if |
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+|    n_processes = 0.   The reason is that all  processes that were
+|    using  the   journal  may  have  died,   but  some  unfinished
+|    transactions  are  still  to  be   rolled  back  by  the  Data
+|    Management Daemon, using this journal.
+
+| last_ci_info.last_ci_buffered
+|    is the CI number currently in the buffer.  When a CI is in the
+|    buffer, its info is not in the file.  When the buffer is full,
+|    it is  written into the file,  by a "put" request  to the file
+|    manager.  When the put is completed, the buffer is initialized
+|    as the next CI of the journal, showing no element in it.
+
+| last_ci_info.last_ci_put
+|    is the CI number of the last  CI copied from the buffer to the
+|    file.  It is updated only after the buffer is completely "put"
+|    in the  file.  For a  short time, the last_ci_put  is equal to
+|    the  last_ci_buffered.    This  is  a   legitimate  situation,
+|    indicating that  the buffer must be  initialized with the next
+|    CI.
+
+| last_ci_info.last_ci_flushed
+|    is  the  CI  number  of the  last  CI  for which  a  flush was
+|    requested.  The I/O may still be in progress.
+
+| last_ci_info.last_ci_on_disk
+|    is  the CI  number of the  last CI  on disk and  such that all
+|    previous CI's are also on disk.
+
+| last_ci_info.stamp_for_last_ci_put
+|    is  the time  stamp associated  with the  last CI  put.  It is
+|    needed by the flush function.
+
+| last_ci_info.stamp_for_last_ci_on_disk
+|    is the time  stamp associated with the last  CI on disk.  This
+|    stamp  is  the   stamp  that  is  stored  in   the  ring  zero
+|    dm_journal_seg, in the entry associated with this journal.  It
+|    is used by the flush function.
+
+| n_bi_still_unsafe
+|    represents the number of before  images that have not yet been
+|    secured  to disk.   This number  indicates how  many data base
+|    CI's may be  pinned in main memory.  (It  actually is an upper
+|    bound.)  It is used by the "append" procedure to decide if the
+|    journal should be flushed because  too many data base CI's are
+|    held in main memory, in order to allow them to go to disk.
+
+| n_bi_being_saved
+|    indicates how many before images are actually being written to
+|    disk.  It is used by the flush function.
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+  buffer_offset                                                     |
+     is the offset  of the beginning of the  buffer associated with |
+     this journal.  The size of the  buffer is the same as the size |
+     of  the  CI  for this  journal.   In the  current  design, all |
+     buffers are one page long and  start at a page boundary.  They |
+     are all allocated in the same segment as the bj_pst.           |
+
+  cl.origin_ci                                                      |
+     is the  CI number of the  CI which is currently  the origin of |
+     the  cirular  list.   Each  time the  end  of  the  journal is |
+     reached, the  origin is "advanced"  as much as  possible, over |
+     all CI's that no longer contain useful information.            |
+
+  cl.lowest_ci                                                      |
+     is the lowest CI number in  the circular list.  In the current |
+     design it is always 1, and  does not change when the origin is |
+     advanced.                                                      |
+
+  cl.highest_ci                                                     |
+     is the highest CI number in the circular list.  In the current |
+     design, it is  aways equal to the last CI  number of the file, |
+     and does not change when the origin is advanced.               |
+
+  cl.number_ci                                                      |
+     is the  number of CI's  in the circular list.   In the current |
+     design,  it is  always equal to  the maximum size  of the file |
+     minus  1 (control  interval zero is  not part  of the circular |
+     list), and does not change when the origin is advanced.        |
+
+  append_state                                                      |
+     contains  information  about  the  append  operation,  while a |
+     record is  being appended to the  journal.  The information is |
+     used  to make  the append  operation "atomic".   Regardless of |
+     where a process may stop (or  die) while in the before journal |
+     manager,  if  a  record  has  been  completely  stored  in the |
+     journal,  all   before  journal  manager   control  structures |
+     (bj_pste and bj_txte) are automatically updated to reflect the |
+     existence of this record.                                      |
+
+  append_state.current_operation                                    |
+     is a character  string which is null while  no record is being |
+     appended.   It  is equal  to  "appe" while  a record  is being |
+     appended.  It is restored to a null character string after the |
+     record is  completely stored in  the journal, and  the various |
+     structures   (bj_pste   and   bj_txte)   have   been   updated |
+     accordingly.                                                   |
+
+  append_state.pending_n_txn                                        |
+     is the  value that bj_pste.n_txn should  have after the record |
+     is successfully appended.  This allows for potentially redoing |
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+|    any number  of times the  adjustment of an  interrupted append
+|    operation, even if the process crashes during the adjustment.
+
+| append_state.pending_last_rec_id
+|    is  the value  that bj_pste.last_rec_id should  have after the
+|    record is successfully appended.
+
+| append_state.pending_last_element_id
+|    is the  element id of  the element about  to be stored  in the
+|    journal.   Storing  an element  is  atomic:  storing  the last
+|    element  of a  record makes  the entire  record appear  in the
+|    journal in an atomic manner.  The protocol is as follows:  All
+|    storage  operations are  done under  the bj_pste  lock.  If an
+|    append  operation is  interrupted in  the middle,  the process
+|    executes a cleanup handler which finds the pj_pste lock set to
+|    the  process;  if it  finds  that an  append operation  was in
+|    progress, it finds  out if the last element  of the record was
+|    stored.  If it  was stored, the relevant items  in the bj_pste
+|    are updated and  the record id of the new  record is stored in
+|    the  bj_txte, causing  a more  complete update  of the bj_txte
+|    items  later.   Then  the  bj_pste lock  is  relased.   If the
+|    cleanup  handler is  not given  a chance  to be  executed, the
+|    process must  execute a crawl  out procedure to  exit the data
+|    management inner ring.  This crawl out procedure executes what
+|    the cleanup  handler would have  executed.  In the  worst case
+|    where the  crawl out procedure  is not given a  chance to run,
+|    the process must soon be terminated.  At a later time, another
+|    process will try to lock the  bj_pste and will find that it is
+|    locked by  a dead process;  then it executes  what the cleanup
+|    handler would have executed.
+
+| append_state.txte_rec_id_relp
+|    determines the location, in the  bj_txte, which must be filled
+|    with the  record id of  the new appended  record, as explained
+|    above.  It is a relative pointer in the segment containing the
+|    bj_txte.
+
+| meters.n_bi_written
+|    is the number of before images written thus far.
+
+| meters.n_bi_bytes_written
+|    is the  sum of the byte  lengths of each before  image for all
+|    before images that have been written.
+
+| meters.n_journal_full
+|    is the number of times that the before journal file has filled
+|    up and has had to be recycled.
+
+| meters.n_successful_recycles
+|    is  the  number  of times  that  the before  journal  has been
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+     successfully recycled.  This number should  be the same as the |
+     n_journal_full.                                                |
+
+  meters.n_ci_recycled                                              |
+     is the  number of control  intervals that have  been reused in |
+     the recycling process.                                         |
+
+  meters.n_txn_started                                              |
+     is the  number of transaction  that have been  started in this |
+     before journal.                                                |
+
+  meters.n_non_null_txn                                             |
+     is  the  number  of  transactions that  have  actually written |
+     before images to the before journal.                           |
+
+  The bj_status structure                                           |
+
+  Following is the bj_status structure from dm_bj_status.incl.pl1.  |
+
+  dcl 1 bj_status aligned based (bj_status_ptr),                    |
+        2 n_journals fixed bin,                                     |
+        2 journal aligned dim (bj_status_n_journals                 |
+          refer (bj_status.n_journals)),                            |
+          3 dir char (168),                                         |
+          3 entry char (32),                                        |
+          3 system_info aligned like bj_pste;                       |
+
+  where:                                                            |
+
+  dir                                                               |
+     is the pathname  of the directory in which  the Before Journal |
+     resides.                                                       |
+
+  entry                                                             |
+     is the entry name of the Before Journal.                       |
+
+  system_info                                                       |
+     is  the  per journal  information  returned by  this procedure |
+     which has the same structure as a Per System Table Entry.  See |
+     dm_bj_pste.incl.pl1.                                           |
+
+  The bj_global_meters structure                                    |
+
+  Following     is    the     bj_global_meters    structure    from |
+  dm_bj_status.incl.pl1.                                            |
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+| dcl 1 bj_global_meters        aligned based (bj_global_meters_ptr),
+|       2 time_of_bootload      fixed bin (71),
+|       2 meters,
+|         3 n_calls_begin_txn   fixed bin (71),
+|         3 n_calls_before_image
+|                               fixed bin (71),
+|         3 n_calls_abort       fixed bin (71),
+|         3 n_calls_commit      fixed bin (71),
+|         3 n_calls_rb_mark     fixed bin (71),
+|         3 n_calls_fm_pc_mark  fixed bin (71),
+|         3 n_calls_fm_rbh      fixed bin (71),
+|         3 n_calls_rollback    fixed bin (71),
+|         3 meter               dim (9:50) fixed bin (71),
+
+| where:
+
+| time_of_bootload
+|    is  the  time  that  the current  Data  Management  system was
+|    brought up.
+
+| meters
+|    is a structure  which in the include file  is actually defined
+|    as being "like bj_pst.meters" which  is defined in the include
+|    file:  dm_bj_pst.incl.pl1.
+
+| n_calls_begin_txn
+|    is      the       number      of      calls       made      to
+|    before_journal_$write_begin_mark.
+
+| n_calls_before_image
+|    is      the       number      of      calls       made      to
+|    before_journal_$write_before_image.
+
+| n_call_abort
+|    is      the       number      of      calls       made      to
+|    before_journal_$write_aborted_mark.
+
+| n_calls_commit
+|    is      the       number      of      calls       made      to
+|    before_journal_$write_committed_mark.
+
+| n_calls_rb_mark
+|    is      the       number      of      calls       made      to
+|    before_journal_$write_rolled_back_mark.
+
+| n_calls_fm_pc_mark
+|    is      the       number      of      calls       made      to
+|    before_journal_$fm_postcommit_handler.         The       entry
+|    before_journal_$fm_postcommit_handler  no  longer  exists,  so
+
+  _______________________                   _______________________
+
+  before_journal_manager_                   before_journal_manager_
+  _______________________                   _______________________
+
+     this meter is now meaningless.                                 |
+
+  n_calls_fm_rbh                                                    |
+     is      the       number      of      calls       made      to |
+     before_journal_$fm_rollback_handler.                           |
+
+  n_calls_rollback                                                  |
+     is the number of calls made to before_journal_$rollback.       |
+
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

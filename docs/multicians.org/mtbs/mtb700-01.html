@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-700-01</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-700-01: Allowing system privilege setting in ring 1.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  Multics Technical Bulletin                             MTB-700-01
+  Ring 1 Privileges
+
+  To:       Distribution
+
+  From:     Benson I. Margulies
+
+  Date:     01/22/85
+
+  Subject:  Allowing system privilege setting in ring 1
+
+  1 ABSTRACT
+
+       Ring  1  subsystems  are  supposed to  maintain  ring 1
+       multi-class  databases.   However,  the  system current
+       only  supports single  segment ring  1 databases, since
+       there is no way for a process to circumvent file system
+       AIM in ring 1 to  create, delete, rename, or change the
+       access on segments.
+
+       This would be an academic  problem, except for the fact
+       that we already have a  ring 1 subsystem that maintains
+       a  multi-segment multi-class  database:  RCP.   RCP has
+       high priority  outstanding TR's that  document the fact
+       that it fails when a  non-system process tries to add a
+       segment to  a journal or a  registry.  This is revision      |
+       01 of the MTB, carrying change bars.                         |
+
+  Comments should be sent to the author:
+
+  via Multics Mail:
+     Margulies at either System-M, MIT, or CISL-SERVICE.
+
+  via Forum:
+     &gt;udd&gt;m&gt;mtgs&gt;B2 on System-M
+
+  via telephone:
+     (HVN) 261-9333, or
+     (617) 492-9333
+
+  _________________________________________________________________
+
+  Multics  project  internal  working  documentation.   Not  to  be
+  reproduced or distributed outside the Multics project without the
+  consent of the author or the author's management.
+
+
+  MTB-700-01                             Multics Technical Bulletin
+                                                  Ring 1 Privileges
+
+  2 PRIVILEGES IN RING 1
+
+  Ring  1 is  supposed to  have the  neccessary access  to maintain
+  multi-class  databases.   This  support  consists  of multi-class
+  segments.  A  multi-class segment is  a segment that  is writable
+  from a range of authorizations.
+
+  Multi-class segments  are not enough.  To  use them, the database
+  must be pre-created by a system_low process with as many segments
+  as  it  can  ever  need.   Since  some  applications  can  use an
+  arbitrary  amount  of  storage,   this  cannot  work.   One  such
+  application is  RCPRM.  The registries and  journals must be able
+  to grow by adding segments in any process.
+
+  The problem, then, is to  define multi-class entities bigger than
+  a segment.   The cleanest design would  be to invent "multi-class
+  directories."  A multi-class directory would allow processes at a
+  range  of access  classes to  perform directory  control "modify"
+  operations.
+
+  There is a major problems  with this approach.  Ring zero already
+  uses the same  bits that are used to  define multi-class segments
+  to   define   upgraded   directories.    To   define  multi-class
+  directories, we would have to add  fields to the branch, which is
+  a large undertaking.
+
+  An alternative  to this is  to use the  existing system privilege
+  mechanism to  allow ring 1 programs  to "write-down" directories.
+  This  requires  a  much  smaller implementation,  and  solves the
+  problem at hand.  This is the solution proposed here.
+
+  3 VALIDATION LEVEL CLEANUP
+
+  While ring 1 programs need to be able to set privileges, it would
+  not be correct for them to  set privileges on behalf of the outer
+  ring, especially by accident.  Leaving  it to cleanup handlers in
+  individual ring 1 subsystems is not adequate protection against a
+  privilege accidently being left set on exit to the outer ring.
+
+  The ring alarm mechanism must be used to reset any privileges set
+  in ring 1.  A record must be  kept of any privileges set, and the
+  ring alarm handler changed to reset them on exit.  set_privileges
+  will have separate entrypoints for ring 1 privilege manipulation.
+  It  will record  settings in pds$ring_1_privileges,  and the ring
+  alarm mechanism will check that value.
+
+
+  Multics Technical Bulletin                             MTB-700-01
+  Ring 1 Privileges
+
+  4 INTERFACES
+
+  This  section  describes the  admin_gate_ interfaces.   These are
+  designed along the lines of hcs_$set_ips_mask and reset_ips_mask.
+  This reduces the number of entrypoints to two from over a dozen.
+
+
+  ___________                                           ___________
+
+  admin_gate_                                           admin_gate_
+  ___________                                           ___________
+
+  NAME: ADMIN_GATE_
+
+  admin_gate_ is the gate from ring 1 to ring 0.
+
+  ENTRY:  ADMIN_GATE_$SET_PRIVILEGES
+
+  This  entry enables  one or more  AIM privileges  and returns the
+  previous value  of the AIM  privileges.  Any privileges  set with
+  this    entry    should    be    reset    with    a    call    to
+  admin_gate_$reset_privileges.  If they are  not reset before exit
+  from ring 1, they will be reset automatically.
+
+  USAGE
+
+  declare admin_gate_$set_privileges entry (bit (36) aligned, bit
+       (36) aligned);
+
+  call admin_gate_$set_privileges (privs_to_set, old_privs);
+
+  ARGUMENTS
+
+  privs_to_set
+     is a word of bits.  Each bit except the last corresponds to an
+|    AIM  privilege.   The bit  masks defined  in sys_info  for the
+|    privilege bits  should always be used  to construct this mask.
+|    THIS  IS  A TCB  CODING STANDARD.   Declarations of  these bit
+|    masks    are    provided   in    aim_privileges.incl.pl1   for
+|    convienience.  (Output)
+
+  old_privs
+     is a word of bits.  Each bit except the last corresponds to an
+     AIM  privilege.   The  last  bit is  always  returned  "1"b to
+     indicate  that  privileges are  set.  cleanup  handlers should
+     check   the   last   bit   to  decide   whether   a   call  to
+     admin_gate_$reset_privileges should be called.  (Output)
+
+     ENTRY:  ADMIN_GATE_$RESET_PRIVILEGES
+
+     This   entry   is  used   to   disable  privileges   set  with
+     admin_gate_$set_privileges.
+
+  USAGE
+
+  declare admin_gate_$reset_privileges entry (bit (36) aligned)
+
+  call admin_gate_$reset_privileges (saved_old_privs)
+
+
+  ___________                                              ________
+
+  admin_gate_                                              sys_info
+  ___________                                              ________
+
+  USAGE
+
+  ARGUMENTS
+
+  saved_old_privs
+     is the result to a call of admin_gate_$set_privileges.  If the
+     last bit  of the word  is "0"b, this  entrypoint does nothing.
+     If  the last  bit of  the word  is "1"b,  then this entrypoint
+     restores  the  privileges to  their state  before the  call to
+     admin_gate_$set_privileges, and returns the  word with the bit
+     reset to zero.  (Input/Output)
+
+  5 SYS_INFO PRIVILEGE MASK VARIABLES                               |
+
+  It is  desirable that the crossreference  show which programs are |
+  using which individual privileges.  This  makes it much easier to |
+  survey all  the users of,  say, the dir privilege.   To this end, |
+  the sys_info masks are defined.                                   |
+
+               ________________________________________             |
+
+  NAME: SYS_INFO                                                    |
+
+  ENTRY:  SYS_INFO$DIR_PRIV_MASK                                    |
+
+  This variable defines the system  privilege bit for the directory |
+  AIM privilege.                                                    |
+
+  USAGE                                                             |
+
+  declare sys_info$dir_priv_mask bit (36) aligned external static;  |
+
+       ENTRY:  SYS_INFO$IPC_PRIV_MASK                               |
+
+       This variable defines the system privilege bit for the IPC   |
+       AIM privilege.                                               |
+
+  USAGE                                                             |
+
+  declare sys_info$seg_priv_mask bit (36) aligned external static;  |
+
+
+  ________                                                 ________
+
+  sys_info                                                 sys_info
+  ________                                                 ________
+
+|      ENTRY:  SYS_INFO$SEG_PRIV_MASK
+
+|      This variable defines the system privilege bit for the
+|      segment AIM privilege.
+
+| USAGE
+
+| declare sys_info$seg_priv_mask bit (36) aligned external static;
+
+|      ENTRY:  SYS_INFO$SOOS_PRIV_MASK
+
+|      This variable defines the system privilege bit for the
+|      security-out-of-service AIM privilege.
+
+| USAGE
+
+| declare sys_info$soos_priv_mask bit (36) aligned external static;
+
+|      ENTRY:  SYS_INFO$RING1_PRIV_MASK
+
+|      This variable defines the system privilege bit for the ring
+|      1 message segment AIM privilege.
+
+| USAGE
+
+| declare sys_info$ring1_priv_mask bit (36) aligned external
+|      static;
+
+|      ENTRY:  SYS_INFO$RCP_PRIV_MASK
+
+|      This variable defines the system privilege bit for the RCP
+|      AIM privilege.
+
+| USAGE
+
+| declare sys_info$rcp_priv_mask bit (36) aligned external static;
+
+
+  ________                                                 ________
+
+  sys_info                                                 sys_info
+  ________                                                 ________
+
+       ENTRY:  SYS_INFO$COMM_PRIV_MASK                              |
+
+       This variable defines the system privilege bit for the       |
+       communications AIM privilege.                                |
+
+  USAGE                                                             |
+
+  declare sys_info$comm_priv_mask bit (36) aligned external static; |
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

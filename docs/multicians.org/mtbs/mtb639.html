@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-639</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-639: Data Management: Error Handling.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-639
+DM: dm_error_util_
+
+To:       Distribution
+
+From:     Matthew C. Pierret
+
+Date:     11/15/83
+
+Subject:  Data Management: Error Handling
+
+1 ABSTRACT
+
+     Modules  of  the  Data  Management  External  and Collection
+Access  Layers use  a new approach  to handling  errors.  The new
+approach,   based   on   the   dm_error_util_   module   and  the
+dm_sub_error_  condition,  is  primarily aimed  at  improving the
+maintainability  of the  code which  uses it  without incurring a
+performance penalty.
+
+Comments should be sent to the author:
+
+via Forum:
+   &gt;udd&gt;m&gt;lls&gt;mtg&gt;DMS_Development.
+
+via Multics Mail:
+   Pierret.Multics on either MIT Multics or System M.
+
+via telephone:
+   (HVN) 261-9338 or (617) 492-9338
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+
+                            CONTENTS
+
+                                                         Page
+
+                 1 Abstract . . . . . . . . . . . . . .     i
+                 2 Introduction . . . . . . . . . . . .     1
+                    2.1 Information loss  . . . . . . .     1
+                    2.2 Incomplete information  . . . .     2
+                    2.3 Lack of ancillary error
+                     detection aids . . . . . . . . . .     2
+                    2.4 The status code parameter . . .     3
+                 3 Overview of the dm_error_util_
+                  mechanism . . . . . . . . . . . . . .     3
+                    3.1 The signalling mechanism  . . .     3
+                    3.2 Error objects . . . . . . . . .     4
+                    3.3 dm_error_util_  . . . . . . . .     4
+                    3.4 Protocol  . . . . . . . . . . .     5
+                 4 Detailed proposal  . . . . . . . . .     5
+                    4.1 The basic model . . . . . . . .     5
+                       4.1.1 Modules which detect
+                        errors  . . . . . . . . . . . .     5
+                       4.1.2 Modules which handle
+                        errors  . . . . . . . . . . . .     6
+                       4.1.3 The default_error_handler_
+                        and error handling commands . .     7
+                    4.2 The dm_sub_error_ condition . .     7
+                    4.3 The dm_error_object structure .     8
+                 5 Performance implications . . . . . .     9
+                 6 Description of the operations. . . .    10
+                    dm_error_util_  . . . . . . . . . .    11
+                       $signal  . . . . . . . . . . . .    12
+                       $continue_to_signal  . . . . . .    14
+                       $handle  . . . . . . . . . . . .    15
+                       $display . . . . . . . . . . . .    17
+
+Multics Technical Bulletin                                MTB-639
+DM: dm_error_util_
+
+2 INTRODUCTION
+
+     The  Data  Storage  and  Retrieval  subsystem  of  the  Data
+Management System has  a need for a more  powerful error handling
+mechanism  than  the standard  status code-based  mechanism.  The
+current  status  code mechanism  is  inadequate for  the  DS&amp;R in
+basically four ways:
+
+   - information loss;
+   - incomplete information;
+   - lack of debugging and error detection aids;
+   - possible  performance  degradation   incurred  carrying  the
+     "code" parameter from module to module to module.
+
+The DS&amp;R uses an error handling mechanism based on the signalling
+mechanism  to  overcome  the   limitations  of  the  status  code
+mechanism.
+
+     Actually, only the user ring portion of the DS&amp;R (all except
+the  file_manager_) uses  this new  mechanism.  The file_manager_
+and  the  Integrity  Services  subsystem are  excluded  from this
+discussion so as  not to require dealing with  issues relative to
+running  in an  inner ring.  This  is not  to say that  it is not
+desirable to include  all of DMS.  Comments on  how to modify the
+error mechanism described  in this MTB to be usable  by al of DMS
+are welcome.
+
+2.1 Information loss
+
+     Due to the layered design of the DS&amp;R subsystem, errors must
+be reported in  a manner meaningful to the  caller at each layer.
+The result of this requirement  is that errors encountered at low
+levels are potentially translated at each layer's interface, each
+time  losing information  about the actual  error.  The following
+call/return  sequence  demonstrates  such a  loss  of information
+through code translation:
+
+     Call relation_manager_$get_tuple
+       Call index_manager_$get_key
+         Call collection_manager_$get_header
+           Call collection_manager_$get_element
+           Return with error code no_element
+         Return with error code collection_not_found
+       Return with error code collection_not_found
+     Return with error code index_not_in_relation
+
+The final  code, index_not_in_relation, alerts the  caller to the
+problem on the  caller's level, i.e., the index  specified in the
+call  is  not in  the  relation.  However,  the actual  error, no
+
+
+MTB-639                                Multics Technical Bulletin
+                                               DM: dm_error_util_
+
+element  was  found, is  lost.  The  DS&amp;R needs  a way  to report
+errors without losing such information.
+
+2.2 Incomplete information
+
+     This  example  also  illustrates  the  lack  of  information
+reported   by   the   status   code   mechanism.    The   routine
+collection_manager_$get_header   knows  the   element  for  which
+collection_manager_$get_element  was  looking,   but  it  has  no
+convenient way to  convey that information to its  caller or to a
+user investigating  the problem.  Information such  as that which
+can be provided  via sub_err_ would be very  helpful in detecting
+errors, especially if there were information associated with each
+interesting level on  the stack.  The following is  an example of
+the type of information desired:
+
+     (at relation_manager_$get_tuple):
+          The  specified index  does not  exist in  the relation.
+          The index with the identifier of 16o could not be found
+          in the relation with opening identifier of 340561o.
+
+     (at collection_manager_$get_header):
+          The specified collection could  not be found.  There is
+          no collection_header at control  interval 0, slot index
+          14.
+
+     (at collection_manager_$get_element):
+          The  specified element  was not found.   The element at
+          control interval 0, slot 16 has been freed.
+
+This   information  quickly   points  out  the   existence  of  a
+programming   error,    as   collection_manager_$get_header   and
+collection_manager_$get_element   think   they  are   looking  at
+different locations (slots 14 and 16 respectively).
+
+2.3 Lack of ancillary error detection aids
+
+     The manner in which the DS&amp;R is used, both in production and
+in  debug, lends  itself to  some additional  debugging and error
+detection aids.  Two such aids are  the ability to log errors and
+the  ability  to  maintain/report information  about  the process
+state at the  time an error occurred.  Logging  certain errors is
+desirable during debug to spot  all occurrences of certain errors
+and in production to track commonly encountered errors.
+
+     Debugging the  DS&amp;R has required heavy  use of long absentee
+processes.  Errors encountered in  an absentee are very difficult
+to investigate  since developers can't examine  the process which
+
+
+Multics Technical Bulletin                                MTB-639
+DM: dm_error_util_
+
+encountered the problem.  A trace of  the stack taken at the time
+of  the  error  provides  a  good  deal  of  helpful  and  timely
+information about the process  state.  Both logging and producing
+stack traces  would both help developers  debug problems and Beta
+test sites report problems accurately.
+
+2.4 The status code parameter
+
+     The DS&amp;R  contains very many  modules and a  typical call to
+the relation_manager_  produces a large number  of calls to lower
+level modules.  Currently each call includes a code parameter and
+most calls are followed by the standard cliche:
+
+          if code ^= 0
+          then call ERROR_RETURN;
+
+The large majority of modules do not care what the code is, other
+than that  is is zero  or non-zero, and  pass the code  on to the
+caller.   Many modules,  then, incur an  unnecessary expense when
+calling modules by having to pass  an argument of little use, and
+further  after  the call  by having  to check  the value  of that
+argument.  Most DS&amp;R modules effectively  only want to be unwound
+past if an error of any type  has occurred, and returned to if no
+error has occurred.
+
+3 OVERVIEW OF THE DM_ERROR_UTIL_ MECHANISM
+
+     The dm_error_util_ mechanism is designed to meet some of the
+needs of the  DS&amp;R which standard status code  mechanisms fail to
+satisfy.   The   major  components  of  the   mechanism  are  the
+signalling mechanism, dm_error_objects, the dm_error_util_ module
+and a protocol by which modules use the mechanism.
+
+3.1 The signalling mechanism
+
+     Modules  are alerted  of errors  via the  Multics signalling
+mechanism.  The  majority of DS&amp;R  modules do not  handle errors.
+Currently most modules that receive a non-zero status code from a
+called module  simply pass the  status code on  to their callers.
+The  signalling  mechanism  approach  frees  these  modules  from
+dealing  with  status  codes, removes  code-checking  cliches and
+removes status codes from their calling sequences.
+
+     Those modules which actually handle errors set up "on units"
+for  the dm_sub_error_  condition.  The  dm_error_util_ mechanism
+uses  the  dm_sub_error_ condition  in a  similar fashion  as the
+sub_err_  system  routine  uses  the  sub_error_  condition.  The
+
+
+MTB-639                                Multics Technical Bulletin
+                                               DM: dm_error_util_
+
+dm_sub_error_  condition  is  used   instead  of  the  sub_error_
+condition   so   as   to   avoid   possible   confusions  between
+dm_error_util_ and sub_err_.
+
+     The performance penalty paid by  those modules that must set
+up  dm_sub_error_  on  units is  not  expected to  be  very high.
+Because  the  number  of  modules  needing  such  an  on  unit is
+considered to be low, the  relative price should be nomimal.  The
+savings gained by freeing all  modules of processing status codes
+may even be greater than  the performance penalty.  The reader is
+reminded that this analysis is not based on actual measurements.
+
+3.2 Error objects
+
+     Associated with each instance of the dm_sub_error_ condition
+is a linked list of dm_error_objects.  These dm_error_objects are
+structures  which  contain  information  about  the  error  which
+resulted  in the  signalling of  dm_sub_error_.  The  linked list
+contains  one dm_error_object  created as a  result of signalling
+the  error and  potentially one  dm_error_object for  each module
+which handles  the error.  This  allows for information  about an
+error  to  be described  in  high-level terms  (say, at  level of
+relation_manager_$get_tuple) without discarding information about
+the   error   described   in   terms   of   lower   levels  (say,
+record_manager_$get_record and collection_manager_$get_element).
+
+     The primary pieces of  information in an dm_error_object are
+an error  code and a  message string.  The  message describes the
+error  in  the context  of  the module  handling the  error.  The
+message  is  just  like  the kind  of  message  supported  by the
+sub_err_ system  routine.  Each module which  handles errors uses
+the error code to determine if the error is the kind of error the
+particular  module  wants  to  handle.  The  error  codes  in all
+dm_error_objects of a single list need not be the same.  A module
+may translate  the code to  a more appropriate code,  such as the
+translation    of    no_element   to    collection_not_found   to
+index_not_in_relation shown  in an earlier example.   The code is
+translated  not by  changing the value  of the error  code in the
+dm_error_object, but  by creating a new  dm_error_object with the
+new code.  This behavior prevents the loss of information by code
+translation.
+
+3.3 dm_error_util_
+
+     The DS&amp;R modules use  dm_error_util_ operations to deal with
+errors.   The  dm_error_util_  module contains  four  entries, as
+follows:
+
+
+Multics Technical Bulletin                                MTB-639
+DM: dm_error_util_
+
+     $signal
+          creates a dm_error_object and signals the dm_sub_error_
+          condition.
+     $continue_to_signal
+          creates a dm_error_object and  calls the system routine
+          continue_to_signal_.   This  entry  is  called  from  a
+          dm_sub_error_ handler.
+     $handle
+          handles a specified error.  This entry is called from a
+          dm_sub_error_ on unit.
+     $display
+          displays  information   about  dm_error_objects.   This
+          entry  is called  by the  default_error_handler_ and by
+          error reporting commands.
+
+3.4 Protocol
+
+     That power  of the signalling  mechanism is great  enough to
+allow   for   many   complex   situations.    To   simplify   the
+dm_error_util_  approach, restrictions  are placed on  the use of
+the  signalling mechanism  and a  strict protocol  is defined for
+proper use of the  dm_error_util_ operations.  These restrictions
+do not actually  prevent the use of any  aspect of the signalling
+mechanism;  rather they  spell out  those uses  which may produce
+non-intuitive  or  problematic  results  that are  not  under the
+control of dm_error_util_.
+
+4 DETAILED PROPOSAL
+
+4.1 The basic model
+
+     The modules  which use dm_error_util_  are easily classified
+into  three groups:   modules that  detect an  error and  wish to
+report  it;  DS&amp;R modules  that  wish to  handle errors;  and the
+default_error_handler_  and  commands  to  examine  errors.   The
+dm_error_util_  mechanism is  easily discussed  by describing how
+each group uses dm_error_util_.
+
+4.1.1 MODULES WHICH DETECT ERRORS
+
+     Any DS&amp;R  module which detects  an error reports  that error
+via  dm_error_util_$signal.  The  module supplies in  the call an
+error code, the module's name, an error message and action flags,
+as  when  calling   sub_err_.   dm_error_util_$signal  creates  a
+dm_sub_error_info condition info structure and an dm_error_object
+structure  in  the  "dm  free   area"  (the  area  returned  from
+
+
+MTB-639                                Multics Technical Bulletin
+                                               DM: dm_error_util_
+
+get_dm_free_area_)  and  signals dm_sub_error_  (via  the signal_
+system routine).   If the caller of  dm_error_util_$signal has an
+enabled  dm_sub_error_  on  unit,  that on  unit  will  catch the
+condition, so the module must  understand that it should continue
+the signal without handling it.
+
+     Before returning, or if unwound, dm_error_util_$signal frees
+all of the  dm_error_objects allocated as a result  of the error.
+This is  necessary because the  objects are not  allocated in the
+stack,  so  are  not  automatically released  when  the  stack is
+unwound.
+
+4.1.2 MODULES WHICH HANDLE ERRORS
+
+     Any  module  which  wishes  to  handle  errors  must  have a
+dm_sub_error_ on unit enabled.  The  on unit should have at least
+one call  to dm_error_util_$handle, passing an  error code and an
+entry variable to a handler routine  for the error.  If the error
+code  matches  the  code  in  the  most  recent  dm_error_object,
+dm_error_util_$handle invokes the handler with a standard calling
+sequence.
+
+     The handler  can, in fact,  do anything it wants  to do, but
+some  restrictions   are  necessary  to   guarantee  well-defined
+behavior.  The  following four types  of action can  be taken, in
+the manner described:
+
+   - Continue  the  signal without  adding any  information.  The
+     handler   should   call   the   continue_to_signal_   system
+     subroutine and return.
+
+   - Continue the  signal after adding  information.  The handler
+     can add  an dm_error_object to the  list of dm_error_objects
+     by  calling  dm_error_util_$continue_to_signal.   This entry
+     creates  an dm_error_object,  fills it  with the information
+     supplied in the parameters, links the dm_error_object to the
+     previous  dm_error_object,  and  calls  continue_to_signal_.
+     The     handler     should      return     after     calling
+     dm_error_util_$continue_to_signal.
+
+   - Stop  the signal.   The handler  can stop  the signal  via a
+     non-local transfer of control or via a simple return without
+     having called continue_to_signal_.  In  the former case, all
+     stack frames more recent than  the one into which control is
+     transferred  are  unwound  from the  stack,  causing cleanup
+     handlers  to  be  invoked.   In the  latter  case, execution
+     continues from  the point of the  original signal, i.e, from
+     the statement after the call to dm_error_util_$signal.
+
+
+Multics Technical Bulletin                                MTB-639
+DM: dm_error_util_
+
+   - Re-signal.  Any action which could cause dm_sub_error_ to be
+     signalled  should  be  avoided  unless  the  on  unit  has a
+     dm_sub_error_ on  unit of its own  enabled.  This is because
+     the signalling mechanism will search all stack frames for on
+     units, including  those that have already  handled the prior
+     instance  of  the  dm_sub_error_  condition.   Such  actions
+     include calling dm_error_util_$signal,  calling signal_ with
+     the  dm_sub_error_  condition, or  calling any  module which
+     might directly or indirectly signal dm_sub_error_.
+
+4.1.3 THE DEFAULT_ERROR_HANDLER_ AND ERROR HANDLING COMMANDS
+
+     The  default_error_handler_  will  handle  the dm_sub_error_
+condition  by  first  calling  dm_error_util_$display  to display
+information about the error, then getting to a new command level.
+dm_error_util_$display    finds    the    last    (most   recent)
+dm_error_object in  the list of  dm_error_objects associated with
+the   condition   and   displays    the   information   in   that
+dm_error_object.   Existing  error  reporting  commands,  such as
+reprint_error, can be changed or  new ones written to exploit the
+ability of  dm_error_util_$display to display  optionally several
+dm_error_objects.
+
+4.2 The dm_sub_error_ condition
+
+     Following  is  a  Reference Guide-style  description  of the
+dm_sub_error_ condition:
+
+dm_sub_error_
+
+     Cause:
+                    a Data Management  subroutine has detected an
+                    error situation for which  it wants to signal
+                    a  condition, often  with the  possibility of
+                    continuing,  rather  than returning  a status
+                    code.   The  dm_error_util_$signal subroutine
+                    signals this condition.
+     Default action:
+                    prints  a  message  and  returns  to  command
+                    level; however, the condition name printed is
+                    not  dm_sub_error_ but  the module  name from
+                    the dm_error_object in the data structure.
+     Restrictions:
+                    none.
+     Restartability:
+                    immediately     restartable,    conditionally
+                    restartable, or not  restartable depending on
+                    the particular  situation and how  the action
+
+
+MTB-639                                Multics Technical Bulletin
+                                               DM: dm_error_util_
+
+                    flags in the data structure are set.
+     Data structure:
+          dcl 1 dm_sub_error_info  aligned,
+                2 header      like condition_info_header,
+                2 dm_error_object_ptr ptr;
+
+     where:
+
+     dm_error_object_ptr  points to  an dm_error_object structure
+     created by dm_error_util_$signal.
+
+4.3 The dm_error_object structure
+
+     The      dm_error_object       structure,      found      in
+dm_error_object.incl.pl1, has the following format and meaning:
+
+     dcl 1 dm_error_object      aligned based (dm_error_object_ptr),
+           2 version            char (8) init (ERROR_OBJECT_VERSION_1),
+           2 next_error_object_ptr
+                                ptr init (null),
+           2 prev_error_object_ptr
+                                ptr init (null),
+           2 dm_sub_error_info_ptr
+                                ptr init (null),
+           2 flags,
+             3 begins_new_error bit (1) unal init ("0"b),
+             3 mbz1             bit (33) unal init ("0"b),
+           2 signalling_program_name
+                                char (32) varying init (""),
+           2 message            char (256) varying init ("");
+
+where:
+
+       version
+            is     equal     to     ERROR_OBJECT_VERSION_1     in
+            dm_error_object.incl.pl1.
+
+       next_error_object_ptr
+            points  to  the next  most recent  dm_error_object in
+            this chain of dm_error_objects.
+
+       prev_error_object_ptr
+            points  to the  next least  recent dm_error_object in
+            this chain of dm_error_objects.
+
+       dm_sub_error_info_ptr
+            points to  the dm_sub_error_info condition  info data
+            structure  for  the  instance  of  dm_sub_error_ with
+
+
+Multics Technical Bulletin                                MTB-639
+DM: dm_error_util_
+
+            which this dm_error_object is associated.
+
+       flags.begins_new_error
+            if   on   indicates   that    this   is   the   first
+            dm_error_object  associated with  an instance  of the
+            dm_sub_error_ condition.  If dm_error_util_$signal is
+            called   when  there   is  already   an  instance  of
+            dm_sub_error_,   and   hence  already   a   chain  of
+            dm_error_objects, the new  dm_error_object created by
+            dm_error_util_$signal is added to the chain with this
+            flag on to show that a new error has occurred.
+
+       flags.mbz1
+            must be zero ("0"b).
+
+       signalling_program_name
+            is  the  name  of   the  module  which  created  this
+            dm_error_object, i.e.,  the last module  to signal or
+            continue to signal dm_sub_error_.
+
+       message
+            is a message describing the error.
+
+5 PERFORMANCE IMPLICATIONS
+
+     Although  the  main reason  for adopting  the dm_error_util_
+model of  error handling is  for maintainability, it  is expected
+that a performance enhancement may  be a welcome side-effect.  If
+it  becomes  clear that  a  performance degradation  will result,
+dm_error_util_ will not be used.
+
+     Performance degradations  could result in two  ways:  in the
+added expense  of setting up  a dm_sub_error_ on unit  and in the
+added  expense  of  signalling  and  handling  the  dm_sub_error_
+condition.  It  is speculated that  the savings re-couped  by the
+removal  of  code parameters  and code  checking will  offset any
+increase  in time  spent enabling on  units.  The rationalization
+for this  argument lies in  the believe that so  few modules will
+need   to  enable   the  on  units.    A  cursory   look  at  the
+index_manager_  modules revealed  that three  of the thirty-three
+modules   would   require  a   dm_sub_error_   on  unit   if  the
+index_manager_ were converted directly to using dm_error_util_.
+
+     The  cost of  signalling and  handling conditions  is only a
+problem if the error ultimately is  found to not be an error.  An
+example of including an error in  the normal and common course of
+events    is    the     index_manager_'s    reliance    on    the
+dm_error_$long_element.  In some cases, index_manager_ determines
+if a key  will fit in a control interval  by attempting to put it
+
+
+MTB-639                                Multics Technical Bulletin
+                                               DM: dm_error_util_
+
+in the control interval.   If dm_error_$long_element is returned,
+index_manager_ shifts keys around until  a space is found for the
+new key.   It would be very  expensive for collection_manager_ to
+signal dm_sub_error_ simply to  give index_manager_ a small piece
+of information, especially since this is a very common occurence.
+This  expense  can  be  bypassed in  this  case  by  changing the
+relavent collection_mnager_  entry to return  a failure indicator
+if  there is  not room  for the element  and to  report all other
+errors  via  dm_error_util_.   In   fact,  such  a  scheme  would
+eliminate   all   requirements   for   error   handling   in  the
+index_manager_.
+
+     In short, there are known  performance penalties for using a
+signalling-based model,  some of which are  offset by performance
+gains  and some,  possibly the rest,  of which  are eliminated by
+minor interface changes to a few select DS&amp;R modules.
+
+6 DESCRIPTION OF THE OPERATIONS.
+
+______________                                     ______________
+
+dm_error_util_                                     dm_error_util_
+______________                                     ______________
+
+Name:  dm_error_util_
+
+This module  is for reporting, handling  and displaying errors in
+the Data  Management System.  The  report of an error  is made by
+calling   the  $signal   entry.   These  error   signals  can  be
+selectively caught and handled by using the $handle entry.
+
+______________                                     ______________
+
+dm_error_util_                                     dm_error_util_
+______________                                     ______________
+
+Entry:  dm_error_util_$signal
+
+     This  entry is  for creating  and signalling  error objects.
+Signalling  an  error object  means signalling  the dm_sub_error_
+condition  where  the  condition   info  structure  points  to  a
+dm_error_object structure.   An error object can  be caught using
+the  $handle entry  from inside of  a dm_sub_error_  on unit.  If
+there are more than one  error objects which have been signalled,
+they are all chained together in a single list, the most recently
+signalled  at the  head of the  list.  The default_error_handler_
+can be  convinced to display  any number of the  error objects in
+such a list.  It can also  be specified how much about each error
+object is  displayed (by default)  by the default_error_handler_.
+The $display  entry can be  used directly to  display the current
+error object list.
+
+Usage
+
+     dcl dm_error_util_$signal entry options (variable);
+
+     call dm_error_util_$signal (code, signalling_program_name,
+          control_flags, message, message_args);
+
+where:
+
+       code                         (Input)
+            is a  standard system error code,  declared fixed bin
+            (35).
+
+       signalling_program_name      (Input)
+            is  the  name  of  the program  signalling  the error
+            object, declared char (*).
+
+       control_flags                (Input)
+            is a  set of flags controlling  how the signalling of
+            the error  object is to be  handled (e.g.  whether to
+            log the error object in the DM system log, whether to
+            create  a  trace_stack,  what  ACTION  flags  to  set
+            defining the restartability  of the condition).  This
+            is  declared  bit  (36) aligned,  and  is interpreted
+            according  to  the  dm_error_flags  structure  in the
+            dm_error_flags.incl.pl1 include file.   The flags can
+            be   set  by   or-ing  the   DM_ACTION  constants  in
+            dm_error_flags.incl.pl1, as in:
+              DM_ACTION_CANT_RESTART | DM_ACTION_TRACE
+              DM_ACTION_QUIET_RESTART | DM_ACTION_LOG
+
+       message                      (Input)
+
+______________                                     ______________
+
+dm_error_util_                                     dm_error_util_
+______________                                     ______________
+
+            is  an  ioa_  control  string  for  a  message  to be
+            associated with the error object being signalled.
+
+       message_args                 (Input)
+            is  any  number  of  arguments for  the  message ioa_
+            control string.
+
+Examples
+
+     call dm_error_util_$signal
+          (
+          dm_error_$ci_already_allocated, cm_allocate_ci,
+          (DM_ACTION_QUIET_RESTART | DM_ACTION_LOG),
+          "^/Control interval  ^d in file  ^3bo, collection ^3bo,
+          was marked as free in the file_reservation_map, but was
+          already allocated.",
+          control_interval_id, file_opening_id, collection_id);
+
+     call dm_error_util_$signal
+          (
+          dm_error_$key_out_of_order, im_rotate_insert,
+          (DM_ACTION_CANT_RESTART | DM_ACTION_TRACE),
+          "^/The key  in node ^d,  slot ^d has a  value less than
+          the  key in  node ^d,  slot ^d.   The former  should be
+          greater than the latter.",
+          new_key_id.control_interal_id, new_key_id.index,
+          old_key_id.control_interval_id, old_key_id.index);
+
+______________                                     ______________
+
+dm_error_util_                                     dm_error_util_
+______________                                     ______________
+
+Entry:  dm_error_util_$continue_to_signal
+
+     This entry is for adding an  error object to a list of error
+objects and  continuing to signal  the most recent  error object.
+Continuing   to   signal   an    error   object   means   calling
+continue_to_signal_ from inside a  handler invoked by the $handle
+entry.    where  the   condition  info  structure   points  to  a
+dm_error_object structure.   An error object can  be caught using
+the $handle  entry from inside  of a dm_sub_error_  on unit.  The
+default_error_handler_ can be convinced  to display any number of
+the error objects  in such a list.  It can  also be specified how
+much  about each  error object is  displayed (by  default) by the
+default_error_handler_.  The $display entry  can be used directly
+to display the current error object list.
+
+Usage
+
+     dcl dm_error_util_$continue_to_signal entry options
+          (variable);
+
+     call dm_error_util_$continue_to_signal (code,
+          signalling_program_name, message, message_args);
+
+where:
+
+       code                         (Input)
+            is a  standard system error code,  declared fixed bin
+            (35).
+
+       signalling_program_name      (Input)
+            is  the  name  of  the program  signalling  the error
+            object, declared char (*).
+
+       message                      (Input)
+            is  an  ioa_  control  string  for  a  message  to be
+            associated with the error object being signalled.
+
+       message_args                 (Input)
+            is  any  number  of  arguments for  the  message ioa_
+            control string.
+
+______________                                     ______________
+
+dm_error_util_                                     dm_error_util_
+______________                                     ______________
+
+Entry:  dm_error_util_$handle
+
+     This entry is used to invoke error handlers when the current
+dm_error_object contains  an error of some  particular type.  The
+error  handler  invoked  is  program  with  a  particular calling
+sequence  which  can do  anything  the caller  of  $handle errors
+desires.  However, the handler should obey the restrictions cited
+in "Notes".   The call of the  $handle entry is made  from the on
+unit for the dm_sub_error_ condition.
+
+Usage
+
+     dcl dm_error_util_$handle entry (char (*), entry variable,
+          ptr, bit(1)aligned);
+
+     call dm_error_util_$handle (error_type, handler_entry,
+          handler_info_ptr, handled_sw);
+
+where:
+
+       error_type                   (Input)
+            is the name of an  error type, currently this must be
+            the  same  as the  name  of an  error code,  and only
+            matches error objects with that error code.
+
+       handler_entry                (Input)
+            is an entry to be invoked if there is an error of the
+            specified type  in the current  dm_error_object list.
+            The syntax of the handler is:
+
+            dcl handler entry (char (*), ptr, ptr);
+            call handler (error_type,
+                          dm_error_object_ptr,
+                          handler_info_ptr);
+
+       handler_info_ptr             (Input)
+            is a  pointer to a caller-defined  info structure for
+            use by the caller-specified handler_entry.
+
+       handled_sw                   (Output)
+            is an  output flag which  indicates, if on,  that the
+            error was handled.  This is  useful if an on unit has
+            multiple  calls to  $handle, and wants  to stop after
+            one such calls handles the error.
+
+______________                                     ______________
+
+dm_error_util_                                     dm_error_util_
+______________                                     ______________
+
+Examples
+
+     The following code fragment illustrates a use of the $handle
+entry to catch the dm_error_$no_element error:
+
+     my_no_element_handler_info.return_label = EXIT;
+     on dm_sub_error_ call dm_error_util_$handle
+                      ("dm_error_$no_element",
+                       MY_NO_ELEMENT_HANDLER,
+                       my_no_element_handler_info_ptr);
+
+     call foo;
+
+EXIT: return;
+
+MY_NO_ELEMENT_HANDLER:
+               proc (p_error_type,
+                     p_dm_error_object_ptr,
+                     p_my_no_element_handler_info_ptr);
+
+     goto p_my_no_element_handler_info_ptr -&gt;
+          my_no_element_handler_info.return_label;
+
+end MY_NO_ELEMENT_HANDLER;
+
+______________                                     ______________
+
+dm_error_util_                                     dm_error_util_
+______________                                     ______________
+
+Entry:  dm_error_util_$display
+
+     This  entry displays  information from  the current  list of
+error objects.
+
+Usage
+
+     dcl dm_error_util_$display entry (fixed bin (17) aligned);
+
+     call dm_error_util_$display (depth);
+
+where:
+
+       depth                        (Input)
+            is the  number of error objects  in the current error
+            list  (counting  from  the  "top",  or  most recently
+            signalled) which are displayed.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

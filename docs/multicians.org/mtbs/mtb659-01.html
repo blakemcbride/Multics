@@ -1,0 +1,2464 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : message facility.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+
+  MULTICS TECHNICAL BULLETIN                             MTB-659-01
+
+  To:  MTB Distribution
+
+  From:  Jim Lippard
+
+  Date:  July 10, 1984
+
+  Subject:  message facility
+
+  This MTB describes plans for  the reimplementation of the Multics
+  message  facility.   This  reimplementation  is  based  around  a
+  message_facility_  subroutine which  will allow  programs such as
+  emacs,  xmail,  and  xservice   to  handle  incoming  interactive
+  messages without stepping on each other.
+
+  Comments and questions should be sent to the author:
+
+  by Multics mail:
+
+     Lippard.Multics on System M or MIT-Multics
+
+  via forum:
+
+     &gt;site&gt;forum&gt;Message_Facility.forum (msgs)
+
+  or by telephone:
+
+     (602) 862-6641 or HVN 357-6641
+
+  _________________________________________________________________
+
+  Multics Project  working documentation.  Not to  be reproduced or
+
+
+                            CONTENTS
+
+                                                         Page
+
+                 Problems in the existing message
+                  facility  . . . . . . . . . . . . . .     4
+                 Proposed changes . . . . . . . . . . .     5
+                 Changes to accept_messages . . . . . .     5
+                    accept_messages . . . . . . . . . .     7
+                 Changes to delete_message and
+                  print_messages  . . . . . . . . . . .    11
+                    delete_message  . . . . . . . . . .    12
+                    print_messages  . . . . . . . . . .    15
+                 Changes to the last_message active
+                  functions . . . . . . . . . . . . . .    18
+                 Changes to send_message  . . . . . . .    19
+                    send_message  . . . . . . . . . . .    20
+                 Old commands to be deleted . . . . . .    24
+                 New commands . . . . . . . . . . . . .    25
+                    accepting . . . . . . . . . . . . .    26
+                    last_message_destination  . . . . .    27
+                    message_status  . . . . . . . . . .    28
+                 Implementation of message_facility_  .    30
+                    Alarm and wakeup handlers . . . . .    34
+                    message_facility_ . . . . . . . . .    35
+                       get_next_msgf_mbx_ptr  . . . . .    35
+                       get_msgf_mbx_ptr . . . . . . . .    35
+                       free_msgf_mbx_ptr  . . . . . . .    36
+                       get_wakeup_state . . . . . . . .    36
+                       set_wakeup_state . . . . . . . .    37
+                       get_mbx_path . . . . . . . . . .    37
+                       get_prefix . . . . . . . . . . .    38
+                       set_prefix . . . . . . . . . . .    38
+                       get_message_format . . . . . . .    39
+                       set_message_format . . . . . . .    40
+                       get_alarm_handler  . . . . . . .    40
+                       set_alarm_handler  . . . . . . .    41
+                       get_wakeup_handler . . . . . . .    41
+                       set_wakeup_handler . . . . . . .    42
+                       get_last_message_info  . . . . .    43
+                       get_current_message_info . . . .    44
+                       get_msg_array_ptr  . . . . . . .    45
+                       read_message . . . . . . . . . .    46
+                       set_seen_switch  . . . . . . . .    47
+                       send_message . . . . . . . . . .    48
+                       send_message_access_class  . . .    49
+
+
+
+                         CONTENTS (cont)
+
+                                                         Page
+
+                       delete_message . . . . . . . . .    51
+                 Changes needed in other parts of the
+                  system  . . . . . . . . . . . . . . .    52
+                    error_table_  . . . . . . . . . . .    52
+                    ring 1 mailbox primitives . . . . .    52
+
+
+
+       The current message facility is sadly lacking in many areas,
+  as  well as  being full  of bugs.   Most of  the message facility
+  commands are written into one  large program, making it difficult
+  to maintain.
+
+       This  MTB  proposes  that  the Multics  message  facility be
+  reimplemented     around    a     central    subroutine    called
+  message_facility_, with the current commands broken into separate
+  modules  for  maintainability.  The  message_facility_ subroutine
+  should  also allow  temporary interception  of messages  for such
+  things as emacs, xmail, and xservice.
+
+
+
+  PROBLEMS IN THE EXISTING MESSAGE FACILITY
+
+     The existing  message facility is plagued  by problems such as
+  many  obscure  bugs  and   unmaintainability  of  the  code.   In
+  addition, there is a need for a way for applications to determine
+  on which mailboxes messages are being accepted, to intercept them
+  temporarily, and reset things the way the were when it took over.
+  The -call  control argument to accept_messages  is not sufficient
+  because there is  still no way for the  procedure being called to
+  know  from which  mailboxes to expect  messages.  Another problem
+  with  -call is  that if the  reminder feature is  being used, the
+  call string will  be executed once for each  undeleted message in
+  the mailbox every time the alarm timer goes off.
+
+
+
+  PROPOSED CHANGES
+
+       Of  primary importance  in changing the  message facility is
+  fixing the bugs.  Together  with adding subroutine interfaces and
+  adding  new features,  the best  way to take  care of  this is to
+  start over  from scratch, building the  message facility commands
+  on top of a message_facility_ subroutine (described later in this
+  document).  Information  such as on which  mailboxes messages are
+  being accepted must be maintained  so that other applications can
+  use this information to intercept messages.
+
+       It  is  also  desirable  that all  of  the  message facility
+  commands  understand  mail  table entries  and  control arguments
+  accepted  by the  mail system.   The send_message  command should
+  accept  mail system  addresses (with  exceptions discussed later)
+  and  the  other  commands   should  accept  mail  system  mailbox
+  specifiers.
+
+  CHANGES TO ACCEPT_MESSAGES
+
+       A  -no_print  (-npr)  control  argument  will  be  added  to
+  override -print.
+
+       The -pathname (-pn) control  argument will be made obsolete,
+  retained but undocumented.
+
+       If messages are  accepted on a mailbox which  does not exist
+  (and  it is  not the  user's default  mailbox), the  user will be
+  queried as to whether or not it should be created.  Currently the
+  default mailbox is created, without comment.  A comment about the
+  mailbox creation should be given unless -brief (-bf) is given.
+
+       The short name -pfx is  added to -prefix.  The -short_prefix
+  (-shpfx)  and  -no_short_prefix (-nshpfx)  control  arguments are
+  added.   -short_prefix  gives  the  current behavior  and  is the
+  default.  -no_short_prefix  causes the prefix to  be printed only
+  for  messages which  are not printed  in short  format (i.e., the
+  previous message was from the  same sender, with the same comment
+  field,   on   the  same   date,  within   5  minutes).    Use  of
+  -no_short_prefix implies -short.
+
+       The  names  of  -hold  and   -no_hold  will  be  changed  to
+  -hold_messages  (-hdmsg)  and  -no_hold_messages  (-nhdmsg).  New
+  control     arguments     -hold_notifications     (-hdnt)     and
+  -no_hold_notifications (-nhdnt) will be added.
+
+       Use   of   the   -time    control   argument   will   assume
+  -hold_messages, since -time is useless without it.
+
+       Message numbers will be  consecutive per-mailbox, instead of
+  consecutive per-process.
+
+
+
+       The text of mail notifications  will be printed, rather than
+  just printing "You have mail".   This will allow send_mail to put
+  mail  subjects  in  the notifications,  and  allow for  a  way to
+  distinguish   computer-generated  messages   (such  as  answering
+  service  messages, IO  Daemon notifications,  etc.)  from regular
+  interactive  messages.   Only  messages  being  held  change  the
+  information  returned  by last_message,  last_message_sender, and
+  last_message_time.
+
+       If the user  is accepting messages on a  mailbox that is not
+  the default, the  entry name of the mailbox  will be printed when
+  messages are received to avoid confusion.
+
+  _______________                                   _______________
+
+  accept_messages                                   accept_messages
+  _______________                                   _______________
+
+  ACCEPT_MESSAGES
+
+  SYNTAX AS A COMMAND
+
+  am {mbx_specification} {-control_args}
+
+  FUNCTION
+
+  initializes  or  reinitializes the  user's process  for accepting
+  both  messages  that are  sent  by the  send_message  command and
+  notifications of the form "You have  mail."  that are sent by the
+  send_mail command.
+
+  ARGUMENTS
+
+  mbx_specification                                                 |
+     specifies the  mailbox on which  messages are to  be accepted. |
+     If     not     given,    the     user's     default    mailbox |
+     (&gt;udd&gt;Project&gt;Person&gt;Person.mbx) is used.                      |
+
+  LIST OF MAILBOX SPECIFICATIONS                                    |
+
+  -mailbox path, -mbx path                                          |
+     specifies  the pathname  of a  mailbox.  The  suffix ".mbx" is |
+     added if necessary.                                            |
+
+  -user STR                                                         |
+     specifies either a  user's default mailbox or an  entry in the |
+     system mail table.                                             |
+
+  -save path, -sv path                                              |
+     specifies the pathname of a  savebox.  The suffix ".sv.mbx" is |
+     added if necessary.                                            |
+
+  -log                                                              |
+     specifies the user's logbox and is equivalent to:              |
+        -mailbox &gt;udd&gt;Project_id&gt;Person_id&gt;Person_id.sv.mbx         |
+
+  STR                                                               |
+     is any non-control argument and is first interpreted as:       |
+        -mailbox STR                                                |
+     if no mailbox is found, this specification is then interpreted |
+     as:                                                            |
+        -save STR                                                   |
+     if no savebox is found, this specification is then interpreted |
+     as:                                                            |
+        -user STR                                                   |
+
+  CONTROL ARGUMENTS
+
+  _______________                                   _______________
+
+  accept_messages                                   accept_messages
+  _______________                                   _______________
+
+  -brief, -bf
+     prevents  accept_messages from  informing the user  that it is
+     creating a mailbox, and prints messages in short format.
+
+  -call {cmdline}
+     when the  message is received,  instead of printing  it in the
+     default  format, accept_messages  calls the  command processor
+     with a string of the form:
+
+        cmdline number sender time message {path}
+
+     where:
+
+     cmdline
+        is any  Multics command line;  cmdline must be  enclosed in
+        quotation  marks  if it  contains  blanks or  other command
+        language characters.
+
+     number
+        is the  sequence number of  the message, assigned  when the
+|       -hold_messages control argument  is used; otherwise, number
+        is 0.
+
+     sender
+        is the User_id of the person who sent the message.
+
+     time
+        is the date-time the message was sent.
+
+     message
+        is the actual message sent.
+
+     path
+        is  the pathname  of the mailbox  to which  the message was
+        sent.  If the message was sent to the default mailbox, path
+        is omitted.
+
+     To reverse the effect of  a previously specified -call control
+     argument, the user can specify the -call control argument with
+|    no  cmdline argument.   The maximum  length of  cmdline is 512
+|    characters.
+
+  -flush DT
+     discards messages  sent before the  specified date-time, where
+     DT  is  a  string  acceptable  to  the convert_date_to_binary_
+     subroutine (described  in the MPM  Subroutines).  This control
+     argument is intended to be used by operators and consultants.
+
+  _______________                                   _______________
+
+  accept_messages                                   accept_messages
+  _______________                                   _______________
+
+  -long, -lg
+     precedes every  message printed by the  sender's Person_id and
+     Project_id.  This is the default.
+
+  -hold_messages, -hdmsg                                            |
+     holds messages until explicitly  deleted by the delete_message
+     command.   Messages  printed when  the  -hold_messages control |
+     argument is in effect are preceded by an identifying number.
+
+  -no_hold_messages, -nhdmsg                                        |
+     reverts the -hold_messages control argument.  (Default)        |
+
+  -hold_notifications, -hdnt                                        |
+     causes  notifications to  be held  in the  mailbox after being |
+     printed.  This implies -notifications.                         |
+
+  -no_hold_notifications, -nhdnt                                    |
+     causes  notifications  to  be  deleted  after  being  printed. |
+     (Default)                                                      |
+
+  -notifications, -nt                                               |
+     causes notifications to be printed.  (Default)                 |
+
+  -no_notifications, -nnt                                           |
+     causes notifications to be deleted as they are received.  This |
+     implies -no_hold_notifications.                                |
+
+  -prefix STR, -pfx STR                                             |
+     causes STR to  be printed before printing a  message from this
+     mailbox.  STR can be up to  12 characters long and can contain
+     the ioa_ control strings ^/, ^| and ^- if desired.
+
+  -short_prefix, -shpfx                                             |
+     specifies that the prefix is printed when messages are printed |
+     in short format.  (Default)                                    |
+
+  -no_short_prefix, -nshpfx                                         |
+     specifies  that the  prefix is  not printed  when messages are |
+     printed in short format.                                       |
+
+  -print, -pr
+     prints all messages that were received since the last time the
+     user was accepting messages.
+
+  -no_print, -npr                                                   |
+     suppresses printing of old messages.  (Default)                |
+
+  -short, -sh
+     precedes  consecutive messages  from the  same sender  by "=:"
+     instead of the Person_id and Project_id.
+
+  _______________                                   _______________
+
+  accept_messages                                   accept_messages
+  _______________                                   _______________
+
+  -time N, -tm N
+     prints  undeleted  messages  every  N minutes,  preceded  by a
+     message  of  the form  "You have  X messages"  where X  is the
+     number  of undeleted  messages.  If N  equals 0,  time mode is
+|    reset.  Use of this control argument implies -hold_messages.
+
+  NOTES
+
+  The  user should  not give  conflicting control  arguments in the
+  same invocation of  the command (i.e., -long and  -short or -long
+  and -brief).
+
+  A default mailbox is created  automatically the first time a user
+  issues   either   print_mail,   read_mail,   accept_messages,  or
+  print_messages.  The default mailbox is:
+
+       &gt;udd&gt;Project_id&gt;Person_id&gt;Person_id.mbx
+
+  Messages sent when the user is not  logged in or when the user is
+  deferring messages (see the  defer_messages command) are saved in
+  the mailbox and can be  read later by invoking the print_messages
+  command.  The send_mail command stores mail in the same mailbox.
+
+  It is not advisable for several users to share the same mailbox.
+
+  At any  time, only one  process can be accepting  messages from a
+  given mailbox.   If a second process  attempts to accept messages
+  on a mailbox, If a second  process accepts messages on a mailbox,
+  it  will  take  over  the  accept_messages  function.   The first
+  process will receive no indication that messages are being routed
+  to the second process.
+
+  If the second process then logs out or is destroyed, the messages
+  do not  revert to an earlier  process.  Thus, a user  who sends a
+  message to  that mailbox will  be informed that  the addressee is
+  currently not accepting messages or is not logged in.
+
+| It is possible  to accept messages on more than  one mailbox at a
+| time, and to accept messages on a mailbox other than the default.
+| If a  mailbox other than the  default is to be  used, and it does
+| not exist,  then the accept_messages command  queries the user as
+| to  whether  or  not it  should  be created.   When  messages are
+| printed  from a  mailbox other than  the default,  the mailbox is
+| always identified.
+
+
+
+  CHANGES TO DELETE_MESSAGE AND PRINT_MESSAGES
+
+     The  delete_message and  print_messages commands  will add the
+  control arguments -match, -exclude, -from (-fm), -comment (-com),
+  -before,  and  -after  to  allow  selection  of  messages  to  be
+  processed.   Both will  also accept  messages of  ranges, and the
+  keywords "all", "first", and "last".
+
+     The -pathname  (-pn) control argument is  obsolete and will be
+  retained but undocumented.
+
+     The header printed by  the print_messages command when reading
+  a mailbox to which the user  only has "o" permission will now say
+  "You have N message(s) in  PATH" (with "messages" properly plural
+  or singular) instead of "Messages from yourself".
+
+       Add  -brief  (-bf) to  delete_message  to suppress  an error
+  message  when  no  messages  were deleted.   Add  -long  (-lg) to
+  override.
+
+       The user's default mailbox will be created by print_messages
+  if  it does  not already exist.   An appropriate  comment will be
+  printed unless -brief is given.
+
+       The  delete_message command  will not  delete messages which
+  have not  yet been marked  as seen in the  current process.  This
+  prevents "dlm -a" from deleting  a message which has just arrived
+  but  has not  yet been printed  on the terminal.   A -force (-fc)
+  control  argument  is  provided  to  allow  deletion  of selected
+  messages whether or not they have been marked as seen.
+
+       Message  numbers  will  be  assigned to  messages  read from
+  mailboxes to  which a user  has "o" but not  "d" extended access.
+  These  message numbers  will be understood  by print_messages and
+  delete_message.   Currently, delete_message  cannot be  used on a
+  mailbox unless the user has "d" extended access.
+
+       The current  behavior for mailboxes  to which the  user does
+  have "d"  extended access will  remain the same:  if  the user is
+  not holding messages  on the mailbox, they will  be deleted after
+  being printed  by print_messages, and no  message numbers will be
+  assigned.
+
+       The  print_messages command,  when there are  no messages in
+  the mailbox,  will print an appropriate  error message instead of
+  being  silent.   The -brief  (-bf) control  argument is  added to
+  suppress this message.
+
+       The print_messages command, when used  on a mailbox to which
+  the user does not have "d" extended access, will no longer delete
+  the user's own messages after printing them.
+
+  ______________                                     ______________
+
+  delete_message                                     delete_message
+  ______________                                     ______________
+
+  DELETE_MESSAGE
+
+  SYNTAX AS A COMMAND
+
+| dlm msg_specs {mbx_specification} {-control_args}
+
+  FUNCTION
+
+  deletes a message sent by the send_message command and saved in a
+| mailbox   with  the   -hold_messages  control   argument  to  the
+  accept_messages  command.  (See  the accept_messages  command for
+  more details.)
+
+  ARGUMENTS
+
+| msg_specs
+|    is one or  more numbers or ranges.  Numbers  are as printed by
+|    the print_message command  when accept_messages -hold_messages
+|    is in effect.  Ranges are of the form N:M, where N&lt;=M and both
+|    N and M  are valid message numbers.  The  keywords "first" and
+|    "last" may  also be used  as message numbers,  and the keyword
+|    "all"  may be  used as  a range  (equivalent to "first:last").
+|    These  keywords  have  the  short  names  "f",  "l",  and "a",
+|    respectively.
+
+| mbx_specification
+|    specifies the  mailbox from which messages  are to be deleted.
+|    If     not     given,    the     user's     default    mailbox
+|    (&gt;udd&gt;Project&gt;Person&gt;Person.mbx) is used.
+
+| LIST OF MAILBOX SPECIFICATIONS
+
+| -mailbox path, -mbx path
+|    specifies  the pathname  of a  mailbox.  The  suffix ".mbx" is
+|    added if necessary.
+
+| -user STR
+|    specifies either a  user's default mailbox or an  entry in the
+|    system mail table.
+
+| -save path, -sv path
+|    specifies the pathname of a  savebox.  The suffix ".sv.mbx" is
+|    added if necessary.
+
+| -log
+|    specifies the user's logbox and is equivalent to:
+|       -mailbox &gt;udd&gt;Project_id&gt;Person_id&gt;Person_id.sv.mbx
+
+| STR
+|    is any non-control argument and is first interpreted as:
+
+  ______________                                     ______________
+
+  delete_message                                     delete_message
+  ______________                                     ______________
+
+        -mailbox STR                                                |
+     if no mailbox is found, this specification is then interpreted |
+     as:                                                            |
+        -save STR                                                   |
+     if no savebox is found, this specification is then interpreted |
+     as:                                                            |
+        -user STR                                                   |
+
+  CONTROL ARGUMENTS
+
+  -all, -a
+     deletes all messages from the mailbox.
+
+  -after DATE_TIME                                                  |
+     causes only messages sent after DATE_TIME to be deleted.       |
+
+  -before DATE_TIME                                                 |
+     causes only messages sent before DATE_TIME to be deleted.      |
+
+  -brief, -bf                                                       |
+     suppress error message printed when no messages were deleted.  |
+
+  -long, -lg                                                        |
+     print error messages when no messages were deleted.  (Default) |
+
+  -comment STR, -com STR                                            |
+     causes only messages with comment  fields containing STR to be |
+     deleted.                                                       |
+
+  -from STR, -fm STR                                                |
+     causes only messages sent from STR  to be deleted.  STR may be |
+     of the form Person.Project, Person, or .Project.               |
+
+  -force, -fc                                                       |
+     causes selected messages to be deleted even if unseen.         |
+
+  -no_force, -nfc                                                   |
+     prevents deletion of unseen messages.  (Default)               |
+
+  -match STR                                                        |
+     causes only messages with text containing STR to be deleted.   |
+
+  -exclude STR                                                      |
+     causes  only  messages  with  text not  containing  STR  to be |
+     deleted.                                                       |
+
+  -messages, -msg                                                   |
+     causes  only   regular  messages  (non-notifications)   to  be |
+     deleted.                                                       |
+
+  ______________                                     ______________
+
+  delete_message                                     delete_message
+  ______________                                     ______________
+
+| -no_messages, -nmsg
+|    overrides -messages.
+
+| -notifications, -nt
+|    causes only notifications to be deleted.
+
+| -no_notifications, -nnt
+|    overrides -notifications.
+
+  NOTES
+
+  If  no  mailbox  is  specified,  the  user's  default  mailbox is
+  assumed.   For  a  description  of  the  mailbox,  refer  to  the
+  accept_messages and print_mail commands.
+
+  ______________                                     ______________
+
+  print_messages                                     print_messages
+  ______________                                     ______________
+
+  PRINT_MESSAGES
+
+  SYNTAX AS A COMMAND
+
+  pm {msg_specs} {mbx_specification} {-control_args}                |
+
+  FUNCTION
+
+  prints any interprocess messages that were received (and saved in
+  the user's  mailbox) while the  user was not  accepting messages,
+  not logged in, or accept_messages -hold_messages was in effect.   |
+
+  ARGUMENTS
+
+  msg_specs                                                         |
+     is one or more numbers  or ranges.  Numbers are printed before |
+     each message when accept_messages -hold_messages is in effect. |
+     Ranges are  of the form N:M,  where N&lt;=M and both  N and M are
+     valid  message numbers.   The keywords "first"  and "last" may
+     also be used as message numbers,  and the keyword "all" may be
+     used as a range  (equivalent to "first:last").  These keywords
+     have the short names "f", "l", and "a", respectively.
+
+  mbx_specification
+     specifies the  mailbox from which messages  are to be printed.
+     If     not     given,    the     user's     default    mailbox
+     (&gt;udd&gt;Project&gt;Person&gt;Person.mbx) is used.
+
+  LIST OF MAILBOX SPECIFICATIONS
+
+  -mailbox path, -mbx path
+     specifies  the pathname  of a  mailbox.  The  suffix ".mbx" is
+     added if necessary.
+
+  -user STR
+     specifies either a  user's default mailbox or an  entry in the
+     system mail table.
+
+  -save path, -sv path
+     specifies the pathname of a  savebox.  The suffix ".sv.mbx" is
+     added if necessary.
+
+  -log
+     specifies the user's logbox and is equivalent to:
+        -mailbox &gt;udd&gt;Project_id&gt;Person_id&gt;Person_id.sv.mbx
+
+  STR
+     is any non-control argument and is first interpreted as:
+        -mailbox STR
+
+  ______________                                     ______________
+
+  print_messages                                     print_messages
+  ______________                                     ______________
+
+     if no mailbox is found, this specification is then interpreted
+     as:
+        -save STR
+     if no savebox is found, this specification is then interpreted
+     as:
+        -user STR
+
+  CONTROL ARGUMENTS
+
+  -all, -a
+     prints  all messages,  including those  held by -hold_messages
+     mode (see accept_messages).  This is the default.
+
+| -after DATE_TIME
+|    causes only messages sent after DATE_TIME to be printed.
+
+| -before DATE_TIME
+|    causes only messages sent before DATE_TIME to be printed.
+
+| -brief, -bf
+|    suppresses the message "You have no messages" when the mailbox
+|    is empty.
+
+  -call CMDLINE
+     for  each  message,  instead  of  printing  calls  the command
+     processor with the line:
+        CMDLINE number sender time message {path}
+     For more details, see the accept_messages command.
+
+| -comment STR, -com STR
+|    causes only messages with comment  fields containing STR to be
+|    printed.
+
+| -from STR, -fm STR
+|    causes only messages sent from STR  to be printed.  STR may be
+|    of the form Person.Project, Person, or .Project.
+
+  -last, -lt
+     reprints only the latest message received.
+
+  -long, -lg
+     prints the  sender and date-time  of every message,  even when
+     the same for two consecutive messages.
+
+| -match STR
+|    causes only messages with text containing STR to be printed.
+
+| -exclude STR
+|    causes  only  messages  with  text not  containing  STR  to be
+|    printed.
+
+  ______________                                     ______________
+
+  print_messages                                     print_messages
+  ______________                                     ______________
+
+  -messages, -msg                                                   |
+     causes  only   regular  messages  (non-notifications)   to  be |
+     deleted.                                                       |
+
+  -no_messages, -nmsg                                               |
+     overrides -messages.                                           |
+
+  -notifications, -nt                                               |
+     causes only notifications to be deleted.                       |
+
+  -no_notifications, -nnt                                           |
+     overrides -notifications.                                      |
+
+  -new
+     when accept_messages -hold_messages mode  is in effect, prints
+     only those  messages that have  not been printed  before.  The
+     default is to print all held messages.
+
+  -short, -sh
+     prints  messages  as  with  accept_messages  -short,  omitting
+     redundant sender names  in favor of the prefix  "=:".  This is
+     the default.
+
+  NOTES
+
+  Messages   are  deleted   after  they  are   printed  unless  the
+  -hold_messages argument was given to the accept_messages command.
+  The "last" message remains available  for the life of the process
+  or until redefined by a new message.
+
+  If  messages are  deferred, it  is a  good practice  to print out
+  pending messages periodically.
+
+  A default mailbox is created  automatically the first time a user |
+  issues   either   print_mail,   read_mail,   accept_messages,  or |
+  print_messages.  The default mailbox is:                          |
+
+       &gt;udd&gt;Project_id&gt;Person_id&gt;Person_id.mbx                      |
+
+  For a  description of the  mailbox, refer to  the accept_messages
+  and   print_mail  commands.    See  also   the  active  functions
+  last_message, last_message_sender, and last_message_time.
+
+
+
+  CHANGES TO THE LAST_MESSAGE ACTIVE FUNCTIONS
+
+     The  active  functions last_message,  last_message_sender, and
+  last_message_time   will    have   a   new    control   argument,
+  -inhibit_error  (-ihe),   which  causes  a  null   string  to  be
+  printed/returned when there is no last message.
+
+
+
+  CHANGES TO SEND_MESSAGE
+
+     The  commands  send_message_acknowledge, send_message_express,
+  and  send_message_silent will  be obsoleted  in favor  of the new
+  send_message.  Control arguments will be added to send_message to
+  duplicate  behavior of  the three  obsolete commands,  as well as
+  allowing for previously impossible combinations.  The new control
+  arguments  are  -acknowledge   (-ack),  -no_acknowledge  (-nack),
+  -escape (-esc), -no_escape  (-nesc), -express (-xps), -no_express
+  (-nxps),  -comment  (-com),  -no_comment  (-ncom),  -brief (-bf),
+  -silent (-sil), -long (-lg), -print (-pr), and -no_print (-npr).
+
+     The comment  field by default  contains a string  specified by
+  the variable full_name._ in the user's value segment.
+
+     The  -pathname (-pn)  control argument will  be made obsolete,
+  retained but undocumented.
+
+     The  control  arguments -last_message_destination  (-lmds) and
+  -last_message_sender (-lms) will be accepted as addresses.
+
+  ____________                                         ____________
+
+  send_message                                         send_message
+  ____________                                         ____________
+
+  SEND_MESSAGE
+
+  SYNTAX AS A COMMAND
+
+| sm {-control_args} address {message}
+
+  FUNCTION
+
+  sends  messages (one  or more,  always sent one  at a  time) to a
+  given user on a given project or to a given mailbox.
+
+  ARGUMENTS
+
+| address
+     can be  of the form Person_id.Project_id  to specify a mailbox
+     belonging to that person, a string containing at least one "&gt;"
+|    or "&lt;" character to specify the  pathname of a mailbox, a mail
+|    table  address,  one  of  the  arguments  "-mailbox" ("-mbx"),
+|    "-log", "-save" ("-sv"), or  "-user" immediately followed by a
+|    string giving the pathname of  a mailbox, logbox, save box, or
+|    user        name       respectively;        the       argument
+|    "-last_message_destination" ("-lmds") if send_message has been
+|    used  before   in  this  process,   or  "-last_message_sender"
+|    ("-lms") if a message has  been received in the user's default
+|    mailbox.   For   more  information  type   "help  addresses.gi
+|    -section control argument".  All  arguments beginning with the
+|    first non-control argument after  a destination are considered
+|    to be message text.
+
+  message
+     is anything that appears up to the end of the command.  It may
+     be one or more words.  If  message is missing from the command
+     line,  send_message  enters an  input  loop, and  a multi-line
+     message may be sent.  See below.
+
+  CONTROL ARGUMENTS
+
+| -acknowledge, -ack
+|    requests    that   the    recipient's   process    return   an
+|    acknowledgement  message when  the message  is read.   It also
+|    implies the -brief (-bf) control argument.  See below.
+
+| -no_acknowledge, -nack
+|    requests   that   the  recipient's   process  not   return  an
+|    acknowledgement message when the message is read.  (Default)
+
+| -escape, -esc
+|    turns  on  the  ".."   escape  convention  to  execute Multics
+
+  ____________                                         ____________
+
+  send_message                                         send_message
+  ____________                                         ____________
+
+     commands  from  within  input  mode for  the  current message. |
+     (Default)                                                      |
+
+  -no_escape, -nesc                                                 |
+     turns off the ".."  escape convention.                         |
+
+  -express, -xps                                                    |
+     sends the  message only if  the recipient is likely  to see it |
+     immediately, that is, is currently accepting messages.         |
+
+  -no_express, -nxps                                                |
+     always sends the message.  (Default)                           |
+
+  -comment STR, -com STR                                            |
+     adds a comment  of the form (STR) after  the user's person and |
+     in the message's header.  The default behavior is to insert in |
+     the comment field the value of the variable "full_name._" from |
+     the user's value segment.                                      |
+
+  -no_comment, -ncom                                                |
+     suppresses insertion of any comment.                           |
+
+  -brief, -bf                                                       |
+     does not print an error message  if the message cannot be sent |
+     or if the recipient is not accepting messages.                 |
+
+  -silent, -sil                                                     |
+     suppresses all error messages.                                 |
+
+  -long, -lg                                                        |
+     prints error messages.  (Default)                              |
+
+  -print, -pr                                                       |
+     prints  the  destination the  message  is being  sent  to when |
+     -last_message_destination   (-lmds)   or  -last_message_sender |
+     (-lms) is used.  (Default)                                     |
+
+  -no_print, -npr                                                   |
+     does not  print the destination  the message is  being sent to |
+     when -last_message_destination (-lmds) or -last_message_sender |
+     (-lms) is used.                                                |
+
+  NOTES
+
+  For a  description of the  mailbox, refer to  the accept_messages
+  and print_mail descriptions in this manual.
+
+  All control  arguments must precede  the address or  they will be |
+  sent as message text.                                             |
+
+  ____________                                         ____________
+
+  send_message                                         send_message
+  ____________                                         ____________
+
+  If  the  message  is  to   contain  a  parenthesis,  bracket,  or
+  semi-colon character, that character  must be enclosed in quotes.
+  These  characters are  not treated specially  by the send_message
+  command.  A single quote character may be typed as """".
+
+  EXAMPLES
+
+  If WJones on the Alpha project  sends the following to RTSmith on
+  the Beta project by using the command line:
+
+     !  sm RTSmith.Beta need access to your lsg command
+
+  the message prints on RTSmith's terminal (if RTSmith is accepting
+  messages) as follows:
+
+     1) WJones.Alpha 04/20/76 1200.6 mst  Tue:  need access to your
+     lsg command
+
+  Input Loop:
+
+  When  send_message enters  the input  loop it  types "Input:" and
+  accepts lines which are sent, one  line at a time.  Input loop is
+  terminated  by a  line consisting  solely of  a period.   When in
+  input loop, Multics  commands may be executed if  typed on a line
+  beginning with two periods.  The  user can receive messages while
+  in the input loop, so this is a way to hold conversations.
+
+  If the user  is who the message(s) are being  sent to changes how
+  he is accepting messages (defers messages, accepts messages, logs
+  out), send_message  will print a  message to that  effect (unless
+  -brief or -silent is specified).
+
+  Acknowledgements:
+
+  If an acknowledgement is requested the acknowledgement says:
+
+     From &lt;Person_id.Project_id&gt; &lt;time&gt;:  Acknowledged.
+
+  if the message is read right away, or:
+
+     From &lt;Person_id.Project_id&gt; &lt;time&gt;:
+     Acknowledge message of &lt;sent_time&gt;
+
+  if the message is read later.
+
+  If   the   recipient   has   insufficient  access   to   send  an
+  acknowledgement, none is sent.  No error message is printed.
+
+  The command line:
+
+  ____________                                         ____________
+
+  send_message                                         send_message
+  ____________                                         ____________
+
+     !  sm Person_id.Project_id testing complete; installation this
+     week
+
+  sends:
+
+     testing complete
+
+  and   prints  an   appropriate  error   message  (e.g.,  "Segment
+  installation not found.") because  the characters typed after the
+  semicolon are interpreted as another command line.
+
+  The command line:
+
+     !  sm Person_id.Project_id so long (for now)
+
+  sends two lines:
+
+     so long for
+     so long now
+
+  In  both  of the  above examples,  the sender's  intended message
+  would have been sent if it had been enclosed in quotes (e.g., "so
+  long (for now)").
+
+
+
+  OLD COMMANDS TO BE DELETED
+
+       The commands long_message_format (lmf), short_message_format
+  (smf), nmf_last_sender, nmf_last_message,  and nmf_last_time will
+  be deleted.  They have been undocumented for some time.
+
+
+
+  NEW COMMANDS
+
+       The  accepting command/active  function tells  if somebody's
+  accepting messages.
+
+       The    last_message_destination    command/active   function
+  prints/returns the  last destination to which  messages were sent
+  using the send_message command.
+
+       The message_status command lists mailboxes on which messages
+  are  being accepted  or deferred,  which state  they are  in, the
+  mailbox prefix, etc.
+
+  _________                                               _________
+
+  accepting                                               accepting
+  _________                                               _________
+
+  ACCEPTING
+
+  SYNTAX AS A COMMAND
+
+  acc address {-control_args}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [acc address {-control_args}]
+
+  FUNCTION
+
+  determines  whether messages  are being  accepted on  the mailbox
+  specified by the supplied address.
+
+  ARGUMENTS
+
+  address
+     can be  of the form Person_id.Project_id  to specify a mailbox
+     belonging to that person, a string containing at least one "&gt;"
+     or "&lt;" character to specify the  pathname of a mailbox, a mail
+     table  address,  one  of  the  arguments  "-mailbox" ("-mbx"),
+     "-log", "-save" ("-sv"), or  "-user" immediately followed by a
+     string giving the pathname of  a mailbox, logbox, save box, or
+     user        name       respectively;        the       argument
+     "-last_message_destination" ("-lmds") if send_message has been
+     used  before   in  this  process,   or  "-last_message_sender"
+     ("-lms") if a message has  been received in the user's default
+     mailbox.   For   more  information  type   "help  addresses.gi
+     -section control argument".
+
+  CONTROL ARGUMENTS
+
+  -print, -pr
+     prints the destination for which information is to be returned
+     when -last_message_destination (-lmds) or -last_message_sender
+     (-lms) is used.  (Default)
+
+  -no_print, -npr
+     does not print the destination  for which information is to be
+     returned    when     -lat_message_destination    (-lmds)    or
+     -last_message_sender (-lms) is used.
+
+  ________________________                 ________________________
+
+  last_message_destination                 last_message_destination
+  ________________________                 ________________________
+
+  LAST_MESSAGE_DESTINATION
+
+  SYNTAX AS A COMMAND
+
+  lmds {-control_arg}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [lmds {-control_arg}]
+
+  FUNCTION
+
+  returns the userid of the last destination to which a message was
+  sent by the send_message command.
+
+  CONTROL ARGUMENTS
+
+  -inhibit_error, -ihe
+     causes  a null  string to  be returned  when there  is no last
+     message destination.
+
+  NOTES
+
+  See  also  the   descriptions  of  send_message,  accept_message,
+  last_message_sender, and last_message_time.
+
+  ______________                                     ______________
+
+  message_status                                     message_status
+  ______________                                     ______________
+
+  MESSAGE_STATUS
+
+  SYNTAX AS A COMMAND
+
+  msgst {mbx_specification} {-control_args}
+
+  FUNCTION
+
+  prints  information about  mailboxes on which  messages are being
+  accepted or deferred.
+
+  ARGUMENTS
+
+  mbx_specification
+     specifies  the  mailbox  for  which message  status  is  to be
+     printed.    If   not   given,  the   user's   default  mailbox
+     (&gt;udd&gt;Project&gt;Person&gt;Person.mbx) is used.
+
+  LIST OF MAILBOX SPECIFICATIONS
+
+  -mailbox path, -mbx path
+     specifies  the pathname  of a  mailbox.  The  suffix ".mbx" is
+     added if necessary.
+
+  -user STR
+     specifies either a  user's default mailbox or an  entry in the
+     system mail table.
+
+  -save path, -sv path
+     specifies the pathname of a  savebox.  The suffix ".sv.mbx" is
+     added if necessary.
+
+  -log
+     specifies the user's logbox and is equivalent to:
+        -mailbox &gt;udd&gt;Project_id&gt;Person_id&gt;Person_id.sv.mbx
+
+  STR
+     is any non-control argument and is first interpreted as:
+        -mailbox STR
+     if no mailbox is found, this specification is then interpreted
+     as:
+        -save STR
+     if no savebox is found, this specification is then interpreted
+     as:
+        -user STR
+
+  CONTROL ARGUMENTS
+
+
+
+  -all, -a
+     causes information  to be printed  for all mailboxes  on which
+     the user is accepting or deferring messages.
+
+
+
+  IMPLEMENTATION OF MESSAGE_FACILITY_
+
+       The subroutines send_message_ and send_mail_ will eventually
+  be   obsoleted   in   favor   of   entry   points   in   the  new
+  message_facility_  subroutine.   This  new  subroutine  will have
+  entrypoints  to  allow  manipulating  all  parts  of  the message
+  facility.
+
+       Initially,   message_facility_   will   not   make   use  of
+  mail_system_  for  performance  reasons.   Each  message facility
+  command,  however, will  use mlsys_utils_ for  address parsing so
+  they will understand mail table entries.  Because mail_system_ is
+  not  used,  the  message  facility  will  not  understand foreign
+  addresses, forum meetings, or mailing lists.
+
+       The  message_facility_   subroutine  will  be   an  internal
+  interface, not  documented for the  general public so  that major
+  changes  can  be  made   with  respect  to  mail_system_  without
+  compatibility constraints.
+
+       Each   mailbox  on   which  messages  are   accepted  has  a
+  msg_facility_mailbox   structure   associated   with   it.   This
+  structure  is  used  only by  message_facility_.   This structure
+  looks like this:
+
+       dcl     1 msg_facility_mailbox aligned
+                                  based (msg_facility_mailbox_ptr),
+                 2 version            char(8),
+                 2 next_mbx_ptr       ptr,
+                 2 dname              char (168),
+                 2 ename              char (32),
+                 2 uid                bit (36),
+                 2 default_mbx        bit (1),
+                 2 event_channel      fixed bin (71),
+                 2 index              fixed bin,
+                 2 wakeup_flags,
+                   3 hold_messages    bit (1) unal,
+                   3 hold_notifications bit (1) unal,
+                   3 notify_mail      bit (1) unal,
+                   3 wakeup_state     bit (2) unal,
+                   3 mbz              bit (31) unal,
+                 2 short_format       bit (1),
+                 2 prefix             char (12) var,
+                 2 short_prefix       bit (1),
+                 2 alarm_time         fixed bin (71),
+                 2 alarm_event_channel fixed bin (71),
+                 2 last,
+                   3 last_message_ptr ptr,
+                   3 last_id          bit (72) aligned,
+                   3 last_message_index fixed bin,
+                   3 last_message_number fixed bin,
+                 2 current,
+                   3 current_message_ptr ptr,
+
+
+
+                   3 current_id       bit (72) aligned,
+                   3 current_message_index fixed bin,
+                   3 current_message_number fixed bin,
+                 2 messages_ptr       ptr,
+                 2 n_elements         fixed bin,
+                 2 n_messages         fixed bin,
+                 2 highest_message    fixed bin,
+                 2 wakeup_processor,
+                   3 wakeup_handler   entry variable,
+                   3 wakeup_info_ptr  ptr,
+                 2 alarm_processor,
+                   3 alarm_handler    entry variable,
+                   3 alarm_info_ptr   ptr;
+
+       dcl     MSG_FACILITY_MAILBOX_VERSION_1 char(8)
+                                      internal static
+                                      options (constant) init
+                                      ("msgfmbx1");
+
+       dcl     msg_facility_mailbox_ptr         ptr;
+
+  where:
+
+  next_mbx_ptr
+     is a pointer to the next mailbox in the linked list.
+
+  dname
+     is the directory in which this mailbox resides.
+
+  ename
+     is the entry name of this mailbox.
+
+  uid
+     is the unique ID of this mailbox.
+
+  default_mbx
+     is a switch indicating if this is the user's default mailbox.
+
+  event_channel
+     is the event channel across which wakeups for messages sent to
+     this mailbox are to be sent.
+
+  index
+     is the ring 1 index for this mailbox.
+
+  hold_messages
+     is  a switch  determining whether  messages are  being held on
+     this mailbox.
+
+  hold_notifications
+     is a  switch determining whether notifications  are being held
+     on this mailbox.
+
+
+
+  notify_mail
+     is a switch determining whether mail notifications are printed
+     for this mailbox.
+
+  wakeup_state
+     is a pair of bits indicating if messages are being accepted or
+     deferred  on ths  mailbox.  "00"b indicates  that messages are
+     not  being  accepted,  "01"b  indicates  that  they  are being
+     deferred, and "10"b indicates that they are being accepted.
+
+  mbz
+     is reserved for future expansion and must be zero.
+
+  short_format
+     is a switch determining if messages  to this mailbox are to be
+     printed in short format.
+
+  prefix
+     is a  character string printed before  printing a message from
+     this mailbox.
+
+  short_prefix
+     is  a switch  determining if prefixes  are to  be printed when
+     messages are printed in short format.
+
+  alarm_time
+     is the time interval for alarm wakeups.
+
+  alarm_event_channel
+     is the event channel for alarm wakeups.
+
+  last_message_ptr
+     is a pointer  to a mail_format structure for  the last message
+     received.
+
+  last_id
+     is the ring 1 message ID of the last message received.
+
+  last_message_index
+     is the index into the msg_array of the last message.
+
+  last_message_number
+     is the number of the last message.
+
+  current_message_ptr
+     is  a  pointer  to  a mail_format  structure  for  the current
+     message.
+
+  current_id
+     is the ring 1 message ID of the current message.
+
+  current_message_index
+     is the index into the msg_array of the current message.
+
+
+
+  current_message_number
+     is the number of the current message.
+
+  messages_ptr
+     is a pointer to the message array.
+
+  n_elements
+     is the number of array elements currently allocated.
+
+  n_messages
+     is the number of undeleted messages in the mailbox.
+
+  highest_message
+     is the number of the highest message received on this mailbox.
+
+  wakeup_handler
+     is the procedure called to handle wakeups.
+
+  wakeup_info_ptr
+     is a pointer to information supplied to the wakeup procedure.
+
+  alarm_handler
+     is the procedure called to process alarm wakeups.
+
+  alarm_info_ptr
+     is a pointer to information supplied to the alarm procedure.
+
+  msg_facility_mailbox_ptr
+     is the pointer to the above structure.
+
+  The following  structure is also  used internally by  the message
+  facility (declared in msg_facility_mailbox.incl.pl1):
+
+       dcl     1 msg_array (msg_facility_mailbox.n_elements) aligned
+                           based (msg_facility_mailbox.messages_ptr),
+                 2 message_id         bit (72),
+                 2 message_number     fixed bin,
+                 2 flags,
+                   3 printed          bit (1) unal,
+                   3 mbz              bit (35) unal;
+
+  where:
+
+  message_id
+     is the ring 1 message ID of this message.
+
+  message_number
+     is the message number of  this message.  Messages are numbered
+     consecutively  per-mailbox,  starting   with  number  1.   The
+     message number  of a message  is passed to  the wakeup routing
+     when it is invoked.
+
+
+
+  printed
+     is set to  "1"b if this message has been  processed (by a call
+     to message_facility_$set_seen_switch).
+
+  mbz
+     is reserved for future expansion and must be zero.
+
+  Alarm and wakeup handlers
+
+       The alarm  and wakeup handler procedures  should be declared
+  and are called as follows:
+
+  declare handler_procedure entry (ptr, ptr);
+
+  call handler_procedure (msgf_mbx_ptr, info_ptr);
+
+       The msgf_mbx_ptr is a pointer  to the mailbox data structure
+  for  the  mailbox  on  which messages  are  to  be  handled.  The
+  info_ptr is a pointer to  a structure supplied by the application
+  setting its own handler.
+
+       The default  alarm and wakeup  handlers use the  info_ptr to
+  maintain the call string supplied to accept_messages.
+
+       The message_facility_ subroutine  handles event channels for
+  alarms and  wakeups internally.  Wakeups are  sent to the entries
+  message_facility_$alarm_processor                             and
+  message_facility_$wakeup_processor,   for  alarms   and  wakeups,
+  respectively.   The wakeup  procesor updates  the current message
+  information  from  the  ring 1  message  ID passed  as  the event
+  message  and then  calls msg_facility_mailbox.wakeup_handler with
+  the pointer  to that msg_facility_mailbox structure  and the info
+  pointer  supplied.   (The current  message information  is ALWAYS
+  updated, the last message information  is only updated if the new
+  message is a message that  is being held.  Wakeup handlers should
+  use the current message information, the last message information
+  is   for   the    last_message_sender,   last_message_time,   and
+  last_message    commands   and    is   updated    by   calls   to
+  message_facility_$set_seen_switch).    The   alarm   and   wakeup
+  processors  do not  acknowledge messages.   The default handlers,
+  however, do  (by setting the  seen switches on  the messages they
+  handle).  Message handlers should read the message, if necessary,
+  with   message_facility_$read_message,   and  mark   the  message
+  processed            (if             appropriate)            with
+  message_facility_$set_seen_switch.                             If
+  message_facility_$set_seen_switch is called on a message which is
+  the  last  message in  the  msg_array, the  last message  info is
+  updated to that message.
+
+  _________________                               _________________
+
+  message_facility_                               message_facility_
+  _________________                               _________________
+
+  MESSAGE_FACILITY_
+
+  This subroutine  is used to  manipulate the information  kept and
+  used by the Multics message facility which implements interactive
+  messages.    Mailboxes  are   identified  by   a  pointer   to  a
+  msg_facility_mailbox structure.
+
+  Entry:  message_facility_$get_next_msgf_mbx_ptr
+
+  This entry,  given a message facility  mailbox pointer, returns a
+  pointer to the next mailbox in the  chain, or null if there is no
+  next mailbox.  If msgf_mbx_ptr is  null, the first mailbox in the
+  chain is returned.
+
+  USAGE
+
+  declare message_facility_$get_next_msgf_mbx_ptr entry (ptr, ptr);
+
+  call    message_facility_$get_next_msgf_mbx_ptr    (msgf_mbx_ptr,
+  next_msgf_mbx_ptr);
+
+  ARGUMENTS
+
+  msgf_mbx_ptr (Input)
+     is a message facility mailbox pointer.
+
+  next_msgf_mbx_ptr (Output)
+     is a pointer to the next mailbox.
+
+  Entry:  message_facility_$get_msgf_mbx_ptr
+
+  This  entry returns  a message  facility mailbox  pointer for the
+  specified mailbox.
+
+  USAGE
+
+  declare   message_facility_$get_msgf_mbx_ptr    entry   (char(*),
+  char(*), ptr, fixed bin(35));
+
+  call     message_facility_$get_msgf_mbx_ptr     (dname,    ename,
+  msgf_mbx_ptr, code);
+
+  ARGUMENTS
+
+  dname (Input)
+     is the directory in which the specified mailbox resides.
+
+  _________________                               _________________
+
+  message_facility_                               message_facility_
+  _________________                               _________________
+
+  ename (Input)
+     is the entry name of the specified mailbox.
+
+  msgf_mbx_ptr (Output)
+     is the returned message facility mailbox pointer.
+
+  code (Output)
+     is a standard system error code.
+
+  Entry:  message_facility_$free_msgf_mbx_ptr
+
+  This entry makes a mailbox unknown to the message facility.
+
+  USAGE
+
+  dcl   message_facility_$free_msgf_mbx_ptr   entry   (ptr,   fixed
+  bin(35));
+
+  call message_facility_$free_msgf_mbx_ptr (msgf_mbx_ptr, code);
+
+  ARGUMENTS
+
+  msgf_mbx_ptr (Input)
+     is a message facility mailbox pointer.
+
+  code (Output)
+     is a standard system error code.
+
+  Entry:  message_facility_$get_wakeup_state
+
+  This entry determines whether or  not messages are being accepted
+  or deferred, held  or not held, and whether  or not notifications
+  are printed and/or held for a mailbox.
+
+  USAGE
+
+  declare  message_facility_$get_wakeup_state  entry  (ptr,  bit(*)
+  aligned, fixed bin(35));
+
+  call  message_facility_$get_wakeup_state   (msgf_mbx_ptr,  flags,
+  code);
+
+  ARGUMENTS
+
+  msgf_mbx_ptr (Input)
+     is a mailbox data ptr.
+
+  _________________                               _________________
+
+  message_facility_                               message_facility_
+  _________________                               _________________
+
+  flags (Output)
+     is  a bit  string indicating  if messages  are being  held, if
+     notifications  are  being  held,  if  notifications  are being
+     printed, and if messages are being accepted or deferred.
+
+  code (Output)
+     is a standard system error code.
+
+  Entry:  message_facility_$set_wakeup_state
+
+  This entry is used to accept  or defer messages, hold or not hold
+  messages, and  determine whether or  not notifications are  to be
+  printed and/or held for a mailbox.
+
+  USAGE
+
+  declare  message_facility_$set_wakeup_state  entry  (ptr,  bit(*)
+  aligned, fixed bin(35));
+
+  call  message_facility_$set_wakeup_state   (msgf_mbx_ptr,  flags,
+  code);
+
+  ARGUMENTS
+
+  msgf_mbx_ptr (Input)
+     is a message facility mailbox pointer.
+
+  flags (Input)
+     is a bit  string which determines if messages  are to be held,
+     if notifications  are to be  held, if notifications  are to be
+     printed,  and if  messages are to  be accepted  or deferred on
+     this mailbox.
+
+  code (Output)
+     is a standard system error code.
+
+  Entry:  message_facility_$get_mbx_path
+
+  This entry returns  the directory and entry names  of the mailbox
+  associated with the structure pointed  to by the supplied mailbox
+  data pointer.
+
+  USAGE
+
+  dcl message_facility_$get_mbx_path entry  (ptr, char(*), char(*),
+  bit (1) aligned, fixed bin(35));
+
+  _________________                               _________________
+
+  message_facility_                               message_facility_
+  _________________                               _________________
+
+  call message_facility_$get_mbx_path  (msgf_mbx_ptr, dname, ename,
+  default_mbx, code);
+
+  ARGUMENTS
+
+  msgf_mbx_ptr (Input)
+     is a message facility mailbox pointer.
+
+  dname (Output)
+     is the directory in which the mailbox resides.
+
+  ename (Output)
+     is the entry name of the mailbox.
+
+  default_mbx (Output)
+     is a switch indicating if this is the user's default mailbox.
+
+  code (Output)
+     is a standard system error code.
+
+  Entry:  message_facility_$get_prefix
+
+  This  entry returns  the prefix  printed before  each interactive
+  message received.
+
+  USAGE
+
+  declare  message_facility_$get_prefix  entry (ptr,  char(12) var,
+  bit(1) aligned, fixed bin(35));
+
+  call  message_facility_$get_prefix  (msgf_mbx_ptr, prefix_string,
+  short_prefix, code);
+
+  ARGUMENTS
+
+  msgf_mbx_ptr (Input)
+     is a message facility mailbox pointer.
+
+  prefix_string (Output)
+     is the current message prefix.
+
+  short_prefix (Output)
+     is  a  switch indicating  whether the  prefix is  printed when
+     messages are printed in short format.
+
+  code (Output)
+     is a standard system error code.
+
+  _________________                               _________________
+
+  message_facility_                               message_facility_
+  _________________                               _________________
+
+  Entry:  message_facility_$set_prefix
+
+  This  entry  sets  the  prefix  printed  before  each interactive
+  message received.
+
+  USAGE
+
+  declare  message_facility_$set_prefix  entry (ptr,  char(12) var,
+  bit(1) aligned, fixed bin(35));
+
+  call  message_facility_$set_prefix  (msgf_mbx_ptr, prefix_string,
+  short_prefix, code);
+
+  ARGUMENTS
+
+  msgf_mbx_ptr (Input)
+     is a message facility mailbox pointer.
+
+  prefix_string (Input)
+     is the new message prefix.
+
+  short_prefix (Input)
+     is  a  switch indicating  whether the  prefix is  printed when
+     messages are printed in short format.
+
+  code (Output)
+     is a standard system error code.
+
+  Entry:  message_facility_$get_message_format
+
+  This  entry  returns  a   switch  indicating  whether  successive
+  messages from the same user  (with the same comment field, within
+  5 minutes  and on the same  date as the prior  message) are to be
+  printed in short format.
+
+  USAGE
+
+  declare  message_facility_$get_message_format entry  (ptr, bit(1)
+  aligned, fixed bin(35));
+
+  call      message_facility_$get_message_format     (msgf_mbx_ptr,
+  short_format, code);
+
+  ARGUMENTS
+
+  msgf_mbx_ptr (Input)
+     is a message facility mailbox pointer.
+
+  _________________                               _________________
+
+  message_facility_                               message_facility_
+  _________________                               _________________
+
+  short_format (Output)
+     is  a  switch  indicating  if messages  are  printed  in short
+     format.
+
+  code (Output)
+     is a standard system error code.
+
+  Entry:  message_facility_$set_message_format
+
+  This entry sets the switch indicating whether successive messages
+  from  the  same  user  (with the  same  comment  field,  within 5
+  minutes, and  on the same  date as the  prior message) are  to be
+  printed in short format.
+
+  USAGE
+
+  declare  message_facility_$set_message_format entry  (ptr, bit(1)
+  aligned, fixed bin(35));
+
+  call      message_facility_$set_message_format     (msgf_mbx_ptr,
+  short_format, code);
+
+  ARGUMENTS
+
+  msgf_mbx_ptr (Input)
+     is a message facility mailbox pointer.
+
+  short_format (Input)
+     is  a  switch  indicating  if messages  are  printed  in short
+     format.
+
+  code (Output)
+     is a standard system error code.
+
+  Entry:  message_facility_$get_alarm_handler
+
+  This entry returns the current alarm handler.
+
+  USAGE
+
+  declare  message_facility_$get_alarm_handler  entry  (ptr, entry,
+  ptr, fixed bin(71), fixed bin(35));
+
+  call      message_facility_$get_alarm_handler      (msgf_mbx_ptr,
+  alarm_entry, alarm_info_ptr, alarm_time, code);
+
+  ARGUMENTS
+
+  _________________                               _________________
+
+  message_facility_                               message_facility_
+  _________________                               _________________
+
+  msgf_mbx_ptr (Input)
+     is a message facility mailbox pointer.
+
+  alarm_entry (Output)
+     is the alarm procedure.
+
+  alarm_info_ptr (Output)
+     is     a     pointer     to     information     supplied    to
+     message_facility_$set_alarm_handler.
+
+  alarm_time (Output)
+     is the interval between alarm wakeups.
+
+  code (Output)
+     is a standard system error code.
+
+  Entry:  message_facility_$set_alarm_handler
+
+  This entry sets the alarm handler.  Messages are then held on the
+  mailbox if they  were not already.  Messages must  be accepted on
+  the mailbox.
+
+  USAGE
+
+  declare  message_facility_$set_alarm_handler  entry  (ptr, entry,
+  ptr, fixed bin(71), fixed bin(35));
+
+  call      message_facility_$set_alarm_handler      (msgf_mbx_ptr,
+  alarm_entry, alarm_info_ptr, alarm_time, code);
+
+  ARGUMENTS
+
+  msgf_mbx_ptr (Input)
+     is a message facility mailbox pointer.
+
+  alarm_entry (Input)
+     is the alarm procedure.
+
+  alarm_info_ptr (Input)
+     is a pointer to information to be used by the alarm procedure.
+
+  alarm_time (Input)
+     is the interval between alarm wakeups.
+
+  code (Output)
+     is a standard system error code.
+
+  Entry:  message_facility_$get_wakeup_handler
+
+  _________________                               _________________
+
+  message_facility_                               message_facility_
+  _________________                               _________________
+
+  This entry returns information about the wakeup handler.
+
+  USAGE
+
+  declare  message_facility_$get_wakeup_handler entry  (ptr, entry,
+  ptr, fixed bin(35));
+
+  call      message_facility_$get_wakeup_handler     (msgf_mbx_ptr,
+  wakeup_entry, wakeup_info_ptr, code);
+
+  ARGUMENTS
+
+  msgf_mbx_ptr (Input)
+     is a message facility mailbox pointer.
+
+  wakeup_entry (Output)
+     is the wakeup procedure.
+
+  wakeup_info_ptr (Output)
+     is     a     pointer     to     information     supplied    to
+     message_facility_$set_wakeup_handler.
+
+  code (Output)
+     is a standard system error code.
+
+  Entry:  message_facility_$set_wakeup_handler
+
+  This entry sets the wakeup handler.  Messages must be accepted on
+  the mailbox.
+
+  USAGE
+
+  declare  message_facility_$set_wakeup_handler entry  (ptr, entry,
+  ptr, fixed bin(35));
+
+  call      message_facility_$set_wakeup_handler     (msgf_mbx_ptr,
+  wakeup_entry, wakeup_info_ptr, code);
+
+  ARGUMENTS
+
+  msgf_mbx_ptr (Input)
+     is a message facility mailbox pointer.
+
+  wakeup_entry (Input)
+     is the wakeup procedure.
+
+  wakeup_info_ptr (Input)
+     is  a  pointer  to  information  to  be  used  by  the  wakeup
+     procedure.
+
+  _________________                               _________________
+
+  message_facility_                               message_facility_
+  _________________                               _________________
+
+  code (Output)
+     is a standard system error code.
+
+  Entry:  message_facility_$get_last_message_info
+
+  This  entry returns  information about  the last non-notification
+  message received.
+
+  USAGE
+
+  declare message_facility_$get_last_message_info  entry (ptr, ptr,
+  fixed bin(35));
+
+  call    message_facility_$get_last_message_info    (msgf_mbx_ptr,
+  last_message_info_ptr, code);
+
+  ARGUMENTS
+
+  msgf_mbx_ptr (Input)
+     is a message facility mailbox pointer.
+
+  last_message_info_ptr (Input/Output)
+     is  a   pointer  to  the  following   structure  (declared  in
+     last_message_info.incl.pl1):
+
+        dcl 1 last_message_info aligned
+                                based (last_message_info_ptr),
+              2 version char (8),
+              2 last_message_ptr ptr,
+              2 last_message_id bit (72) aligned,
+              2 last_message_index fixed bin,
+              2 last_message_number fixed bin;
+
+     where:  version
+        is   the   version   of   the   structure.    It   must  be
+        LAST_MESSAGE_INFO_VERSION_1           (declared          in
+        last_message_info.incl.pl1).
+
+     last_message_ptr
+        is  a  pointer  to   the  last  message.   The  appropriate
+        structure is declared in message_info.incl.pl1.
+
+     last_message_id
+        is  the ring  1 message-ID of  the last  message.  The last
+        message date/time may be obtained from this ID by assigning
+        it to the following structure:
+
+  _________________                               _________________
+
+  message_facility_                               message_facility_
+  _________________                               _________________
+
+           dcl 1 mbx_msg_id aligned,
+                 2 unknown bit(18) unal,
+                 2 time bit(54) unal;
+
+        unknown is undefined and should not be referenced.
+
+        time  may be  converted to a  standard time  using the PL/I
+        binary builtin.
+
+     last_message_index
+        is the index into the msg_array of the last message.
+
+     last_message_number
+        is the number of the last message.
+
+  Entry:  message_facility_$get_current_message_info
+
+  This entry returns information about the last message received.
+
+  USAGE
+
+  declare  message_facility_$get_current_message_info  entry  (ptr,
+  ptr, fixed bin(35));
+
+  call   message_facility_$get_current_message_info  (msgf_mbx_ptr,
+  current_message_info_ptr, code);
+
+  ARGUMENTS
+
+  msgf_mbx_ptr (Input)
+     is a message facility mailbox pointer.
+
+  current_message_info_ptr (Input/Output)
+     is  a   pointer  to  the  following   structure  (declared  in
+     current_message_info.incl.pl1):
+
+        dcl 1 current_message_info aligned
+                                   based (current_message_info_ptr),
+              2 version char (8),
+              2 current_message_ptr ptr,
+              2 current_message_id bit (72) aligned,
+              2 current_message_index fixed bin,
+              2 current_message_number fixed bin;
+
+     where:
+
+     version
+        is   the   version   of   the   structure.    It   must  be
+
+  _________________                               _________________
+
+  message_facility_                               message_facility_
+  _________________                               _________________
+
+        CURRENT_MESSAGE_INFO_VERSION_1         (declared         in
+        current_message_info.incl.pl1).
+
+     current_message_ptr
+        is  a  pointer  to  the current  message.   The appropriate
+        structure is declared in message_info.incl.pl1.
+
+     current_message_id
+        is  the  ring 1  message-ID  of the  current  message.  The
+        current message  date/time may be obtained  from this ID by
+        assigning it to the following structure:
+
+           dcl 1 mbx_msg_id aligned,
+                 2 unknown bit(18) unal,
+                 2 time bit(54) unal;
+
+        unknown is undefined and should not be referenced.
+
+        time  may be  converted to a  standard time  using the PL/I
+        binary builtin.
+
+     current_message_index
+        is the index into the msg_array of the current message.
+
+     current_message_number
+        is the number of the current message.
+
+  Entry:  get_msg_array_ptr
+
+  This  entry  returns  a  pointer to  the  message  array  for the
+  specified mailbox.
+
+  USAGE
+
+  dcl  message_facility_$get_msg_array_ptr  entry  (ptr,  ptr, ptr,
+  fixed bin, fixed bin(35));
+
+  call message_facility_$get_msg_array_ptr (msgf_mbx_ptr, area_ptr,
+  msg_array_ptr, n_messages, code);
+
+  ARGUMENTS
+
+  msgf_mbx_ptr (Input)
+     is a message facility mailbox pointer.
+
+  area_ptr (Input)
+     is the area in which the message array is to be allocated.
+
+  _________________                               _________________
+
+  message_facility_                               message_facility_
+  _________________                               _________________
+
+  msg_array_ptr (Output)
+     is  a  pointer  to  the message  list  structure,  declared in
+     msg_array.incl.pl1.
+
+     dcl 1 msg_array (n_messages) aligned based (msg_array_ptr),
+           2 message_id  bit (72) aligned,
+           2 message_number fixed bin,
+           2 flags,
+             3 printed bit (1) unal,
+             3 mbz bit (35) unal;
+
+  n_messages (Output)
+     is  the number  of messages in  the mailbox and  the number of
+     elements in the array.
+
+  code (Output)
+     is a standard system error code.
+
+  Entry:  message_facility_$read_message
+
+  This entry reads a message from a mailbox.
+
+  USAGE
+
+  declare message_facility_$read_message (ptr, fixed bin, ptr, ptr,
+  fixed bin(35));
+
+  call       message_facility_$read_message      (msgf_mailbox_ptr,
+  message_index, area_ptr, message_info_ptr, code);
+
+  ARGUMENTS
+
+  msgf_mailbox_ptr (Input)
+     is a message facility mailbox pointer.
+
+  message_index (Input/Output)
+     is the index into the msg_array of this message.
+
+  area_ptr (Input)
+     is an area in which the message is to be allocated.
+
+  message_info_ptr (Input/Output)
+     is  a   pointer  to  the  following   structure  (declared  in
+     message_info.incl.pl1):
+
+        dcl 1 message_info aligned based (message_info_ptr),
+              2 version char (8),
+              2 sender char (32),
+
+  _________________                               _________________
+
+  message_facility_                               message_facility_
+  _________________                               _________________
+
+              2 message_ptr ptr,
+              2 authorization bit (72) aligned;
+
+     where:
+
+     version
+        is  the  version number  of  the structure.   It  should be
+        MESSAGE_INFO_VERSION_1 (declared in message_info.incl.pl1).
+
+     sender
+        is the group id of the sender of the message.
+
+     message_ptr
+        is a pointer to the  message.  The appropriate structure is
+        declared in mail_format.incl.pl1.
+
+     authorization
+        is the sender's AIM authorization.
+
+  code (Output)
+     is a standard system error code.
+
+  Entry:  message_facility_$set_seen_switch
+
+  This  entry marks  a message as  having been  processed, sends an
+  acknowledgement if the acknowledge switch  is on, and deletes the
+  message  if it  is a  notification or  if messages  are not being
+  held.  If the message being marked as seen is the last message in
+  the message array, the last message information is set for it.
+
+  USAGE
+
+  dcl  message_facility_$set_seen_switch  entry  (ptr,  fixed  bin,
+  fixed bin (35));
+
+  call       message_facility_$set_seen_switch       (msgf_mbx_ptr,
+  message_index, code);
+
+  ARGUMENTS
+
+  msgf_mbx_ptr (Input)
+     is a message facility mailbox pointer.
+
+  message_index (Input)
+     is the index into the msg_array for this message.
+
+  code (Output)
+     is a standard system error code.
+
+  _________________                               _________________
+
+  message_facility_                               message_facility_
+  _________________                               _________________
+
+  Entry:  message_facility_$send_message
+
+  This entry sends a message to the specified mailbox.
+
+  USAGE
+
+  dcl   message_facility_$send_message  entry   (char(*),  char(*),
+  char(*), ptr, fixed bin(35));
+
+  call   message_facility_$send_message  (dname,   ename,  message,
+  send_mail_info_ptr, code);
+
+  ARGUMENTS
+
+  dname (Input)
+     is the directory in which the specified mailbox resides.
+
+  ename (Input)
+     is the entry name of the mailbox.
+
+  message (Input)
+     is the message to be sent.
+
+  send_mail_info_ptr (Input)
+     is  a pointer  to a  send_mail_info structure,  as declared in
+     send_mail_info.incl.pl1.
+
+     dcl 1 send_mail_info aligned,
+          2 version fixed bin,
+          2 sent_from char(32) aligned,
+          2 switches,
+           3 wakeup bit(1) unal,
+           3 mbz1 bit(1) unal,
+           3 always_add bit(1) unal,
+           3 never_add bit(1) unal,
+           3 notify bit(1) unal,
+           3 acknowledge bit(1) unal,
+           3 mbz bit(30) unal;
+
+     where:
+
+     version
+        is   the   version   of   this  structure.    It   must  be
+        send_mail_info_version_2            (declared            in
+        send_mail_info.incl.pl1).
+
+     sent_from
+        is the comment  string which is to be  placed in the header
+        of the message.  If it is "", no comment is used.  If it is
+        the  person  ID  of  the  sending  user,  and  the variable
+
+  _________________                               _________________
+
+  message_facility_                               message_facility_
+  _________________                               _________________
+
+        full_name._ is defined in the user's default value seg, its
+        value  will be  used as the  comment string.  If  it is not
+        defined, no comment is used.
+
+     wakeup
+        is a switch specifying that this message is a wakeup.
+
+     mbz1
+        is reserved for future expansion and must be zero.
+
+     always_add
+        is a switch specifying that this  message is to be added to
+        the mailbox regardless of whether or not messages are being
+        accepted on the destination mailbox.
+
+     never_add
+        is a switch specifying that the  message is not to be added
+        to the destination mailbox.
+
+     notify
+        is a switch specifying that the message is a notification.
+
+     acknowledge
+        is  a   switch  specifying  that  the   message  is  to  be
+        acknowledged.
+
+     mbz
+        is reserved for future expansion and must be zero.
+
+  code (Output)
+     is a standard system error code.
+
+  Entry:  message_facility_$send_message_access_class
+
+  This entry sends a message to the specified mailbox, allowing the
+  user to specify the access class of the message.
+
+  USAGE
+
+  dcl  message_facility_$send_message_access_class  entry (char(*),
+  char(*), char(*), ptr, fixed bin(35));
+
+  call  message_facility_$send_message_access_class  (dname, ename,
+  message, send_mail_info_ptr, access_class, code);
+
+  ARGUMENTS
+
+  dname (Input)
+     is the directory in which the specified mailbox resides.
+
+  _________________                               _________________
+
+  message_facility_                               message_facility_
+  _________________                               _________________
+
+  ename (Input)
+     is the entry name of the mailbox.
+
+  message (Input)
+     is the message to be sent.
+
+  send_mail_info_ptr (Input)
+     is  a pointer  to a  send_mail_info structure,  as declared in
+     send_mail_info.incl.pl1.
+
+     dcl 1 send_mail_info aligned,
+          2 version fixed bin,
+          2 sent_from char(32) aligned,
+          2 switches,
+           3 wakeup bit(1) unal,
+           3 mbz1 bit(1) unal,
+           3 always_add bit(1) unal,
+           3 never_add bit(1) unal,
+           3 notify bit(1) unal,
+           3 acknowledge bit(1) unal,
+           3 mbz bit(30) unal;
+
+     where:
+
+     version
+        is   the   version   of   this  structure.    It   must  be
+        send_mail_info_version_2            (declared            in
+        send_mail_info.incl.pl1).
+
+     sent_from
+        is the comment  string which is to be  placed in the header
+        of the message.  If it is "", no comment is used.  If it is
+        the  person  ID  of  the  sending  user,  and  the variable
+        full_name._ is defined in the user's default value seg, its
+        value  will be  used as the  comment string.  If  it is not
+        defined, no comment is used.
+
+     wakeup
+        is a switch specifying that this message is a wakeup.
+
+     mbz1
+        is reserved for future expansion and must be zero.
+
+     always_add
+        is a switch specifying that this  message is to be added to
+        the mailbox regardless of whether or not messages are being
+        accepted on the destination mailbox.
+
+  _________________                               _________________
+
+  message_facility_                               message_facility_
+  _________________                               _________________
+
+     never_add
+        is a switch specifying that the  message is not to be added
+        to the destination mailbox.
+
+     notify
+        is a switch specifying that the message is a notification.
+
+     acknowledge
+        is  a   switch  specifying  that  the   message  is  to  be
+        acknowledged.
+
+     mbz
+        is reserved for future expansion and must be zero.
+
+  access_class (Input)
+     is the access class of this message.
+
+  code (Output)
+     is a standard system error code.
+
+  Entry:  message_facility_$delete_message
+
+  This entry deletes a message from a mailbox.
+
+  USAGE
+
+  declare  message_facility_$delete_message entry  (ptr, fixed bin,
+  fixed bin(35));
+
+  call      message_facility_$delete_message     (msgf_mailbox_ptr,
+  message_index, code);
+
+  ARGUMENTS
+
+  msgf_mailbox_ptr (Input)
+     is a message facility mailbox pointer.
+
+  message_index (Input)
+     is the index into the msg_array for this message.
+
+  code (Output)
+     is a standard system error code.
+
+
+
+  CHANGES NEEDED IN OTHER PARTS OF THE SYSTEM
+
+  error_table_
+
+       The   message   for   error_table_$messages_off   should  be
+  "Messages are not being accepted" rather than "User not accepting
+  messages or not logged in", since the mailbox may or may not be a
+  user's   default    mailbox.    Similarly,   the    message   for
+  error_table_$messages_deferred should be "Messages are deferred."
+
+  ring 1 mailbox primitives
+
+       There are  a number of  entry points in  mbx_mseg_ for which
+  there are  no corresponding mailbox_ gate  entries.  Although not
+  strictly  necessary  for  the  reimplementation  of  the  message
+  facility, they would be useful for user programs.  An entry point
+  to  allow  determination of  the  message acceptance  state  on a
+  mailbox would also be useful.
+
+       An entry point to allow messages to be "unaccepted"--so that
+  mailboxes can go back to zero records--would be nice.
+
+       Urgent messages are implemented in  ring 1 although they are
+  not  in  ring  4.  To  implement  them  in ring  4  would require
+  correcting   a   number  of   inconsistencies   in  the   ring  1
+  implementation.
+
+       It has also been pointed out that the current implementation
+  of  urgent  messages  is  really just  another  class  of regular
+  messages  (i.e.,  they are  not  really "urgent").   To implement
+  truly urgent messages would require more extensive changes in the
+  inner ring.
+
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

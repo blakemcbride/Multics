@@ -1,0 +1,4244 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Add Save/Restore to the BCE command set..">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  MULTICS TECHNICAL BULLETIN                                MTB-745
+
+  To:       MTB Distribution
+
+  From:     Paul Farley
+
+  Date:     June 5, 1986
+
+  Subject:  Add Save/Restore to the BCE command set.
+
+  This  MTB describes  the Bootload  Multics (BCE)  version of  the
+  physical  volume save/restore.   This is  part of  the continuing
+  enhancement of the BCE command  set to pickup those BOS functions
+  that are still required now that BOS is being phased out.
+
+  This MTB only deals with  saving/restoring to/from tape.  Disk to
+  disk copying is done by  using the BCE copy_disk command, written
+  by Keith Loepere and not covered by this MTB.
+
+  This is the  first revision of MTB745.  It  reflects changes made |
+  thus  far in  the design.   Also contained  in this  version is a |
+  documentation appendix with  several sub-sections, containing the |
+  subsystem   info   segments   and   the   others  describing  the |
+  documentation changes required to the manuals.                    |
+
+  Comments on this MTB should be directed to:
+
+   via System-M forum:
+
+      &gt;udd&gt;Multics&gt;Farley&gt;mtgs&gt;BCE_Save_Restore.forum (bsr)
+
+   via Multics mail:
+
+      Farley.Multics on System-M
+
+  or by phone to:
+
+      Paul Farley
+      HVN: 249-6776
+      DDD: 602-249-6776
+
+  _________________________________________________________________
+
+  Multics  Project  internal  working  documentation.   Not  to  be
+  reproduced or distributed outside the Multics Project.
+
+
+  MTB-745                                          BCE Save/Restore
+
+                               CONTENTS
+
+                                                           Page
+
+      1:  Introduction  . . . . . . . . . . . . . . . . .   1
+      2:  The Save Operation  . . . . . . . . . . . . . .   3
+      2.1:  Save Syntax . . . . . . . . . . . . . . . . .   4
+      2.2:  Pre-Save Processing . . . . . . . . . . . . .   4
+      2.3:  The Save Loop . . . . . . . . . . . . . . . .   5
+      2.4:  Save Restart  . . . . . . . . . . . . . . . .   8
+      3:  The Restore Operation . . . . . . . . . . . . .   10
+      3.1:  Restore Syntax  . . . . . . . . . . . . . . .   10
+      3.2:  Pre-Restore Processing  . . . . . . . . . . .   10
+      3.3:  The Restore Loop  . . . . . . . . . . . . . .   12
+      3.4:  Restore Restart . . . . . . . . . . . . . . .   14
+      4:  Control File Requests . . . . . . . . . . . . .   16
+      5:  IOI at BCE  . . . . . . . . . . . . . . . . . .   18
+      6:  I/O Management  . . . . . . . . . . . . . . . .   19
+      6.1:  Tape Error Recovery . . . . . . . . . . . . .   20
+      6.1.1:  Data Alerts . . . . . . . . . . . . . . . .   20
+      6.1.2:  Unrecoverable Errors  . . . . . . . . . . .   20
+      7:  Tape Format . . . . . . . . . . . . . . . . . .   22
+      7.1:  Record Header . . . . . . . . . . . . . . . .   22
+      7.2:  Tape Label  . . . . . . . . . . . . . . . . .   24
+      7.3:  Volume Info . . . . . . . . . . . . . . . . .   26
+      7.4:  Volume Preamble . . . . . . . . . . . . . . .   27
+      7.5:  Notes . . . . . . . . . . . . . . . . . . . .   27
+      7.6:  Example Tape Layout:  . . . . . . . . . . . .   28
+|     Appendix A:  Documentation  . . . . . . . . . . . .   29
+|     A.1:  Save Info . . . . . . . . . . . . . . . . . .   30
+|     A.2:  Restore Info  . . . . . . . . . . . . . . . .   34
+|     A.3:  AM81 Changes  . . . . . . . . . . . . . . . .   38
+|     A.3.1:  Section-1 . . . . . . . . . . . . . . . . .   38
+|     A.3.2:  Section-9 . . . . . . . . . . . . . . . . .   38
+|     A.3.3:  Section-10  . . . . . . . . . . . . . . . .   38
+|     A.3.4:  Section-12  . . . . . . . . . . . . . . . .   46
+|     A.3.5:  Appendix-H  . . . . . . . . . . . . . . . .   58
+
+
+  BCE Save/Restore                                          MTB-745
+
+  1:  INTRODUCTION
+
+  This MTB describes  the BCE program that is taking  over the role
+  of  saving and  restoring a  physical volume.   This function was
+  previously  done by the  BOS functions SAVE  and RESTOR.  BCE  is
+  taking over all of the required functions of BOS, as described in
+  MTBs 631 &amp; 651.  BOS will not be supported for MR12.
+
+  Even  with  the  two  current  on-line  backup  mechanisms  it is
+  necessary to have a backup capability at BCE for quicker recovery
+  when a major problem arises.   This method of backup is extremely
+  useful when small test systems are being used.
+
+  The BCE save/restore functions are  performed with the volumes in
+  a  static,  dismounted  state.   This  allows  a  snapshot of the
+  volumes to  be quickly saved  by use of  the volume map,  and the
+  snap-shot restored  simply by writing  the records back  to their
+  original locations.
+
+  There are  several enhancements in  the BCE version  that include
+  processing  multiple   sets  (up  to   4)  of  save   or  restore
+  information, tape error recovery, various restart options and new
+  location techniques for restoring volumes or partitions.
+
+  BCE programs  operate under several  constraints that need  to be
+  mentioned  so  that   the  reader  of  this  MTB   will  have  an
+  understanding  of why  some of  the small  sizes and restrictions
+  exist.
+
+  o    Only ONE process/processor/program is  in execution.  So any
+       problems that occur  in one save or restore  set WILL affect
+       the execution of the others.
+
+  o    BCE  is  limited  to  executing  in  the  first 512 pages of
+       memory.   This means  that temp  segments are  few in number
+       (currently 12) and small in  size (currently 9 pages).  Also
+       the  stack is  limited in  size (currently  24 pages).  Each
+       save/restore set  uses two temp  segments, one for  the tape
+       device's  IOI  workspace  and  the  other  to  hold  several
+       internal structures  like the tape label  and current volume
+       label.
+
+  o    Many segments that are callable while Multics is running are
+       not  available  at  BCE.   These  include  all  the hardcore
+       segments  contained  in  collections  2.0  and  3.0  and all
+       segments in the normal file system hierarchy.
+
+  This MTB is covering the following topics:
+
+  o    The  Save Operation.   This describes  the major  aspects of
+       doing a save.
+
+
+  MTB-745                                          BCE Save/Restore
+
+  o    The Restore Operation.  This  describes the major aspects of
+       doing a restore.
+
+  o    Control  File   Requests.   This  describes   the  available
+       requests to define the input and output when doing a save or
+       restore.
+
+  o    IOI at  BCE.  This describes the changes  necessary to allow
+       IOI to  run while at BCE,  which is required to  perform the
+       tape I/O.
+
+  o    I/O Management.  This describes  the internal design that is
+       being  used  to  take  the   data  from  disk  to  tape  and
+       visa-versa.
+
+  o    Tape Format.   This defines the  layout of the  various tape
+       records and how they fit together.
+
+
+  BCE Save/Restore                                          MTB-745
+
+  2:  THE SAVE OPERATION
+
+  The BOS SAVE  function required the tape devices that  were to be
+  used be supplied on the command line.  The only tape devices that
+  could be used had to be  part of the bootload tape subsystem.  It
+  would  then  get  the  volumes  to  be  processed by querying the
+  operator  for each.  This  proved to be  very time consuming  for
+  sites that have  very large disk subsystems.  They  turned to the
+  BOS RUNCOM  mechanism to automate the process,  where the command
+  and  requests were placed  in files.  The  BCE version skips  the
+  operator query mechanism  and gets all of its  input from control
+  files.  The  control files are  saved in the  "file" partition of
+  the RPV.
+
+  The  control  file  format  is  quite  flexible  in  the ways for
+  specifying the  physical volumes and  partitions to be  saved and
+  tape  devices to  be used.   All  information  for a  set can  be
+  specified in  a single control  file, or tape  device information
+  can  be in one  control file with  physical volume and  partition
+  information in other files.  All control files defining a set can
+  be  given  individually  in  the  command  line;  or  they can be
+  referenced by  a single grouping  control file which  is named in
+  the command line; or chained together with the first control file
+  named in the command line; or some combination of the above.
+
+  To speed up the save process and cut down on system down time, it
+  was  felt  that  the  ability  to  manage  multiple  sets of save
+  requests  was needed.   A "set"  is defined  as one  or more tape
+  devices that  will be used  to record the  data from one  or more
+  physical  volumes.  This  is all   contained in  a collection  of
+  control  files.  A maximum  of four sets  may be specified.   The
+  restriction of  four sets stems  from two reasons.   The first is
+  that  the space  required for   more than  four sets  of internal
+  structure  storage would  either  increase  the stack  frame size
+  beyond the  PL1 limit or cause  usage of more than  the available
+  temp  segments.  The  second is  that an  operator would probably
+  have a hard time managing all the tape activity.
+
+  The collection of tape volumes that  are used to perform the save
+  are defined to be the "tape_set".  The program requires that each
+  tape_set be  named.  The name is  defined by use of  the tape_set
+  control  file request  and can  be  from  1 to  32 characters  in
+  length.  The tape set name is contained in parenthesis in all the
+  output messages to allow the  operator to differentiate sets (all
+  the examples in  this MTB use a tape_set name  of "blue").  It is
+  also  recorded in  the tape  label of  each tape,  which is  used
+  during a restore  for validation.  The tapes are  numbered from 1
+  to N with  a final information tape labeled "Info",  which is the
+  first tape to be read during a restore.
+
+
+  MTB-745                                          BCE Save/Restore
+
+  2.1:  Save Syntax
+
+  Syntax: save {-set} CF_1 {... CF_N} {-set CF_1 {... CF_N}}
+     c {-restart_set CF_1 {... CF_N}}
+
+  Arguments
+
+  -set CF_1 {...  CF_N}
+     This defines the control  file(s) specifying the tape devices,
+     physical  volumes and/or  partitions  in  each save  SET.  The
+     first  "-set" argument is  not required.  Control  files after
+     each  "-set"  argument  become  part  of  that  SET.   See the
+     "Control File  Requests" section for details  of each request.
+     A maximum of 4 SETs and up  to a total of 32 control files may
+     be specified per save.
+
+     A control file cannot be  specified multiple times for a given
+     set, but can  be specified in more than one  set.  This can be
+     used to save a set of volumes  to several sets of tapes at one
+     time.
+
+  -restart_set CF_1 {... CF_N}, -restart CF_1 {... CF_N},
+  -rt CF_1 {... CF_N}
+     This argument  is to be used  in place of the  "-set" argument
+     when saving a  SET is to be restarted from  the beginning of a
+     given tape.  This allows for  some interrupted save sets to be
+     restarted and others to start from the beginning.
+
+  2.2:  Pre-Save Processing
+
+  For  each set,  the program  sets  up  an internal  list of  tape
+  devices and volumes/partitions to process by scanning the control
+  file(s).   If any  errors are  detected in  the control  files an
+  error message  is produced describing the error  (giving the line
+  number and file name) and the program is exited.  After the lists
+  have been setup it surveys each  of the tape devices requested to
+  verify  that they are  accessible and removes  any that are  not.
+  The first usable  tape device in the set is  then attached.  Each
+  of  the  disk  labels  are   read  and  a  display/check  of  the
+  information  is done.   If a  problem is  detected the  volume is
+  removed  from  the  "to-be-processed"   list.   This  process  is
+  duplicated  for  each  save  SET.   Below  are  examples  of  the
+| information that is displayed.  Messages that indicate a possible
+| problem will have three asterisks  (***) displayed on the console
+| starting in column 76, not shown here.
+
+  save(blue): The following tape devices will be used:
+
+       tapa_01  tapa_02  tapa_05  tapa_10  tapb_01  tapb_04
+       tapb_06
+
+
+  BCE Save/Restore                                          MTB-745
+
+  save: Drive not ready.                                            |
+  Could not read label of pub03 on dskc_12.                         |
+
+  When  the  above  error  occurs  an  operator  query  of the form |
+  "save(blue):  Do  you want to retry  or remove the pv?"   will be |
+  displayed.   It will  be up  to the  operator to  either have the |
+  problem corrected and input "retry" or "remove" to continue.      |
+
+  save(blue): Volume on dska_11 is not a Multics Storage System     |
+  c Volume.                                                        |
+            Removing from PV list.                                  |
+
+  save(blue): Multics Storage System Volume pub_04 on dskc_10
+                      Last updated: 02/07/86  1209.2 mst Fri
+
+            Partition save:    5400  for   256 records
+            Partition dump:   45345  for  3500 records
+
+  save(blue): Multics Storage System Volume rpv on dskb_12
+                      Last updated: 02/07/86  1209.2 mst Fri
+
+            Partition conf:    3908  for     4 records
+            Partition dump:   34091  for  3500 records
+            Partition log:    37591  for   256 records
+  save(blue): Partition foo is not defined on rpv.                  |
+            Removing from partition list.                           |
+  save(blue): The "file" partition of rpv is not being saved.
+
+  save(blue): Multics Storage System Volume pub01 on dskb_15
+                      Last updated: 02/07/86  1209.2 mst Fri
+  save(blue): Volume was expected to be root3. Removing from PV     |
+  c list.                                                          |
+
+  save(blue): Multics Storage System Volume list01 on dskb_10
+                      Last updated: 02/07/86  1209.2 mst Fri
+  save(blue): Volume list01 requires salvaging.                     |
+            Setting -all to save all paging records on the volume.  |
+
+  Volume salvaging is  required when the time the  vol_map was last
+  updated is different  than the time the volume  was unmounted and
+  the  time of  the last  volume salvage  is earlier  than the last
+  unmount time.
+
+  Prior to beginning the actual  save process the operator is given
+  the query, "save:  Would you  like to continue?".  This gives the
+  operator  a chance to  examine all of  the previous messages  for
+  correctness before the program begins.
+
+
+  MTB-745                                          BCE Save/Restore
+
+  2.3:  The Save Loop
+
+  Prior to the execution of the save the operator may pre-mount the
+  first tape  of each save set.   If the tapes are  not mounted the
+  following will occur.
+
+  save(blue): Please mount tape# 1 on tapa_10.
+
+  The program will  go into a loop waiting for  a special interrupt
+  from the device.  If after two minutes a tape is not mounted, the
+  following query will occur.
+
+  save(blue): Would you like to skip to the next tape device?
+
+  The  operator will  be required   to input  one of  the following
+  responses.
+
+  yes, y
+     This device is  skipped and the next device  is selected.  The
+     tape mount  is then checked  in the same  manner.  The skipped
+     device remains as part of the available tape devices.
+
+  no, n
+     The device is not skipped.  The loop for checking the mount is
+     re-entered.
+
+  remove
+     This device  is removed from the  list and the next  device is
+     selected.  The tape mount is then checked in the same manner.
+
+  help, ?
+     This  causes  the  program   to  display  the  above  possible
+     responses, with a small description of each.
+
+  The tapes are internally labeled with a tape sequence number that
+  is  displayed along  with  the  volume or  partition information.
+  Each record header written on the  tapes also contain a unique ID
+  of  the entire  save set.   At the  beginning of  each tape, disk
+  volume  or partition  a message   is displayed  that defines  the
+  current volume, where on the volume  the save is and what tape it
+  is currently writing.  Examples are:
+
+  save(blue): Volume root2, record 34080, on tape# 3 (tapa_02)
+| save(blue):   Partition dump on root2, record 34091, on tape# 3
+| c (tapa_02)
+
+| Prior to the dismount of a tape reel a message in the form of the
+| following message is displayed.
+
+| save(blue): Unloading tape# 1 from tapa_01, 8632 records (27
+| c errors)
+
+
+  BCE Save/Restore                                          MTB-745
+
+  The records to be saved from  each physical volume are defined by |
+  several means.  First  if the volume is in  an inconsistent state |
+  (requiring salvaging) or "-all" is specified in the control file, |
+  all vtoc and paging records are saved.  Otherwise only the paging |
+  records that  are used, as defined  in the vol_map, and  the vtoc |
+  area  upto  the  last  vtoc  record  in  use  are  saved.  If any |
+  partition  areas are  selected, by  using the  partition request, |
+  then  the areas  are merged  in with  the paging  records and are |
+  written in record number sequence.  If only volume partitions are |
+  to  be saved,  then the  records to  be saved  are defined by the |
+  extent of each partition in the label.                            |
+
+  Each record on  tape begins with a header giving  the disk record
+  number  from which  it came.    This record  number is  then used
+  during a restore to write the record back to its proper location.
+  The only time  a tape record is written back  to another location
+  is  when restoring only  a partition, in  which case records  are
+  written back to the location of the partition defined in the disk
+  volume label.
+
+  The  save process  continues until   all the  requests have  been
+  satisfied or the operator requests that it be aborted.
+
+  Each save tape  contains, as part of the  tape label, progressive
+  information  about  the  volumes  and  partitions  that are being
+  saved.  Items  include the tape  number that a  volume starts and
+  ends on, what  partitions were saved with the volume  and on what
+  tapes they begin and end.  When the  save for a set is complete a
+  final tape is written that contains only a "complete" tape label.
+  This tape contains a label of "Info" and is always the first tape
+  to be read when doing a restore.
+
+  If no tape is mounted, when it  is time to write the "Info" tape,
+  the following message is displayed.
+
+  save(blue): Please mount the "Info" tape on tapa_02.
+
+  If a tape is mounted an operator query is done to find out if the
+  current tape on  the device should be used as  the "Info" tape or
+  be dismounted  to allow the  operator to mount  the correct tape.
+  The  query  will  require  a  yes  or  no  response  and have the
+  following format.
+
+  save(blue): OK to write "Info" tape on tapa_02?
+
+  A save  can be interrupted by  use of the console  "request" key. |
+  When depressed while a save  is in progress, the following prompt |
+  will appear.                                                      |
+
+  save:  Abort request:
+
+
+  MTB-745                                          BCE Save/Restore
+
+  The  operator will  be required   to input  one of  the following
+  responses.
+
+  no, n
+     This causes the  program to ignore the request  and resume the
+     save.
+
+  abort
+     This causes the program to abort the entire save and return to
+     BCE command level.
+
+| restart TAPE_SET
+|    This  allows the operator  to restart the  specified TAPE_SET,
+     using its current tape device.   The operator is then required
+     to  mount the  "restart" tape   on the  device and  follow the
+     procedure  as described in  the "Save Restart"  section below.
+     Once  the SET  has been   restarted, the  remaining SETs  will
+     continue operation.
+
+| stop TAPE_SET
+|    This causes  the program to  abort the specified  TAPE_SET, by
+     marking it complete, and resume the save of the other sets.
+
+  help, ?
+     This  causes  the  program   to  display  the  above  possible
+     responses, with a small description of each.
+
+  2.4:  Save Restart
+
+  Due to various  problems that may arise while  performing a save,
+  it may be necessary to restart a set.
+
+  Restarting  consists of  skipping all  volumes and/or  partitions
+  that  have been  successfully saved,   restarting the  save of  a
+  volume somewhere in the middle  and then continuing normally with
+  the remaining volumes.
+
+  A  restart must always  start at the  beginning of a  tape.  This
+  means  that the  last tape  label that  was successfully  written
+  holds all the information of where to restart.
+
+  The program  allows for various  ways of restarting.   A previous
+  save may have  been totally aborted or one set  aborted and is to
+  be restarted by using the  "-restart_set" argument in the command
+| line.   The  operator  could  be  using  the  "restart  TAPE_SET"
+  response  from the  abort request  routine above  because it  was
+  noticed  that the  last tape  written had  a total  of 3000 write
+  errors.    The   operator   is   using   the   "restart_set"   or
+  "remove_device_from_set" responses that can be given in the "Tape
+  Error Recovery" process defined later in the MTB.
+
+
+  BCE Save/Restore                                          MTB-745
+
+  The program will read the tape  label from the save tape that the
+  operator  wishes to  restart from.   If the  tape is  not already
+  mounted the following is displayed and the normal mount procedure
+  executed.
+
+  save(blue): Please mount the "restart" tape on tapa_01.
+
+  After  the tape  label has  been read  the tape  creation time is
+  checked.   If  the  time  is  older  than  one  week  the tape is
+  rejected.   This involves unloading  the current tape  and asking
+  that another be mounted.
+
+  The tape label information is used to locate all the volumes that
+  can be skipped and what record number to start at when rewritting
+  the tape.  The following messages are displayed.
+
+  save(blue): Skipping volume rpv on dska_16.
+  save(blue): Skipping volume root2 on dska_10.
+  save(blue): Skipping volume list02 on dskb_06.
+  save(blue): Starting from record 3423 of volume pub01 on dskb_10.
+
+  The program then queries the operator with the following:
+
+  save(blue): Do you want to replace or rewrite tape# 3 on tapa_01?
+
+  This query  gives the operator  the chance to  select a different
+  tape  reel, in case  the previous save  was aborted because  this
+  tape  contained   too  many  errors.   Below   are  the  possible
+  responses.
+
+  replace, rep
+     This will cause the current tape to be unloaded and a new tape
+     requested in its place.
+
+  rewrite, rew
+     The tape will be rewound and used when the save begins again.
+
+
+  MTB-745                                          BCE Save/Restore
+
+  3:  THE RESTORE OPERATION
+
+  A restore operation is normally performed when a volume or set of
+  volumes has  become defective and  now requires restoration  or a
+  partition needs to be reloaded; or when a saved test system needs
+  to be reloaded.
+
+  When restoring an entire volume it  is not necessary for it to be
+  init_vol'ed.  What ever  data is currently on the  volume will be
+  overwritten with the data from the save tapes.
+
+  Restoring from one device type  to another is prohibited, because
+  the records  are restored to  the exact location  from which they
+  came.  The only  time that different device types  are allowed is
+  for restoring only partition information.  When the new partition
+  is larger than  the saved partition, the restored  data is padded
+  with zeroes; when  it is smaller, the restored  data is truncated
+  to fit the smaller partition size.
+
+  3.1:  Restore Syntax
+
+  Syntax: restore {-set} CF_1 {... CF_N} {-set CF_1 {... CF_N}}
+     c {-restart_set CF_1 {... CF_N}}
+
+  Arguments
+
+  -set CF_1 {...  CF_N}
+     This defines the control  file(s) specifying the tape devices,
+     volumes  and/or partitions  in  each  restore SET.   The first
+     "-set"  argument is  not required.   Control files  after each
+     "-set"  argument become  part of  that SET.   See the "Control
+     File Requests" section for details of each request.  A maximum
+     of  4 SETs  and up  to a   total of  32 control  files may  be
+     specified per restore.
+
+  -restart_set CF_1 {... CF_N}, -restart CF_1 {... CF_N},
+  -rt CF_1 {... CF_N}
+     This argument  is to be used  in place of the  "-set" argument
+     when a  SET is to be  restarted from the beginning  of a given
+     tape.  This allows  for some restore sets to  be restarted and
+     others to start normally.
+
+  3.2:  Pre-Restore Processing
+
+  For  each set,  the program  sets  up  an internal  list of  tape
+  devices and volumes/partitions to process by scanning the control
+  file(s).   If any  errors are  detected in  the control  files an
+  error message  is produced describing the error  (giving the line
+  number and file name) and the program is exited.  After the lists
+  have been setup it surveys each  of the tape devices requested to
+
+
+  BCE Save/Restore                                          MTB-745
+
+  verify  that they are  accessible and removes  any that are  not.
+  The first  usable tape device in  the set is then  attached.  The
+  tape devices to be used is then displayed.
+
+  restore(blue): The following tape devices will be used:
+
+       tapa_01  tapa_02  tapb_05
+
+  At this  time the program  needs to read  in the contents  of the
+  "Info"  save tape.  This  tape contains the  list of volumes  and
+  partitions  that were  saved and   the starting  and ending  tape
+  number for each.  This tape is the last tape written as part of a
+  save.   This tape  allows program   control over  what tapes  are
+  mounted, which saves alot of time in searching tapes.
+
+  The program now attempts to read  the tape on the first device in
+  the list, but if a tape is not mounted the following will appear.
+
+  restore(blue): Please mount the "Info" tape on tapa_01.
+
+  If  the tape  read does  not contain  a label  of "Info" then the
+  program queries  the operator to find  out if the "Info"  tape is
+  available.  If  the operator answers  "no" then the  program will
+  use the label  information from the current tape in  place of the
+  "Info" data,  which is the same  format but not as  complete.  If
+  the operator answers "yes" then  the current tape is unloaded and
+  the mount/label read process is restarted.
+
+  If the "Info"  tape is not available, then the  save tape closest
+  to the  end of the save  should be read in  its place.  This will
+  give the program the greatest amount of information.
+
+  The volumes  to be restored  are sorted so  that they are  in the
+  same order as they were saved.   Each of the disk labels are read
+  and a display/check of the information  is done.  If a problem is
+  detected the  volume is removed from  the "to-be-processed" list.
+  This  process is  duplicated for   each restore  SET.  Below  are
+  examples  of the  information that  is displayed.   Messages that |
+  indicate  a  possible  problem  will  have  three asterisks (***) |
+  displayed on the console starting in column 76, not shown here.   |
+
+  restore: Drive not ready.                                         |
+  Could not read label of pub03 on dskc_12.                         |
+
+  When  the  above  error  occurs  an  operator  query  of the form |
+  "save(blue):  Do  you want to retry  or remove the pv?"   will be |
+  displayed.   It will  be up  to the  operator to  either have the |
+  problem  corrected  and  input   "retry"  or  input  "remove"  to |
+  continue.                                                         |
+
+  restore(blue): Volume on dska_11 is not a Multics Storage System
+  c Volume.
+
+
+  MTB-745                                          BCE Save/Restore
+
+  restore(blue): Multics Storage System Volume pub_04 on dskc_10
+                      Last updated: 02/07/86  1209.2 mst Fri
+            Partition dump:   45345  for  3500 records
+
+  restore(blue): Multics Storage System Volume pub01 on dskb_15
+                      Last updated: 02/07/86  1209.2 mst Fri
+  restore(blue): Volume pub01 will become root3, as requested.
+
+| restore(blue): Volume list_14 not found in tape label.
+|           Removing from PV list.
+
+| restore(blue): Only partitions were saved for xpub_1.
+|           Removing from PV list.
+
+  restore(blue): Multics Storage System Volume root3 on dskd_12
+                      Last updated: 02/07/86  1209.2 mst Fri
+| restore(blue): Device type mis-match. root3 is on a d338,
+|           but was saved from a d501. Removing from PV list.
+
+  The  above process is  repeated for each  restore set.  Prior  to
+  beginning the  actual restore process  the operator is  given the
+  query, "restore:   Would you like to continue?".   This gives the
+  operator  a chance to  examine all of  the previous messages  for
+  correctness before the program begins.
+
+  3.3:  The Restore Loop
+
+  The program  now knows the first  tape to be read  from the label
+  information or at  least a best guess if the  first tape read was
+  not the "Info"  tape.  It attempts to read this  tape on the next
+  tape device  in the list.   If the tape  read is not  the correct
+  tape or no tape is mounted the following message is displayed.
+
+  restore(blue): Please mount tape# 3 on tapa_02.
+
+  The program will  go into a loop waiting for  a special interrupt
+  from the device.  If after two minutes a tape is not mounted, the
+  following query will occur.
+
+  restore(blue): Would you like to skip to the next tape device?
+
+  The  operator will  be required   to input  one of  the following
+  responses.
+
+  yes, y
+     This device is  skipped and the next device  is selected.  The
+     tape mount  is then checked  in the same  manner.  The skipped
+     device remains as part of the available tape devices.
+
+
+  BCE Save/Restore                                          MTB-745
+
+  no, n
+     The device is not skipped.  The loop for checking the mount is
+     re-entered.
+
+  remove
+     This device  is removed from the  list and the next  device is
+     selected.  The tape mount is then checked in the same manner.
+
+  After a  successful read of  the current tape  label, the program
+  will check to  see if another tape in the set  is needed.  If the |
+  tape  will be  needed, the  following pre-mount  message will  be
+  displayed.
+
+  restore(blue): Please pre-mount tape# 7 on tapb_05.               |
+
+  The following message will occur each time a tape label is read.
+
+  restore(blue): Tape# 3 on tapa_02, created 02/01/86  0014.2 mst Sat
+
+  The program  uses forward-space-file tape commands  to locate the
+  starting  point of  a volume  or partition  on the  save tape.  A
+  partition search is only done when restoring only partition(s) of
+  a  volume.   When  the  item  is  found  the following message is
+  displayed.
+
+  restore(blue): Volume rpv, record 0, on tape# 1 (tapa_01)
+  or
+  restore(blue): Partition conf on rpv, record 3908, on tape# 1     |
+  c (tapa_01)                                                      |
+
+  Once the volume  or partition has been located,  the records that
+  follow can be written to the volume.  When restoring a volume the
+  physical volume  record number is  located in each  tape record's
+  header.  When  restoring only partition information  the volume's
+  label  defines  the  location  of  the  partition.   The relative
+  partition record number  in the record header is  added to create
+  the new location for the data.                                    |
+                                                                    |
+  If "-all"  was specified in  the partition request  for a volume, |
+  then once the volume has  been restored, all partitions that were |
+  not restored from tape will  be zero filled.  The "bce" partition |
+  on the rpv and any "hc" and "alt" partitions are exempt from this |
+  zeroing phase.                                                    |
+                                                                    |
+  When  a volume has  been restored the  following message will  be |
+  displayed.                                                        |
+                                                                    |
+  restore(blue): Restore of volume pub01 on dskb_15 is complete.    |
+
+  The restore  process continues until  all the requests  have been
+  satisfied or the operator requests that it be aborted.
+
+
+  MTB-745                                          BCE Save/Restore
+
+| A restore set can be interrupted  by use of the console "request"
+| key.   When  depressed  while  a  restore  is  in  progress,  the
+  following prompt will appear.
+
+  restore:  Abort request:
+
+  The  operator will  be required   to input  one of  the following
+  responses.
+
+  no, n
+     This causes the  program to ignore the request  and resume the
+     restore.
+
+  abort
+     This causes the program to abort the entire restore and return
+     to BCE command level.
+
+| restart TAPE_SET
+|    This  allows the operator  to restart the  specified TAPE_SET,
+     using its current tape device.   The operator is then required
+     to  mount the  "restart" tape   on the  device and  follow the
+     procedure  as described in  the "Save Restart"  section below.
+     Once  the SET  has been   restarted, the  remaining SETs  will
+     continue operation.
+
+| stop TAPE_SET
+|    This causes  the program to  abort the specified  TAPE_SET, by
+     marking it complete, and resume the restore of the other sets.
+
+  help, ?
+     This  causes  the  program   to  display  the  above  possible
+     responses, with a small description of each.
+
+  3.4:  Restore Restart
+
+  Due  to  various  problems  that  may  arise  while  performing a
+  restore, it may be necessary to restart a set.
+
+  The program  allows for various  ways of restarting.   A previous
+  restore may have  been totally aborted or one set  aborted and is
+  to  be restarted by  using the "-restart_set"  argument in a  new
+| command line.  The operator could be using the "restart TAPE_SET"
+  response  from the  abort request  routine above  because it  was
+  noticed that  the wrong disk  pack was mounted.   The operator is
+  using  the  "restart_set"  or  "remove_device_from_set" responses
+  that can  be given in  the "Tape Error  Recovery" process defined
+  later in the MTB.
+
+  Restarting  consists of  skipping all  volumes and/or  partitions
+  that have been successfully restored, restarting the restore of a
+
+
+  BCE Save/Restore                                          MTB-745
+
+  volume somewhere in the middle  and then continuing normally with
+  the remaining volumes.
+
+  If restarting  from the command  line, then the  "Info" tape must
+  still be read before the "restart" tape.
+
+  The program will read the tape  label from the save tape that the
+  operator wishes to restart from.  If  the tape is not mounted the
+  following is displayed and the normal mount procedure executed.
+
+  restore(blue): Please mount the "restart" tape on tapa_01.
+
+  From the tape label the  program can determine which volumes were
+  completed on previous tapes and  skip them.  It then restarts the
+  restore of the  first volume on the tape that  has been requested
+  to be restored.  The following messages are displayed.
+
+  restore(blue): Skipping volume rpv on dska_16.
+  restore(blue): Skipping volume root2 on dska_10.
+  restore(blue): Skipping volume list02 on dskb_06.
+  restore(blue): Starting from record 3423 of volume pub01 on dskb_10.
+
+
+  MTB-745                                          BCE Save/Restore
+
+  4:  CONTROL FILE REQUESTS
+
+  The  save/restore  function  gets  all  of  its  information from
+  control  files.  They contain  the following requests.   Only one
+  request may  be given per line.   Any lines in the  control files
+  that begin  with /, &amp;  or " are  treated as comments.   All white
+  space prior to a request in a line is trimmed.
+
+  The control  files can be edited  using the BCE qedx  request, or
+  edited  while  the  system  is  running  and  updated in the file
+  partition by either using bootload_fs or regeneration of the MST.
+
+  When a request  can have either a long or  short name, both names
+  are  given here,  separated by   a comma.   However only  one can
+  appear per  request line.  Items in brackets  ("[]") are required
+  arguments.  Items in braces ("{}") are optional.
+
+  Requests:
+
+  tape_set, ts [tape_set_name]
+
+     where "tape_set_name"  is the name of the  collection of tapes
+     that are to be used for the  save or restore.  The name can be
+     up to 32 characters.  There must  be one of these requests per
+     set.   Names might be  defined by the  color of the  tape reel
+     (e.g.  the  "blue" set or  the "red" set).   This name becomes
+     part of  the tape label of  each tape and is  checked during a
+     restore.  This name will also  appear in parenthesis after the
+     program name in all output messages.
+
+  tape_device, td [tape_device] {density}
+
+     where  "tape_device" is  the standard  device identifier (i.e.
+     tapa_05) and  "density" is in the form  "d=NNNN" or "den=NNNN"
+     or "-density NNNN"  or "-den NNNN" or "-d  NNNN".  The default
+     density will be  6250 bpi.  The order the  devices are entered
+     defines the sequence for using them.   Up to 16 devices can be
+     defined per save/restore set.
+
+  physical_volume, pv [pv_name] [disk_device] {-all}
+
+     where "pv_name" is the name of the physical volume to be saved
+     or  restored.  The  "disk_device" would  be the  standard name
+|    "dska_02" or "dske_02c" for  sub-volumes.  The "-all" argument
+|    specifies  that all  the vtoc   and paging  records should  be
+|    saved.  The "-all"  arg has no meaning while  doing a restore.
+|    If "-all" is  not specified the records to be  saved are:  all
+|    records from 0 though the last used record of the VTOC and all
+|    used records  in the paging region.  No  partition records are
+|    saved unless requested via the  "partition" request.  Up to 63
+|    volumes can be saved or restored per set.
+
+
+  BCE Save/Restore                                          MTB-745
+
+  partition, part [pv_name] [disk_device] [part_name]               |
+  c {... part_name}                                                |
+
+     where "pv_name" and "disk_device" are as described in the "pv" |
+     request.  "part_name" is the name of the partition to be saved |
+     or restored.  A  part_name of "-all" during a  save will allow |
+     saving of all the defined partitions.  During a restore "-all" |
+     will allow all saved partitions  to be restored and all others |
+     to   be  zero  filled,   except  for  the   following  special |
+     partitions.   The RPV  partition "bce"  or any  "hc" or  "alt" |
+     partitions will  not be allowed  to be saved  or restored.  If
+     the RPV partitions "conf", "file"  or "log" are not specified,
+     when  saving the RPV,  a message will  be displayed that  will
+     state that they are not being saved, just in case the operator
+     really wishes to have them saved.  The partitions of a PV will
+     be  saved along  with the   standard disk  records, in  record
+     number sequence, via an internal  bit_map.  Up to 7 partitions
+     may be defined per volume.  Up to 64 partitions may be defined
+     per save/restore set.
+
+  control_file, cf [control_file]
+
+     where  "control_file"  defines  another  control  file  to  be
+     examined.  This  enables control files to  be linked together.
+     For  instance  ONE  control  file  could  define  all the tape
+     devices  for the  save or  restore.  The  other control  files
+     could be broken down into  logical volumes that only reference
+     the  tape device  control file  and then  define the  physical
+     volumes.
+
+
+  MTB-745                                          BCE Save/Restore
+
+  5:  IOI AT BCE
+
+  Currently  there is only  a primitive tape  I/O mechanism at  BCE
+  that is used to read in the MST.  To allow the save/restore to do
+  tape IO to all configured tape devices it is necessary to use the
+  power and  flexibility of IOI.  This  also opens up the  door for
+  doing IO to other peripherals.
+
+  In order to  get IOI executable at BCE several  changes had to be
+  made.   First,  all  of  the  IOI  modules  had  to be moved into
+  collection 1.0 of the MST.  Then the IOI initialization has to be
+  done as part of collection  1.0 code in real_initializer, instead
+  of in  collection 2.0.  This  is because programs  in collections
+  2.0 &amp; 3.0 do not get setup until the system is brought up (out of
+  BCE).  The  external flag sys_info$service_system is  now used by
+  the  IOI  modules  to  control  what  external  programs that are
+  called, calls  to lock$wait and lock$unlock are  not available in
+  collection 1.0.   This flag is  not set until  collection 3.0 has
+  been loaded.
+
+  IOI  normally  uses  a  segment  called  "io_page_table_seg"  for
+  holding the I/O page table words.   While at BCE this is replaced
+  with a "bce_io_page_table" segment  that takes on characteristics
+  needed while at BCE.  The  module ioi_page_table has been changed
+  to   manage   either   segment   depending   on   the   value  of
+  sys_info$initialization_state (which equals 1 while at BCE, until
+  collection 2.0 runs).
+
+  On  the interrupt  side of  an IO  operation, IOI  normally calls
+  pxss$io_wakeup to signal the user  process of the IO termination.
+  While running at  BCE this mechanism has not  been fully enabled.
+  The  new   module  bce_ioi_post  is   used  to  signal   the  I/O
+  completions.   This   module  works  very  similar   to  the  way
+  bootload_disk_post does for disk IO while at BCE.  Prior to doing
+  a tape  IO, a buffer  is setup in  the segment "bce_ioi_post_seg"
+  that contains the IOI event channel.  When bce_ioi_post is called
+  after the IO is complete, it locates the post buffer by using the
+  event channel given  to it by IOI, copy the  IOI message into the
+  buffer and change  the buffer state to IO_COMPLETE.  It  is up to
+  the calling program to poll this buffer for the state change.
+
+  This  same  posting  mechanism  is  used  for  special  interrupt
+  processing.   If a  special interrupt  is expected,  then a  post
+  buffer  is setup  with a  state of  WAITING_SPECIAL and  when one
+  arrives the  state is changed  to SPECIAL_ARRIVED.  If  a special
+  interrupt occurs on  a device that is not waiting  for a special,
+  it is ignored.
+
+
+  BCE Save/Restore                                          MTB-745
+
+  6:  I/O MANAGEMENT
+
+  The save/restore module  manages both the disk and  tape IO, plus
+  sets up a  queuing method that allows the data to  not have to be
+  moved   around   in   memory,   but   simply   transferred   from
+  disk-&gt;memory-&gt;tape and visa-versa.  The area  that is used is the
+  IOI workspace created  when a tape device is  attached.  The tape
+  IO is done  by using 2 dcws where the first  points to the record
+  header, in  the IO buffer,  and the second  to the "page-aligned"
+  data.   The disk  I/O only  needs to  reference the  page-aligned
+  data.   Each  IOI  workspace  uses  seven  pages,  the  first for
+  non-data  transfer  IO,  tape  status  return  space  and  the IO
+  buffers.  Each IO buffer contains overhead information, dcw list,
+  tape record header and an index  to the data area assigned to the
+  buffer.  The following six pages are the "page-aligned" data area
+  that  the six  IO buffers  in the  first page  reference.  The IO |
+  buffers are all threaded together and their state defines what is |
+  to be done.  The buffer states are as follows:                    |
+
+       FREE                     buffer available
+       DISK_SUSPEND             buffer being setup for disk I/O
+       DISK_QUEUED              buffer ready to be read or written
+       DISK_BUSY                I/O in progress
+       DISK_READY               disk I/O complete
+       TAPE_SUSPEND             buffer being setup for tape I/O
+       TAPE_QUEUED              buffer ready to be read or written
+       TAPE_BUSY                I/O in progress
+       TAPE_READY               tape I/O complete
+
+  Possible buffer state sequences:
+
+     (SAVE)
+
+  FREE -&gt; DISK_SUSPEND -&gt; DISK_QUEUED -&gt; DISK_BUSY -&gt; DISK_READY -&gt;
+  TAPE_QUEUED -&gt; TAPE_BUSY -&gt; FREE.
+
+     (RESTORE)
+
+  FREE -&gt; TAPE_SUSPEND -&gt; TAPE_QUEUED -&gt; TAPE_BUSY -&gt; TAPE_READY -&gt;
+  DISK_QUEUED -&gt; DISK_BUSY -&gt; FREE.
+
+  The disk IO is done using read_disk for checking the label, which
+  also does  a test of  the device (reset-status)  before the label
+  read,  and  bootload_disk_io$queue_(read  write)  for  doing  the
+  actual  save  or  restore  because  of  its  low overhead.  It is
+  necessary    to    poll    for    IO    completion   by   calling
+  bootload_disk_io$test_done.  During a save all six IO buffers are
+  queued for disk  reads.  From this point each  buffer follows the
+  sequence above in a first-in, first-out (FIFO) fashion.
+
+  The tape IO is done using ioi_connect.  The ioi_masked module has
+  been changed to call bce_ioi_post for IO notification.
+
+
+  MTB-745                                          BCE Save/Restore
+
+  This version of  the program only does single  buffer I/Os, where
+  the IDCW  has the "continue &amp;  marker" bits OFF and  the TDCW (to
+  the next buffer) is not used.   This allows for a simpler design,
+  but can  be expanded in the  future to do the  I/O like tape_ioi.
+  During a  restore all six IO  buffers are queued for  tape reads.
+  From  this point  each buffer   follows the  sequence above  in a
+  first-in, first-out (FIFO) fashion.
+
+  The save/restore program also performs the status checking and IO
+  retry  for  the  tape  IO,  see  "Tape  Error Recovery" below for
+  details.    For  the   disk  IO   it  is   done  by   the  normal
+  dctl/disk_control modules, which bootload_disk_io calls.
+
+  6.1:  Tape Error Recovery
+
+  During a save or restore there  are times when errors occur which
+  require special handling.  The errors  are handled by the program
+  with  the use  of a  new CDS  segment called tape_error_data.cds.
+  This data segment contains an array of all the possible major and
+  sub-statuses along  with english interpretation, max  retries and
+  flags that defines what to do in case the error occurs.
+
+  6.1.1:  DATA ALERTS
+
+  The  program uses  a channel  instruction when  doing reads  that
+  allows the tape controller to perform automatic retry.  Read data
+  errors are retried by the  program by chaining a backspace-record
+  IDCW before the  original read IDCW and reissuing  the connect up
+  to  eight  times.   For  each  retry  the  channel instruction is
+  incremented.   This allows the  controller to go  through several
+  different margining  patterns.  If unable  to read the  data, the
+  error  becomes  unrecoverable.   The  recovery  procedure will be
+  selected  by the operator.   One choice would  be to perform  the
+  retry attempts.  Another would be to  skip this record and try to
+  read the next.  The full list of possibilities are listed below.
+
+  Retries of write errors are done by chaining two IDCWs, backspace
+  and erase, before the original  write IDCW and then reissuing the
+  connect.   If unable to  write the data  after eight retries  the
+  error becomes unrecoverable.
+
+  6.1.2:  UNRECOVERABLE ERRORS
+
+  These are errors that are either non-retryable or where the retry
+  process  failed.  When  an unrecoverable  error occurs  a message
+  will be  displayed that shows  the error interpreted  in english,
+  with detailed  status in hex  if required.  The  operator will be
+  queried as to the course of  action that the program should take.
+
+
+  BCE Save/Restore                                          MTB-745
+
+  Listed  below  is  an  example  error  output  and  the  possible
+  responses and their meanings.
+
+  save(blue): Device Attention, Handler check on tapa_12.
+       detailed status: 20 8C 2B 6D 0A 01 16 00 00 16 48 87 24
+                        18 06 00 00 0C 00 00 08 08 80 00 00 00
+  save: Action:
+
+  abort
+     This causes  the program to abort the  entire save/restore and
+     return to BCE command level.
+
+  retry, r
+     For  errors  that  are  retryable  this  will  force the retry
+     process to be redone.  It is invalid for non-retryable errors.
+
+  skip, s
+     This is only valid for  data alert errors detected while doing
+     a restore.   The unreadable record is skipped  and the program
+     continues by attempting to read the next record.
+
+  stop_set, stop
+     This  will cause this  SET to be  aborted, but all  other SETs
+     will continue.
+
+  restart_set, restart, rt
+     This  allows  the  operator  to  restart  this  SET, using the
+     current tape  device.  The operator is then  required to mount
+     the "restart" tape on the device and follow the same procedure
+     as described  in the "Restore Restart" section.   Once the SET
+     has   been  restarted,   the  remaining   SETs  will  continue
+     operation.
+
+  remove_device_from_set, remove
+     Works  like the "restart_set"  request above, but  removes the
+     current  tape device from  the SET and  sequences to the  next
+     device before going through the  restart process.  This is not
+     a valid response  if this is the only tape  device left in the
+     SET.
+
+  help, ?
+     This  causes  the  program   to  display  the  above  possible
+     responses, with a small description of each.
+
+
+  MTB-745                                          BCE Save/Restore
+
+  7:  TAPE FORMAT
+
+  The   tape  structure  is   a  non-standard  format,   with  some
+  resemblance to the old BOS format.  The method of saving a volume
+  at BCE is totally different than any of the other on-line methods
+  like  hierarchy backup  (which  walks  the hierarchy)  and volume
+  backup (which walks the VTOC).  Because of this and the fact that
+  these tapes will only be used to  restore a volume at BCE, it was
+  not  necessary to  conform to  the Multics  standard tape  format
+  (which allows for a simpler and more direct implementation).
+
+  Each tape record  consists of an 8 word header  and 1024 words of
+  data.  Save structures that are larger than 1024 words have to be
+  written, using several 1024 word records.
+
+  dcl 1 tape_record aligned based,         /* Save Tape Record */
+      2 header        like rec_header,
+      2 data          (1024) bit (36);
+
+  7.1:  Record Header
+
+  Each record on the tape has the following 8 word header.  Records
+  of  a  given  type  are  grouped  together  on  tape.  Groups are
+  separated by  an EOF mark.   The first type  of record on  a tape
+  must be the TAPE_LABEL.  The second type must be the PV_PREAMBLE.
+  The last record  on a tape must be the  TAPE_EOR, followed by two
+  EOFs.
+
+  dcl 1 rec_header aligned based,
+      2 c1            bit (36),            /* "542553413076"b3 */
+      2 type          fixed bin (17) unal, /* record type */
+      2 flags         unal,
+        3 end_of_set  bit (1),             /* valid in TAPE_EOR */
+        3 end_of_part bit (1),             /* last PV_PART record */
+        3 end_of_pv   bit (1),             /* last PV record */
+        3 pad         bit (15),
+      2 rec_on_tape   fixed bin (35),      /* physical tape rec# */
+      2 pvid          bit (36),            /* origin of data */
+      2 rec_on_pv     fixed bin (35),      /* volume rec# */
+      2 rec_in_type   fixed bin,           /* rec# of cur rec type */
+      2 part_name     char (4),            /* name of partition */
+                                           /* when type = PV_PART */
+      2 tape_set_uid  bit (36);            /* unique Tape SET ID */
+
+     Structure elements:
+
+     c1
+        This  word is used  as a check  to insure that  this record
+        contains valid data.  The pattern is the reverse of the one
+        used for normal Multics Standard tapes.
+
+
+  BCE Save/Restore                                          MTB-745
+
+     type
+        This  field defines  the type   of data  contained in  this
+        record.  The values are defined below.
+
+     end_of_set
+        This  bit will  be set  ON in  the End  of Reel  (TAPE_EOR)
+        record header of the last tape in a save set.  Normally the
+        "Info"  tape will  have enough  information to  define what
+        tape  is the last.   If the "Info"  tape was not  available
+        this bit will define the end.
+
+     end_of_part
+        This bit  will be set ON  in the last PV_PART  record for a
+        given partition.
+
+     end_of_pv
+        This bit  will be set ON  in the last PV_RECORD  or PV_PART
+        record for a physical volume.
+
+     rec_on_tape
+        This contains the current tape record number.
+
+     pvid
+        This holds  the current physical  volume unique ID.   It is
+        only   valid  for   the  PV_(VTOC   RECORD  PART)  records.
+        Otherwise it is set to zero.
+
+     rec_on_pv
+        This contains  the physical volume record  number where the
+        data originated.   This is used  during a restore  to place
+        the data back in its original location.
+
+     rec_in_type
+        This  contains the  relative record  number within  a given
+        group  of tape  records of   the same  type.  This  is used
+        during  a partition-only restore  as part of  the partition
+        relocation process.
+
+     part_name
+        Will  hold  the  partition  name  when  the  record  type =
+        PV_PART.
+
+     tape_set_uid
+        Holds a unique ID that is  created when the first tape of a
+        save is  written and copied  to all the  remaining tapes in
+        the set.  It  is used during a restore as  part of the tape
+        validation.
+
+  rec_header.type values:
+
+
+  MTB-745                                          BCE Save/Restore
+
+      1  TAPE_LABEL  Tape Label Record.  Each tape begins with two
+                     of  these records.   The data  areas hold the
+                     tape label structure defined below.
+
+      2  TAPE_EOR    Tape  End  of  Reel  Record.   One  is always
+                     located  at  the  end   of  each  save  tape,
+                     followed  by two  end of  files (EOFs).   The
+                     data area is zero filled.
+
+      3  PV_PREAMBLE Physical Volume Preamble  Record.  There will
+                     be one of these written  at the start of each
+                     volume and  one written after the  tape label
+                     records when  starting a new tape.   The data
+                     area  contains the  physical volume  label as
+                     defined in fs_vol_label.incl.pl1.
+
+      4  PV_VTOC     Physical  Volume VTOC   Record.  The  VTOC is
+                     defined  as being all  records from 0  to the
+                     end of the VTOC region on the disk.  The data
+                     area  contains the  data pages  read from the
+                     vtoc region of the volume.
+
+      5  PV_RECORD   Physical Volume  Record.  These are  all disk
+                     records that  are not part  of the VTOC  or a
+                     partition.  The  data area contains  the data
+                     pages  read  from  the  paging  region of the
+                     volume.
+
+      6  PV_PART     Physical     Volume     Partition     Record.
+                     rec_header.part_name  defines what  partition
+                     this data came from.   The data area contains
+                     the data pages read from the partition.
+
+  7.2:  Tape Label
+
+  The tape label is made up of  2 tape records (2048 words).  The 2
+  records, when put together take  on the following format.  A temp
+  segment is used to hold the contents of the tape label.
+
+| dcl 1 tape_label aligned based (tape_label_ptr),
+      2 version        char (8),           /* structure version */
+      2 title          char (32),          /* Save/Restore title */
+      2 tape_set       char (32),          /* Save/Restore set */
+      2 tape_number    char (4),           /* tape number in set */
+                                           /* or "Info" */
+      2 pad1           bit (36),           /* pad to even word */
+      2 save_time      fixed bin (71),     /* creation date/time */
+      2 vol_array_size fixed bin,          /* # of volumes saved */
+      2 vol_array_idx  fixed bin,          /* current volume being
+                                              processed */
+                                           /* = 0 on "Info" tape */
+
+
+  BCE Save/Restore                                          MTB-745
+
+      2 tapes_in_set   fixed bin,          /* valid on "Info" tape */
+      2 pad2           (7) fixed bin,      /* pad to 32 words */
+      2 vol_array      (63) like vol_info; /* array of volume info */
+
+     Structure elements:
+
+     version
+        This  contains  the  current   version  of  the  tape_label
+        structure.  The value currently is "B_S/R001".
+
+     title
+        Contains the  BCE Save/Restore title which  is "Multics BCE
+        Save/Restore Tape".
+
+     tape_set
+        Contains  the  tape  set  name  that  was  specified by the
+        tape_set request in the control file (e.g "blue").
+
+     tape_number
+        This contains  the current tape number.   The numbers start
+        at 1 and are stored via  an editing picture of "9999".  The
+        last tape written as part of  a save contains a tape number
+        of  "Info",  to  identify  it  as  the  first tape during a
+        restore.
+
+     save_time
+        Contains the clock value when  the save was done.  Value is
+        displayed to the operator during a restore process.
+
+     vol_array_size
+        Defines the number of vol_array  entries that are valid for
+        this save set.
+
+     vol_array_idx
+        Defines  the  vol_array  entry   for  the  physical  volume
+        information  at the beginning  of this tape.   All previous
+        vol_array entries will have been completed.
+
+     tapes_in_set
+        Defines  the total  number of  tapes that  were required to
+        perform the save.   This is only valid on  the "Info" tape,
+        for all others it will be zero.
+
+     vol_array
+        Area for holding the  information pertaining to each volume
+        that is part of the save.  Each tape in the set will have a
+        progressively  more complete   vol_array.  The  "Info" tape
+        will  then contain  the "complete"  vol_array picture.  See
+        the definition of the vol_info structure below for details.
+
+
+  MTB-745                                          BCE Save/Restore
+
+  7.3:  Volume Info
+
+  The  part of  tape label   that contains  information about  each
+  volume  that has  been saved.   Each vol_info  entry requires  32
+  words.
+
+| dcl 1 vol_info aligned based (vol_ptr),
+      2 pvname         char (32),          /* physical volume name */
+      2 pvid           bit (36),           /* physical volume ID */
+      2 data_saved     fixed bin,          /* amount of data saved */
+      2 restart_rec    fixed bin (18),     /* record saved */
+      2 dev_type       fixed bin,          /* device type */
+      2 nregions       fixed bin,
+      2 current_region fixed bin,
+      2 pad            (2) bit (36),
+      2 region         (8),
+       3 part_name     char (4),           /* "" for vtoc/paging area */
+       3 begins_on_tape
+                       fixed bin (18) uns unal,
+       3 ends_on_tape  fixed bin (18) uns unal;
+
+     Structure elements:
+
+     pvname
+        Contains the name  of the physical volume that  the rest of
+        the area defines.
+
+     pvid
+        Contains  the physical  volume's unique  ID.  This  is used
+        during a restore to validate the pvid in the record header.
+
+     data_saved
+        Contains a number that indicates how much of the volume was
+        included in the save.  See the defined values below.
+
+     restart_rec
+        For the first volume written  on a tape, this indicates the
+        first disk record that was  written.  This is used during a
+        restart to define where to start again.
+
+     dev_type
+        Contains the device type that the volume was on when saved.
+        When doing a restore, the device being restored must be the
+        same type  unless only partitions are  being restored.  See
+        fs_dev_types.incl.pl1.
+
+     nregions
+        Defines  the  number  of  regions  that  are  valid  in the
+        "region" area.  A region  can either define the vtoc/paging
+        region of the volume or one of its partitions.
+
+
+  BCE Save/Restore                                          MTB-745
+
+     current_region
+        Points to  the region being processed, when  this volume is
+        the  first on a  tape.  Otherwise it  will be the  value of
+        nregions.
+
+     region.part_name
+        Defines the name of the  partition that is being described.
+        This will  be blank when describing  the vtoc/paging region
+        of the volume.
+
+     region.begins_on_tape
+        Defines the tape number where  this region begins.  Is used
+        during a restore to define what tape(s) should be mounted.
+
+     region.ends_on_tape
+        Defines the  tape number where  this region ends.   Is used
+        during a restore to define what tape(s) should be mounted.
+
+  vol_info.data_saved values:
+
+      0  PV_ONLY     This  indicates that  only the  VTOC area and  |
+                     records in the paging  region have been saved  |
+                     (NO partitions).                               |
+
+      1  PART_ONLY   This  indicates  that  only  volume partition  |
+                     areas were saved.                              |
+
+      2  BOTH_SAVED  This indicates that the VTOC area, records in  |
+                     the paging region and  at least one partition  |
+                     have been saved.                               |
+
+  7.4:  Volume Preamble
+
+  At the  start of every volume  and at the beginning  of each tape
+  (except the "Info" tape) is  a preamble tape record that contains
+  the  volume label  (see fs_vol_label.incl.pl1).   The preamble is
+  preceded with  an EOF mark to  make it easier for  the restore to
+  find the  start of a volume.   It requires 1 tape  record to save
+  the preamble.  An area in the  tape_label temp segment is used to
+  hold the contents of the volume preamble.
+
+  dcl 1 vol_preamble aligned like label based (vol_preamble_ptr);   |
+
+  7.5:  Notes
+
+  The records from  the disk are marked as three  different kind of
+  tape records.   Either PV_VTOC (records before  and including the |
+  VTOC),  PV_RECORD (normal  paging record)  or PV_PART  (partition |
+  record).  An  EOF mark is  placed between the  different types of |
+
+
+  MTB-745                                          BCE Save/Restore
+
+  records  so that  when doing  a restore  of only  a partition the
+  partition  will  be  easier   to  find  using  forward-space-file
+  commands.
+
+  The EOR record contains a data field of all zeros.  Followed with
+  two EOF marks.
+
+  7.6:  Example Tape Layout:
+
+      REEL-1                            REEL-2
+
+  Tape Label part:1                 Tape Label part:1
+  Tape Label part:2                 Tape Label part:2
+  eof                               eof
+  Volume Preamble (V1)              Volume Preamble (V1)
+  eof                               eof
+  VTOC record:0                     RECORD record:O+1
+     ...                               ...
+  VTOC record:N                     RECORD record:P
+  eof                               eof
+  PART record:N+1                   PART record:P+1
+     ...                               ...
+  PART record:M                     PART record:R
+  eof                               eof
+  RECORD record:M+1                 Volume Preamble (V2)
+     ...                            eof
+  RECORD record:O   (Tape EOT)      VTOC record:0
+  eof                                  ...
+  End-Of-Reel record                   ...
+  eof                               etc...
+  eof
+
+
+  BCE Save/Restore                                          MTB-745
+
+  APPENDIX A:  DOCUMENTATION                                        |
+                                                                    |
+  In order to properly document these new BCE commands two new info
+  files, one for  save and one for restore, are  needed and several
+  manuals need to be updated.
+
+  The  following two  sub-sections contain  the info  segments that
+  should be  installed in the &gt;doc&gt;ss&gt;bce directory.   The two info
+  segments  also need to  be added to  section-9 (BCE Commands)  of
+  GB64   (Multics   Administration,   Maintenance   and  Operations
+  Commands).
+
+  The third  sub-section describes changes needed  in AM81 (Multics
+  System Maintenance Procedures Manual).
+
+
+  MTB-745                                          BCE Save/Restore
+
+| A.1:  Save Info
+|
+  04/30/86  save
+
+  Syntax as a command:
+    save {-set} CF_1 {... CF_N} {-set CF_1 {... CF_N}}
+         {-restart_set CF_1 {... CF_N}}
+
+  Function:  used to save the contents of physical volumes on tape.
+  It can be used only at BCE (boot) command level.
+
+  Arguments:
+  CF_1 {... CF_N}
+     defines  the name of  a control file  or set of  control files
+     that  will  makeup  a  save  set.   See  "List of control file
+     requests" below.  At least one and up to 32 control file names
+     may be defined per save.
+
+     A control file cannot be  specified multiple times for a given
+     set, but can  be specified in more than one  set.  This can be
+     used to save a set of volumes  to several sets of tapes at one
+     time.
+
+  Control arguments:
+  -set
+     used to prefix a set of  control file names.  The first set of
+     control  files   do  not  require  this  prefix,   but  it  is
+     acceptable.   Up to  four control  file sets  may be  defined.
+     This may be used in  combination with the -restart_set control
+     argument.
+
+  -restart_set, -restart, -rt
+     used  to prefix  a set  of control  file names  that are to be
+     restarted.   This may  be used  in combination  with the  -set
+     control argument.
+
+  List of control file requests:
+  tape_set [tape_set_name],
+  ts [tape_set_name]
+     where "tape_set_name"  is the name of the  collection of tapes
+     that are  to be used for the  save.  The name can be  up to 32
+     characters.   There must  be one  of these  requests per  set.
+     Names  might be defined  by the color  of the tape  reel (e.g.
+     the "blue" set  or the "red" set).  This name  becomes part of
+     the tape label  of each tape and is checked  during a restore.
+     This name  will also appear  in parenthesis after  the program
+     name in all output messages.
+
+
+  BCE Save/Restore                                          MTB-745
+
+  tape_device [tape_device] {density},
+  td [tape_device] {density}
+     where  "tape_device" is  the standard  device identifier (i.e.
+     tapa_05)  and "density" is  in the form  "d=NNNN", "den=NNNN",
+     "-density  NNNN",  "-den  NNNN"  or  "-d  NNNN".   The default
+     density will be  6250 bpi.  The order the  devices are entered
+     defines the sequence for using them.   Up to 16 devices can be
+     defined per save set.
+
+  physical_volume [pv_name] [disk_device] {-all},
+  pv [pv_name] [disk_device] {-all}
+     where  "pv_name" is  the name   of the  physical volume  to be
+     saved.  The "disk_device" would be the standard name "dska_02"
+     or "dske_02c" for sub-volumes.   The "-all" argument specifies
+     that all the vtoc and  paging records should be saved, instead
+     of just saving the paging records  that are in use.  This also
+     occurs if  the volume requires salvaging.  The  "-all" arg has
+     no  meaning while doing  a restore.  Up  to 63 volumes  can be
+     saved per set.
+
+  partition [pv_name] [disk_device] [part_name] {... part_name},
+  part [pv_name] [disk_device] [part_name] {... part_name}
+     where "pv_name" and "disk_device" are as described in the "pv"
+     request.  "part_name" is the name of the partition to be saved
+     or  "-all"  to  save  all  the  defined  partitions.   The RPV
+     partition "bce"  or any "hc"  or "alt" partitions  will not be
+     allowed to be saved.  If  the RPV partitions "conf", "file" or
+     "log" are not  specified, when saving the RPV,  a message will
+     be displayed  that will state  that they are  not being saved,
+     just in  case the operator  really wishes to  have them saved.
+     Up  to 7  partitions may  be  defined  per volume.   Up to  64
+     partitions may be defined per save set.
+
+  control_file [control_file],
+  cf [control_file]
+     where  "control_file"  defines  another  control  file  to  be
+     examined.  This  enables control files to  be linked together.
+     For  instance  ONE  control  file  could  define  all the tape
+     devices for the save.  The other control files could be broken
+     down into logical volumes that  only reference the tape device
+     control file and  then define the physical volumes.   Up to 32
+     control file names may be defined per save.
+
+  Notes on  control file requests:   Only one request  may be given
+  per line.  Any lines in a control  file that begin with /, &amp; or "
+  are treated as comments.  All white space prior to a request in a
+  line is trimmed.
+
+
+  MTB-745                                          BCE Save/Restore
+
+  Partitions on  a physical volume  can be saved  without having to
+  save  the vtoc and  paging regions by  only defining a  partition
+  request.
+
+  The control  files can be edited  using the BCE qedx  request, or
+  edited  while  the  system  is  running  and  updated in the file
+  partition by either using bootload_fs or regeneration of the MST.
+
+  Notes on  save:  When a save  set is complete it  is necessary to
+  write one  last tape, called  the "Info" tape,  that will contain
+  information  used during  a restore  to quickly  locate the tapes
+  that items are on.
+
+  Notes on operator  interrupts:  A save can be  interrupted by use
+  of the console "request" key.  When  depressed while a save is in
+  progress, the  message "save:  Abort request:"  will appear.  The
+  operator  will  be  required  to   input  one  of  the  following
+  responses.
+
+  no, n
+     This causes the  program to ignore the request  and resume the
+     save.
+
+  abort
+     This causes the program to abort the entire save and return to
+     BCE command level.
+
+  restart TAPE_SET
+     This  allows the operator  to restart the  specified TAPE_SET,
+     using its current tape device.   The operator is then required
+     to mount the "restart" tape on the device, which is either the
+     last  good tape written  or the current  tape (as long  as the
+     tape  label  has  been  written).    Once  the  SET  has  been
+     restarted, the remaining SETs will continue operation.
+
+  stop TAPE_SET
+     This causes  the program to  abort the specified  TAPE_SET, by
+     marking it complete, and resume the save of the other sets.
+
+  help, ?
+     This  causes  the  program   to  display  the  above  possible
+     responses, with a small description of each.
+
+  Notes on tape error recovery:  During a save there are times when
+  errors  occur which require  special handling.  Retries  of write
+  errors are  done by doing a  backspace and erase followed  by the
+
+
+  BCE Save/Restore                                          MTB-745
+
+  original write.  If unable to  write the data after eight retries
+  the error becomes unrecoverable.
+
+  When an  unrecoverable error occurs  a message will  be displayed
+  that shows the error interpreted in english, with detailed status
+  in  hex if  required.  The  operator will  be queried  as to  the
+  course of action  that the program should take.   Listed below is
+  an  example error  output and  the possible  responses and  their
+  meanings.
+
+   save(blue): Device Attention, Handler check on tapa_12.
+        detailed status: 20 8C 2B 6D 0A 01 16 00 00 16 48 87 24
+                         18 06 00 00 0C 00 00 08 08 80 00 00 00
+   save: Action:
+
+  abort
+     This causes the program to abort the entire save and return to
+     BCE command level.
+
+  retry, r
+     For  errors  that  are  retryable  this  will  force the retry
+     process to be redone.  It is invalid for non-retryable errors.
+
+  stop_set, stop
+     This  will cause this  SET to be  aborted, but all  other SETs
+     will continue.
+
+  restart_set, restart, rt
+     This  allows  the  operator  to  restart  this  SET, using the
+     current tape  device.  The operator is then  required to mount
+     the  "restart" tape  on the   device.  Once  the SET  has been
+     restarted, the remaining SETs will continue operation.
+
+  remove_device_from_set, remove
+     Works  like the "restart_set"  request above, but  removes the
+     current  tape device from  the SET and  sequences to the  next
+     device before going through the  restart process.  This is not
+     a valid response  if this is the only tape  device left in the
+     SET.
+
+  help, ?
+     This  causes  the  program   to  display  the  above  possible
+     responses, with a small description of each.
+
+
+  MTB-745                                          BCE Save/Restore
+
+| A.2:  Restore Info
+|
+  04/30/86  restore
+
+  Syntax as a command:
+    restore {-set} CF_1 {... CF_N} {-set CF_1 {... CF_N}}
+            {-restart_set CF_1 {... CF_N}}
+
+  Function:  used to restore the  contents of physical volumes from
+  tape.  It can be used only at BCE (boot) command level.
+
+  Arguments:
+  CF_1 {...  CF_N}
+     defines  the name of  a control file  or set of  control files
+     that  will makeup a  restore set.  See  "List of control  file
+     requests" below.  At least one and up to 32 control file names
+     may be defined per restore.
+
+  Control arguments:
+  -set
+     used to prefix a set of  control file names.  The first set of
+     control  files   do  not  require  this  prefix,   but  it  is
+     acceptable.   Up to  four control  file sets  may be  defined.
+     This may be used in  combination with the -restart_set control
+     argument.
+
+  -restart_set, -restart, -rt
+     used  to prefix  a set  of control  file names  that are to be
+     restarted.   This may  be used  in combination  with the  -set
+     control argument.
+
+  List of control file requests:
+  tape_set [tape_set_name],
+  ts [tape_set_name]
+     where "tape_set_name"  is the name of the  collection of tapes
+     that are to be used for the restore.  The name can be up to 32
+     characters.   There must  be one  of these  requests per  set.
+     Names  might be defined  by the color  of the tape  reel (e.g.
+     the "blue"  set or the "red"  set).  This name is  part of the
+     tape  label and is  checked during at  each tape mount.   This
+     name will also appear in parenthesis after the program name in
+     all output messages.
+
+  tape_device [tape_device] {density},
+  td [tape_device] {density}
+     where  "tape_device" is  the standard  device identifier (i.e.
+     tapa_05)  and "density" is  in the form  "d=NNNN", "den=NNNN",
+
+
+  BCE Save/Restore                                          MTB-745
+
+     "-density  NNNN", "-den  NNNN" or  "-d NNNN".   The density is
+     only  needed during a  save.  During a  restore the save  tape
+     will define  the density.  The  order the devices  are entered
+     defines the sequence for using them.   Up to 16 devices can be
+     defined per restore set.
+
+  physical_volume [pv_name] [disk_device],
+  pv [pv_name] [disk_device]
+     where  "pv_name" is  the name   of the  physical volume  to be
+     restored.   The  "disk_device"  would  be  the  standard  name
+     "dska_02" or "dske_02c" for sub-volumes.  Up to 63 volumes can
+     be restored per set.
+
+  partition [pv_name] [disk_device] [part_name] {... part_name},
+  part [pv_name] [disk_device] [part_name] {... part_name}
+     where "pv_name" and "disk_device" are as described in the "pv"
+     request.   "part_name" is  the name   of the  partition to  be
+     restored  or "-all"  to restore  all the  partitions that were
+     saved.  If "-all" is specified  then all partitions defined on
+     the volume that  are not restored will be  zero filled, except
+     for any  "alt" or "hc"  partitions and the  "bce" partition on
+     the rpv.  Up to 64 partitions may be defined per restore set.
+
+  control_file [control_file],
+  cf [control_file]
+     where  "control_file"  defines  another  control  file  to  be
+     examined.  This  enables control files to  be linked together.
+     For  instance  ONE  control  file  could  define  all the tape
+     devices  for the  restore.  The  other control  files could be
+     broken down into logical volumes  that only reference the tape
+     device control file and then  define the physical volumes.  Up
+     to 32 control file names may be defined per restore.
+
+  Notes on  control file requests:   Only one request  may be given
+  per line.  Any lines in a control  file that begin with /, &amp; or "
+  are treated as comments.  All white space prior to a request in a
+  line is trimmed before processing.
+
+  Partitions on a physical volume can be restored without having to
+  restore the vtoc and paging  regions by only defining a partition
+  request.   This can  also be  used to  copy a  partition from one
+  volume to another, even of different types.
+
+  The control  files can be edited  using the BCE qedx  request, or
+  edited  while  the  system  is  running  and  updated in the file
+  partition by either using bootload_fs or regeneration of the MST.
+
+
+  MTB-745                                          BCE Save/Restore
+
+  Notes on restore:  The first tape read during a restore is always
+  the "Info" tape, which was the last tape written when the set was
+  saved.  This gives the  restore information necessary to properly
+  locate items without wasting time spinning tape.
+
+  Notes on  operator interrupts:  A  restore can be  interrupted by
+  use of the console "request" key.  When depressed while a restore
+  is  in  progress,  the  message  "restore:   Abort request:" will
+  appear.   The  operator  will  be  required  to  input one of the
+  following responses.
+
+  no, n
+     This causes the  program to ignore the request  and resume the
+     restore.
+
+  abort
+     This causes the program to abort the entire restore and return
+     to BCE command level.
+
+  restart TAPE_SET
+     This  allows the operator  to restart the  specified TAPE_SET,
+     using its current tape device.   The operator is then required
+     to mount the  "restart" tape on the device, which  is the tape
+     that  the operator wishs  to restart from.   Once the SET  has
+     been restarted, the remaining SETs will continue operation.
+
+  stop TAPE_SET
+     This causes  the program to  abort the specified  TAPE_SET, by
+     marking it complete, and resume the restore of the other sets.
+
+  help, ?
+     This  causes  the  program   to  display  the  above  possible
+     responses, with a small description of each.
+
+  Notes on tape  error recovery:  During a restore  there are times
+  when  errors occur  which  require  special handling.   Read data
+  errors are retried  by the program up to eight  times.  If unable
+  to read the data, the  error becomes unrecoverable.  The recovery
+  procedure will be selected by  the operator.  One choice would be
+  to perform  the retry attempts  again.  Another would  be to skip
+  this  record  and  try  to  read  the  next.   The  full  list of
+  possibilities are listed below.
+
+  When an  unrecoverable error occurs  a message will  be displayed
+  that shows the error interpreted in english, with detailed status
+  in  hex if  required.  The  operator will  be queried  as to  the
+  course of action  that the program should take.   Listed below is
+
+
+  BCE Save/Restore                                          MTB-745
+
+  an  example error  output and  the possible  responses and  their
+  meanings.
+
+   restore(blue): Device Attention, Handler check on tapa_12.
+        detailed status: 20 8C 2B 6D 0A 01 16 00 00 16 48 87 24
+                         18 06 00 00 0C 00 00 08 08 80 00 00 00
+   restore: Action:
+
+  abort
+     This causes the program to abort the entire restore and return
+     to BCE command level.
+
+  retry, r
+     For  errors  that  are  retryable  this  will  force the retry
+     process to be redone.  It is invalid for non-retryable errors.
+
+  skip, s
+     This  is  only  valid  for  unrecoverable  data  alert  errors
+     detected  while doing  a  restore.   The unreadable  record is
+     skipped and  the program continues  by attempting to  read the
+     next record.
+
+  stop_set, stop
+     This  will cause this  SET to be  aborted, but all  other SETs
+     will continue.
+
+  restart_set, restart, rt
+     This  allows  the  operator  to  restart  this  SET, using the
+     current tape  device.  The operator is then  required to mount
+     the  "restart" tape  on the   device.  Once  the SET  has been
+     restarted, the remaining SETs will continue operation.
+
+  remove_device_from_set, remove
+     Works  like the "restart_set"  request above, but  removes the
+     current  tape device from  the SET and  sequences to the  next
+     device before going through the  restart process.  This is not
+     a valid response  if this is the only tape  device left in the
+     SET.
+
+  help, ?
+     This  causes  the  program   to  display  the  above  possible
+     responses, with a small description of each.
+
+
+  MTB-745                                          BCE Save/Restore
+
+| A.3:  AM81 Changes
+|
+| This  sub-section contains the  changes required to  document BCE
+| Save/Restore in place  of the current use of  BOS SAVE/RESTOR.  A
+| future MTB/MCR or an update of MTB737 (Dipper Documentation) will
+| describe the changes required to  replace the other BOS functions
+| with BCE functions  (e.g.  BCE TEST_DISK instead of  BOS TEST and
+| BCE COPY_DISK instead of BOS SAVE COPY.).  However some instances
+| of "BOS  TEST" have been  changed to "BCE  TEST_DISK", because it
+| didn't feel right to leave in the old command.
+|
+|
+| A.3.1:  SECTION-1
+|
+|
+  ***** On  page 1-3 the definition  of "BCE" needs to  include the
+| ability to save and restore disk volumes.
+|
+|
+| A.3.2:  SECTION-9
+|
+|
+  ***** On  page 9-11 the  reference to BOS  SAVE needs to  be "BCE
+| SAVE".
+|
+|
+| A.3.3:  SECTION-10
+|
+|
+  *****  On page 10-27  the references to  "BOS RESTOR" &amp;  "RESTOR"
+  need to be changed to "BCE RESTORE".
+
+  ***** References to "BOS SAVE" &amp; "BOS RESTOR" on pages 10-38,39 &amp;
+  40 will now be "BCE SAVE" &amp; "BCE RESTORE".
+
+  ***** Also on page 10-40 under the heading "BACKUP TAPE LOGS" the
+  second paragraph needs to be changed to read something like this:
+
+  For a  BCE SAVE, the tape  volume name consists of  two parts the
+  tape  set name  (e.g.  blue,  root, June)  and reel  number (i.e.
+  1-9999).  A BCE  SAVE tape set is a collection  of reels numbered
+  from  1 to  N and  a locator  tape called  the "Info"  tape.  The
+  "Info" tape contains the names  of all the volumes and partitions
+  that  were saved,  and the  coresponding tape  reels that contain
+  this information.  This tape is always the first tape read during
+  a BCE RESTORE to allow for program control over tape mounts.  The
+  log should identify the tapes used  for each set and the physical
+  volumes saved in the set.
+
+  For  a  hierarchy  reload,  the  log  should  identify  the tapes
+  included in each incremental, catchup and complete dump set.
+
+
+  BCE Save/Restore                                          MTB-745
+
+  ***** References to "BOS SAVE/RESTOR",  "BOS SAVE" &amp; "BOS RESTOR"
+  on pages 10-42 &amp; 43 will  now be "BCE SAVE/RESTORE", "BCE SAVE" &amp;
+  "BCE RESTORE".
+
+  ***** On page 10-44, the section titled "Recovery of the RPV with
+  Volume Reloading" needs to be changed to read:
+
+   Recovery of the RPV with Volume Reloading
+
+       If a disk  volume failure occurs for the  RPV, the following
+  procedure  can be used  to recover the  contents of the  RPV from
+  volume backup  tapes.  See Section 9 for  general information and
+  more details on  volume backup and volume reloading.   All of the
+  commands  used in  this procedure  are described  in the  Multics
+  Administration, Maintenance and Operations Commands manual, Order
+  No.  GB64.
+
+  1.   If the  system has not  already crashed, attempt  to recover
+       from the failure by following the procedures described above
+       under "Recovering From Disk Failures."  If that corrects the
+       problem, then skip the  remaining steps.  Otherwise, use the
+       last procedure under "Recovering From Disk Failures" to shut
+       down or crash the system.
+
+  2.   Consult with your Customer Service Representative to correct
+       any hardware failure that is  occurring.  Have him repair or
+       replace any damaged hardware.
+
+  To test  the original RPV volume,  or to recover its  data onto a
+  spare disk  volume, you will need  to boot BCE, and  Multics on a |
+  temporary RPV.  This temporary RPV may  be obtained in any of the
+  following ways:
+
+  o    If your site has prepared a one- or two-volume "test system"
+       for  hardware and software  checkout purposes, you  can boot
+       this  test  system  for  use  in  testing  and reloading the
+       original RPV.
+
+  o    If you have BCE SAVE tapes for the original RPV, and a spare |
+       disk volume, you can RESTORE these save tapes onto the spare |
+       disk volume for  use as the temporary RPV.   The actual data |
+       on  the temporary  RPV is  not important  since it  will not
+       become  part of  the production  hierarchy; an  older set of
+       SAVE tapes can be used, as long  as the saved RPV is for the
+       Multics release you are currently running.
+
+       You will have to boot BCE  on the temporary RPV, and specify |
+       "cold"  to  the  "Enter  rpv  data:"  prompt  to  allow  the |
+       temporary RPV  to be properly initialized.   After restoring |
+       the RPV, remember to update  the root and part configuration |
+       cards to describe only the temporary RPV.                    |
+
+
+  MTB-745                                          BCE Save/Restore
+
+  o    If you  have neither a "test  system" nor SAVE tapes  for an
+       RPV, you can perform a cold  boot of Multics on a spare disk
+       volume  to create  the temporary  RPV.  To  perform the cold
+       boot, follow the procedures in the Installation Instructions
+       for the release you are running.
+
+  Spare  disk volumes  should be  properly formatted  and tested as
+  described above under "Preformatted Disk Volumes."
+
+| 3.   Boot  BCE  on  the  temporary   RPV,  as  described  in  the
+       Operators' Guide to Multics, Order No.  GB61.
+
+  4.   If your  Customer Service Representative believes  there has
+       been  no physical  damage to  the original  RPV disk volume,
+|      attempt  to read  it using   the BCE  TEST_DISK command,  as
+       described above under "Extent of Disk Volume Failure."
+
+  5.   If  only transient errors  are encountered when  reading the
+       original RPV, follow the  procedures above under "Recovering
+       from Transient  Disk Volume Failure,"  and skip the  rest of
+       these steps.
+
+  6.   If the original RPV is only partially damaged and you decide
+       that  loss of the  unreadable records is  acceptable, follow
+       the  procedures above  under "Recovering  from Partial  Disk
+       Volume Failure," and skip the rest of these steps.
+
+       The  steps  below  attempt  to  reload  RPV information from
+  volume backup tapes onto a spare disk volume.  These steps assume
+  that the original  RPV volume is totally unreadable,  or that the
+  amount of lost data caused  by unreadable records is unacceptably
+  high.  If your Customer  Service Representative believes that the
+  original RPV  is physically damaged (i.e.,  scratched or warped),
+  then replace the  RPV with a spare volume which  has already been
+  formatted and tested, as described above under "Preformatted Disk
+  Volumes."  Otherwise, you can reload data onto the original RPV.
+
+| 7.   Boot Multics on the temporary RPV, coming up to Multics ring
+       1  command level,  as described  in the  Operators' Guide to
+       Multics, Order No.  GB61.
+
+  8.   Mount the disk volume to be reloaded on any available drive.
+       If necessary,  convert the drive to a  storage system drive,
+       using the set_drive_usage command.  For example:
+
+            sdu dska_04 ss
+
+  9.   Issue an  init_vol command with the  -copy control argument.
+       Issue directions  to init_vol to  define the number  of VTOC
+       entries and  the partition names  and sizes as  they were on
+       the destroyed  disk volume.  Your site  should have hardcopy
+
+
+  BCE Save/Restore                                          MTB-745
+
+       printouts  of this disk  label information available  at all
+       times,  as   described  above  under  "Disk   Volume  Layout
+       Information."
+
+       Note that  you may request  more VTOC entries  on the volume
+       being  reloaded than  were on   the destroyed  RPV, but  you
+       cannot decrease  this number.  You may  increase or decrease
+       the  sizes of partitions  on the new  RPV, or add  or delete
+       partitions.  However, if you do change the partition layout,
+       then you will not be able to copy the contents of partitions
+       (such as the  LOG and DUMP partitions) from  the damaged RPV
+       onto  the reloaded  RPV.  Remember  to include  an alternate
+       track  partition for  a removable  disk volume,  if the disk
+       volume  being  reloaded  has  been  formatted with alternate
+       track assignments.
+
+  10.  Convert the disk drive on which the new RPV is mounted to an
+       I/O drive, using the set_drive_usage command.  For example:
+
+            sdu dska_04 io
+
+  11.  Recover   the   volume   log   for   the   RPV   using   the
+       recover_volume_log  command with  the -wd  control argument.
+       For example:
+
+            recover_volume_log rpv -wd
+
+       Mount  the last  volume backup  tape for  the volume  backup
+       group which includes  the RPV.  The volume name  of the last
+       tape should be recorded in  the tape log, as described above
+       under "Backup Tape Logs."   If volume backup operations were
+       ongoing at  the time of  disk failure, you  should mount the
+       tape which was being written at the time of failure.
+
+  12.  Reload the new RPV using the volume reloader, by issuing the
+       reload_volume command  with the -pvname, -operator,  and -wd
+       control arguments.  For example:
+
+            reload_volume -pvname rpv -operator Jones -wd
+
+       Mount tapes as requested by the reload_volume command.  When
+       all tapes have been reloaded, continue with the next step.
+
+  13.  Shutdown Multics on the temporary RPV.                       |
+
+  14.  If the RPV was reloaded onto a spare volume and the original
+       RPV is partially  readable, you may want to try  to copy the
+       contents of the CONF, FILE, DUMP and LOG partitions onto the |
+       new  RPV, as described  below under "Recovery  of Partitions |
+       after RLV Volume Recovery".                                  |
+
+
+  MTB-745                                          BCE Save/Restore
+
+  15.  If the newly reloaded RPV is  not mounted on the proper disk
+       drive for normal  operation, move the new RPV  to the proper
+       disk drive.
+
+| 16.  Boot BCE on the newly reloaded RPV, according to normal site
+|      procedures.   If reloading  was  performed  on a  spare disk
+|      volume rather than on the original RPV, then the contents of
+|      the CONF, BCE  and FILE partitions have been  lost.  In BCE,
+|      you will have  to reload the config deck from  a config file
+       read  off the  BCE tape,  using the  BCE "config &lt;deckname&gt;"
+       command.   Make  adjustments  to  the  configuration file as
+       necessary, to reflect the current hardware configuration and
+       disk volume locations.
+
+  17.  Boot Multics according to normal site procedures.
+
+  18.  Perform the procedures for  salvaging, quota adjustment, and
+       connection  failure detection   described below  under "Disk
+       Volume  Post-Recovery Procedures."  This  completes recovery
+       of the RPV.
+
+  *****  On page 10-46,  the section titled  "Recovery of a  NonRPV
+  Root Volume with Volume Reloading" needs to be changed to read:
+
+   Recovery of a NonRPV Root Volume with Volume Reloading
+
+       If a disk volume failure occurs on a volume which is part of
+  the Root Logical  Volume (RLV) but is not the  RPV, the following
+  procedure can be used to recover the contents of that volume from
+  volume backup  tapes.  See Section 9 for  general information and
+  more details on  volume backup and volume reloading.   All of the
+  commands  used in  this procedure  are described  in the  Multics
+  Administration, Maintenance and Operations Commands manual, Order
+  No.  GB64.
+
+  1.   If the  system has not  already crashed, attempt  to recover
+       from the failure by following the procedures described above
+       under "Recovering From Disk Failures."  If that corrects the
+       problem, then skip the  remaining steps.  Otherwise, use the
+       last procedure under "Recovering From Disk Failures" to shut
+       down or crash the system.
+
+  2.   Consult with your Customer Service Representative to correct
+       any hardware failure that is  occurring.  Have him repair or
+       replace any damaged hardware.
+
+  To test the  original root volume, or to recover  its data onto a
+| spare disk volume, you will need  to boot BCE, and Multics on the
+| RPV.
+
+| 3.   Boot BCE on the RPV, as described in the Operators' Guide to
+       Multics, Order No.  GB61.
+
+
+  BCE Save/Restore                                          MTB-745
+
+  4.   If your  Customer Service Representative believes  there has
+       been no  physical damage to  the original root  disk volume,
+       attempt  to read  it using   the BCE  TEST_DISK command,  as |
+       described above under "Extent of Disk Volume Failure."
+
+  5.   If  only transient errors  are encountered when  reading the
+       original root volume, follow  the procedures described above
+       under "Recovering  from Transient Disk Volume  Failure," and
+       skip the rest of these steps.
+
+  6.   If the  original root volume  is only partially  damaged and
+       you   decide  that  loss   of  the  unreadable   records  is
+       acceptable,  follow the  procedures above  under "Recovering
+       from  Partial Disk  Volume Failure,"  and skip  the rest  of
+       these steps.
+
+  The steps  below attempt to  reload root volume  information from
+  volume backup tapes onto a spare disk volume.  These steps assume
+  that the original root volume  is totally unreadable, or that the
+  amount of lost data caused  by unreadable records is unacceptably
+  high.  If your Customer  Service Representative believes that the
+  original  root volume is  physically damaged (i.e.,  scratched or
+  warped), then  replace it with  a spare volume  which has already
+  been formatted and tested, as described above under "Preformatted
+  Disk Volumes."  Otherwise, you can  reload data onto the original
+  root volume.
+
+  7.   Remove all  disk volumes from  the root config  card, except *
+       for the RPV.  If any  part config cards identify the damaged
+       disk volume, remove those part cards from the config deck.
+
+  8.   Boot Multics on the RPV, coming up to Multics ring 1 command
+       level,  as described  in  the  Operators' Guide  to Multics,
+       Order No.  GB61.
+
+  9.   Mount the disk volume to be reloaded on any available drive.
+       If necessary,  convert the drive to a  storage system drive,
+       using the set_drive_usage command.  For example:
+
+            sdu dska_05 ss
+
+  10.  Issue  an   init_vol  command  with  the   -special  control
+       argument.  Issue directions to init_vol to define the number
+       of VTOC  entries and the  partition names and  sizes as they
+       were on  the destroyed disk  volume.  Your site  should have
+       hardcopy printouts of this  disk label information available
+       at all  times, as described above under  "Disk Volume Layout
+       Information."
+
+       Note that  you may request  more VTOC entries  on the volume
+       being reloaded than were on the damaged root volume, but you
+       cannot decrease  this number.  You may  increase or decrease
+
+
+  MTB-745                                          BCE Save/Restore
+
+       the sizes  of partitions on the  new root volume, or  add or
+*      delete partitions.   Remember to include an  alternate track
+       partition for  a removable disk  volume, if the  disk volume
+       being  reloaded  has  been  formatted  with  alternate track
+       assignments.
+
+  11.  Convert  the disk  drive on   which the  new root  volume is
+       mounted to an I/O  drive, using the set_drive_usage command.
+       For example:
+
+            sdu dska_05 io
+
+  12.  Recover  the  volume  log  for  the  root  volume  using the
+       recover_volume_log  command with  the -wd  control argument.
+       For example:
+
+            recover_volume_log root2 -wd
+
+       Mount  the last  volume backup  tape for  the volume  backup
+       group which includes  the RLV.  The volume name  of the last
+       tape should be recorded in  the tape log, as described above
+       under "Backup Tape Logs."   If volume backup operations were
+       ongoing at  the time of  disk failure, you  should mount the
+       tape which was being written at the time of failure.
+
+  13.  Reload  the new  root volume  using the  volume reloader, by
+       issuing   the  reload_volume   command  with   the  -pvname,
+       -operator, and -wd control arguments.  For example:
+
+            reload_volume -pvname root2 -operator Jones -wd
+
+       Mount tapes as requested by the reload_volume command.  When
+       all tapes have been reloaded, continue with the next step.
+
+  14.  Shutdown the Multics running on the RPV.
+
+  15.  Restore  the root  and part   config cards  to their  normal
+       values, either  by retyping the changed cards  or by issuing
+       the BCE  "config &lt;deckname&gt;" command  to load a  new copy of
+       the config deck from a BCE file.
+
+* 16.  If the root volume was reloaded  onto a spare volume and the
+       original volume  is partially readable, you may  want to try
+       to copy the contents of the DUMP and LOG partitions onto the
+       new  RPV,  if  these  partitions  were  on  the damaged root
+|      volume.    Follow  the   procedure  described   below  under
+|      "Recovery of Partitions after RLV Volume Recovery".
+
+  17.  If  the newly  reloaded root  volume is  not mounted  on the
+       proper disk  drive for normal operation, move  the volume to
+       the proper disk drive.
+
+
+  BCE Save/Restore                                          MTB-745
+
+  18.  Boot BCE  on the RPV,  according to normal  site procedures. |
+       Make adjustments to the  configuration file as necessary, to
+       reflect the  current hardware configuration and  disk volume
+       locations.
+
+  19.  Boot Multics according to normal site procedures.
+
+  20.  Perform the procedures for  salvaging, quota adjustment, and
+       connection  failure detection   described below  under "Disk
+       Volume  Post-Recovery Procedures."  This  completes recovery
+       of the root volume.
+
+  ***** On  page 10-49, the  section titled "Recovery  of a NonRoot
+  Volume  with Volume  Reloading", info  upto and  including item 7
+  need to be changed to read:
+
+   Recovery of a NonRoot Volume with Volume Reloading
+
+       If  a disk volume  failure occurs on  a volume which  is not
+  part of  the Root Logical  Volume (RLV), the  following procedure
+  can be  used to recover the  contents of that volume  from volume
+  backup  tapes.  See  Section 9  for general  information and more
+  details  on  volume  backup  and  volume  reloading.   All of the
+  commands  used in  this procedure  are described  in the  Multics
+  Administration, Maintenance and Operations Commands manual, Order
+  No.  GB64.
+
+  1.   If the  system has not  already crashed, attempt  to recover
+       from the failure by following the procedures described above
+       under "Recovering From Disk Failures."  If that corrects the
+       problem, then skip the  remaining steps.  Otherwise, use the
+       last procedure under "Recovering From Disk Failures" to shut
+       down or crash the system.
+
+  2.   Consult with your Customer Service Representative to correct
+       any hardware failure that is  occurring.  Have him repair or
+       replace any damaged hardware.
+
+  To test the original volume, or  to recover its data onto a spare
+  disk volume, you will need to boot BCE, and Multics on the RLV.   |
+
+  3.   Boot BCE,  as described in the Operators'  Guide to Multics, |
+       Order No.  GB61.
+
+  4.   If your  Customer Service Representative believes  there has
+       been no physical damage to the original disk volume, attempt |
+       to  read it  using the  BCE TEST_DISK  command, as described |
+       above under "Extent of Disk Volume Failure."
+
+  5.   If  only transient errors  are encountered when  reading the
+       original   volume,  follow    the  procedures   above  under
+
+
+  MTB-745                                          BCE Save/Restore
+
+       "Recovering  from Transient  Disk Volume  Failure," and skip
+       the rest of these steps.
+
+  6.   If  the original  volume is  only partially  damaged and you
+       decide  that loss of  the unreadable records  is acceptable,
+       follow the procedures described above under "Recovering from
+       Partial  Disk Volume  Failure," and  skip the  rest of these
+       steps.
+
+  The steps below attempt to  reload information from volume backup
+  tapes  onto a  spare disk  volume.  These  steps assume  that the
+  original volume is totally unreadable, or that the amount of lost
+  data caused by unreadable records  is unacceptably high.  If your
+  Customer Service Representative believes that the original volume
+  is physically  damaged (i.e., scratched or  warped), then replace
+  it  with a  spare volume   which has  already been  formatted and
+  tested,  as described  above under  "Preformatted Disk  Volumes."
+  Otherwise, you can reload data onto the original disk volume.
+
+| 7.   Boot Multics on the RLV, coming up to Multics ring 1 command
+       level,  as described  in  the  Operators' Guide  to Multics,
+|      Order No.  GB61.
+|
+|
+| A.3.4:  SECTION-12
+|
+|
+  *****  References to  "BOS SAVE"  on page  12-4 will  now be "BCE
+  SAVE".
+
+  ***** On page  12-7, the section titled "How to  Restart SAVE and
+  RESTOR" needs  to be deleted  and the following  section added in
+  its place:
+
+| BCE Save and Restore
+
+| 1.  What Makes Up A Physical Volume Set.
+
+|           The  save  and  restore  commands  allow  for saving or
+|      restoring upto four sets of physical volumes at one time.  A
+|      volume  set  is  defined  as  all  the  physical volumes and
+|      partitions  described in a  control file or  several control
+|      files that are  to be saved in one tape  set.  The syntax of
+|      the commands allow for multiple  control files to be defined
+|      for  a  set.   These  sets  are  defined  by  the parameters
+|      following the  "-set" or "-restart" control  arguments.  See
+|      Multics Administration, Maintenance  and Operations Commands
+|      manual, Order No.  GB64, for  a description of the syntax of
+|      the commands.
+
+| 2.  What Makes Up A Tape Set.
+
+
+  BCE Save/Restore                                          MTB-745
+
+            A  tape  set  is  defined  as  the  collection of tapes |
+       required to save a set  of physical volumes.  The tape reels |
+       are numbered 1 to N+1, and the "Info" reel.  Each tape label |
+       contains the  name of the  set as defined  by the "tape_set" |
+       control  file request.   The "Info"  tape is  the last  tape |
+       written  during a  save, and  the first  tape read  during a |
+       restore.  This  info tape contains information  that relates |
+       the  numbered tape  reels  and  the physical  volumes saved. |
+       This information aids in tape  mount requests and allows for |
+       partial restores.                                            |
+
+  3.  How To Create A Control File.                                 |
+
+            The first step  required when setting up for  a save or |
+       restore  is to  create  the  necessary control  file(s) that |
+       define  the tape set  name; tape devices;  physical volumes; |
+       and partitions in the volume set.  The control file requests |
+       are  described  in  the   description  of  the  save/restore |
+       commands  in the   Multics Administration,  Maintenance, and |
+       Operations Commands, Order No.  GB64.                        |
+
+            An sample control file is  shown being created, at BCE, |
+       below.                                                       |
+
+            qx                                                      |
+            a                                                       |
+            " Save/Restore Tape devices.                            |
+            tape_device tapa_02 -density 6250                       |
+            tape_device tapa_05 -density 6250                       |
+            tape_device tapb_03 -density 6250                       |
+            f                                                      |
+            w save_tapes                                            |
+            b1                                                      |
+            a                                                       |
+            " Save/Restore control file for the ROOT logical volume.|
+            tape_set ROOT                                           |
+            physical_volume rpv dska_01                             |
+            partition rpv dska_01 conf file log dump                |
+            physical_volume root2 dska_02                           |
+            physical_volume root3 dska_03                           |
+            physical_volume root4 dska_04                           |
+            f                                                      |
+            w root_lv                                               |
+            q                                                       |
+
+       The tape devices were defined  in a separate control file so |
+       that they  can be used with several  physical volume control |
+       files, during separate saves or restores.                    |
+
+  4.  How To Execute A Save And What Messages Are Displayed.        |
+
+
+  MTB-745                                          BCE Save/Restore
+
+|      Once the control files have been properly setup the operator
+|      can then begin the save process by typing the following:
+
+|           save -set save_tapes root_lv
+
+|      The tape  devices are polled  and verified to  be accessible
+|      and  capable  of  the  requested  density.   If problems are
+|      detected a  message is displayed  and the device  is removed
+|      from the list of available  devices.  This list is displayed
+|      in the order that the drives will be used.
+
+|      save(ROOT): The following tape devices will be used:
+
+|           tapa_02  tapa_05  tapb_03
+
+|      A check is made to insure the physical volume requests match
+|      the  corresponding disk packs.   For each physical  volume a
+|      message is  displayed.  Errors are noted by  (***) in column
+|      76-78, not shown here.
+
+|      save(ROOT): Multics Storage System Volume rpv on dska_01
+|                          Last updated: 05/08/86  1209.2 mst Fri
+
+|                Partition conf:    3908  for     4 records
+|                Partition file:   33836  for   255 records
+|                Partition dump:   34091  for  3500 records
+|                Partition log:    37591  for   256 records
+
+|      save(ROOT): Multics Storage System Volume root2 on dska_02
+|                          Last updated: 05/08/86  1209.2 mst Fri
+
+|      save(ROOT): Multics Storage System Volume root3 on dska_03
+|                          Last updated: 05/08/86  1209.2 mst Fri
+
+|      save(ROOT): Multics Storage System Volume root4 on dska_04
+|                          Last updated: 05/08/86  1209.2 mst Fri
+
+|      If  multiple physical volume  sets were requested,  then the
+|      above sequence  would be repeated  for each.  After  all the
+|      sets  are  examined  the  following  operator  query will be
+|      displayed.
+
+|      save: Would you like to continue?
+
+|      At this point the output messages can be examined, If all is
+|      correct and  acceptable a "yes" response causes  the save to
+|      begin.  If any problems need corrected, a "no" response will
+|      abort  the save  and return   to BCE  command level.   After
+|      corrections   are  made  the   save  request  can   then  be
+|      re-entered.
+
+
+  BCE Save/Restore                                          MTB-745
+
+       CAUTION:   Any  tape  that  is  mounted,  with  a write ring |
+       present, will  be considered as a pre-mounted  save tape and |
+       will be written on when the tape device is selected.         |
+
+       If  a tape  is not   mounted the  following message  will be |
+       displayed.                                                   |
+
+       save(ROOT): Please mount tape# 1 on tapa_01.                 |
+
+       If after two minutes no  tape has been mounted the following |
+       operator query is displayed.                                 |
+
+       save(ROOT): Would you like to skip to the next tape device?  |
+
+       One of the following responses must be entered.              |
+
+       yes, y                                                       |
+          This device  is skipped and the next  device is selected. |
+          The tape mount  is then checked in the  same manner.  The |
+          skipped  device remains  in  the  list of  available tape |
+          devices.                                                  |
+
+       no, n                                                        |
+          The device  is not skipped.  The mount,  for this device, |
+          is checked again in the same manner.                      |
+
+       remove                                                       |
+          This device is removed from  the list and the next device |
+          is selected.  The tape mount  is then checked in the same |
+          manner.                                                   |
+
+       help, ?                                                      |
+          This displays the possible responses.                     |
+
+       Once  a  tape  is  mounted  the  save  process can continue. |
+       Displayed below  are the messages that will  be displayed as |
+       the save  progresses.  This example assumes  that tapes have |
+       been pre-mounted on devices tapa_05 and tapb_03.             |
+
+       save(ROOT): Volume rpv, record 0, on tape# 1 (tapa_02)       |
+       save(ROOT):   Partition conf on rpv, record 3908, on tape# 1 |
+       c (tapa_02)                                                 |
+       save(ROOT):   Partition file on rpv, record 33836, on tape# 1|
+       c (tapa_02)                                                 |
+       save(ROOT):   Partition dump on rpv, record 34091, on tape# 1|
+       c (tapa_02)                                                 |
+       save(ROOT):   Partition log  on rpv, record 37591, on tape# 1|
+       c (tapa_02)                                                 |
+       save(ROOT): Volume root2, record 0, on tape# 1 (tapa_02)     |
+       save(ROOT): Volume root3, record 0, on tape# 1 (tapa_02)     |
+       save(ROOT): Unloading tape# 1 from tapa_02, 23537 records    |
+       c (12 errors)                                               |
+
+
+  MTB-745                                          BCE Save/Restore
+
+|      save(ROOT): Volume root3, record 4356, on tape# 2 (tapa_05)
+|      save(ROOT): Volume root4, record 0, on tape# 2 (tapa_05)
+|      save(ROOT): Unloading tape# 2 from tapa_05, 5477 records
+|      save(ROOT): OK to write "Info" tape on tapb_03?
+
+|      The  above query allows  for pre-assigned "Info"  tapes.  If
+|      answered "yes"  the current tape  is used; if  answered "no"
+|      the tape will be dismounted and the following will occur.
+
+|      save(ROOT): Unloading tapb_03
+|      save(ROOT): Please mount the "Info" tape on tapb_03.
+
+|      After the  correct "Info" tape has been  mounted and written
+|      the following is displayed  indicating the completion of the
+|      save request.
+
+|      save(ROOT): Unloading "Info" tape from tapb_03, 3 records
+|      save(ROOT): save complete...
+
+| 5.  How To Abort A Save.
+
+|      A save  can be interrupted  by use of  the console "request"
+|      key.   When  depressed  while  a  save  is  in progress, the
+|      following prompt will appear.
+
+|      save: Abort request:
+
+|      The operator will be required  to input one of the following
+|      responses.
+
+|      no, n
+|         This  causes the request  to be ignored  and the save  to
+|         continue.
+
+|      abort
+|         This  aborts all  save sets  and returns  to BCE  command
+|         level.
+
+|      restart TAPE_SET
+|         This  allows  the  operator   to  restart  the  specified
+|         TAPE_SET, using its current tape device.  The operator is
+|         then required  to mount the "restart" tape  on the device
+|         and follow the procedure as described below under "How To
+|         Restart A  Save".  Once the  SET has been  restarted, the
+|         remaining SETs will continue operation.
+
+|      stop TAPE_SET
+|         This  aborts  the  specified  TAPE_SET,  and  resume  the
+|         process for the other sets.
+
+
+  BCE Save/Restore                                          MTB-745
+
+       help, ?                                                      |
+          This  displays  the  possible  responses,  with  a  small |
+          description of each.                                      |
+
+  6.  How To Restart A Save.                                        |
+
+       Due to  various problems that  may arise while  performing a |
+       save, it may be necessary to restart a set.                  |
+
+       The restart operation can be invoked in one of three ways:   |
+
+       o    "-restart_set" argument in the command line.            |
+
+       o    "restart  TAPE_SET"  response  to  the  "Abort request" |
+            above.  (See "How to Abort A Save" in this section.)    |
+
+       o    "restart_set"  or "remove_device_from_set"  response in |
+            error   recovery.    (See    "How   To   Recover   From |
+            Unrecoverable Tape Errors" later in this section.)      |
+
+       Restarting   consists  of    skipping  all   volumes  and/or |
+       partitions that have been successfully saved, restarting the |
+       save of a volume somewhere in the middle and then continuing |
+       normally with the remaining volumes.                         |
+
+       A  restart must  always start  at the  beginning of  a tape. |
+       This means  that the last  tape label that  was successfully |
+       written holds all the information of where to restart.       |
+
+       The tape label is read from  the save tape that the operator |
+       wishes to restart from.  If  the tape is not already mounted |
+       the  following is displayed  and the normal  mount procedure |
+       executed.                                                    |
+
+       save(ROOT): Please mount the "restart" tape on tapa_02.      |
+       save(ROOT): Tape# 2 on tapa_02, created 05/08/86  1535.3 mst |
+       c Thu                                                       |
+
+       After the tape label has been read the tape creation time is |
+       checked.   If the time  is older than  one week the  tape is |
+       rejected.   This  involves  unloading  the  current tape and |
+       asking that another be mounted.                              |
+
+       The tape label information is used to locate all the volumes |
+       that can be skipped and what  record number to start at when |
+       rewritting the tape.  The following messages are displayed.  |
+
+       save(ROOT): Skipping volume rpv on dska_01.                  |
+       save(ROOT): Skipping volume root2 on dska_02.                |
+       save(ROOT): Starting from record 4356 of volume root3 on     |
+       c dska_03.                                                  |
+
+
+  MTB-745                                          BCE Save/Restore
+
+|      The operator is then queried with the following:
+
+|      save(ROOT): Do you want to replace or rewrite tape# 2 on
+|      c tapa_02?
+
+|      This  query  gives  the  operator  the  chance  to  select a
+|      different tape  reel, in case the previous  save was aborted
+|      because this tape contained too  many errors.  Below are the
+|      possible responses.
+
+|      replace, rep
+|         This will cause the current tape to be unloaded and a new
+|         tape requested in its place.
+
+|      rewrite, rew
+|         The tape  will be rewound  and used when  the save begins
+|         again.
+
+|      From this point on the save resumes normal operation.
+
+| 7.  How To Execute A Restore And What Messages Are Displayed.
+
+|      Once the control files have been properly setup the operator
+|      can then begin the restore process by typing the following:
+
+|           restore -set save_tapes root_lv
+
+|      The tape  devices are polled and verified  to be accessible.
+|      If  problems are  detected a  message is  displayed and  the
+|      device is removed from the  list of available devices.  This
+|      list is displayed in the order that the drives will be used.
+
+|      restore(ROOT): The following tape devices will be used:
+
+|           tapa_02  tapa_05  tapb_03
+
+|      At this  time the program needs  to read in the  contents of
+|      the  "Info"  save  tape.   This  tape  contains  the list of
+|      volumes and partitions that were  saved and the starting and
+|      ending  tape number for  each.  This tape  is the last  tape
+|      written as part of a save.  This tape allows program control
+|      over  what tapes are  mounted, which saves  alot of time  in
+|      searching tapes.
+
+|      The  program now  attempts to   read the  tape on  the first
+|      device  in  the  list,  but  if  a  tape  is not mounted the
+|      following will appear.
+
+|      restore(ROOT): Please mount the "Info" tape on tapa_02.
+
+|      If the tape read does not contain a label of "Info" then the
+|      program queries the operator to  find out if the "Info" tape
+
+
+  BCE Save/Restore                                          MTB-745
+
+       is available.  If the operator answers "no" then the program |
+       will  use the  label information  from the  current tape  in |
+       place of the  "Info" data, which is the same  format but not |
+       as complete.  If the operator answers "yes" then the current |
+       tape  is  unloaded  and  the  mount/label  read  process  is |
+       restarted.                                                   |
+
+       If  the "Info"  tape is  not available,  then the  save tape |
+       closest to the end of the  save should be read in its place. |
+       This   will  give  the   program  the  greatest   amount  of |
+       information.                                                 |
+
+       The volumes  to be restored are  sorted so that they  are in |
+       the same order as they were  saved.  Each of the disk labels |
+       are read and a display/check of the information is done.  If |
+       a  problem  is  detected  the  volume  is  removed  from the |
+       "to-be-processed" list.  This process is duplicated for each |
+       restore SET.  Below is an example of the information that is |
+       displayed.  Messages  that indicate a possible  problem will |
+       have (***) in column 76-78, not shown here.                  |
+
+       restore(ROOT): Multics Storage System Volume rpv on dska_01  |
+                           Last updated: 05/08/86  1209.2 mst Fri   |
+
+       restore(ROOT): Multics Storage System Volume root2 on dska_02|
+                           Last updated: 05/08/86  1209.2 mst Fri   |
+
+       restore(ROOT): Multics Storage System Volume root3 on dska_03|
+                           Last updated: 05/08/86  1209.2 mst Fri   |
+
+       restore(ROOT): Multics Storage System Volume root4 on dska_04|
+                           Last updated: 05/08/86  1209.2 mst Fri   |
+
+       If  multiple physical volume  sets were requested,  then the |
+       above sequence  would be repeated  for each.  After  all the |
+       sets  are  examined  the  following  operator  query will be |
+       displayed.                                                   |
+
+       restore: Would you like to continue?                         |
+
+       At this point the output messages can be examined, If all is |
+       correct and  acceptable a "yes" response  causes the restore |
+       to begin.   If any problems need corrected,  a "no" response |
+       will  abort the  restore and  return to  BCE command  level. |
+       After corrections  are made the restore request  can then be |
+       re-entered.                                                  |
+
+       The  program now knows  the first tape  to be read  from the |
+       label information or at least a best guess if the first tape |
+       read was not the "Info" tape.  It attempts to read this tape |
+       on the  next tape device in  the list.  If the  tape read is |
+
+
+  MTB-745                                          BCE Save/Restore
+
+|      not  the correct tape  or no tape  is mounted the  following
+|      message is displayed.
+
+|      restore(ROOT): Please mount tape# 1 on tapa_02.
+
+|      If after two minutes no  tape has been mounted the following
+|      operator query is displayed.
+
+|      restore(ROOT): Would you like to skip to the next tape
+|      c device?
+
+|      One of the following responses must be entered.
+
+|      yes, y
+|         This device  is skipped and the next  device is selected.
+|         The tape mount  is then checked in the  same manner.  The
+|         skipped  device remains  in  the  list of  available tape
+|         devices.
+
+|      no, n
+|         The device  is not skipped.  The mount,  for this device,
+|         is checked again in the same manner.
+
+|      remove
+|         This device is removed from  the list and the next device
+|         is selected.  The tape mount  is then checked in the same
+|         manner.
+
+|      help, ?
+|         This displays the possible responses.
+
+|      After  a successful  read of   the current  tape label,  the
+|      program  will check  to see  if another  tape in  the set is
+|      needed.  If the tape will be needed a pre-mount message will
+|      be displayed.  Shown below is  an example sequence of events
+|      during a restore process.
+
+|      restore(ROOT): Tape# 1 on tapa_02, created 05/08/86  1525.0
+|      c mst Thu
+|      restore(ROOT): Please pre-mount tape# 2 on tapa_05.
+|      restore(ROOT): Volume rpv, record 0, on tape# 1 (tapa_01)
+|      restore(ROOT):   Partition conf on rpv, record 3908, on
+|      c tape# 1 (tapa_02)
+|      restore(ROOT):   Partition file on rpv, record 33836, on
+|      c tape# 1 (tapa_02)
+|      restore(ROOT):   Partition dump on rpv, record 34091, on
+|      c tape# 1 (tapa_02)
+|      restore(ROOT):   Partition log  on rpv, record 37591, on
+|      c tape# 1 (tapa_02)
+|      restore(ROOT): Volume root2, record 0, on tape# 1 (tapa_02)
+|      restore(ROOT): Volume root3, record 0, on tape# 1 (tapa_02)
+|      restore(ROOT): Unloading tape# 1 from tapa_02, 23537 records
+
+
+  BCE Save/Restore                                          MTB-745
+
+       restore(ROOT): Tape# 2 on tapa_05, created 05/08/86  1535.3  |
+       c mst Thu                                                   |
+       restore(ROOT): Volume root3, record 4356, on tape# 2         |
+       c (tapa_05)                                                 |
+       restore(ROOT): Volume root4, record 0, on tape# 2 (tapa_05)  |
+       restore(ROOT): Unloading tape# 2 from tapa_05, 5477 records  |
+       restore(ROOT): restore complete...                           |
+
+  8.  How To Abort A Restore.                                       |
+
+       A  restore set  can be   interrupted by  use of  the console |
+       "request"  key.   When  depressed  while  a  restore  is  in |
+       progress, the following prompt will appear.                  |
+
+       restore:  Abort request:                                     |
+
+       The operator will be required  to input one of the following |
+       responses.                                                   |
+
+       no, n                                                        |
+          This causes the request to  be ignored and the restore to |
+          continue.                                                 |
+
+       abort                                                        |
+          This aborts  all restore sets and returns  to BCE command |
+          level.                                                    |
+
+       restart TAPE_SET                                             |
+          This  allows  the  operator   to  restart  the  specified |
+          TAPE_SET, using its current tape device.  The operator is |
+          then required  to mount the "restart" tape  on the device |
+          and follow the procedure as described below under "How To |
+          Restart A Restore".  Once the SET has been restarted, the |
+          remaining SETs will continue operation.                   |
+
+       stop TAPE_SET                                                |
+          This  aborts  the  specified  TAPE_SET,  and  resume  the |
+          process for the other sets.                               |
+
+       help, ?                                                      |
+          This  displays  the  possible  responses,  with  a  small |
+          description of each.                                      |
+
+  9.  How To Restart A Restore.                                     |
+
+       Due to  various problems that  may arise while  performing a |
+       restore, it may be necessary to restart a set.               |
+
+       The restart operation can be invoked in one of three ways:   |
+
+       o    "-restart_set" argument in the command line.            |
+
+
+  MTB-745                                          BCE Save/Restore
+
+|      o    "restart  TAPE_SET"  response  to  the  "Abort request"
+|           above.  (See "How to Abort A Restore" in this section.)
+
+|      o    "restart_set"  or "remove_device_from_set"  response in
+|           error   recovery.    (See    "How   To   Recover   From
+|           Unrecoverable Tape Errors" later in this section.)
+
+|      Restarting   consists  of    skipping  all   volumes  and/or
+|      partitions that have  been successfully restored, restarting
+|      the  restore of a  volume somewhere in  the middle and  then
+|      continuing normally with the remaining volumes.
+
+|      If restarting  from the command  line, then the  "Info" tape
+|      must still be read before the "restart" tape.
+
+|      The tape label is read from  the save tape that the operator
+|      wishes to restart from.  If  the tape is not already mounted
+|      the  following is displayed  and the normal  mount procedure
+|      executed.
+
+|      restore(ROOT): Please mount the "restart" tape on tapa_02.
+|      restore(ROOT): Tape# 2 on tapa_02, created 05/08/86  1535.3
+|      c mst Thu
+
+|      From the tape label the  program can determine which volumes
+|      were  completed on  previous tapes  and skip  them.  It then
+|      restarts the  restore of the  first volume on  the tape that
+|      has been  requested to be restored.   The following messages
+|      are displayed.
+
+|      restore(ROOT): Skipping volume rpv on dska_01.
+|      restore(ROOT): Skipping volume root2 on dska_02.
+|      restore(ROOT): Starting from record 4356 of volume root3 on
+|      c dska_03.
+
+|      From this  point on the  program reverts back  into a normal
+|      operational mode.
+
+| 10.  How To Recover From Unrecoverable Tape Errors.
+
+|      During a save  or restore there are times  when errors occur
+|      which require  special handling.  These are  errors that are
+|      either  non-retryable  or  where  the  retry process failed.
+|      When  an  unrecoverable  error  occurs  a  message  will  be
+|      displayed that shows the  error interpreted in english, with
+|      detailed status  in hex if  required.  The operator  will be
+|      queried  as  to  the  course  of  action  that should taken.
+|      Listed  below is  an example  error output  and the possible
+|      responses and their meanings.
+
+|      save(ROOT): Device Attention, Handler check on tapb_03.
+|           detailed status: 20 8C 2B 6D 0A 01 16 00 00 16 48 87 24
+
+
+  BCE Save/Restore                                          MTB-745
+
+                             18 06 00 00 0C 00 00 08 08 80 00 00 00 |
+       save: Action:                                                |
+
+       abort                                                        |
+          This causes the program  to abort the entire save/restore |
+          and return to BCE command level.                          |
+
+       retry, r                                                     |
+          For errors  that are retryable this will  force the retry |
+          process again.  It is invalid for non-retryable errors.   |
+
+       skip, s                                                      |
+          This is  only valid for data alert  errors detected while |
+          doing  a restore.  The  unreadable record is  skipped and |
+          the  restore continues  by  attempting  to read  the next |
+          record.                                                   |
+
+       stop_set, stop                                               |
+          This  will cause this  SET to be  aborted, but all  other |
+          SETs will continue.                                       |
+
+       restart_set, restart, rt                                     |
+          This allows  the operator to restart this  SET, using the |
+          current  tape device.  The  operator is then  required to |
+          mount  the "restart"  tape on  the device  and follow the |
+          restart procedures.  Once the SET has been restarted, the |
+          remaining SETs will continue operation.                   |
+
+       remove_device_from_set, remove                               |
+          Works like  the "restart_set" request above,  but removes |
+          the current tape device from the SET and sequences to the |
+          next  device before  going through  the restart  process. |
+          This  is not a  valid response if  this is the  only tape |
+          device left in the SET.                                   |
+
+       help, ?                                                      |
+          This displays the above possible responses.               |
+
+
+  MTB-745                                          BCE Save/Restore
+
+| A.3.5:  APPENDIX-H
+|
+|
+  ***** The appendix needs to be changed as follows:
+
+   Alternate Procedures for Disk Volume Recovery
+
+       Section  10 discusses different  kinds of disk  failures and
+  how  to  recover  from  them.    In  its  "Disk  Volume  Recovery
+  Procedures"   subsection,  it   recommends  the   use  of  volume
+  reloading.   This  appendix  describes   a  variation  of  volume
+| reloading:  a  BCE RESTORE operation followed by  a volume reload
+  operation.  This  procedure is almost never needed,  and for that
+  reason, its description has been  placed in this appendix, rather
+  than in Section 10.
+
+       This  appendix  also  discusses  an  alternate procedure for
+| complete disk volume recovery:   a BCE RESTORE operation followed
+| by  a hierarchy  reload operation.   While BCE  RESTORE/hierarchy
+  reloading  is not  generally recommended  for reloading  complete
+  volumes, your site  may decide to use this  procedure if problems
+  are encountered  (e.g., many unreadable tapes)  during the volume
+  reloading  procedures described  in Section  10, or  if your site
+  does not use the Volume Backup facility.
+
+|  Disk Volume Recovery via BCE RESTORE/Volume Reloading
+
+|      Recovery  via  BCE  RESTORE  followed  by  volume  reloading
+| involves replacing  the damaged disk volume with  a spare volume,
+| restoring the most  recent BCE SAVE tapes for  the damaged volume
+| using   the  BCE   RESTORE  command,   and  then   reloading  the
+| consolidated  and incremental  volume dumper  tapes created after
+| the BCE SAVE operation was performed.  The -save control argument
+| of    the    reload_volume    command    indicates    that    the
+| date-contents-modified field of each  entry being reloaded should
+| be compared  with the date-unmounted  field of the  volume label.
+| Since a volume must be unmounted  before a BCE SAVE operation can
+| be performed, the date-unmounted value placed in the volume label
+| by the BCE  RESTORE operation is a good indicator  of the date on
+| which the  BCE SAVE operation  was performed.  If  the entry from
+| the  volume backup  tape is  newer than  the date-unmounted field
+| from the disk label, then the tape entry is reloaded.
+
+|  Recovery of the RPV with BCE RESTORE/Volume Reloading
+
+|      If a disk  volume failure occurs for the  RPV, the following
+| procedure can be  used to recover the contents of  the RPV from a
+| combination  of BCE  SAVE tapes   and volume  backup tapes.   See
+  Section  9 for  general information  and more  details on  volume
+  backup and  volume reloading.  All  of the commands  used in this
+
+
+  BCE Save/Restore                                          MTB-745
+
+  procedure   are   described   in   the   Multics  Administration,
+  Maintenance and Operations Commands manual, Order No.  GB64.
+
+  1.   If the  system has not  already crashed, attempt  to recover
+       from  the failure by  following the procedures  described in
+       Section 10  under "Recovering From Disk  Failures".  If that
+       corrects  the  problem,  then   skip  the  remaining  steps.
+       Otherwise,  use the  last procedure  under "Recovering  From
+       Disk Failures" to shut down or crash the system.
+
+  2.   Consult with your Customer Service Representative to correct
+       any hardware failure that is  occurring.  Have him repair or
+       replace any damaged hardware.
+
+  To test  the original RPV volume,  or to recover its  data onto a
+  spare disk  volume, you will need  to boot BCE, and  Multics on a |
+  temporary RPV.  This temporary RPV may  be obtained in any of the
+  following ways:
+
+  o    If your site has prepared a one- or two-volume "test system"
+       for  hardware and software  checkout purposes, you  can boot
+       this  test  system  for  use  in  testing  and reloading the
+       original RPV.
+
+  o    You can restore the BCE SAVE tapes for the original RPV onto |
+       a  spare disk  volume for   use as  the temporary  RPV.  The
+       actual data on  the temporary RPV is not  important since it
+       will not  become part of the production  hierarchy; an older
+       set of SAVE  tapes can be used, as long as  the saved RPV is
+       for the Multics release you are currently running.
+
+       You will have to boot BCE  on the temporary RPV, and specify |
+       "cold"  to  the  "Enter  rpv  data:"  prompt  to  allow  the |
+       temporary RPV  to be properly initialized.   After restoring |
+       the RPV, remember to update  the root and part configuration |
+       cards to describe only the temporary RPV.                    |
+
+  Spare  disk volumes  should be  properly formatted  and tested as
+  described in Section 10 under "Preformatted Disk Volumes."
+
+  3.   Boot  BCE  on  the  temporary   RPV,  as  described  in  the |
+       Operators' Guide to Multics, Order No.  GB61.
+
+  4.   If your  Customer Service Representative believes  there has
+       been  no physical  damage to  the original  RPV disk volume,
+       attempt  to read  it using   the BCE  TEST_DISK command,  as |
+       described  in  Section  10  under  "Extent  of  Disk  Volume
+       Failure."
+
+  5.   If  only transient errors  are encountered when  reading the
+       original RPV, follow the  procedures described in Section 10
+
+
+  MTB-745                                          BCE Save/Restore
+
+       under "Recovering  from Transient Disk Volume  Failure," and
+       skip the rest of these steps.
+
+  6.   If the original RPV is only partially damaged and you decide
+       that  loss of the  unreadable records is  acceptable, follow
+       the  procedures described  in Section  10 under  "Recovering
+       from  Partial Disk  Volume Failure,"  and skip  the rest  of
+       these steps.
+
+| The steps below  attempt to reload RPV information  from BCE SAVE
+  and volume  backup tapes onto  a spare disk  volume.  These steps
+  assume  that the  original RPV  volume is  totally unreadable, or
+  that  the amount  of lost  data caused  by unreadable  records is
+  unacceptably  high.   If  your  Customer  Service  Representative
+  believes  that  the  original  RPV  is  physically damaged (i.e.,
+  scratched or  warped), then replace  the RPV with  a spare volume
+  which  has already  been formatted  and tested,  as described  in
+  Section 10 under "Preformatted Disk Volumes."  Otherwise, you can
+  reload data onto the original RPV.
+
+  7.   Mount the disk volume to be reloaded on any available drive.
+
+| 8.   Create  a RESTORE  control file  that will  identify the new
+|      RPV, then  use the BCE  RESTORE command to  load information
+|      from the BCE SAVE tapes onto the new RPV.  For example:
+
+|           qx
+|           a
+|           td tapa_01
+|           td tapa_02
+|           ts ROOT
+|           pv rpv dska_01
+|           part rpv dska_01 -all
+|           f
+|           w rpv_restore
+|           q
+|           restore rpv_restore
+
+| 9.   Once the BCE SAVE tapes  have been restored, boot Multics on
+       the  temporary RPV,  coming up   to Multics  ring 1  command
+       level,  as described  in  the  Operators' Guide  to Multics,
+       Order No.  GB61.
+
+  10.  Convert the disk drive on which the new RPV is mounted to an
+       I/O drive, using the set_drive_usage command.  For example:
+
+            sdu dska_04 io
+
+  11.  Recover   the   volume   log   for   the   RPV   using   the
+       recover_volume_log  command with  the -wd  control argument.
+       For example:
+
+
+  BCE Save/Restore                                          MTB-745
+
+            recover_volume_log rpv -wd
+
+       Mount  the last  volume backup  tape for  the volume  backup
+       group which includes  the RPV.  The volume name  of the last
+       tape  should be recorded  in the tape  log, as described  in
+       Section  10  under  "Backup  Tape  Logs."   If volume backup
+       operations  were ongoing  at the  time of  disk failure, you
+       should mount the tape which was being written at the time of
+       failure.
+
+  12.  Reload the new RPV using the volume reloader, by issuing the
+       reload_volume  command with  the -pvname,  -operator, -save,
+       and -wd control arguments.  For example:
+
+            reload_volume -pvname rpv -operator Jones -wd -save
+
+       Mount tapes as requested by the reload_volume command.  When
+       all tapes have been reloaded, continue with the next step.
+
+  13.  Shutdown Multics on the temporary RPV.                       |
+
+  14.  If the RPV was reloaded onto a spare volume and the original
+       RPV is partially  readable, you may want to try  to copy the
+       contents of the CONF, FILE, DUMP and LOG partitions onto the |
+       new  RPV, as  described in   Section 10  under "Recovery  of |
+       Partitions after RLV Volume Recovery."                       |
+
+  15.  If the newly reloaded RPV is  not mounted on the proper disk
+       drive for normal  operation, move the new RPV  to the proper
+       disk drive.
+
+  16.  Boot BCE on the newly reloaded RPV, according to normal site |
+       procedures.   If reloading  was  performed  on a  spare disk |
+       volume rather than on the original RPV, then the contents of |
+       the CONF, BCE, and FILE  partitions have been lost.  In BCE, |
+       you will have  to reload the config deck from  a config file |
+       read  off the  BCE tape,  using the  BCE "config &lt;deckname&gt;"
+       command.   Make  adjustments  to  the  configuration file as
+       necessary, to reflect the current hardware configuration and
+       disk volume locations.
+
+  17.  Boot Multics according to normal site procedures.
+
+  18.  Perform the procedures for  salvaging, quota adjustment, and
+       connection failure  detection described in Section  10 under
+       "Disk  Volume  Post-Recovery  Procedures."   This  completes
+       recovery of the RPV.
+
+   Recovery  of  a  NonRPV  Root  Volume  with  BCE  RESTORE/Volume |
+  Reloading                                                         |
+
+
+  MTB-745                                          BCE Save/Restore
+
+       If a disk volume failure occurs on a volume which is part of
+  the Root Logical Volume (RLV), but  is not the RPV, the following
+  procedure can be used to recover the contents of that volume from
+| BCE  SAVE  tapes  and  volume  backup  tapes.   See Section 9 for
+  general information and more details  on volume backup and volume
+  reloading.   All  of  the  commands  used  in  this procedure are
+  described   in  the   Multics  Administration,   Maintenance  and
+  Operations Commands manual, Order No.  GB64.
+
+  1.   If the  system has not  already crashed, attempt  to recover
+       from  the failure by  following the procedures  described in
+       Section 10  under "Recovering From Disk  Failures."  If that
+       corrects  the  problem,  then   skip  the  remaining  steps.
+       Otherwise,  use the  last procedure  under "Recovering  From
+       Disk Failures" to shut down or crash the system.
+
+  2.   Consult with your Customer Service Representative to correct
+       any hardware failure that is  occurring.  Have him repair or
+       replace any damaged hardware.
+
+  To test the  original root volume, or to recover  its data onto a
+| spare disk volume, you will need  to boot BCE, and Multics on the
+| RPV.
+
+| 3.   Boot BCE on the RPV, as described in the Operators' Guide to
+       Multics, Order No.  GB61.
+
+  4.   If your  Customer Service Representative believes  there has
+       been no  physical damage to  the original root  disk volume,
+|      attempt  to read  it using   the BCE  TEST_DISK command,  as
+       described  in  Section  10  under  "Extent  of  Disk  Volume
+       Failure."
+
+  5.   If  only transient errors  are encountered when  reading the
+       original root
+
+       volume, follow the procedures  described in Section 10 under
+       "Recovering  from Transient  Disk Volume  Failure," and skip
+       the rest of these steps.
+
+  6.   If the  original root volume  is only partially  damaged and
+       you   decide  that  loss   of  the  unreadable   records  is
+       acceptable,  follow the  procedures described  in Section 10
+       under  "Recovering from  Partial Disk  Volume Failure,"  and
+       skip the rest of these steps.
+
+  The steps  below attempt to  reload root volume  information from
+  volume backup tapes onto a spare disk volume.  These steps assume
+  that the original root volume  is totally unreadable, or that the
+  amount of lost data caused  by unreadable records is unacceptably
+  high.  If your Customer  Service Representative believes that the
+  original  root volume is  physically damaged (i.e.,  scratched or
+
+
+  BCE Save/Restore                                          MTB-745
+
+  warped), then  replace it with  a spare volume  which has already
+  been formatted and tested, as described in Section 10 under
+
+  "Preformatted Disk Volumes."  Otherwise, you can reload data onto
+  the original root volume.
+
+  7.   Mount the disk volume to be reloaded on any available drive.
+
+  8.   Create  a  RESTORE  control  file  that  will  identify  the |
+       physical volume,  then use the  BCE RESTORE command  to load |
+       information from  the BCE SAVE  tapes onto the  volume.  For |
+       example:                                                     |
+
+            qx                                                      |
+            a                                                       |
+            td tapa_01                                              |
+            td tapa_02                                              |
+            ts ROOT                                                 |
+            pv root2 dska_02                                        |
+            f                                                      |
+            w root2_restore                                         |
+            q                                                       |
+            restore root2_restore                                   |
+
+  9.   Remove all  disk volumes from  the root config  card, except *
+       for the RPV.  If any  part config cards identify the damaged
+       disk volume, remove those part cards from the config deck.
+
+  10.  Boot Multics on the RPV, coming up to Multics ring 1 command
+       level,  as described  in  the  Operators' Guide  to Multics,
+       Order No.  GB61.
+
+  11.  Convert  the disk  drive on   which the  new root  volume is
+       mounted to an I/O  drive, using the set_drive_usage command.
+       For example:
+
+            sdu dska_05 io
+
+  12.  Recover  the  volume  log  for  the  root  volume  using the
+       recover_volume_log  command with  the -wd  control argument.
+       For example:
+
+            recover_volume_log root2 -wd
+
+       Mount  the last  volume backup  tape for  the volume  backup
+       group which includes  the RLV.  The volume name  of the last
+       tape  should be recorded  in the tape  log, as described  in
+       Section  10  under  "Backup  Tape  Logs."   If volume backup
+       operations  were ongoing  at the  time of  disk failure, you
+       should mount the tape which was being written at the time of
+       failure.
+
+
+  MTB-745                                          BCE Save/Restore
+
+  13.  Reload  the new  root volume  using the  volume reloader  by
+       issuing   the  reload_volume   command  with   the  -pvname,
+       -operator, -wd and -save control arguments.  For example:
+
+            reload_volume -pvname root2 -operator Jones -wd -save
+
+       Mount tapes as requested by the reload_volume command.  When
+       all tapes have been reloaded, continue with the next step.
+
+  14.  Shutdown the Multics running on the RPV.
+
+  15.  Restore  the root  and part   config cards  to their  normal
+       values, either  by retyping the changed cards  or by issuing
+       the BCE  "config &lt;deckname&gt;" command  to load a  new copy of
+       the config deck from a BCE file.
+
+* 16.  If the root volume was reloaded  onto a spare volume and the
+       original volume  is partially readable, you may  want to try
+|      to copy the contents of the DUMP partition onto the new root
+|      volume, if  this partition was  on the damaged  root volume.
+       Follow the procedure described in Section 10 under "Recovery
+       of Partitions after RLV Volume  Recovery."  This can only be
+       done if  the location of  partitions was not  changed on the
+       new root.
+
+  17.  If  the newly  reloaded root  volume is  not mounted  on the
+       proper disk  drive for normal operation, move  the volume to
+       the proper disk drive.
+
+| 18.  Boot BCE  on the RPV,  according to normal  site procedures.
+       Make adjustments to the  configuration file as necessary, to
+       reflect the  current hardware configuration and  disk volume
+       locations.
+
+  19.  Boot Multics according to normal site procedures.
+
+  20.  Perform the procedures for  salvaging, quota adjustment, and
+       connection failure  detection described in Section  10 under
+       "Disk  Volume  Post-Recovery  Procedures."   This  completes
+       recovery of the root volume.
+
+|  Recovery of a NonRoot Volume with BCE RESTORE/Volume Reloading
+
+       If  a disk volume  failure occurs on  a volume which  is not
+  part of  the Root Logical  Volume (RLV), the  following procedure
+| can be used to recover the  contents of that volume from BCE SAVE
+| and volume  backup tapes.  See Section 9  for general information
+  and more details  on volume backup and volume  reloading.  All of
+  the commands used in this  procedure are described in the Multics
+  Administration, Maintenance and Operations Commands manual, Order
+  No.  GB64.
+
+
+  BCE Save/Restore                                          MTB-745
+
+  1.   If the  system has not  already crashed, attempt  to recover
+       from  the failure by  following the procedures  described in
+       Section 10  under "Recovering From Disk  Failures."  If that
+       corrects  the  problem,  then   skip  the  remaining  steps.
+       Otherwise,  use the  last procedure  under "Recovering  From
+       Disk Failures" to shut down or crash the system.
+
+  2.   Consult with your Customer Service Representative to correct
+       any hardware failure that is  occurring.  Have him repair or
+       replace any damaged hardware.
+
+  To test the original volume, or  to recover its data onto a spare
+  disk volume, you will need to boot BCE, and Multics on the RLV.   |
+
+       3.
+       Boot BCE,  as described in the Operators'  Guide to Multics, |
+       Order No.  GB61.
+
+  4.   If your  Customer Service Representative believes  there has
+       been no physical damage to the original disk volume, attempt
+       to read it using the  BCE TEST_DISK command, as described in |
+       Section 10 under "Extent of Disk Volume Failure."
+
+  5.   If  only transient errors  are encountered when  reading the
+       original volume, follow the  procedures described in Section
+       10  under "Recovering  from Transient  Disk Volume Failure,"
+       and skip the rest of these steps.
+
+  6.   If  the original  volume is  only partially  damaged and you
+       decide  that loss of  the unreadable records  is acceptable,
+       follow  the   procedures  described  in  Section   10  under
+       "Recovering from Partial Disk  Volume Failure," and skip the
+       rest of these steps.
+
+  The steps below attempt to  reload information from volume backup
+  tapes  onto a  spare disk  volume.  These  steps assume  that the
+  original volume is totally unreadable, or that the amount of lost
+  data caused by unreadable records  is unacceptably high.  If your
+  Customer Service Representative believes that the original volume
+  is physically  damaged (i.e., scratched or  warped), then replace
+  it  with a  spare volume   which has  already been  formatted and
+  tested,  as  described  in  Section  10  under "Preformatted Disk
+  Volumes."  Otherwise, you can reload  data onto the original disk
+  volume.
+
+  7.   Mount the disk volume to be reloaded on any available drive.
+
+  8.   Create  a  RESTORE  control  file  that  will  identify  the |
+       physical volume,  then use the  BCE RESTORE command  to load |
+       information from  the BCE SAVE  tapes onto the  volume.  For |
+       example:                                                     |
+
+
+  MTB-745                                          BCE Save/Restore
+
+|           qx
+|           a
+|           td tapa_01
+|           td tapa_02
+|           ts Xpublic
+|           pv xpub02 dska_06
+|           f
+|           w xpub_restore
+|           q
+|           restore xpub_restore
+
+| 9.   Boot Multics on the RLV, coming up to Multics ring 1 command
+       level,  as described  in  the  Operators' Guide  to Multics,
+       Order No.  GB61.
+
+  10.  To  complete  the  boot,  delete  the  logical  volume which
+       contains  the  damaged  physical  volume,  using  the del_lv
+       command.  For example:
+
+            del_lv Xpublic
+
+  11.  Issue the standard command to move to ring 4:
+
+            standard
+
+  12.  If the system can run reasonably without the deleted logical
+       volume,  warn users  (via  a  message_of_the_day, or  with a
+       login  warning set  by the  word command)  that the  logical
+       volume has been deleted for repair operations.  For example:
+
+            word login Xpublic volume is offline for repairs.
+
+       If  the system  cannot  run  reasonably without  the deleted
+       logical volume, put the system into a special session, using
+       the multics  and go commands.  This will  prevent users from
+       logging in:
+
+            multics
+            go
+
+  13.  Convert the disk drive on which the new volume is mounted to
+       an  I/O  drive,  using  the  set_drive_usage  command.   For
+       example:
+
+            sdu dska_06 io
+
+  14.  Login the volume reloader  and issue a reload_volume command
+       with  the -operator,  -pvname, and  -save control arguments.
+       For example:
+
+            login Volume_Reloader.Daemon vrld
+            r vrld reload_volume -pvname xpub02 -operator Jones -save
+
+
+  BCE Save/Restore                                          MTB-745
+
+       Mount tapes as the reloader  asks for them; it will indicate
+       when all necessary tapes have been reloaded.
+
+       If   the  reloader   indicates  that   the  volume   log  is
+       unavailable, recover the volume log for the volume using the
+       recover_volume_log command.  For example:
+
+            r vrld recover_volume_log xpub02
+
+       Mount  the last  volume backup  tape for  the volume  backup
+       group which includes the failing volume.  The volume name of
+       the  last  tape  should  be  recorded  in  the  tape log, as
+       described in Section 10 under "Backup Tape Logs."  If volume
+       backup operations were ongoing at  the time of disk failure,
+       you  should mount the  tape which was  being written at  the
+       time of  failure.  After the volume log  has been recovered,
+       then reissue the reload_volume command, as shown above.
+
+  15.  After volume reloading is  complete, issue a set_drive_usage
+       command to convert the drive back into storage system usage.
+       For example:
+
+            sdu dska_06 ss
+
+  16.  Issue the  add_vol command to  inform the system  of the new
+       location for the reloaded disk volume.  For example:
+
+            add_vol xpub02 dska_06
+
+  17.  Issue  the   add_lv  command  to  add   the  logical  volume
+       containing the reloaded disk volume.  For example:
+
+            add_lv Xpublic
+
+  18.  If  the system is  in special session,  return it to  normal
+       session:
+
+            word login
+            maxu auto
+            abs start
+            abs maxu auto
+
+  19.  Perform the procedures for  salvaging, quota adjustment, and
+       connection failure  detection described in Section  10 under
+       "Disk  Volume  Post-Recovery  Procedures."   This  completes
+       recovery of the volume.
+
+   Disk Volume Recovery via BCE RESTORE/Hierarchy Reloading         |
+
+       The BCE RESTORE/hierarchy reloading  strategy can be used to |
+  reload  a volume  which is  not part  of the  Root Logical Volume
+
+
+  MTB-745                                          BCE Save/Restore
+
+  (single volume reload), to reload  the entire Root Logical Volume
+  (RLV  reload),  or  to  reload  the  entire  hierarchy  (complete
+| reload).
+|  BCE RESTORE/hierarchy reloading cannot be used to recover only a
+  single root volume (either the RPV or an RLV volume).  A complete
+  or RLV reload must be performed to recover single RLV volumes.
+
+|      The BCE RESTORE/hierarchy reload strategy involves replacing
+  physically damaged volumes with  spare disk volumes, initializing
+  these  volumes,  and  then  reloading  complete, consolidated and
+  incremental  dump tapes  onto  them  in chronological  order (the
+  order in which they were written).
+
+   Hierarchy Reload of RLV versus Reload of All Volumes
+
+       The  loss of  a part  of the  Root Logical  Volume (RLV)  is
+  always  very  serious.   The  recovery  operation  when reloading
+  hierarchy dump  tapes is more complex than  when reloading volume
+  dump tapes.  When reloading hierarchy  dump tapes, the entire RLV
+  must be reloaded rather than just the damaged root volume.
+
+       The  need to reload  the entire RLV  stems from the  way the
+  hierarchy reloader works.  If a directory being reloaded does not
+  already  exist, the  hierarchy reloader  uses the  next available
+  VTOCE to hold the directory, rather than placing the directory in
+  the same VTOCE from which it was dumped.  Because directories are
+  being reloaded into different locations, superior directories can
+  lose track of the new location, causing connection failures.  The
+  only method of avoiding such connection failures is to reload the
+  entire RLV.
+
+       Another factor adding to the complexity of single volume and
+  RLV  hierarchy  reloads  is  the  requirement  of  the  hierarchy
+  reloader that it  operate on a consistent copy  of the hierarchy.
+| After  a  BCE  RESTORE  of  one  or  several volumes is complete,
+  directory  salvaging  and   physical  volume  connection  failure
+  detection operations must be performed to restore the consistency
+  of  the  hierarchy  before  the  hierarchy  reload  is performed.
+  Directory  salvage operations are  needed to delete  branches for
+| entries which  were deleted after  the BCE SAVE  tapes were made.
+| Reverse connection failure detection  is needed to recover VTOCEs
+| for  segments which were  deleted after the  BCE SAVE tapes  were
+  made (either by adopting these  segments or by garbage collecting
+  their  VTOCEs).   The  considerable  amount  of  time required to
+  perform these operations must be weighed against the simpler, but
+  sometimes  longer procedure  of doing  a complete  reload of  the
+  entire system.
+
+|  Recovery of All Volumes with BCE RESTORE/Hierarchy Reloading
+
+
+  BCE Save/Restore                                          MTB-745
+
+       If a  disk volume failure  occurs on several  different disk
+  volumes (either on volumes of the RLV or on nonroot volumes), the
+  following procedure  can be used  to recover the  contents of all
+  volumes on the  system from BCE SAVE and  hierarchy backup tapes. |
+  This   procedure   is   often   referred   to   as   a  "complete |
+  RESTORE/reload" of the hierarchy.                                 |
+
+       Note that it is possible to  recover just the volumes of the
+  RLV,  or  just  a  single  nonroot  volume.   Procedures for such
+  recovery  operations are described  later in this  appendix under |
+  "Recovery  of  the  Root  Logical  Volume  with  BCE  RESTORE and |
+  Hierarchy Reloading"  and "Recovery of a Nonroot  Volume with BCE |
+  RESTORE Hierarchy Reloading".  However, these recovery operations |
+  are  more complex than  a complete RESTORE/reload  operation, and |
+  they may be more time-consuming as well.  You should consider the |
+  steps  involved in each  type of BCE  RESTORE/hierarchy reloading |
+  procedure  carefully,  and  choose  the  best  procedure for your |
+  particular circumstances.                                         |
+
+       See Section  9 for general  information and more  details on
+  hierarchy  backup and hierarchy  reloading.  All of  the commands
+  used   the  procedure   below  are   described  in   the  Multics
+  Administration, Maintenance and Operations Commands manual, Order
+  No.  GB64.
+
+  1.   If the  system has not  already crashed, attempt  to recover
+       from  the failure by  following the procedures  described in
+       Section 10  under "Recovering From Disk  Failures".  If that
+       corrects  the  problem,  then   skip  the  remaining  steps.
+       Otherwise,  use the  last procedure  under "Recovering  From
+       Disk Failures" to shut down or crash the system.
+
+  2.   Consult with your Customer Service Representative to correct
+       any hardware failure that is  occurring.  Have him repair or
+       replace any damaged hardware.
+
+  To test the  damaged disk volumes, or to recover  their data onto
+  spare disk volumes, you will need  to boot BCE, and Multics on an |
+  RPV.  The  RPV to be used  for testing can be  obtained in any of |
+  the following ways:
+
+  o    If the  RPV of the production  Multics system is not  one of
+       the damaged disk  volumes, you can boot BCE  on the original |
+       RPV for testing and reloading the other disk volumes.
+
+  o    If your site has prepared a one- or two-volume "test system"
+       for  hardware and software  checkout purposes, you  can boot
+       this  test  system  for  use  in  testing  and reloading the
+       original RPV.
+
+
+  MTB-745                                          BCE Save/Restore
+
+| o    You can restore the BCE SAVE tapes for your RPV onto a spare
+       disk volume for  use as the temporary RPV.   The actual data
+       on  the temporary  RPV is  not important  since it  will not
+       become  part of  the production  hierarchy; an  older set of
+       SAVE tapes can be used, as long  as the saved RPV is for the
+       Multics release you are currently running.
+
+|      You will have to boot BCE  on the temporary RPV, and specify
+|      "cold"  to  the  "Enter  rpv  data:"  prompt  to  allow  the
+|      temporary RPV  to be properly initialized.   After restoring
+|      the RPV, remember to update  the root and part configuration
+|      cards to describe only the temporary RPV.
+
+| 3.   Boot BCE on  the chosen RPV, as described  in the Operators'
+       Guide to Multics, Order No.  GB61.
+
+  4.   If your  Customer Service Representative believes  there has
+       been  no  physical  damage  to  the  original  disk volumes,
+|      attempt  to read  them using  the BCE  TEST_DISK command, as
+       described  in  Section  10  under  "Extent  of  Disk  Volume
+       Failure."
+
+  5.   If  only transient errors  are encountered when  reading the
+       original volumes, follow the procedures described in Section
+       10  under "Recovering  from Transient  Disk Volume Failure,"
+       and skip the rest of these steps.
+
+  6.   If the  original volumes are only partially  damaged and you
+       decide  that loss of  the unreadable records  is acceptable,
+       follow  the   procedures  described  in  Section   10  under
+       "Recovering from Partial Disk  Volume Failure," and skip the
+       rest of these steps.
+
+| The steps below  attempt to reload information from  BCE SAVE and
+  hierarchy  backup tapes  onto  spare  disk volumes.   These steps
+  assume that the original volumes  are totally unreadable, or that
+  the  amount  of  lost  data   caused  by  unreadable  records  is
+  unacceptably  high.   If  your  Customer  Service  Representative
+  believes that one or more  of the original volumes are physically
+  damaged (i.e.,  scratched or warped), then they  must be replaced
+  with spare volumes which have  already been formatted and tested,
+  as  described in  Section 10  under "Preformatted  Disk Volumes."
+  Otherwise, you can reload data onto the original disk volumes.
+
+  7.   Mount  the disk  volumes to   be reloaded  on any  available
+       drive.  You can use the original disk drives if the Customer
+       Service  Representative  says  they   are  in  good  working
+       condition.
+
+  8.   If the  original RPV was  physically damaged, then  you must
+|      reboot  BCE on the  spare volume which  will become the  new
+       RPV.  The spare disk volume should be properly formatted and
+
+
+  BCE Save/Restore                                          MTB-745
+
+       tested as  described in Section 10  under "Preformatted Disk |
+       Volumes".  You will  have to boot BCE on  the temporary RPV, |
+       using an input  of "cold" to the "Enter RPV  Data:" query to |
+       specify that the RPV is to be initialized.                   |
+
+       Similarly,  if you are  running on a  temporary RPV or  on a
+       test system and the original  RPV is not physically damaged,
+       then you must reboot BCE on the original RPV.                |
+
+  9.   If the RPV was reloaded onto a spare volume and the original
+       RPV is partially  readable, you may want to try  to copy the
+       contents of the CONF, FILE, DUMP and LOG partitions onto the |
+       new  RPV, as  described in   Section 10  under "Recovery  of |
+       Partitions after RLV Volume Recovery."
+
+  10.  Now  you need  to either  create RESTORE  control files that |
+       will define the volumes to restore, or use the control files |
+       that were created  for use when the BCE SAVE  was done.  You |
+       can  either  restore  one  or  multiple  volume  sets.   For |
+       example:                                                     |
+
+            restore -set tape_devs_1 root_lv -set tape_devs_2       |
+            c public_lv                                            |
+
+  11.  Once the BCE SAVE tapes  have been restored, boot Multics on |
+       the newly reloaded  RPV, coming up to ring  1 command level,
+       as described  in the Operators' Guide to  Multics, Order No.
+       GB61.
+
+  12.  Attach all logical volumes by typing:
+
+            add_lv -all
+
+  13.  Use  the reload  command to  read, in  forward chronological
+       order, all hierarchy consolidated and incremental dump tapes
+       made since the BCE SAVE tapes were created:                  |
+
+            reload -nomap
+
+       When all  tapes have been  reloaded, continue with  the next
+       step.
+
+  14.  Boot Multics according to normal site procedures.
+
+  15.  Perform the procedures for  salvaging, quota adjustment, and
+       connection failure  detection described in Section  10 under
+       "Disk  Volume  Post-Recovery  Procedures."   This  completes
+       recovery of the volume.
+
+   Recovery of  the Root Logical Volume  with BCE RESTORE/Hierarchy |
+  Reloading                                                         |
+
+
+  MTB-745                                          BCE Save/Restore
+
+       If a disk volume failure occurs  on one or more disk volumes
+  of the  RLV, the following procedure  can be used to  recover the
+| contents of  all volumes of the  RLV from BCE SAVE  and hierarchy
+| backup  tapes.  This procedure  is often referred  to as an  "RLV
+| RESTORE/reload".   It   it  sometimes  better  than   a  complete
+| RESTORE/reload  because it can  preserve later copies  of nonroot
+  segments than those appearing on the backup tapes.
+
+       See Section  9 for general  information and more  details on
+  hierarchy  backup and hierarchy  reloading.  All of  the commands
+  used   the  procedure   below  are   described  in   the  Multics
+  Administration, Maintenance and Operations Commands manual, Order
+  No.  GB64.
+
+  1.   If the  system has not  already crashed, attempt  to recover
+       from  the failure by  following the procedures  described in
+       Section 10  under "Recovering From Disk  Failures."  If that
+       corrects  the  problem,  then   skip  the  remaining  steps.
+       Otherwise,  use the  last procedure  under "Recovering  From
+       Disk Failures" to shut down or crash the system.
+
+  2.   Consult with your Customer Service Representative to correct
+       any hardware failure that is  occurring.  Have him repair or
+       replace any damaged hardware.
+
+  To test the  damaged disk volumes, or to recover  their data onto
+| spare disk volumes, you will need  to boot BCE, and Multics on an
+| RPV.  The  RPV to be used  for testing can be  obtained in any of
+  the following ways:
+
+  o    If the  RPV of the production  Multics system is not  one of
+|      the damaged disk  volumes, you can boot BCE  on the original
+       RPV for testing and reloading the other disk volumes.
+
+  o    If your site has prepared a one- or two-volume "test system"
+       for  hardware and software  checkout purposes, you  can boot
+       this  test  system  for  use  in  testing  and reloading the
+       original RPV.
+
+| o    You can restore the BCE SAVE tapes for your RPV onto a spare
+       disk volume for  use as the temporary RPV.   The actual data
+       on  the temporary  RPV is  not important  since it  will not
+       become  part of  the production  hierarchy; an  older set of
+       SAVE tapes can be used, as long  as the saved RPV is for the
+       Multics release you are currently running.
+
+|      You will have to boot BCE  on the temporary RPV, and specify
+|      "cold"  to  the  "Enter  rpv  data:"  prompt  to  allow  the
+|      temporary RPV  to be properly initialized.   After restoring
+|      the RPV, remember to update  the root and part configuration
+|      cards to describe only the temporary RPV.
+
+
+  BCE Save/Restore                                          MTB-745
+
+  3.   Boot BCE on  the chosen RPV, as described  in the Operators' |
+       Guide to Multics, Order No.  GB61.
+
+  4.   If your  Customer Service Representative believes  there has
+       been  no  physical  damage  to  the  original  disk volumes,
+       attempt  to read  them using  the BCE  TEST_DISK command, as |
+       described  in  Section  10  under  "Extent  of  Disk  Volume
+       Failure."
+
+  5.   If  only transient errors  are encountered when  reading the
+       original volumes, follow the procedures described in Section
+       10  under "Recovering  from Transient  Disk Volume Failure,"
+       and skip the rest of these steps.
+
+  6.   If the  original volumes are only partially  damaged and you
+       decide  that loss of  the unreadable records  is acceptable,
+       follow  the   procedures  described  in  Section   10  under
+       "Recovering from Partial Disk  Volume Failure," and skip the
+       rest of these steps.
+
+  The steps below  attempt to reload information from  BCE SAVE and |
+  hierarchy  backup tapes  onto  spare  disk volumes.   These steps
+  assume that the original volumes  are totally unreadable, or that
+  the  amount  of  lost  data   caused  by  unreadable  records  is
+  unacceptably  high.   If  your  Customer  Service  Representative
+  believes that one or more  of the original volumes are physically
+  damaged (i.e.,  scratched or warped), then they  must be replaced
+  with spare volumes which have  already been formatted and tested,
+  as  described in  Section 10  under "Preformatted  Disk Volumes."
+  Otherwise, you can reload data onto the original disk volumes.
+
+  7.   Mount  the disk  volumes to   be reloaded  on any  available
+       drive.  You can use the original disk drives if the Customer
+       Service  Representative  says  they   are  in  good  working
+       condition.
+
+  8.   If the  original RPV was  physically damaged, then  you must
+       reboot  BCE on the  spare volume which  will become the  new |
+       RPV.  The spare disk volume should be properly formatted and
+       tested as  described in Section 10  under "Preformatted Disk |
+       Volumes".  You will  have to boot BCE on  the temporary RPV, |
+       using an input  of "cold" to the "Enter RPV  Data:" query to |
+       specify that the RPV is to be initialized.                   |
+
+       Similarly,  if you are  running on a  temporary RPV or  on a
+       test system and the original  RPV is not physically damaged,
+       then you must reboot BCE on the original RPV.                |
+
+  9.   If the RPV was reloaded onto a spare volume and the original
+       RPV is partially  readable, you may want to try  to copy the
+       contents of the CONF, FILE, DUMP and LOG partitions onto the |
+
+
+  MTB-745                                          BCE Save/Restore
+
+|      new  RPV, as  described in   Section 10  under "Recovery  of
+       Partitions after RLV Volume Recovery."
+
+| 10.  Now  you need  to either  create RESTORE  control files that
+|      will define the volumes to restore, or use the control files
+|      that were created  for use when the BCE SAVE  was done.  For
+|      example:
+
+|           restore -set tape_devs_1 root_lv
+
+| 11.  Once  the BCE SAVE  tapes have been  restored, boot BCE  and
+       Multics  on the  newly reloaded   RPV, coming  up to  ring 1
+       command  level,  as  described  in  the  Operators' Guide to
+       Multics, Order No.  GB61.
+
+  12.  Attach all logical volumes by typing:
+
+            add_lv -all
+
+  13.  Salvage the Multics hierarchy by typing:
+
+            salvage_dirs -check_vtoce -delete_connection_failure
+
+       to delete  directory branches for entries  that were present
+|      when  the  BCE  SAVE  was  performed,  but  have  since been
+       deleted.
+
+  14.  At  this  point,  you  must  decide  whether  or  not to try
+       performing  segment   adoption  (to  create   new  directory
+|      branches  to preserve  the VTOCEs  and segment  contents for
+|      segments created since the BCE SAVE tapes were written).  If
+|      you're  going to  attempt segment  adoption, you  must do it
+|      now, before  copies of segments  created since the  BCE SAVE
+|      get reloaded from the backup tapes.
+
+       You  must  also  decide  whether  there  is  enough space on
+       nonroot volumes to receive  copies of segments created since
+|      the  BCE SAVE  tapes were  written.  If  any nonroot logical
+       volumes do not  have sufficient space to hold  new copies of
+       all segments created  since the SAVE, you will  have to make
+       space  on  these  logical  volumes.   This  can  be  done by
+       "garbage   collection:"  looking   for  reverse   connection
+       failures  (VTOCEs  that  have   no  directory  branch),  and
+       deleting these VTOCEs.
+
+       If you decide to perform either of these functions, continue
+       with step 15.  Otherwise, continue with step 19.
+
+  15.  Issue the standard command to move to ring 4:
+
+            standard
+
+
+  BCE Save/Restore                                          MTB-745
+
+  16.  Enter admin mode, using the admin command.
+
+  17.  Use the  sweep_pv command as  described in Section  12 under
+       "Segment  Adoption"   and  "How  to  Perform   VTOC  Garbage
+       Collection on a Pack."
+
+  18.  After performing  either of these functions,  you must leave
+       admin mode, shutdown Multics  (to BCE level), reboot Multics
+       to ring 1 command level, and add all logical volumes:
+
+            ame
+            shut
+            boot
+            add_lv -all
+
+  19.  Use  the reload  command to  read, in  forward chronological
+       order, all hierarchy consolidated and incremental dump tapes
+       made since the BCE SAVE tapes were created:                  |
+
+            reload -nomap
+
+       If reload  error files get created, stop  the reload process
+       (at the end of a tape).  Cross out to ring 4 and enter admin
+       mode:
+
+            standard
+            admin
+
+       Print the error files.  If  the errors are occurring because
+       one or more logical volumes  are full, you must perform VTOC
+       garbage collection via sweep_pv, as described in Section 12.
+       Then  you must  leave admin  mode, shutdown  Multics (to BCE
+       level), reboot Multics to ring  1 command level, and add all
+       logical volumes:
+
+            ame
+            shut
+            boot
+            add_lv -all
+
+       Finally, you  must start the  reload process again  with the
+       first tape for which an error file was created.
+
+  20.  When all tapes have been reloaded, shutdown Multics:
+
+            shut
+
+  21.  Boot Multics according to normal site procedures.
+
+  22.  Perform the procedures for  salvaging, quota adjustment, and
+       connection failure  detection described in Section  10 under
+
+
+  MTB-745                                          BCE Save/Restore
+
+       "Disk  Volume  Post-Recovery  Procedures."   This  completes
+       recovery of the volume.
+
+|  Recovery  of   a  NonRoot  Volume  with   BCE  RESTORE/Hierarchy
+| Reloading
+
+       If a disk volume failure occurs  on one or more nonroot disk
+  volumes,  the following  procedure can   be used  to recover  the
+| contents  of the  damaged volumes   from BCE  SAVE and  hierarchy
+| backup tapes.  This  procedure is often referred to  as a "single
+| volume RESTORE/reload".
+
+       See Section  9 for general  information and more  details on
+  hierarchy  backup and hierarchy  reloading.  All of  the commands
+  used   the  procedure   below  are   described  in   the  Multics
+  Administration, Maintenance and Operations Commands manual, Order
+  No.  GB64.
+
+  1.   If the  system has not  already crashed, attempt  to recover
+       from  the failure by  following the procedures  described in
+       Section 10  under "Recovering From Disk  Failures."  If that
+       corrects  the  problem,  then   skip  the  remaining  steps.
+       Otherwise,  use the  last procedure  under "Recovering  From
+       Disk Failures" to shut down or crash the system.
+
+  2.   Consult with your Customer Service Representative to correct
+       any hardware failure that is  occurring.  Have him repair or
+       replace any damaged hardware.
+
+  To test the  damaged disk volumes, or to recover  their data onto
+| spare disk volumes, you will need  to boot BCE, and Multics on an
+| RPV.   The RPV  to be  used for  testing can  be the  RPV of  the
+  production Multics system.
+
+| 3.   Boot BCE,  as described in the Operators'  Guide to Multics,
+       Order No.  GB61.
+
+  4.   If your  Customer Service Representative believes  there has
+       been  no  physical  damage  to  the  original  disk volumes,
+|      attempt  to read  them using  the BCE  TEST_DISK command, as
+       described  in  Section  10  under  "Extent  of  Disk  Volume
+       Failure."
+
+  5.   If  only transient errors  are encountered when  reading the
+       original volumes, follow the procedures described in Section
+       10  under "Recovering  from Transient  Disk Volume Failure,"
+       and skip the rest of these steps.
+
+  6.   If the  original volumes are only partially  damaged and you
+       decide  that loss of  the unreadable records  is acceptable,
+       follow  the   procedures  described  in  Section   10  under
+
+
+  BCE Save/Restore                                          MTB-745
+
+       "Recovering from Partial Disk Volume Failures," and skip the
+       rest of these steps.
+
+  The steps below  attempt to reload information from  BCE SAVE and |
+  hierarchy  backup tapes  onto  spare  disk volumes.   These steps
+  assume that the original volumes  are totally unreadable, or that
+  the  amount  of  lost  data   caused  by  unreadable  records  is
+  unacceptably  high.   If  your  Customer  Service  Representative
+  believes that one or more  of the original volumes are physically
+  damaged (i.e.,  scratched or warped), then they  must be replaced
+  with spare volumes which have  already been formatted and tested,
+  as  described in  Section 10  under "Preformatted  Disk Volumes."
+  Otherwise, you can reload data onto the original disk volumes.
+
+  7.   Mount  the disk  volumes to   be reloaded  on any  available
+       drive.  You can use the original disk drives if the Customer
+       Service  Representative  says  they   are  in  good  working
+       condition.
+
+  8.   Now  you need  to either  create RESTORE  control files that |
+       will define the volumes to restore, or use the control files |
+       that were created  for use when the BCE SAVE  was done.  You |
+       can  either  restore  one  or  multiple  volume  sets.   For |
+       example:                                                     |
+
+            restore -set tape_devs_1 public_lv -set tape_devs_2     |
+            c xpublic_lv                                           |
+
+  9.   Once the BCE SAVE tapes  have been restored, boot Multics on |
+       the newly reloaded  RPV, coming up to ring  1 command level,
+       as described  in the Operators' Guide to  Multics, Order No.
+       GB61.
+
+  10.  Attach all logical volumes by typing:
+
+            add_lv -all
+
+  11.  Issue the standard command to move to ring 4:
+
+            standard
+
+  12.  Enter admin mode, using the admin command.
+
+  13.  Perform "garbage collection" on  the volumes being reloaded,
+       looking for reverse connection failures (VTOCEs that have no
+       directory branch), and deleting these VTOCEs.  Such segments
+       have  been moved or  deleted since the  BCE SAVE tapes  were |
+       written.  Use  the sweep_pv command as  described in Section
+       12 under "How to Perform VTOC Garbage Collection on a Pack."
+
+
+  MTB-745                                          BCE Save/Restore
+
+  14.  Leave  admin mode, shutdown  Multics (to BCE  level), reboot
+       Multics  to  ring  1  command  level,  and  add  all logical
+       volumes:
+
+            ame
+            shut
+            boot
+            add_lv -all
+
+  15.  Use  the reload  command to  read, in  forward chronological
+       order, all hierarchy consolidated and incremental dump tapes
+|      made since the BCE SAVE tapes were created:
+
+            reload -nomap -error_on
+
+       Do not use the -pvname control argument.  The reload command
+       will   only   reload   segments    from   the   tape   whose
+       date-contents-modified  is later  than that  of the existing
+       segment  on disk,  or for  which there  is no  existing disk
+       segment.
+
+       If reload  error files get created, stop  the reload process
+       (at the end of a tape).  Cross out to ring 4 and enter admin
+       mode:
+
+            standard
+            admin
+
+       Print the error files.  If  the errors are occurring because
+       one or more logical volumes  are full, you must perform VTOC
+       garbage collection via sweep_pv, as described in Section 12.
+       Then  you must  leave admin  mode, shutdown  Multics (to BCE
+       level), reboot Multics to ring  1 command level, and add all
+       logical volumes:
+
+            ame
+            shut
+            boot
+            add_lv -all
+
+       Finally, you  must start the  reload process again  with the
+       first tape for which an error file was created.
+
+  16.  When all tapes have been reloaded, shutdown Multics:
+
+            shut
+
+  17.  Boot Multics according to normal site procedures.
+
+  18.  Perform the procedures for  salvaging, quota adjustment, and
+       connection failure  detection described in Section  10 under
+
+
+  BCE Save/Restore                                          MTB-745
+
+       "Disk  Volume  Post-Recovery  Procedures."   This  completes
+       recovery of the volumes.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

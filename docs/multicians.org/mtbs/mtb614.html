@@ -1,0 +1,1425 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : The Mail Table, Revision 1.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+                     Multics Technical Bulletin
+
+  To:       Distribution
+
+  From:     Barry Margolin, Gary Palter
+
+  Date:     June 29, 1983
+
+  Subject:  The Mail Table, Revision 1
+
+  1.  ABSTRACT
+
+       The MR10.2 Extended Mail Facility  is required to allow mail
+  by Person_id without Project_id.  Earlier plans were to implement
+  this capability  using the User  Inquiry System, but  the current
+  implementation of  inquire_ in EXL does  not have the performance
+  that is necessary.  For MR10.2 we will therefore implement a Mail
+  Table which will provide a  simple mapping from Person_id to mail
+  address.  This MTB describes the implementation of this table.
+
+       This  revision contains  changes to  the set_mailing_address |
+  and  display_mailing_address  commands, and  the addition  of the |
+  administrative           commands           add_mail_table_entry, |
+  update_mail_table_entry,  and  delete_mail_table_entry.   It also |
+  extends the mail table to allow multiple aliases for a mail table |
+  entry.  In addition, the relationship  between the Mail Table and |
+  the PNT has changed.  Change bars are included.                   |
+
+  Comments  on  this  MTB may  be  entered  in the  System  M Forum
+  meeting:
+            &gt;udd&gt;Multics&gt;Palter&gt;meetings&gt;Mail_System (mail)
+
+  or sent by Multics mail on System M or MIT to:
+            Palter.Multics
+        and
+            Margolin.Multics
+
+  or by U.S.Mail to:
+            Gary Palter, Barry Margolin
+            CISL, HIS
+            575 Technology Square
+            Cambridghe, MA  02139
+            (617) 492-7300
+            HVN 261-9300
+
+  _________________________________________________________________
+
+  Multics  Project  internal  working  Documentation.   Not  to  be
+  reproduced outside the Multics Project.
+
+
+                     Multics Technical Bulletin
+
+  2.  CURRENT STATE
+
+       Currently  (MR10.1) the  Extended Mail  Facility provides an
+  undocumented way for users to  have mail system aliases.  This is
+  implemented    as   a    set   of   links    in   the   directory
+  &gt;udd&gt;Daemon&gt;mailboxes;  an   address  without  a   Project_id  or
+  "-at &lt;hostname&gt;" is looked  up in that directory and  the mail is
+  delivered to  that mailbox (there  is also a special  case in the
+  network mail server software that treats links to Forum meetings,
+  user-ring  segments  with a  ".mls"  suffix (mailing  lists), and
+  entries  in  the   nonexistent  directory  &gt;FORWARD,  specially).
+  Changes  to  this directory  are  generally only  made  by system
+  administrators, as users with sma  access would be able to divert
+  other users' mail.
+
+  3.  GOALS
+
+       The MR10 PFS specifies that  users should be able to address
+  mail by  Person_id, without having  to specify the  Project_id of
+  the  intended recipient.   Thus, there has  to be a  concept of a
+  default mailing address  for a user.  Our primary  goal is that a
+  user may specify  to the system what his  default mailing address
+  is,  and  that every  user's default  default mailing  address be
+  determined by  his default login project.   This information will
+| be kept  in the Mail Table,  which will be protected  by the ring
+  mechanism.   At  one  point  we considered  implementing  this by
+  moving the  above-described directory of links  into a lower ring
+  (at least one customer has actually implemented this on its own);
+  however,  the  number of  entries  that we  are dealing  with far
+  exceeds  the  capacity of  a  directory, and  any  mechanism that
+  implements network  addresses will be  as kludgey as  the current
+  one.
+
+       The link mechanism (described  in the preceding section) had
+  the feature that a user could have many synonyms for his mailbox.
+| It also  allows for entries  in the links directory  that are are
+| not associated  with registered users.  Since  one requirement of
+| this project is that every user  should be registered in the mail
+| table, the tools used by  the system administrators when creating
+| accounts must be taught to  check the mail table before assigning
+| a  Person_id,  to  make  sure  that  there  is  no  conflict with
+| already-assigned mail table entries or aliases.
+
+|      Mail  table entries  which do  not correspond  to registered
+| users have several uses and present several other problems.  They
+| might be used for automatic forwarding of mail to other computers
+| on a network, to allow mail to be sent to a mailing list or Forum
+| meeting without requiring that the sender know that the recipient
+| is  not  a  real  user,  or to  allow  incoming  mail  from other
+| computers  to be  addressed to such  objects, even  if their mail
+| software  makes  it difficult  to  use Multics'  syntax  for such
+
+
+                     Multics Technical Bulletin
+
+  addresses.  A System Administrator will  be able to add arbitrary |
+  entries  to  the  Mail  Table, and  should  be  able  to delegate |
+  maintenance of such entries to a specified user or users by means |
+  of ACS segments.                                                  |
+
+       One way in which we would like to remain compatible with the
+  current mechanism is in  case-insensitivity.  Currently, the mail
+  system searches  the mailbox links  directory first for  an entry
+  whose name  matches the given name  exactly, and failing, searces
+  for the  name in all  uppercase.  This is  convenient for systems
+  that are on  large networks, as many of  the computers from which
+  they  will receive  mail are  generally case-insensitive,  so the
+  mail senders are very likely  to specify the case incorrectly.  A
+  similar scheme should be implemented in the mail table.  In order
+  to keep the  interface simple, it will be  considered an error if
+  more than  one entry matches  a name case-insensitively  and none
+  match it exactly.
+
+       A final goal is that the  default mailing address be able to
+  specify  network addresses,  mailing lists, and  anything else to
+  which the mail system allows mail to be delivered.
+
+  4.  IMPLEMENTATION
+
+       The  mail  table will  be  implemented as  an  ms_table (MSF
+  managed by ms_table_mgr_), just as the PNT and URF currently are.
+  Its pathname will be
+                    &gt;site&gt;mail_system&gt;mail_table
+  It  will  reside in  ring-2  so that  it  will be  protected from
+  improper  updates.   Two  types  of  entries  will  exist  in the
+  database:   regular  entries  and alias  entries.   The following
+  information will be recorded in  each regular entry:  the default |
+  project, a flag specifying whether the entry corresponds to a PNT |
+  entry, the  ACS pathname, and the  mailing address.  In addition, |
+  the first and last aliases will be recorded in the regular entry; |
+  this  is  the head  and  tail of  a  doubly-linked list  of alias |
+  entries.   Alias entries  will just  contain the  primary name, a |
+  flag specifying whether the alias corresponds to a PNT alias, and |
+  the  previous and  next aliases; any  lookups by  alias will just |
+  return the same information it would have if the primary name had |
+  been specified.  In the  mail_table_entry structure (described in |
+  the  Documentation  section) the  flags.alias_entry  component is
+  used to distinguish the two types  of entries.  In most cases the
+  interfaces deal only with regular  entries; the exception is that |
+  all the aliases of an entry  are deleted when the entry itself is |
+  deleted with  mail_table_priv_$delete.  Aliases may  be added and |
+  removed      by     using      mail_table_priv_$add_alias     and |
+  mail_table_priv_$delete_alias.                                    |
+
+       Users will be able to modify the mailing address information
+  in  their  own entry.   Also,  if there  is a  non-blank acs_path |
+
+
+                     Multics Technical Bulletin
+
+| component then any  user with rw to the  segment specified by the
+| pathname may update the mailing  address information in an entry.
+  Whenever a  user's default project is  changed (either by logging
+  in  with  the -change_default_project  control  argument or  by a
+  system  administrator using  new_user$cg) the  default_project in
+  the mail table will be updated.  In addtion, new_user will create
+  an  entry for  a user  when he is  registered on  the system, and
+  create  an  alias  entry if  the  user  is given  an  alias.  The
+  remove_user command will delete  the appropriate entries from the
+| mail  table.  The  add_mail_table_entry, update_mail_table_entry,
+| and delete_mail_table_entry commands may also be used by adminis-
+| trators to  maintain entries that are  not associated with regis-
+| tered users or  to manipulate entries in ways  which normal users
+| are prohibited.
+
+       Three gate  procedures will be  provided to access  the mail
+  table.  The  mail_table_ gate will be  the interface normal users
+  will  use  to retrieve  and  update the  information in  the mail
+  table.  In general it will  be called by address parsing routines
+  in mail_system_ and  by the command provided for  users to update
+  their mailing address.  The  mail_table_initializer_ gate will be
+  used  by the  Answering Service  to update  an entry  when a user
+  changes   his   default   project    while   logging   in.    The
+  mail_table_priv_  gate will  be used by  system administrators to
+  create and manage  the mail table.  In general  it will be called
+  by existing  system administrative commands  (primarily new_user)
+  and by commands  provided with the mail table  software.  See the
+  documentation  section for  complete information  on these proce-
+  dures.
+
+  5.  DOCUMENTATION
+
+       The  following is  MPM-style documentation  for the commands
+  and subroutines  associated with the  mail table.  Much  of it is
+  not actually  intended for user  consumption, but is  included in
+  this  document  as  internal  documentation  for  Multics  System
+  Development.  For  instance, much of  the documentation describes
+  installation procedures which should not be documented in manuals
+  (but  probably should  be in installation  instructions), and the
+  documentation for privileged entrypoints need not be published.
+
+
+  ___________________                           ___________________
+
+  set_mailing_address                           set_mailing_address
+  ___________________                           ___________________
+
+  Names:  set_mailing_address, smla
+
+  This command is  used by a user to  specify his preferred mailing
+  address,  which  will be  used by  the mail  system when  mail is
+  addressed  to him  by his  Person_id alone  (i.e.  "sdm Opus", as
+  opposed to "sdm Opus.Bloom").  The user may also specify that his
+  mailing address  be reset to  the default, which  means that mail
+  addressed to "Milo" will be sent to Milo.DProject, where DProject
+  is  whatever Milo's  default project is  at the time  the mail is
+  sent.   This  may also  be used  by users  who are  designated as |
+  maintainers of other Mail Table entries to update these entries.  |
+
+  SYNTAX AS A COMMAND
+
+       smla {ADDRESS} {-CONTROL_ARGS}
+
+  ARGUMENTS
+
+       address
+            This  may  be  any  recipient address  accepted  by the
+            send_mail                 command.                 Type
+            "help &gt;doc&gt;subsystem&gt;mail_system&gt;addresses.gi" for more
+            information  on  allowable  address  forms.   Only  one
+            address may be specified, and this is incompatible with
+            the -default_project control argument.
+
+  CONTROL ARGUMENTS
+
+       -default_project
+       -dp
+            Specifies  that  the mailing  address  be reset  to the
+            default project.  This control argument is incompatible
+            with the specification of a mailing address.
+                                                                    |
+       -user NAME                                                   |
+            Specifies  the  entry  whose  mail  address  is  to  be |
+            updated.  The  name should be enclosed  in quotes if it |
+            contains  whitespace.   If name  is  an alias  then the |
+            associated  normal entry  is updated.   If this control |
+            argument is used,  the user must have rw  access to the |
+            ACS segment associated with  the entry.  (Default:  the |
+            user's own entry).                                      |
+
+
+  ___________________                           ___________________
+
+  set_mailing_address                           set_mailing_address
+  ___________________                           ___________________
+
+  NOTES
+
+            Either   an   address  or   -default_project   must  be
+|           specified, but not  both.  The -default_project control
+|           argument  should  not  be  used  if  the  entry  is not
+|           associated with  a registered user,  because only users
+|           have default projects.  If  this is attempted, an error
+|           will be reported.
+
+
+  _______________________                   _______________________
+
+  display_mailing_address                   display_mailing_address
+  _______________________                   _______________________
+
+  Names:  display_mailing_address, dsmla
+
+  Displays the  specified mail table entries.   The display will be |
+  in the format used in message headers displayed by read_mail.  In |
+  addition,  if the  mail table entry  specifies an  ACS segment to |
+  allow other maintainers, this pathname is displayed.              |
+
+  SYNTAX AS A COMMAND                                               |
+
+       dsmla {NAMEs}                                                |
+
+  ARGUMENTS
+
+       Name                                                         |
+            Specifies the  name or alias of  the user whose mailing |
+            address should be displayed, or  the name or alias of a |
+            mail table  entry for a  non-user.  If none  are given, |
+            then this defaults to the  current user.  More than one
+            may be given, and this command will display the mailing
+            address for all of them (printing a warning message for
+            any invalid ones).
+
+
+  _________________                               _________________
+
+  create_mail_table                               create_mail_table
+  _________________                               _________________
+
+  Name: create_mail_table
+
+  This  command  is used  by  system administrators  to  create the
+  initial mail  table.  It is initially  populated with information
+  taken from the Person Name Table (PNT).
+
+  SYNTAX AS A COMMAND
+
+       create_mail_table
+
+  ACCESS REQUIRED
+
+  The user must have access  to the gate mail_table_priv_, r access
+  to the  PNT, and sma  access to &gt;site&gt;mail_system  in ring-2.  In
+  addition, the access class of the  mail table will be the current
+  authorization of the creator, so this user should be logged in at
+  system_low (this may be ignored if the site does not use multiple
+  AIM  levels);  the  command  will  attempt  to  set  dir  and seg
+  privileges,  in  which case  the  mail table  will be  created at
+  system low, regardless of the authorization of the creator.
+
+  NOTES
+
+  This command should generally only be needed once, the first time
+  the system  is booted when  it is delivered,  or when the  a site
+| first upgrades to MR10.2.  It must be used after the PNT has been
+| created, but before the system is brought up for regular service;
+| the  safest  way is  to run  it before  the Answering  Service is
+| brought up.
+
+
+  __________________                             __________________
+
+  compact_mail_table                             compact_mail_table
+  __________________                             __________________
+
+  Names: compact_mail_table, salvage_mail_table
+
+  This command  is used by  a system administrator to  fix the mail
+  table after it has been damaged  or has become full.  As the mail
+  table and the PNT contain a parallel set of entries, any time the
+  PNT  needs to  be compacted  (using salvage_mstb)  the mail table
+  should also be compacted.  This  works by copying the mail table;
+  the old mail table is renamed to mail_table.MM/DD.HHMM.
+
+  SYNTAX AS A COMMAND
+
+       compact_mail_table {SIZE}
+
+  ARGUMENTS
+
+       size
+            This specifies the size of  the new mail table.  If not
+            specified this  defaults to the number  of used entries
+            (both regular  and alias entries)  multiplied by three, |
+            which is close to  optimum for the accessing algorithm.
+            In general, it is best to  keep the mail table the same
+            size as  the PNT.  If  the size specified  is not large
+            enough to  hold the existing  entries an error  will be
+            generated.                                              *
+
+  NOTES
+
+  This  command  should  be  run before  the  Answering  Service is |
+  brought up.                                                       |
+
+
+  ____________________                         ____________________
+
+  add_mail_table_entry                         add_mail_table_entry
+  ____________________                         ____________________
+
+| Name: add_mail_table_entry
+|
+| Adds an entry to the Mail  Table, and specifies its mail address.
+| This command is used by system administrators to define names for
+| mailing  lists and  other possible  mail destinations,  and added
+| names for users, so that users  may send mail to these objects as
+| if  they  were  other  users, i.e.   not  requiring  pathnames or
+| Project_ids.  The name  must not already exist in  the Mail Table
+| or the PNT, disregarding case.
+|
+|
+| SYNTAX AS A COMMAND
+|
+|      add_mail_table_entry NAME ADDRESS {-CONTROL_ARGS}
+|
+|
+| ARGUMENTS
+|
+|      name
+|           is  a string  which specifies the  name to  be given to
+|           this mail  table entry.  It must  be enclosed in quotes
+|           if it contains whitespace.
+|
+|      address
+|           is    a    destination    specifier,    as    used   by
+|           set_mailing_address.  This is  the initial mail address
+|           associated with the specified name.
+|
+|
+| CONTROL ARGUMENTS
+|
+|      -alias NAME
+|           specifies an alternate name for the name being defined.
+|           If this  control argument is  specified multiple times,
+|           all the names are defined as aliases for the entry.
+|
+|      -acs_path PATH
+|           specifies the ACS segment which controls who may update
+|           the entry's mail address.  rw access to the ACS segment
+|           indicates that a user may update the entry.  If this is
+|           not specified  or is the  null string, only  users with
+|           access to mail_table_priv_ may update the entry.
+|
+|
+| ACCESS REQUIRED
+|
+| e access to the gate mail_table_priv_.
+
+
+  _______________________                   _______________________
+
+  update_mail_table_entry                   update_mail_table_entry
+  _______________________                   _______________________
+
+  Name: update_mail_table_entry                                     |
+                                                                    |
+  Modifies an entry in the Mail Table.                              |
+                                                                    |
+                                                                    |
+  SYNTAX AS A COMMAND                                               |
+                                                                    |
+       update_mail_table_entry NAME {ADDRESS} {-CONTROL_ARGS}       |
+                                                                    |
+                                                                    |
+  ARGUMENTS                                                         |
+                                                                    |
+       NAME                                                         |
+            Specifies the name of the  mail table entry which is to |
+            be updated.  The name must  be enclosed in quotes if it |
+            contains  whitespace.   If the  name  is an  alias, the |
+            associated normal entry is updated.                     |
+                                                                    |
+       ADDRESS                                                      |
+            is    a    destination    specifier,    as    used   by |
+            set_mailing_address.  If this is  given, it becomes the |
+            new mail address of the entry.                          |
+                                                                    |
+                                                                    |
+  CONTROL ARGUMENTS                                                 |
+                                                                    |
+       -alias NAME                                                  |
+            Specifies an alternate name for  the entry.  If this is |
+            specified multiple times, each alias is added.          |
+                                                                    |
+       -acs_path PATH                                               |
+            specifies the ACS segment which controls who may update |
+            the entry's mail address.  rw access to the ACS segment |
+            indicates that a user may update the entry.  If path is |
+            the null string there will  be no ACS segment, and only |
+            system   administrators   (anyone    with   access   to |
+            mail_table_priv_) may update the entry.                 |
+                                                                    |
+       -delete_alias NAME                                           |
+            causes the  specifiedalternate name to  be removed from |
+            the entry.   In order to maintain  consistency with the |
+            PNT, this alias may not be the user's login alias.      |
+                                                                    |
+                                                                    |
+  ACCESS REQUIRED                                                   |
+                                                                    |
+  e access to the gate mail_table_priv_.                            |
+
+
+  _______________________                   _______________________
+
+  delete_mail_table_entry                   delete_mail_table_entry
+  _______________________                   _______________________
+
+| Name: delete_mail_table_entry
+|
+| Removes enties from the Mail  Table which are not associated with
+| a registered user.
+|
+|
+| SYNTAX AS A COMMAND
+|
+|      delete_mail_table_entry NAMES
+|
+|
+| ARGUMENTS
+|
+|      NAME
+|           is a string which specifies a mail table entry which is
+|           to  be deleted.   It must be  enclosed in  quotes if it
+|           contains whitespace.
+|
+|
+| ACCESS REQUIRED
+|
+| e access to the gate mail_table_priv_.
+|
+|
+| NOTES
+|
+| In  order to  maintain consistency  with the  PNT, this  will not
+| permit entries  which are associated with  registered users to be
+| deleted.   If the  mail table  entry has  aliases then  the alias
+| entries are also deleted.
+
+
+  ___________                                           ___________
+
+  mail_table_                                           mail_table_
+  ___________                                           ___________
+
+  Name: mail_table_
+
+  These  entrypoints are  used by normal  users to  access the mail
+  table.
+
+  Entry: mail_table_$get
+
+       Function:   This  entrypoint retrieves  a  specified mailing |
+  address.   This  address  is  in a  form  suitable  for  use with |
+  mail_system_ entrypoints.  The name  given is matched against the |
+  names and aliases in the mail table.   If it is not found, then a |
+  case-insensitive search is performed.
+
+  USAGE SYNTAX
+
+       declare   mail_table_$get   entry   (char (*) varying,  ptr, |
+            char (*), fixed bin (35);                               |
+       call mail_table_$get (name, address_ptr, acs_path, code);    |
+
+  ARGUMENTS
+
+       name                                                         |
+            is  either the  name or  alias of  a Mail  Table entry. |
+            This  specifies  the  mailing  adress  which  is  to be |
+            returned.  (Input)                                      |
+
+       address_ptr
+            is a pointer  to an address object which  may be passed
+            to several mail_system_  entrypoints.  The structure of
+            this object is internal to  the mail system, and is not
+            documented  here; only  mail_system_ entrypoints should
+            be used to manipulate this object.  (Output)
+                                                                    |
+       acs_path                                                     |
+            is  the pathname  of the  segment whose  access control |
+            list specifies who may  update the specified entry.  If |
+            this  is the  null string  then only  the owner  of the |
+            entry  (if it  corresponds to  a registered  user) or a |
+            user  with  access to  mail_table_priv_ may  update the |
+            entry.                                                  |
+
+       code
+            is  a   standard  system  status  code.    If  this  is
+            mlsys_et_$ambiguous_address then the name did not match |
+            any name  or alias exactly,  but matched more  than one |
+            without regard to case.  (Output)
+
+
+  ___________                                           ___________
+
+  mail_table_                                           mail_table_
+  ___________                                           ___________
+
+  Entry: mail_table_$set
+
+|      Function:  This entrypoint updates the a mailing address.
+
+  USAGE SYNTAX
+|
+|      declare   mail_table_$set   entry   (char (*) varying,  ptr,
+|           fixed bin (35));
+|      call mail_table_$set (name, address_ptr, code);
+
+|
+  ARGUMENTS
+|
+|      name
+|           is  the name  or alias  of the  mail table  entry whose
+|           mailing address should be changed.  If this is the null
+|           string, then the caller's mail table entry is updated.
+
+       address_ptr
+            is a  pointer to a  mail_system_ address object,  or is
+|           null.  If it is non-null  then it specifies the entry's
+            new mailing  address.  The structure of  this object is
+            internal to the mail system and is not documented here;
+            appropriate mail_system_ subroutines  should be used to
+            create  and manipulate  this object.   If it  is a null
+            pointer,  then  it specifies  that the  mailing address
+            should  be removed,  i.e.  that  mail addressed  to him
+            should be delivered to his mailbox in his home directo-
+            ry        for        his        default        project,
+            &gt;udd&gt;Default_Proj&gt;Person_id&gt;Person_id.mbx (this  is the
+            default if  the user has never  set a mailing address).
+|           This  is only  permitted for entries  associated with a
+|           registered Person_id.  (Input)
+
+       code
+*           is a standard system status code.  (Output)
+
+
+  _______________________                   _______________________
+
+  mail_table_initializer_                   mail_table_initializer_
+  _______________________                   _______________________
+
+  Name: mail_table_initializer_
+
+  This  gate is  used by the  Answering Service to  manage the mail
+  table on behalf of users.  Only Initializer.SysDaemon.z need have
+  access to this gate.
+
+  Entry: mail_table_initializer_$set_dft_proj
+
+       Function:  Sets the default project  field in the mail table
+  entry  for  a  specified user.   This  is used  by  the Answering
+  Service  when  a user  logs  in with  the -change_default_project
+  control  argument.  This  ensures that if  the user  is using the
+  default mailing address that his  mail always goes to his current
+  default project.
+
+  USAGE SYNTAX
+
+       declare      mail_table_initializer_$set_dft_proj      entry |
+            (char (*) varying, char (*) varying, fixed bin (35));   |
+       call mail_table_initializer_$set_dft_proj        (person_id, |
+            default_proj, code);                                    |
+
+  ARGUMENTS
+
+       person_id
+            is the  Person_id of the user  whose default project is
+            being changed.  (Input)
+
+       default_proj
+            is  the  new  default  project of  the  specified user.
+            (Input)
+
+       code
+            is a standard system status code.  (Output)             *
+
+
+  ________________                                 ________________
+
+  mail_table_priv_                                 mail_table_priv_
+  ________________                                 ________________
+
+  Name: mail_table_priv_
+
+  These entrypoints  are used by system  administrators to maintain
+  the  mail  table.   Access  to  this  gate  should  be  given  to
+  *.SysAdmin.*
+
+  Entry: mail_table_priv_$create
+
+       Function:  This entrypoint creates the mail table.
+
+  USAGE SYNTAX
+
+       declare     mail_table_priv_$create     entry    (fixed bin,
+            fixed bin (35));
+       call mail_table_priv_$create (size, code);
+
+  ARGUMENTS
+
+       size
+            is the  number of entries  to be allocated  in the mail
+            table.  For  best operation this should  be three times
+            the number of  entries that will be used,  which is the
+|           number  of names  and aliases that  will be registered.
+            (Input)
+
+       code
+            is a standard system status code.  (Output)
+
+  NOTES
+
+  The mail_table_priv_$create  subroutine is called as  part of the
+  operation  of  the  create_mail_table  command.   If  a  site  is
+  upgrading   to    MR10.2   from   an    earlier   release,   this
+  mail_table_priv_$fill_from_pnt subroutine should  be called imme-
+  diately after  this subroutine in  order to initialize  the data;
+  this will also be done by create_mail_table.
+
+  The process should have sma  access to &gt;site&gt;mail_system.  If the
+  mail   table    already   exists   it   will    be   renamed   to
+  mail_table.MM/DD.HHMM.  The process should also be logged in with
+  an  authorization  of system_low  if the  site runs  multiple AIM
+  levels; the access class of the the mail table will be set to the
+  process' authorization.   If the process  has dir and  seg privi-
+  leges enabled then the mail table  will be created with an access
+  class of system_low.
+
+
+  ________________                                 ________________
+
+  mail_table_priv_                                 mail_table_priv_
+  ________________                                 ________________
+
+  Entry: mail_table_priv_$fill_from_pnt
+
+       This entrypoint  has been deleted, as  its functionality can
+  be  provided by  the user-ring  portion of  the create_mail_table
+  command.
+
+  Entry: mail_table_priv_$add
+
+       Function:   Adds  a  new  entry  to  the  mail  table.  This |
+  entrypoint  will  not  add  aliases  for  existing  entries;  use |
+  mail_table_priv_$add_alias for this purpose.                      |
+
+  USAGE SYNTAX
+
+       declare mail_table_priv_$add entry (ptr, fixed bin (35));
+       call mail_table_priv_$add (mte_ptr, code);
+
+  ARGUMENTS
+
+       mte_ptr
+            is  a  pointer  to  a  mail_table_entry  structure,  as
+            declared          in         mail_table_entry.incl.pl1.
+            Mail_table_entry.name  specifies  the  entry  which  is |
+            being added.                                            |
+
+       code                                                         |
+            is a  standard system status code.   (Output) It can be |
+            one of the following:                                   |
+                0   The entry (or entries) was added successfully.  |
+                 error_table_$unimplemented_version                 |
+                    The  version component  of the mail_table_entry |
+                    was not set properly by the caller.             |
+                error_table_$id_already_exists                      |
+                    The  name  component   specified  a  name  that |
+                    already existed in the mail table.              |
+
+  NOTES
+
+  This subroutine is normally only called by new_user when a new ID
+  is being registered on the system, and by add_mail_table_entry to |
+  create an entry for a non-user.                                   |
+
+
+  ________________                                 ________________
+
+  mail_table_priv_                                 mail_table_priv_
+  ________________                                 ________________
+
+  Entry: mail_table_priv_$delete
+
+       Function:   Deletes  an  entry  from the  mail  table.  This
+  should be done whenever a Person_id is deregistered.
+
+  USAGE SYNTAX
+
+|      declare  mail_table_priv_$delete   entry  (char (*) varying,
+|           fixed bin (35));
+|      call mail_table_priv_$delete (name, code);
+
+  ARGUMENTS
+
+|      name
+|           is either a name or an alias.  This specifies the entry
+|           which should be removed.  If the entry has any aliases,
+|           then either  the primary name  or analias may  be used,
+|           and all the entries will be deleted.  (Input)
+
+       code
+            is a  standard system status code.   (Output) It can be
+            one of the following:
+                0   The entry (or  entries) was deleted successful-
+                    ly.
+                error_table_$id_not_found
+|                   There is no entry with the specified name.
+
+  NOTES
+
+  This  subroutine  will  normally  be  called  by  the delete_user
+| command prior  to deleting the user  from the PNT and  URF, or by
+| the  delete_mail_table_entry  command  when  deleting  a non-user
+| entry.
+
+  Entry: mail_table_priv_$update
+
+       Function:  Replaces a user's mail table entry.  The replace-
+  ment mail_table_entry  should generally be  created by retrieving
+| the entry,  modifying it, and then  calling this routine.  Alter-
+| nate  names  may not  be  manipulated with  this  entrypoint; use
+| mail_table_priv_$add_alias,   mail_table_priv_$delete_alias,  and
+| mail_table_priv_$get_aliases to manipulate aliases.
+
+
+  ________________                                 ________________
+
+  mail_table_priv_                                 mail_table_priv_
+  ________________                                 ________________
+
+  USAGE SYNTAX
+
+       declare mail_table_priv_$update entry (ptr, fixed bin (35));
+       call mail_table_priv_$update (mte_ptr, code);
+
+  ARGUMENTS
+
+       mte_ptr
+            is  a  pointer  to   a  mail_table_entry  structure  as
+            declared in  mail_table_entry.incl.pl1.  The subroutine
+            will    modify    the   entry    identified    by   the |
+            mail_table_entry.name component;  if this is  an alias, |
+            then the regular entry will be modified.                |
+        (Input)
+
+   code
+        is a standard  system status code.  (Output) It  can be one
+        of the following:
+            0   The entry (or entries) was updated successfully.
+            error_table_$unimplemented_version
+                The version  component of the  mail_table_entry was
+                not set properly by the caller.
+            error_table_$id_not_found
+                There is no entry with the specified name.          |
+
+  NOTES
+
+  This subroutine  will normally be  called by the  new_user$cg and
+  new_user$cga  commands if  any of  the information  needed by the
+  mail table (currently only the  default project) was changed, and |
+  by the update_mail_table_entry command  when changing the mailing |
+  address.                                                          |
+
+  Entry: mail_table_priv_$get                                       |
+
+       Function:   Retrieves a  mail table  entry given  either its |
+  name or alias.                                                    |
+
+
+  ________________                                 ________________
+
+  mail_table_priv_                                 mail_table_priv_
+  ________________                                 ________________
+
+  USAGE SYNTAX
+
+|      declare  mail_table_priv_$get entry  (char (*) varying, ptr,
+|           fixed bin (35));
+|      call mail_table_priv_$get (name, mte_ptr, code);
+
+  ARGUMENTS
+
+|      name
+|           is  the  name or  alias  of the  entry which  should be
+|           retrieved.  (Input)
+
+       mte_ptr
+            is  a  pointer  to   a  mail_table_entry  structure  as
+            declared in  mail_table_entry.incl.pl1.  This structure
+|           should  already  be  allocated  and  have  the  version
+|           component  set; if  the pointer  is null  an error code
+            will be returned.  (Input)
+
+       code
+            is a  standard system status code.   (Output) It can be
+            one of the following:
+                0   The entry was retrieved successfully.
+                error_table_$unimplemented_version
+                    The  version component  of the mail_table_entry
+                    was not set properly by the caller.
+                error_table_$id_not_found
+|                   There is no entry with the specified name.
+
+  NOTES
+
+| The  new_user$cg, new_user$cga,  and update_mail_table_entry com-
+| mands  use this  subroutine to retrieve  the old  contents of the
+| mail   table   entry   in   order   to   update   it,   and   the
+| display_mail_table_entry command uses this.
+|
+|
+| Entry: mail_table_priv_$get_raw_by_name
+|
+|      Function:  Retrieve  a real mail  table entry given  the its
+| key, which is either a name  or alias.  If an alias is specified,
+| then the actual  alias entry will be returned.   This is intended
+| as a low-level interface, and  no commands are provided which use
+| this.
+
+
+  ________________                                 ________________
+
+  mail_table_priv_                                 mail_table_priv_
+  ________________                                 ________________
+
+  USAGE SYNTAX                                                      |
+                                                                    |
+       declare  mail_table_priv_$get_raw_by_name (char (*) varying, |
+            ptr, fixed bin (35));                                   |
+       call mail_table_priv_$get_raw_by_name    (name,    mtre_ptr, |
+            code);                                                  |
+                                                                    |
+                                                                    |
+  ARGUMENTS                                                         |
+                                                                    |
+       name                                                         |
+            is the name of the entry to be retrieved.  (Input)      |
+                                                                    |
+       mtre_ptr                                                     |
+            is  a  pointer to  a mail_table_raw_entry  structure as |
+            declared in mail_table_entry.incl.pl1.  It must already |
+            be  allocated  and  the  version  component  filled in. |
+            (Input)                                                 |
+                                                                    |
+       code                                                         |
+            is a  standard error code.   (Output) It may  be one of |
+            the following:                                          |
+                0   The entry was retrieved successfully.           |
+                error_table_$unimplemented_version                  |
+                    The      version      component      of     the |
+                    mail_table_raw_entry  was  not set  properly by |
+                    the caller.                                     |
+                error_table_$id_not_found                           |
+                    No entry  with the specified name  was found in |
+                    the mail table.                                 |
+
+  Entry: mail_table_priv_$get_raw_by_index                          |
+
+       Function:  Retrieve a real mail  table entry given its index |
+  into the mail table (which  is effectively a sparse array).  This |
+  will  return  alias entries  as  well as  regular  entries.  This |
+  subroutine is useful for listing the contents of the mail table.  |
+
+
+  ________________                                 ________________
+
+  mail_table_priv_                                 mail_table_priv_
+  ________________                                 ________________
+
+  USAGE SYNTAX
+
+       declare  mail_table_priv_$get_raw_by_index  (fixed bin, ptr,
+            fixed bin(35));
+       call mail_table_priv_$get_raw_by_index (N, mte_ptr, code);
+
+  ARGUMENTS
+
+       N
+            is the  index of the  entry which should  be retrieved.
+            It must be greater than 0.  (Input)
+
+       mte_ptr
+|           is  a  pointer to  a mail_table_raw_entry  structure as
+|           declared in  mail_table_entry.incl.pl1.  This structure
+            should already  be allocated and  the version component
+            should  be set;  if the pointer  is null  an error code
+            will be returned.  (Input)
+
+       code
+            is a  standard system status code.   (Output) It can be
+            one of the following:
+                0   The entry was retrieved successfully.
+                error_table_$unimplemented_version
+                    The  version component  of the mail_table_entry
+                    was not set properly by the caller.
+                error_table_$no_record
+                    The specified index corresponds to an unused or
+                    deleted record.
+                error_table_$bad_index
+                    The specified  index references beyond  the end
+                    of the mail table.
+                error_table_$bad_subr_arg
+                    The index was not greater than 0.
+
+  NOTES
+
+  The standard use  of this entry is by a  routine which loops over
+  all    the    possible    indices   starting    from    1   until
+  error_table_$bad_index   is   returned.    If   a   call  returns
+  error_table_$no_record then  the procedure should just  go to the
+  next iteration of the loop, as this is to be expected.
+
+
+  ________________                                 ________________
+
+  mail_table_priv_                                 mail_table_priv_
+  ________________                                 ________________
+
+  Entry: mail_table_priv_$add_alias                                 |
+                                                                    |
+       Function:  Adds an alternate name  to an existing mail table |
+  entry.                                                            |
+                                                                    |
+                                                                    |
+  USAGE SYNTAX                                                      |
+                                                                    |
+       declare     mail_table_priv_$add_alias    (char (*) varying, |
+            char (*) varying, fixed bin (35));                      |
+       call mail_table_priv_$add_alias (name, alias, code);         |
+                                                                    |
+                                                                    |
+  ARGUMENTS                                                         |
+                                                                    |
+       name                                                         |
+            is the name of the  existing entry which is being given |
+            an alternate name.  This may be the primary name or one |
+            of its aliases.  (Input)                                |
+                                                                    |
+       alias                                                        |
+            is the new alternate name being added.  (Input)         |
+                                                                    |
+       code                                                         |
+            is a  standard system status code.   (Output) It can be |
+            one of the following:                                   |
+                0   The alias was added successfully.               |
+                error_table_$id_already_exists                      |
+                    The  specified alias  is already in  use in the |
+                    mail table as a name or alias.                  |
+                error_table_$id_not_found                           |
+                    There is  no entry in  the mail table  with the |
+                    specified name.                                 |
+                                                                    |
+                                                                    |
+  Entry: mail_table_priv_$delete_alias                              |
+                                                                    |
+       Function:  Deletes an alias from the mail table.             |
+
+
+  ________________                                 ________________
+
+  mail_table_priv_                                 mail_table_priv_
+  ________________                                 ________________
+
+| USAGE SYNTAX
+|
+|      declare   mail_table_priv_$delete_alias   (char (*) varying,
+|           fixed bin(35));
+|      call mail_table_priv_$delete_alias (alias, code);
+|
+|
+| ARGUMENTS
+|
+|      alias
+|           is  the  alias which  should be  deleted from  the mail
+|           table.  This may  not be the primary name  of an entry;
+|           use mail_table_priv_$delete to delete the regular entry
+|           itself.   It also  may not  be the  login alias  of the
+|           user.  (Input)
+|
+|      code
+|           is a  standard system status code.   (Output) It can be
+|           one of the following:
+|               0   The alias was removed successfully.
+|               error_table_$bad_subr_arg The alias specified was the primary
+|                   name of the entry or  was a user's login alias,
+|                   so it could not be deleted.
+|               error_table_$id_not_found
+|                   The specified  alias did not exist  in the mail
+|                   table.
+|
+|
+| Entry: mail_table_priv_$get_aliases
+|
+|      Function:  Returns a list of all the names of an entry.
+|
+|
+| USAGE SYNTAX
+|
+|      declare    mail_table_priv_$get_aliases   (char (*) varying,
+|           char (*), ptr, ptr, fixed bin (35));
+|      call mail_table_priv_$get_aliases (name,  version, area_ptr,
+|           mta_ptr, code);
+|
+|
+| ARGUMENTS
+|
+|      name
+|           is the name or alias of the entry whose names should be
+|           listed.  (Input)
+
+
+  ________________                                 ________________
+
+  mail_table_priv_                                 mail_table_priv_
+  ________________                                 ________________
+
+       version                                                      |
+            is the version of the mail_table_aliases structure that |
+            the caller  wishes returned.  Currently  this should be |
+            set to MAIL_TABLE_ALIASES_VERSION_1,  which is declared |
+            in mail_table_entry.incl.pl1.  (Input)                  |
+                                                                    |
+       area_ptr                                                     |
+            is a pointer to an area in which the mail_table_aliases |
+            structure  should be  allocated.  It  may not  be null. |
+            (Input)                                                 |
+                                                                    |
+       mta_ptr                                                      |
+            will be set to point to a mail_table_aliases structure, |
+            as declared in  mail_table_entry.incl.pl1.  This struc- |
+            ture  will contain  an array  of all  the names  of the |
+            entry, including the primary name.  (Output)            |
+                                                                    |
+       code                                                         |
+            is a  standard system status code.   (Output) It can be |
+            one of the following:                                   |
+                0   No errors were encountered.                     |
+                error_table_$unimplemented_version                  |
+                    The version  specified is not  supported by the |
+                    subroutine.                                     |
+                error_table_$id_not_found                           |
+                    No entry  with the specified name  was found in |
+                    the mail table.                                 |
+
+  Entry: mail_table_priv_$count_entries
+
+       Function:  Returns  the number of  used entries in  the mail
+  table.   This  is useful  for  determining the  proper size  of a
+  compacted mail table  (the mail table works optimally  when it is
+  one-third full).
+
+  USAGE SYNTAX
+
+       declare  mail_table_priv_$count_entries   entry  (fixed bin,
+            fixed bin (35));
+       call mail_table_priv_$count_entries (N, code);
+
+  ARGUMENTS
+
+       N
+            is  the  number  of  used entries  in  the  mail table.
+            (Output)
+
+
+  ________________                                 ________________
+
+  mail_table_priv_                                 mail_table_priv_
+  ________________                                 ________________
+
+       code
+            is a standard system status code.  (Output)
+
+
+  _________________________               _________________________
+
+  mail_table_entry.incl.pl1               mail_table_entry.incl.pl1
+  _________________________               _________________________
+
+  Name: mail_table_entry.incl.pl1
+
+  declare 1 mail_table_entry              aligned
+                                          based (mail_table_entry_ptr),
+            2 version                     char (8),
+            2 name                        char (32) varying,        |
+            2 acs_path                    char (168),               |
+            2 default_project             char (12) varying,
+            2 mailing_address             char (256) varying;
+
+  declare MAIL_TABLE_ENTRY_VERSION_1      char (8) int static
+                                          options (constant)
+                                          init ("mte_0001");
+
+  Where:
+
+  version   is the version of  the structure being used.  Currently
+            this   should   always   be   set  to   the   value  of
+            MAIL_TABLE_ENTRY_VERSION_1.
+  name      is the name of the  entry.  When this structure is used |
+            as  input  to a  mail_table_priv_ entrypoint  then this |
+            component may  be the primary  name or an  alias of the |
+            entry.  When this structure is  used for output it will |
+            always be the primary name.                             |
+  acs_path                                                          |
+            is the pathname of a  segment whose access control list |
+            controls  who  may modify  the mailing_address  of this |
+            entry.  If  this is the  null string, then  only a user |
+            with  access to  mail_table_priv_ or  the owner  of the |
+            entry  may  modify  it  (the owner  is  the  user whose |
+            Person_id is the same as the name of the entry).        |
+  default_project
+            is   the   user's   default  login   project.    If  no
+            mailing_address is  set for the user  then this will be
+            used  to determine  the mailing address.   This will be |
+            null for entries which  do not correspond to registered |
+            users.                                                  |
+  mailing_address
+            is a  character string form  of a mail  destination, as
+            might  appear in  a standard  header.  mail_table_$set,
+            mail_table_priv_$add, and  mail_table_priv_$update will
+            verify  that  this  is   in  correct  format.   Various
+            entrypoints  in  mail_system_ can  be used  to generate
+            this form  of address.  If  the entry corresponds  to a |
+            registered user  then this may be  blank, in which case |
+
+
+  _________________________               _________________________
+
+  mail_table_entry.incl.pl1               mail_table_entry.incl.pl1
+  _________________________               _________________________
+
+|           the default project component will be used to determine
+|           the user's default mailbox.  cbf 1
+|
+|
+| declare 1 mail_table_raw_entry          aligned
+|                                         based (mail_table_raw_entry_ptr),
+|           2 version                     char (8),
+|           2 name                        char (32) varying,
+|           2 primary_name                char (32) varying,
+|           2 flags,
+|             3 alias_entry               bit (1) unaligned,
+|             3 registered_user           bit (1) unaligned,
+|             3 mbz                       bit (34) unaligned,
+|           2 n_name                      fixed bin,
+|           2 next_name                   char (32) varying,
+|           2 prev_name                   char (32) varying,
+|           2 acs_path                    char (168),
+|           2 default_project             char (12) varying,
+|           2 mailing_address             char (256) varying;
+|
+| declare MAIL_TABLE_RAW_ENTRY_VERSION_1  char (8) int static
+|                                         options (constant)
+|                                         init ("mtre_001");
+|
+|
+| Where:
+| version   is the version of  the structure being used.  Currently
+|           this   should   always   be   set  to   the   value  of
+|           MAIL_TABLE_RAW_ENTRY_VERSION_1.
+| name      is the name or alias of this entry.
+| primary_name
+|           is the  name of the  regular entry that  corresponds to
+|           this entry.   If this is  a regular entry  this will be
+|           the  same as  the name  component.  If  it is  an alias
+|           entry then this is the  name of the regular entry which
+|           contains all the normal information.
+| flags.alias_entry
+|           indicates that the entry is an alias entry.  If this is
+|           on  then  the   default_project,  mailing_address,  and
+|           acs_path information are not  valid; the regular entry,
+|           identified by the  primary_name component, contains the
+|           correct values for these components.
+| flags.registered_user
+|           indicates that the entry or  alias corresponds to a PNT
+|           entry.   Such entries  should only be  deleted when the
+|           corresponding PNT  entry is deleted, in  order to main-
+|           tain  consistency between  the PNT and  the mail table.
+|           If  this  flag  is  off in  a  regular  entry  then the
+|           mailing_address  compontent  may not  be blank  and the
+
+
+  _________________________               _________________________
+
+  mail_table_entry.incl.pl1               mail_table_entry.incl.pl1
+  _________________________               _________________________
+
+            default_project component must be blank.                |
+  flags.mbz                                                         |
+            are reserved and should be set to "0"b.                 |
+  n_names   is the  number of names  for this entry.   This is only |
+            set in  the regular entry,  and the count  includes the |
+            regular entry.                                          |
+  next_name                                                         |
+            is the next name for this  entry.  This is used to make |
+            a  linked  list  of the  names  for an  entry.   In the |
+            regular entry this contains the first alias, if any, or |
+            the  null string.   The last alias  always contains the |
+            null string in this field.                              |
+  prev_name                                                         |
+            is the previous name for  this entry.  This is like the |
+            next_name component, except that  it chains the entries |
+            together  in the  reverse direction.   It is  used as a |
+            redundancy check; someday the  mail table salvager will |
+            use this.                                               |
+  acs_path, default_project, mailing_address                        |
+            are the same as in the mail_table_entry structure.      |
+                                                                    |
+                                                                    |
+  declare 1 mail_table_aliases            aligned                   |
+                                          based (mail_table_aliases_p|tr),
+            2 version                     char (8),                 |
+            2 n_names                     fixed bin,                |
+            2 names                       (mail_table_aliases_extent|refer
+                                             (mail_table_aliases.n_na|mes))
+                                          char (32) varying;        |
+                                                                    |
+  declare mail_table_aliases_extent       fixed bin;                |
+  declare MAIL_TABLE_ALIASES_VERSION_1    char (8) int static       |
+                                          options (constant)        |
+                                          init ("mta_0001");        |
+                                                                    |
+                                                                    |
+  Where:                                                            |
+  version   is the version number of the structure.  Currently this |
+            should  always  be set  to  the value  of  the variable |
+            MAIL_TABLE_ALIASES_VERSION_1.                           |
+  n_names   is  the number  of names  for the  entry, including the |
+            primary name.                                           |
+  names     is an array  of the names for the  entry.  When this is |
+            used  as  output from  mail_table_priv_$get_aliases the |
+            first element of this array is the primary name.        |
+  mail_table_aliases_extent                                         |
+            is  an  automatic variable  which is  used only  by the |
+            procedure which allocates the structure.                |
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

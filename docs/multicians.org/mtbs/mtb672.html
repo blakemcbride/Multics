@@ -1,0 +1,1750 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-672</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-672: Re-write of any_to_any_.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+To:       Distribution
+
+From:     Tom Oke
+
+Date:     08/27/84
+
+Subject:  Re-write of any_to_any_
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Oke.Multics on System M or CISL.
+
+via Mail:
+
+   Tom Oke
+   Advanced Computing Technology Centre
+   Foothills Professional Building
+   #301, 1620, 29th Street, N.W.
+   Calgary, Alberta, Canada
+   T2N 4L7
+   (403) 270-5414
+
+1 ABSTRACT
+
+This   MTB   proposes  a   re-write   of  the   hardcore  routine
+"any_to_any_"  to  increase  its  functionality,  reliability and
+permit   easy   extension   of   its   capabilities.   Additional
+modification  of  assign_  and  formline_  will  utilize  feature
+extensions of any_to_any_.
+
+These modifications are initially needed  to add 6 new data types
+for FORTRAN HEXADECIMAL FLOATING POINT support.
+
+________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project.
+
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+2 REASONS FOR CHANGE
+
+The FORTRAN compiler needs  to support HEXADECIMAL FLOATING POINT
+numbers,  and  needs  system   support  for  the  conversion  and
+manipulation  of these  numbers.  It  is most  reasonable to have
+this  support provided  through normal conversion  paths, such as
+assign_ and formline_, in order  to supply full functionality for
+users and permit the use of  ioa_, probe, and even the ability of
+other languages,  such as PL1,  to convert between  a hexadecimal
+type  and  a  type  such as  floating  decimal.   FORTRAN itself,
+through   fortran_io_,   currently   uses   assign_   to   handle
+character/numeric conversions.
+
+The  common  basis  for  all these  conversions  is  the hardcore
+routine any_to_any_.  Any_to_any_ is  an ALM based program called
+through assign_, formline_ and  pl1_operators_ to convert numeric
+data types.  It does not handle all the defined numeric/character
+data types,  and has a  number of bugs in  lesser used conversion
+paths.
+
+HEXADECIMAL  FLOATING  POINT   range,  8.3798799562141232e152  to
+-7.4583407312002067e-155,  is  larger than  the  maximum possible
+floating decimal range.  Floating decimal range is dependant upon
+the  number of  digits of  the mantissa,  the range  for floating
+decimal (1) is 9.e127 to  9.e-128, the range for floating decimal
+(59) is 9.9...9e185 to 9.9...9e-70.
+
+Fortran_io_ converts to and from characters by utilizing floating
+decimal as  an intermediate form,  the same is  true of formline_
+and  PL1 runtime  IO.  These routines  all utilize  assign_ to do
+conversion  between a  binary numeric  form and  decimal form and
+then utilize the  decimal form as the basis  for characters.  The
+limited range  permissible in a standard  floating decimal number
+is   insufficient  to   be  utilized  in   conversion  between  a
+hexadecimal number and  characters.  HEXADECIMAL support requires
+the  addition  of  a  floating   decimal  form  which  does  have
+sufficient range to be used as  a common intermediate for the use
+of any_to_any_, assign_ and formline_.
+
+Thus  Fortran's  HEXADECIMAL  FLOATING  POINT  will  require  the
+addition of at least five new data types:
+
+a)   single precision real hexadecimal data
+
+b)   double precision real hexadecimal data
+
+c&amp;d) complex single and double precision hexadecimal data
+
+
+MTB-672                                Multics Technical Bulletin
+                                                    more_to_more_
+
+e)   an extended floating decimal type
+
+3 DIFFICULTY OF MODIFICATION
+
+Due  to  the current  state  of its  design,  and the  history of
+modification,  any_to_any_ is  mainly implemented as  a matrix of
+conversion  routines   with  the  number  of   rows  and  columns
+equivalent to  the number of  basic data types  handled.  A basic
+type may  be a collection  of a number of  descriptor data types,
+for example the  four forms of float bin would  count as a single
+basic  float bin  type.  (Since  not all  numeric data  types are
+handled in the current implementation it should perhaps be termed
+some_to_some_.)
+
+Adding additional  basic data types increases  the number of rows
+and  columns of  the matrix and  therefore dramatically increases
+the  matrix size.   These five  additional types  would raise the
+current  conversion  matrix from  36  basic conversions  (6 basic
+types are fixed bin, float bin, fixed decimal, float decimal, bit
+and character) to  64 possible conversions by adding  the two new
+basic conversions, float hex and an extended float decimal.
+
+The current any_to_any_ code is  difficult to maintain and modify
+and  no  test suites  exist  to validate  its  correct operation.
+There  is  a  high  degree of  incestuous  routine  calling which
+constrains  programming  style and  use  of registers,  and makes
+program bugs more likely to occur and more difficult to fix.
+
+Any_to_any_  is called  through an  ALM call  with pointers, data
+types  and  precision/scale  information  held  within registers.
+Type  information is  the simple data  type (held in  an 18-bit X
+register), and precision/scale are  combined in two 18-bit fields
+within a 36-bit register.  The only current numeric/character/bit
+data type which cannot be described within this convention is the
+picture  data type,  supported by PL1,  which requires additional
+picture  description  in  a  structure  including  the formatting
+string.  This complex data type  is handled within assign_, which
+supports  a  proper  PL1  calling  convention  and  is  therefore
+suitable for this  complex interface, it in turn  converts to and
+from decimal types using pack_picture_ and unpack_picture_.
+
+Currently any_to_any_ and assign_  split handling of numeric data
+types with  any_to_any_ handling most numeric,  bit and character
+data type conversions, and assign_ handling special decimal data,
+overpunched  sign  9-bit decimal,  unsigned  9 and  4-bit decimal
+data, trailing  sign 9 and  4-bit decimal data  and 4-bit leading
+signed decimal data.  This is a split of functionality which does
+not aid in the maintenance  of either assign_ or any_to_any_.  It
+
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+would  be  useful to  locate  all regular  data  type conversions
+within any_to_any_  and limit assign_  to exceptional conversions
+which  require non-standard  data type  information, like picutre
+items.   However  to do  so  would also  increase  the conversion
+matrix and add a higher degree of complexity.
+
+The  combination of  all factors, need  for simple extendability,
+ease  of  maintenance,  split  functionality,  and  the  need  to
+implement   hexadecimal  support   for  FORTRAN   indicates  that
+any_to_any_ needs to be re-written to solve these problems.
+
+4 ANY_TO_ANY_ FUNCTIONALITY
+
+4.1 Entry Points
+
+Any_to_any_ has seven entry points,  to manage different types of
+conversions.  The  following section details  these entry points,
+and their functionality.
+
+  any_to_any_
+     This entry  point does general conversion  from numeric, bit
+     or character input to a  specified numeric, bit or character
+     output.  It  accepts specification detailing  the input data
+     location (pointer), precision, scale  and data type, and the
+     corresponding output data specification.  Character input is
+     taken  according   to  the  form  listed   in  the  section,
+     "Character Input Syntax".
+
+     This  entry point  assumes rounding according  to the output
+     data type,  Fixed Bin and Fixed  Decimal truncate, Float Bin
+     and Float Decimal round.
+
+  any_to_any_round_
+     This entry  point does general conversion  from numeric, bit
+     or character input to a  specified numeric, bit or character
+     output.  It  accepts specification detailing  the input data
+     location (pointer), precision, scale  and data type, and the
+     corresponding output  data description.  Character  input is
+     taken  according   to  the  form  listed   in  the  section,
+     "Character Input Syntax".
+
+     This entry point rounds numeric conversions.
+
+  any_to_any_truncate_
+     This entry  point does general conversion  from numeric, bit
+     or character input to a  specified numeric, bit or character
+     output.  It  accepts specification detailing  the input data
+     location (pointer), precision, scale  and data type, and the
+
+
+MTB-672                                Multics Technical Bulletin
+                                                    more_to_more_
+
+     corresponding output  data description.  Character  input is
+     taken  according   to  the  form  listed   in  the  section,
+     "Character Input Syntax".
+
+     This entry point truncates numeric conversions.
+
+  real_to_real_
+     This entry  point does general conversion  from numeric, bit
+     or character input to a  specified numeric, bit or character
+     output.  It  accepts specification detailing  the input data
+     location (pointer), precision, scale  and data type, and the
+     corresponding output  data description.  Character  input is
+     taken  according   to  the  form  listed   in  the  section,
+     "Character Input Syntax".
+
+     This  entry point  assumes rounding according  to the output
+     data  type,  Fixed  Bin  and Fixed  Decimal  truncate during
+     conversion,  Float Bin  and Float  Decimal round conversion.
+     It  will  not handle  input  with varying  lengths,  such as
+     varying bit or varying character.
+
+  real_to_real_round_
+     This entry  point does general conversion  from numeric, bit
+     or character input to a  specified numeric, bit or character
+     output.  It  accepts specification detailing  the input data
+     location (pointer), precision, scale  and data type, and the
+     corresponding output  data description.  Character  input is
+     taken  according   to  the  form  listed   in  the  section,
+     "Character Input Syntax".
+
+     This  entry point  rounds numeric conversions.   It will not
+     handle input  with varying lengths,  such as varying  bit or
+     varying character.
+
+  real_to_real_truncate_
+     This entry  point does general conversion  from numeric, bit
+     or character input to a  specified numeric, bit or character
+     output.  It  accepts specification detailing  the input data
+     location (pointer), precision, scale  and data type, and the
+     corresponding output  data description.  Character  input is
+     taken  according   to  the  form  listed   in  the  section,
+     "Character Input Syntax".
+
+     This entry point truncates numeric conversions.  It will not
+     handle input  with varying lengths,  such as varying  bit or
+     varying character.
+
+  char_to_numeric_
+     This  entry  point  receives   an  input  character  string,
+     specification  of  its  length  and  data  type  (varying or
+
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+     constant length), and a pointer to an output area which must
+     be  long enough  to hold  the largest  possible numeric form
+     (complex floating decimal) and  must be double word aligned.
+     The input string is scanned and conversion done to a numeric
+     form stored in  the target area.  If the  syntax indicates a
+     complex  numeric result,  both the real  and imaginary parts
+     are returned  in the same data  type, using basic conversion
+     rules   to    determine   a   dominant    conversion   type.
+     Char_to_numeric_  returns  the  target  data  type  and  the
+     length.
+
+The  target  area supplied  to  assign_ and  any_to_any_  must be
+double word aligned and big  enough for the conversion requested.
+The work area must also be double word aligned for calls directly
+to any_to_any_, assign_ supplies such an area.
+
+4.2 Data Type Handling
+
+The  following table  lists all data  types in  existance to this
+date,  and  which  are  managed  by   each  of  the  old  or  new
+any_to_any_.
+
+      #  Data Type Description               Handled by
+
+      1  real_fix_bin_1                      old and new
+      2  real_fix_bin_2                      old and new
+      3  real_flt_bin_1                      old* and new
+      4  real_flt_bin_2                      old* and new
+      5  cplx_fix_bin_1                      old and new
+      6  cplx_fix_bin_2                      old and new
+      7  cplx_flt_bin_1                      old* and new
+      8  cplx_flt_bin_2                      old* and new
+      9  real_fix_dec_9bit_ls                old and new
+     10  real_flt_dec_9bit                   old and new
+     11  cplx_fix_dec_9bit_ls                old and new
+     12  cplx_flt_dec_9bit                   old and new
+     13  pointer
+     14  offset
+     15  label
+     16  entry
+     17  structure
+     18  area
+     19  bit                                 old and new
+     20  varying_bit                         old and new
+     21  char                                old and new
+     22  varying_char                        old and new
+     23  file
+     24  runtime_label_constant
+
+
+MTB-672                                Multics Technical Bulletin
+                                                    more_to_more_
+
+     25  runtime_int_entry
+     26  runtime_ext_entry
+     27  runtime_ext_procedure
+     28  RESERVED
+     29  real_fix_dec_9bit_ls_overp          new
+     30  real_fix_dec_9bit_ts_overp          new
+     31  RESERVED
+     32  RESERVED
+     33  real_fix_bin_1_uns                  old and new*
+     34  real_fix_bin_2_uns                  old and new*
+     35  real_fix_dec_9bit_uns               new
+     36  real_fix_dec_9bit_ts                new
+     37  cplx_fix_dec_9bit_ts                new
+     38  real_fix_dec_4bit_uns               new
+     39  real_fix_dec_4bit_ts                new
+     40  real_fix_dec_4bit_bytealigned_uns   new
+     41  real_fix_dec_4bit_ls                old and new
+     42  real_flt_dec_4bit                   old and new
+     43  real_fix_dec_4bit_bytealigned_ls    old and new
+     44  real_flt_dec_4bit_bytealigned       old and new
+     45  cplx_fix_dec_4bit_bytealigned_ls    old and new
+     46  cplx_flt_dec_4bit_bytealigned       old and new
+     47  real_flt_hex_1                      new
+     48  real_flt_hex_2                      new
+     49  cplx_flt_hex_1                      new
+     50  cplx_flt_hex_2                      new
+     51  RESERVED
+     52  RESERVED
+     53  RESERVED
+     54  RESERVED
+     55  RESERVED
+     56  RESERVED
+     57  RESERVED
+     58  ESCAPE
+     59  algol68_straight
+     60  algol68_format
+     61  algol68_array_descriptor
+     62  algol68_union
+     63  picture_runtime
+     64  PASCAL typed pointer
+     65  PASCAL char
+     66  PASCAL boolean
+     67  PASCAL record file type
+     68  PASCAL record type
+     69  PASCAL set type
+     70  PASCAL enumerated type
+     71  PASCAL enumberated type element
+     72  PASCAL enumerated type instance
+     73  PASCAL user defined type
+     74  PASCAL user defined type instanc
+
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+     75  PASCAL text file
+     76  PASCAL procedure type
+     77  PASCAL variable formal parameter
+     78  PASCAL value formal parameter
+     79  PASCAL entry formal parameter
+     80  PASCAL parameter procedure
+     81  real_flt_dec_extended               new
+     82  cplx_flt_dec_extended               new
+     83  real_flt_dec_generic                new
+     84  cplx_flt_dec_generic                new
+     85  real_flt_bin_generic                new
+     86  cplx_flt_bin_generic                new
+
+     In the listing  above, the * by "old"  indicates an error of
+     operation.    For  floating   point,  there   are  numerical
+     inaccuracies in negative packed  floating stores (i.e.  -1.0
+     becomes -1.00000049....).
+
+     A  * by  "new" indicates  a compatable  extension of defined
+     range.  For unsigned fixed binary  this means that the upper
+     bit of a  single or double word unsigned  fixed binary value
+     can actually be used and will be correctly converted to/from
+     decimal.   Previously  this  bit  was  not  defined  for  an
+     unsigned fixed binary value.
+
+As can be  seen by the listing, there are  a number of data types
+which  would  have no  place  in any  form of  numeric conversion
+routine, but  on the other  hand there is no  current support for
+hexadecimal, PASCAL characters or  PASCAL booleans.  These can be
+easily added  in the new any_to_any_  design without dramatically
+increasing the program complexity.
+
+4.3 Conversion Rounding
+
+Rounding is done through several conventions.
+
+  Fixed Binary
+     A fixed binary number of precision Q is rounded by examining
+     the Q+1th bit to determine if rounding is required.  If so 1
+     is added to the Q-bit truncated signed value.  i.e.  A fixed
+     binary (10,1) value of 1.5  converted to fixed binary (9, 0)
+     will round to 2, -1.5 will round to -1.
+
+
+MTB-672                                Multics Technical Bulletin
+                                                    more_to_more_
+
+  Float Binary and Float Hexadecimal
+     A  floating  binary  number  of precision  Q  is  rounded by
+     examining  the  Q+1th  and  following bits  of  the absolute
+     value.  If  the Q+1th bit  is a 1  and any of  the following
+     bits  are  non-zero, the  signed  floating binary  number is
+     rounded up.  This  rounding action does not round  up at the
+     .5 level, and  is the same as the  regular hardware support.
+     Numbers are left normalized.
+
+  Fixed Decimal
+     A  fixed  decimal  number  of  precision  Q  is  rounded  by
+     examining the Q+1th digit to determine if it is &gt;= 5.  If so
+     the number is rounded by adding 1 to the Qth digit.
+
+     Float Decimal
+     A float decimal  number of precision Q is  rounded up if the
+     Q+1th digit is &gt;= 5.
+
+4.4 Error Management
+
+The user can catch conditions signaled by any_to_any_ conversion,
+and  through the  PL1 onchar and  and onsource  builtins may also
+correct  erroneous  character  input  to  a  conversion,  without
+altering the variable supplied  for conversion.  Any_to_any_ must
+handle  this functionality  and rescan  the input  which has been
+modified  during the  course of  error condition  handling in the
+user program condition handling.
+
+Error  management  is  done  in such  a  way  that  all signalled
+conditions are  the result of  overt program action,  rather than
+generated  hardware exceptions,  thus the  true restartability of
+the  condition  can be  supplied to  error handlers,  rather than
+erroneously restarting any_to_any_ in the middle of a conversion.
+Internal  operations  will  trap  all error  indicators  and take
+appropriate action.
+
+Error  signalling  by  any_to_any_   is  done  through  calls  to
+pl1_signal_from_ops_   or   plio2_signal_.    These   calls  pass
+information  detailing the  error code, through  an ONCODE value,
+and  associated information.   In the case  of conversion errors,
+sufficient information is passed  to permit full character string
+fixups.  Oncode values passed  by any_to_any_ are not necessarily
+the same as  the oncode value indicated for  the error message in
+the ascii file &gt;sss&gt;oncode_messages_.  Modification of the passed
+code is  done by either  of the two signalling  routines prior to
+actual lookup in  the ascii file to get  the appropriate message.
+The following error conditions may be signalled, in this list the
+exact oncode  value is indicated,  along with the  oncode used by
+any_to_any_.
+
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+Conversion Error
+     This  error  is  signalled through  plio2_signal_  to handle
+     conversion errors,  in which character input  is invalid for
+     the  desired  conversion.   Such  a character  error  can be
+     corrected  through the  use of  the PL1  builtins onchar and
+     onsource.  The error string is copied into a stack extension
+     and supplied to plio2_signal_,  and to the user.  Correction
+     is  done  on this  string  copy, which  is used  for further
+     conversion attempts if the error is restarted.  The original
+     string  is  not altered.   A  number of  possible conversion
+     errors may occur.
+
+     Character  representation of  bit string  contains character
+        other than "0" and "1".  (oncode 391 - sent as 191)
+        This  error occurs  in conversion  of a  character string
+        with  a B  or b suffix  (binary), in which  a digit other
+        than 0 or 1 occurs.
+
+     No digits  found  in  exponent  or scale  factor  of number.
+        (oncode 401 - sent as 201)
+        This error  is signaled when  an E, e, D,  d specifier is
+        used and is not followed by an exponent value, or an F, f
+        is used and not followed by a scale.
+
+     No digits found in  a numeric field.  (oncode 402  - sent as
+        202)
+        This  error is  signaled when  numeric syntax  requires a
+        digit to be supplied and none is found.
+
+     Invalid  character follows  a numeric field.   (oncode 403 -
+        sent as 203)
+        This error is indicated  when the character terminating a
+        numeric field is not valid for the next syntactic item.
+
+     Too many decimal  points in a numeric field.   (oncode 404 -
+        sent as 204)
+        A number  has been seen  which has more  than one decimal
+        point, or an exponent has a decimal point.
+
+     Implementation   restriction:    Character   string   to  be
+        converted is longer than 256 characters.  Type "start" to
+        use first 256 characters.  (oncode 405 - sent as 205)
+        A  character string  supplied to  any_to_any_ must  be no
+        longer than 256 characters in length.
+
+     Too many  exponential sub-fields in  numeric field.  (oncode
+        407 - sent as 207)
+        An exponent field has been  terminated with a syntax item
+        indicating that an exponent or scale field follows, d, D,
+
+
+MTB-672                                Multics Technical Bulletin
+                                                    more_to_more_
+
+        e,  E, f,  F.  An exponent  or scale  field cannot itself
+        have an exponent.
+
+     Scale factor  &gt; 127 in  scaled fixed binary  field.  (oncode
+        408 - sent as 208)
+        A scaling factor  has been used which is  too large to be
+        correctly  represented.  Though  the message  indicates a
+        fixed  binary number,  it also occurs  with fixed decimal
+        numbers.
+
+     Scale factor  &lt; -128 in scaled  fixed binary field.  (oncode
+        409 - sent as 209)
+        A scaling factor  has been used which is  too small to be
+        correctly  represented.  Though  the message  indicates a
+        fixed  binary number,  it also occurs  with fixed decimal
+        numbers.
+
+     Character other than separator  follows "i" of imaginary (or
+        complex) number.  (oncode 411 - sent as 211)
+        The  imaginary  part  of  a  complex  character  input is
+        terminated by the letter "i" or "I".  This letter must be
+        the end of  the character string, or must  be followed by
+        blanks.
+
+     Too many digits found in exponent or scale factor of number.
+        (oncode 413 - sent as 213)
+        Too  many digits  have been  supplied for  an exponent or
+        scale factor, the limit is 11 digits.
+
+     No digits in mantissa of number.  (oncode 414 - sent as 214)
+        A  number  has  been  seen which  has  no  digits  in the
+        mantissa preceeding an D, d, E, e, F, f.
+
+     Precision greater than dec(59)  or bin(71) in numeric field.
+        (oncode 418 - sent as 218)
+        The precision needed to  represent a number, as supplied,
+        is greater than the limit of precision of the data type.
+
+     Second  half of  complex number must  be imaginary.  (oncode
+        419 - sent as 219)
+        The input syntax has supplied two numbers, but the second
+        is  not followed  by an  I or  i to  validate that  it is
+        imaginary.
+
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+Error
+     This error is signaled through pl1_signal_from_ops_.  It can
+     be one of the following error conditions.
+
+     Attempt  to  perform  invalid  or  unimplemented conversion.
+        (oncode 415)
+        This  error  is  signaled  if  an  invalid  data  type is
+        supplied to any_to_any_ for conversion, or data is itself
+        invalid,  for  example overpunched  decimal data  with an
+        invalid overpunch.
+
+     size condition (oncode 703)
+        This  error is  signalled whenever  a value  will not fit
+        into the precision of  the target.  Examples are negative
+        values assigned to  an unsigned type or too  many bits of
+        precision to fit.
+
+     overflow condition (oncode 705)
+        This error  indicates an exponent overflow  for a decimal
+        or binary floating point number.
+
+     underflow condition (oncode 706)
+        This error  indicates an exponent overflow  for a decimal
+        or binary floating point number.
+
+4.5 Error Handling Bugs
+
+There are currently  a number of bugs in  the management of these
+oncodes.  Oncode 391 is currently  transmitted as oncode 376, for
+which  there is  no message.  Oncodes  408 and  409 only indicate
+scaled  fixed  binary  fields,  they are  also  for  scaled fixed
+decimal  fields.   Oncode  415 is  sent  to pl1_signal_from_ops_,
+which only believes 701 through 1000 are valid.
+
+The new  any_to_any_ fixes oncode 376,  by transmitting code 191,
+which is transformed by plio2_signal_ to  391 and can be found in
+the oncode_messages_ segment.  Oncodes 408  and 409 must be fixed
+in   the  oncode_messages_   segment.   Oncode   415,  which  was
+previously sent as a 215 (which was incorrect), requires a fix in
+any_to_any_ to be sent as 415, and a fix in pl1_signal_ to permit
+415 to be accepted as valid.
+
+
+MTB-672                                Multics Technical Bulletin
+                                                    more_to_more_
+
+5 NEW IMPLEMENTATION
+
+Many of the problems of complexity with any_to_any_ result in the
+mixture of  basic data conversion and  data type management code,
+in  which  a  full matrix  is  required to  express  all possible
+conversions  of  the basic  data  types.  The  new implementation
+attempts  to  isolate  basic  numeric/bit/char  conversions  from
+simple conversions necessary for data type management.
+
+The  new implementation  of any_to_any_ breaks  conversion into a
+series  of operations  done with  GENERIC data  forms.  A GENERIC
+form  is  a superset  numeric, bit  or character  form, typically
+supported  directly by  the hardware.  For  floating point binary
+and  decimal  the GENERIC  form  has a  highly  extended exponent
+(fixed  bin  (35)), but  all  essential numeric  manipulations of
+these numbers are done directly  by the hardware by appropriately
+initializing the hardware exponent.
+
+A SOURCE module recognizes the data type format of a data item to
+be  converted, and  converts it  to the  appropriate GENERIC form
+used in the any_to_any_  conversion.  A GENERIC CONVERSION module
+matrix  is  used  to  convert  to  a  GENERIC  form  suitable for
+conversion to  the final target  form.  A TARGET  module converts
+from the GENERIC form to the final target format.  Thus each data
+type has a  unique source and target conversion  module, and will
+use a common GENERIC to  GENERIC conversion module.  Knowledge of
+the  unique characteristics  of a  data type  is isolated  to the
+source  and  target  conversion  modules and  is  typically short
+straight-line code.
+
+The intention  of this environement  is that the  highly variable
+routines will be relegated to short and simple straight line code
+sections,  while the  GENERIC data handling  will be  common to a
+wide  range  of possible  source  and target  conversion modules.
+Thus the  development of a  new data type  will typically require
+only the  development of a  source and target  conversion module,
+since the GENERIC conversion will already exist and be validated.
+
+This  approach has  the danger  that the  new code,  by utilizing
+common  forms, and  potentially requiring more  data movement and
+conversions will be noticably slower in some conversions than was
+the  previous specific  any_to_any_ code.  It  is this generality
+which  makes  the  new  any_to_any_  much  easier  to  extend and
+validate,  and  the  old   any_to_any_  much  more  difficult  to
+understand and debug, let alone extend.
+
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+6 DETAILS OF DESIGN
+
+The  design  of the  new any_to_any_  is done  to provide  a good
+separation of  functions and to simplify  and clarify interfaces.
+The  structural changes  have permitted  algorithm changes  and a
+re-work  of  the  working   storage  area.   This  has  noticably
+decreased the amount of space required for working storage.
+
+6.1 Entry Point Merging
+
+The old  any_to_any_ separated the  any_to_any_ and real_to_real_
+entry points to slightly speed the execution of items known to be
+non-varying  and  simple  in  conversion.   The  only  place this
+actually speeds operations is in  the driver section of the code,
+where real_to_real_ does  not check for bit or  character data or
+varying length strings.  The new code relegates any such checking
+to the appropriate  source module and thus has  no extra overhead
+which  could  be  eliminated.  This  permits  complete congruence
+between the any_to_any_ entry  points and the real_to_real_ entry
+points.
+
+6.2 Working Storage Changes
+
+Working storage  for any_to_any_ is  a double word  aligned area,
+supplied  by the  calling program and  can be one  of three basic
+sizes,  depending  upon  the  complexity of  the  operation being
+requested.
+
+6.2.1 STORAGE FOR THE OLD ANY_TO_ANY_
+
+A  basic  work area  is  28 words  long.   It permits  numeric to
+numeric conversions  but does not permit  numeric to character or
+character to numeric or handling of 4-bit floating decimal data.
+
+A  second  work  area size  is  44  words long,  and  permits, in
+addition  to  the basic  conversions, conversions  handling 4-bit
+floating decimal data.
+
+The  final  work area  size  is 158  words  long and  permits all
+conversions, including character and 4-bit floating decimal.
+
+
+MTB-672                                Multics Technical Bulletin
+                                                    more_to_more_
+
+6.2.2 STORAGE FOR THE NEW ANY_TO_ANY_
+
+The new  any_to_any_ requires a  maximum of 118  words of working
+storage.     It    defines    five    GENERIC    storage   areas:
+fix_bin_generic,  flt_bin_generic,  flt_dec_generic,  bit_generic
+and char_generic.   The basic working  storage area is  28 words,
+covering the same conversions as with the old any_to_any_ and ALL
+decimal data  conversions, including those  previously handled by
+assign_.  The full  work area of 118 words  covers the full range
+of conversions, including character conversions.
+
+ 1.  fix_bin_generic
+     This  area holds  a 72-bit  integer value,  either signed or
+     unsigned.   It   is  also  used  as   a  temporary  area  in
+     conversions not dealing with integers.
+
+ 2.  flt_bin_generic, flt_bin_generic_exp
+     This area holds  a 72-bit floating point number  and a fixed
+     bin (35)  exponent.  The floating point  number is stored as
+     the AQ  part of the  EAQ of a double  precision number.  The
+     exponent is  stored as a  fixed bin (35)  value for extended
+     range.   This permits  a binary  range much  larger than the
+     hexadecimal range.
+
+ 3.  flt_dec_generic, flt_dec_generic_exp
+     This area holds up to a float decimal (61) number, including
+     an  8-bit hardware  EIS exponent  and has  a fixed  bin (35)
+     extended range exponent.  This  permits range extension well
+     beyond the limits of hexadecimal  floating point and the new
+     float_decimal_extended 9-bit exponent  data type.  This area
+     is  used  to hold  all  decimal data  as a  floating decimal
+     number.  Normally the hardware exponent is kept at 0.
+
+ 4.  bit_generic
+     This area is  available to hold a generic  bit data item, if
+     the   source   format   is   dissimilar   to   the  hardware
+     representation.  It overlays the flt_dec_generic area, since
+     these are exclusive data types during conversion.
+
+ 5.  char_generic
+     This area  is available to hold  character input/output data
+     for source  and/or target conversion and  is utilized within
+     generic   character  conversion   routines  as  intermediate
+     storage.  It will hold a full 256 character string.
+
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+6.3 Extended Range and Precision
+
+The  new any_to_any_  deals with  numeric ranges  well beyond the
+hardware  limits  of  the  processor.  Both  floating  binary and
+floating  decimal  exponents  are  maintained as  fixed  bin (35)
+values, to permit  a true super-set of all  hardware ranges.  The
+floating  point  binary mantissa  is internally  stored as  an AQ
+portion of the  EAQ, which provides a full  72-bits of precision.
+This extended precision is used for correct rounding and extended
+precision of binary/decimal conversions.
+
+This  extended  range  and  precision  simplifies  both  internal
+concepts and  source and target conversion  problems.  Without it
+special conversion  routines would be required  for each extended
+hardware data type to all other types.
+
+Binary  to decimal  and decimal  to binary  routines will convert
+over  the  extended range  through  a sectioning  algorithm which
+extends the normal conversion algorithm's range without requiring
+any  table  changes.   Binary   and  hexadecimal  floating  point
+rounding  is  handled exactly  as  with the  hardware,  even when
+dealing with packed floating point numbers.
+
+6.4 Hexadecimal Floating Point
+
+Hexadecimal data is managed internally as generic binary floating
+point,  since the  internal floating  point binary  generic form,
+stored as a 35-bit exponent and  a 72-bit mantissa, is a superset
+of the range and precision of hexadecimal floating point.
+
+Hexadecimal floating point data is  does not require execution in
+a hexadecimal floating point mode,  thus these conversions are as
+valid  on a  Level 68  processor as  on a  DPS8/70M.  Rounding is
+performed as  it would be  for normal binary  floating point, but
+normalization  of results  is performed as  a correct hexadecimal
+floating point number.
+
+6.5 Changes to Algorithms
+
+6.5.1 UNSIGNED BINARY
+
+The  old  any_to_any_  essentially  dealt  with  unsigned  binary
+exactly the same way as it  dealt with signed binary.  This meant
+that  the  maximum  convertable  unsigned  binary  was  fixed bin
+unsigned (71), rather than (72).   In addition the unsigned fixed
+
+
+MTB-672                                Multics Technical Bulletin
+                                                    more_to_more_
+
+bin  (36) data  type was permitted,  but could not  have the high
+order bit  set.  These limits carried  through to all conversions
+to and from unsigned binary.  This meant that a user would get no
+error  indication  but  could  well  get  numerically  ridiculous
+results.
+
+The  new  any_to_any_ deals  with unsigned  binary as  a separate
+entity and correctly handles any  precision or scale of that data
+type and all conversions.
+
+6.5.2 BINARY TO DECIMAL AND DECIMAL TO BINARY
+
+The  extended range  of floating  binary and  floating decimal is
+managed through conversions between decimal and binary, which are
+also used in conversions to and from characters.
+
+This extension of  range uses the same power_of_two  table as was
+used previously,  which has 4-bit fixed  decimal constants of the
+powers of two from 2**0 to 2**197.  It sections the conversion by
+repeatedly converting to the limit  of the table, and subtracting
+the power  converted, until the  exponent range falls  within the
+limits of the table.  Thus a value with 2**430 would be converted
+as 2**197, 2**197, 2**36 in sucession to produce a final result.
+
+This does accumulate some error  due to iteration, but this error
+is  minimal  in normal  operation  due to  the use  of overlength
+floating decimal intermediate operations.  Typical conversions to
+maximum  precision at  the limits  of the  hexadecimal range have
+been accurate in the last  digit, compared to an overlength power
+of two table.
+
+Conversion  from  float  decimal to  float  binary is  done  to a
+precision of up to 70-bits.   This increases numeric precision of
+previous  conversions  which were  to approximately  63-bits, and
+permits correct rounding.
+
+6.5.3 NUMERIC TO CHARACTER
+
+Numeric to  character conversion has been  modified somewhat over
+the  previous version  of any_to_any_,  but has  the closest code
+correspondence  of  any part  of the  new software.   It produces
+identical results  to the old  any_to_any_.  It handles  the full
+range  possible  for  the  over-range  exponent  in  a compatable
+fashion  the  the  previous  conversion.  A  3-digit  exponent is
+normally output,  this increases to more  than 3-digits as needed
+for  very large  exponents.  This  can only  occur when supplying
+
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+data  in a  generic floating  decimal or  generic floating binary
+form.
+
+6.5.4 CHARACTER TO NUMERIC
+
+Character  to  numeric  conversion  is a  total  re-write  of the
+previous code.  The new code parses the input stream and produces
+token information.  This  is used to access the  source stream to
+produce  floating  decimal  values  for conversion  to  the final
+target.  Previously character to numeric  code was an intermix of
+input  scan  and  conversion  and   a  replication  of  code  for
+converting numeric data types.  The new code will prepare GENERIC
+data  to be  run through  the any_to_any_  conversions already in
+place.  Thus no new conversion  errors are expected.  This should
+both simplify  and shorten the code.   It also permits conversion
+to  all  supported  data  types, and  eases  problems  of proving
+correctness.
+
+6.6 Error Detection and Signalling
+
+Errors will be detected within the code of the new any_to_any_ by
+explicit testing,  and the new  code will run  with faults masked
+for  numeric operations.   This means  that all  error signalling
+will  be done  through the  software signalling  routines, rather
+than  simply  occuring  at  some  spot  within  any_to_any_.   In
+addition,  the  requested  data  types will  be  validated before
+operations  are performed.   The previous code  never checked for
+valid data type before doing table lookup jumping.
+
+7 PERFORMANCE
+
+Performance of the new any_to_any_ has  proven to be a mixture of
+improvement  and degradation  of the current  code.  Typically it
+will be somewhat slower, if  only through some generalization and
+the ability to handle substantially increased numberic ranges.
+
+Degradations  vary  considerably   between  different  conversion
+functions, with non-generic targets  and/or sources having higher
+degradations  that  generic target  and/or sources.   For example
+decimal information is maintained generically as generic floating
+decimal, requiring conversion between  fixed decimal and floating
+decimal  if  the target  and/or source  are fixed  decimal.  This
+imposes  approximately  a raw  24%  degradation on  conversion of
+floating bin  to fixed decimal.  As  used within fortran_io_ this
+
+
+MTB-672                                Multics Technical Bulletin
+                                                    more_to_more_
+
+is   seen  as   a  maximum  degradation   of  approximately  13%.
+Conversion  to  floating  decimal  imposes a  raw  degradation of
+approximately 6%.
+
+Conversion  to character  output from numeric  input also suffers
+some   degradation,  but   a  strange  anomaly   has  been  seen.
+Converting   a  floating   point  1.0  to   character  output  is
+approximately 15%  slower with the new  any_to_any_, unless it is
+to a character target which is  too small to hold the full output
+(like  12  characters  instead  of 16).   In  this  case  the old
+any_to_any_  is 195  times slower.   The reason  for this amazing
+anomaly in the old any_to_any_ has not been isolated.
+
+Performance runs with the standard  performance set will be done,
+and their results  indicated in the MCR.  There  is some room for
+performance   improvements   within   the  design   of   the  new
+any_to_any_,  but it  may never perform  as well as  the old one.
+This may necessitate a performance/maintenance tradeoff.
+
+8 TESTING
+
+Testing  and  verification  has been  taken  as a  point  of high
+importance.  During the development of the new any_to_any_ code a
+test  sub-system  was  developed  which  enabled  any  input  bit
+patterns to be  run through the conversion, any  data types to be
+selected for source and target and validation of conversion to be
+done,  including  signalled  error conditions  and  source fixups
+through onchar and onsource  builtins.  This test sub-system will
+be  supplied with  validation scripts and  documentation with the
+new any_to_any_.
+
+The  test  sub-system  permits  duplication  and  verification of
+reported  errors and  proves their  elimination without requiring
+any program development, all input is either through the terminal
+or from test "ec" scripts.
+
+At   this   time   three   basic  scripts   exist.    The  first,
+fetch_test.test_a, validates that data can be fetched from memory
+for  all data  types.  The  second, store_tests.test_a, validates
+that data can be stored.  The third, c_test.rnd.test_a, validates
+that  rounded  numeric  conversions  occur  correctly.   The test
+scripts are  setup in such  a way that they  are easily extended.
+At the present time they validate almost all of the operations of
+any_to_any_,  including character  input and fixups,  but are not
+totally exhaustive.
+
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+9 EXTENDABILITY
+
+The  new  design  for   any_to_any_  permits  easy  extension  of
+conversions covered by the existing GENERIC data types by writing
+additional  source  and target  routines to  handle the  new data
+type, and addition  to the source and target  tables.  If totally
+new hardware data  types which cannot be covered  by the existing
+GENERIC  data  types are  introduced  this would  take additional
+work.
+
+An  example of  extensions to  new hardware  capabilities is that
+hexadecimal floating point fits  within the definition of GENERIC
+floating  binary, and  thus can be  completely handled (including
+rounding  on  output)  with  31 lines  of  source  access routine
+(handles     flt_hex_1,    flt_hex_2,     flt_hex_1_packed    and
+flt_hex_2_packed), and  56 lines of target  access and conversion
+routine.   The  target routine  will store  flt_hex_1, flt_hex_2,
+flt_hex_1_packed  and   flt_hex_2_packed  and  will   do  correct
+hexadecimal   single   and    double   precision   rounding   and
+normalization.  Both source and target routines execute in binary
+mode and will function correctly on a level 68 processor.
+
+The ability  to do such  trivial additions will  be quite welcome
+with the addition of more languages to Multics, or even extension
+to handle all the data types of the existing languages.
+
+10 ADDITIONAL DATA TYPES HANDLED
+
+As  indicated  in the  list  of data  types, the  new any_to_any_
+handles a number of data types which were previously not handled.
+The following  is a list  of these data  types, and documentation
+about them.
+
+10.1 Existing Data Types
+
+ 29  real_fix_dec_9bit_ls_ovrp
+     This data type is documented  in AG91-03A, p.  D-12.  It has
+     the leading digit overpunched with sign information.
+
+ 30  real_fix_dec_9bit_ts_ovrp
+     This data type is documented  in AG91-03A, p.  D-14.  It has
+     the trailing digit overpunched with sign information.
+
+
+MTB-672                                Multics Technical Bulletin
+                                                    more_to_more_
+
+ 35  real_fix_dec_9bit_uns
+     This data type is documented in AG91-03A, p D-15.  It has no
+     sign information and is defined to always be positive.
+
+ 36  real_fix_dec_9bit_ts, 36-cmplx_fix_dec_9bit_ts
+     This data type is documented  in AG91-03A, p.  D-15.  It has
+     sign information in the last character of the number, rather
+     than as the first character.
+
+ 38  real_fix_dec_4bit_uns, 40-real_fix_dec_4bit_bytealigned_uns
+     This data type is documented in AG91-03A, p.  D-16.  It does
+     not have sign information and is defined to be positive.
+
+ 39  real_fix_dec_4bit_ts
+     This data type is documented  in AG91-03A, p.  D-16.  It has
+     the sign digit in the trailing digit position.
+
+10.2 Additional Data Types
+
+The  following list  indicates data  types which  have been newly
+created and do not have system documentation at this time.
+
+ 47  real_flt_hex_1, 49-cmplx_flt_hex_1
+     This   data   type  has   the   same  bit   layout   as  for
+     real_flt_bin_1, as documented in AG91-03A, p.  D-5.  However
+     the exponent  indicates powers of 16,  rather than powers of
+     two, and normalization is performed such that the upper five
+     bits of the mantissa (the sign  and 4 bits of precision) are
+     not  the same  (unless the  number is  a normalized floating
+     0.0).  Alignment of bits is done on 4-bit boundaries.
+
+ 48  real_flt_hex_2, 50-cmplx_flt_hex_2
+     This   data   type  has   the   same  bit   layout   as  for
+     real_flt_bin_2, as documented in AG91-03A, p.  D-6.  However
+     the exponent  indicates powers of 16,  rather than powers of
+     two, and normalization is performed such that the upper five
+     bits of the mantissa (the sign  and 4 bits of precision) are
+     not  the same  (unless the  number is  a normalized floating
+     0.0).  Alignment of bits is done on 4-bit boundaries.
+
+ 81  real_flt_dec_extended, 82-cmplx_flt_dec_extended
+     This  is a  floating decimal  data type  which has  the same
+     basic   layout  as   real_flt_dec_9bit,  as   documented  in
+     AG91-03A, p.  D-8, with the last character format changed to
+     hold  a  9-bit  exponent, rather  than  a pad  and  an 8-bit
+     exponent.  Thus the last byte looks like:
+
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+               --------------------
+               | |                |
+               |S|       E        |
+               | |                |
+               --------------------
+
+     This data  type more than  doubles the normal  float decimal
+     range, since the negative range  extension goes from e-70 to
+     e-198.
+
+ 83  real_flt_dec_generic, 84-cmplx_flt_dec_generic
+     This is a  floating decimal data type, preceeded  by a fixed
+     bin (35) aligned  value, which has the same  basic layout as
+     real_flt_dec_9bit, as documented in  AG91-03A, p.  D-8, with
+     the  last character  format changed  to a  9-bit pad, rather
+     than a pad  and an 8-bit exponent.  The  complex form is two
+     of  these  items  together,  with  the  character  positions
+     between  the  end of  the  real part  and  the start  of the
+     word-aligned imaginary  part taken as pad  fields.  Thus the
+     format is:
+
+                               Word aligned
+     --------------------------------------------------------------
+     | |                |         |         |           |         |
+     |S|   Exponent     |sign char|1st digit| n digits  | pad char|
+     |1|      35        |    9    |    9    |    n*9    |    9    |
+     --------------------------------------------------------------
+
+     This  data  type  has  an  exponent  range  higher  than any
+     hardware data type.
+
+ 85  real_flt_bin_generic, 86-cmplx_flt_bin_generic
+     This is a floating binary data type which has the same basic
+     layout  as  real_flt_bin_2,  as documented  in  AG91-03A, p.
+     D-6,  followed  by a  fixed bin  (35) exponent.   The binary
+     exponent  part  of  the   real_flt_bin_2  is  a  pad  field,
+     typically  0.   The  complex  form  is  two  of  these items
+     separated  by a  single word pad  field, since  the real and
+     imaginary  parts  must  be  double word  aligned.   Thus the
+     format is:
+
+                           Double Word aligned
+               ------------------------------------------
+               |                     | |                |
+               |    real_flt_bin_2   |S|   Exponent     |
+               |         72          |1|      35        |
+               ------------------------------------------
+
+     This  data  type  has  an  exponent  range  higher  than any
+     hardware data type.
+
+
+MTB-672                                Multics Technical Bulletin
+                                                    more_to_more_
+
+11 ASSOCIATED CHANGES TO OTHER ROUTINES
+
+Other routines  will benefit from modification  to take advantage
+of the upgrade of any_to_any_.
+
+11.1 Probe
+
+Probe  will  have fewer  conversions  to do  for  additional data
+types, since  these conversions could be  handled by any_to_any_.
+The  current  support extensions  for hexadecimal  floating point
+FORTRAN  will  require these  changes,  as may  extensions  for C
+support.  Expression evaluation for  probe must take into account
+the  larger  range  of   hexadecimal  floating  point.   In  fact
+expression    evaluation    will    now    be    done   utilizing
+float_decimal_generic arithmetic.
+
+11.2 assign_
+
+The  current  assign_,  as  noted  above,  handles  a  number  of
+conversions  where  it  converts  from   a  special  form  to  an
+intermediate  form  supported  by  the  current  any_to_any_, and
+handles  conversion  from  a  supported any_to_any_  form  to the
+special form.  The new assign_ code only needs to do this for the
+picture  data  type, since  the new  any_to_any_ will  handle all
+basic conversions  directly.  This removes roughly  half the code
+fo  assign_.   In  addition   the  assign_  handling  of  picture
+conversion is totally  broken and does not work  converting to or
+from a picture item.  This code has been fixed.
+
+Code  for  assign_  utilized  6-bit character  indexes  in lookup
+tables  to determine  processing types  and routines  for special
+handling.   This  has  been  changed  to  utilize  regular  9-bit
+characters to avoid later problems with FLOWER.
+
+11.3 ioa_
+
+The ioa_  base routine formline_  has been modified  to utilize a
+floating  decimal  generic  intermediate  in  its  conversion  to
+characters  for  display.   As   with  the  any_to_any_  extended
+character numeric output, the exponent output by formline_ can be
+up  to  11 digits  in length,  for  the full  range of  the float
+decimal  generic  data type.   Typically, even  using hexadecimal
+
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+input  to ioa_,  the range will  only require  the normal 3-digit
+exponent.
+
+11.4 pl1_signal_
+
+This  routine  receives the  415 oncode,  Invalid Data  Type, and
+signals the appropriate condition.   It currently permits oncodes
+only to  be in the range  of 701 to 1000.   Additional code, in a
+single  IF  statement, is  required to  correctly permit  the 415
+oncode.  This is  in conjunction with a fix  in any_to_any_ which
+sends  the true  415 oncode,  rather than  215, since pl1_signal_
+does not add 200 to the oncodes, as does plio2_signal_.
+
+11.5 std_descriptor_types.incl.pl1
+
+This include file is altered to include the additional data types
+now covered with HEXADECIMAL  FORTRAN and the additional extended
+and generic data types of any_to_any_.
+
+12 CHARACTER INPUT SYNTAX
+
+The entry point char_to_numeric_ will  parse a fairly open syntax
+to determine numeric input, and the desired output form.  This is
+syntax  is also  permitted in  any of  the other  entry points in
+converting   character   data   input.    The   significance   in
+char_to_numeric_  is that  the syntax  will determine  the output
+data type, while all other  entry points convert to the specified
+output data type.
+
+The syntax of numeric input is  fully described in AM83 section 8
+(Arithmetic Constant Literals).  This section does not detail the
+complex output data type which will  result from the input of the
+two  parts  of  a  complex  number  in  differing  formats.   The
+following table  indicates which is the  dominant output type for
+each of the  input type possibilities.  The rows  and columns are
+the  data  types  of the  real  and imaginary  components  of the
+complex number.  The matrix intersection of the row and column is
+the resultant data type of both the real and imaginary part after
+co-ercion.  The second line of the intersection box indicates the
+conversion performed.
+
+
+MTB-672                                Multics Technical Bulletin
+                                                    more_to_more_
+
+   REAL TYPE
+
+      0 type | error  | fixbin | fltbin | fixdec | fltdec |
+             |        | as is  | as is  | as is  | as is  |
+             ---------------------------------------------|
+      fixbin | fixbin | fixbin | fltbin | fixbin | fltbin |
+             | as is  | as is  | as is  |dec-&gt;bin|dec-&gt;bin|
+             ---------------------------------------------|
+      fltbin | fltbin | fltbin | fltbin | fltbin | fltbin |
+             | as is  | as is   | as is |dec-&gt;bin|dec-&gt;bin|
+             ---------------------------------------------|
+      fixdec | fixdec | fixbin | fltbin | fixdec | fltdec |
+             | as is  |dec-&gt;bin|dec-&gt;bin| as is  | as is  |
+             ---------------------------------------------|
+      fltdec | fltdec | fltbin | fltbin | fltdec | fltdec |
+             | as is  |dec-&gt;bin|dec-&gt;bin| as is  | as is  |
+             ---------------------------------------------|
+   IMAG TYPE   0 type   fixbin   fltbin   fixdec   fltdec
+
+13 TEST SUB-SYSTEM
+
+A  test  sub-system  was  written  as  part  of  the  any_to_any_
+re-write.  This sub-system utilizes  sub-system utilities for its
+user  interface and  tests any_to_any_'s  actions through assign_
+interfaces.   It  will  use  the assign_  entry  points, assign_,
+assign_$assign_round_,   assign_$assign_truncate_,   assign   and
+char_to_numeric_.   It  will  also   use  the  entry  points  a_,
+a_$assign_round_,  a_$assign_truncate_  and  a_$char_to_numeric_.
+The second set of entry points permits one to use an assign_ copy
+(with  the  entryname a_)  altered  to call  a  local any_to_any_
+version.   This permits  A/B comparisons between  a local version
+and  the  system  version  of  assign_  and  any_to_any_, without
+disrupting the  normal process environment, as  would be the case
+in attempting to experiment upon any_to_any_ locally.
+
+The  test_a  testing  sub-system  permits  specification  of data
+types,  including precision,  scale, packing  and offsetting.  It
+lets one define the bit string to be presented to assign_ for the
+conversion and to define the bit string which should be output by
+the conversion.   If no output  bit string is  specified, it will
+list the  output of the  conversion.  If an output  bit string is
+supplied,  it will  be verified  with the  actual output  and any
+errors indicated.
+
+The test  sub-system will also handle  error conditions as output
+validations, for example, converting a  large number into a small
+fixed bin precision should result in a size error.  The following
+conversion specification will validate such a condition.
+
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+   proc assign_
+   source real_fix_bin_1 35
+   target real_fix_bin_1 packed 5
+   c dec 36/1000000 -&gt; size
+
+In  this example  the conversion  procedure selected  is assign_,
+which will do  default rounding.  The source is  an aligned fixed
+bin (35) number, which occupies  36-bits.  The target is a packed
+fixed bin (5) number, which occupies 6-bits (sign + 5-bits).  The
+value of 1 million will not  fit within the target and produces a
+size condition.  The output  specification of size validates that
+this  is the  desired output  of the  conversion, so  no error is
+indicated.
+
+Timing information  can also be  produced through the  use of the
+test sub-system.  If timing is turned on, each conversion call is
+made 100  times in a  tight loop, to  produce an average  time of
+conversion.  Numeric validation is also performed.
+
+The help segments  for the sub-system are included  at the end of
+this MTB.
+
+14 CONCLUSION
+
+We would expect  that the re-write of any_to_any_  can serve as a
+good  basis  for further  developments, and  should make  it much
+easier  to extend  system conversion capabilities  in the future.
+It   should  significantly   increase  the   maintainability  and
+verifiability of these conversions and permit easy extensions.
+
+It must be acknowledged that the new any_to_any_ will probably be
+and  remain slower  than the  version it  replaces.  Some further
+optimization is  still possible, but basic  speed will be limited
+by the generality of the design.
+
+At  this stage  all the  work mentioned  above has  been done and
+essentially  tested.   The  code  has  been  in  use  within  the
+development of hexadecimal FORTRAN for approximately four months,
+and has been in production use in the ACTC system for 2 months.
+
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+                    Test Sub-system Help Files
+
+04/17/84 test_a
+
+Syntax: test_a
+
+Function:  Enters the test_a testing environment.
+
+   This  environment  is  a test sub-system which can be used in
+   the  maintenance  and  development  necessary for assign_ and
+   any_to_any_.  It provides the ability to generate bit strings
+   and  cause  their  conversion  from a source form to a target
+   form.  For example:
+
+          test_a: proc assign_
+          test_a: source real_fix_bin_1 35 10
+          test_a: target varying_char 30
+          test_a: convert dec 26/101,dec 10/0
+
+   Will request conversion of a fixed bin (35,10) to a char (30)
+   varying  through  the  routine  assign_  and  will attempt to
+   convert  the  decimal  value 101.  If errors occur or signals
+   are  generated  they will be reported to the user.  As stated
+   the  conversion will print the results, if desired a validity
+   check  to  a specified target bit string can also be done, in
+   which case only error conditions will be reported.
+
+   This  sub-system  makes it possible to ease further data type
+   development  and  validate  conversions.   It  also is highly
+   useful  in  the maintenance of assign_ and any_to_any_.  With
+   the  sub-system  it  should  be possible to create validation
+   scripts  and  reproduce  any  reported  bug  and validate its
+   correction.
+
+
+MTB-672                                Multics Technical Bulletin
+                                                    more_to_more_
+
+04/18/84  comment, !
+
+Syntax:  ! comment text to NL or ;
+
+Function:  Permits  command level comments to be embedded within
+an exec_com for documentation purposes.
+
+The  comment keyword or !  must be followed by a delimiter, such
+as  a  space  and the comment continues until the end of line or
+semi-colon.   If  a semi-colon should occur in the comment, then
+the comment text may be quoted.
+
+04/17/84  status, st
+
+Syntax:  st
+
+Function: prints the current status of the test sub-system.  The
+   output will be of the following form:
+
+          test_a:  status
+          Procedure:          assign_$assign_round_
+          Source type:        char (20,0) (packed)
+          Target type:        real_flt_bin_gen (40,0)
+
+   In  this case test_a will call assign_$assign_round_ and will
+   expect  the  source  datum  to  be of the form of a 20 packed
+   character  string and the target to be a float binary generic
+   with a precision of 40 bits of mantissa.
+
+   A status output will also be shown when errors are reported.
+
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+04/17/84  procedure, proc
+
+Syntax:  proc {procedure_name|? {on}}
+
+Function:  sets the conversion procedure and/or prints timing information.
+
+Arguments:
+
+procedure_name
+   The  procedure_name is one of the valid conversion procedures
+   supported by test_a.  If the user enters a ?  a list of valid
+   procedures will be printed.
+
+on
+   If  a procedure_name has been supplied, and the "on" argument
+   is  given  then  timing  information  will  be given for each
+   successive  proc  command until a proc command is seen with a
+   second  argument  which  is  not "on".  This causes test_a to
+   call  the  conversion  routine 100 times for each conversion,
+   rather  than  the  normal  single  call to provide reasonably
+   accurate timing information.
+
+Notes:
+   When  the  proc  command is envoked and timing has previously
+   been set "on", test_a will print the time statistics gathered
+   since  the  last proc command.  If no procedure_name is given
+   the  current  procedure will be used for further conversions,
+   otherwise  the  current procedure will be set to the supplied
+   conversion procedure.
+
+Examples:
+Selecting a procedure
+   proc assign_$assign_round_
+
+Selecting timing
+   proc assign_$assign_round_ on
+
+Turning off timing
+   proc assign_$assign_round_ xxx
+
+Simply printing timing statistics
+   proc
+
+
+MTB-672                                Multics Technical Bulletin
+                                                    more_to_more_
+
+04/17/84  source, src, s
+
+Syntax:  s data_type|? {packed {pad n}} precision {scale}
+
+Function:  sets information about the data source.
+
+Arguments:
+data_type
+   This  field  indicates  the  data type of the conversion data
+   source.  If the user types ?  a list of valid data type names
+   will  be  printed,  prefaced  by  the data type number.  When
+   entering  a data type to the source command only use the data
+   name, and not the type number.
+
+packed
+   This  optional  field indicates that the data item is packed.
+   If  not  specified  the  data item will be indicated as being
+   unpacked.
+
+pad n
+   This  optional  field should only be used if the data item is
+   packed.   It  indicates  the offset to be inserted before the
+   generated  data  stream.   Padding  permits testing of values
+   offset from the default double word alignment.
+
+precision
+   This required number indicates the number of bits, nibbles or
+   bytes of precision required by the source.  If a data item is
+   a  bit length, such as for bits, fixed bin or float bin, this
+   value  is  taken  to  be  bits.  If the item were in nibbles,
+   which are packed two to a byte, the precision is taken as 4.5
+   bit  multiples.   If  the  item  were  a  byte  item, such as
+   characters  or  float decimal, then the precision is in 9-bit
+   bytes.
+
+scale
+   This  optional  signed  value  is the scaling factor for data
+   items which can take a scaling factor.  It can be positive or
+   negative,  but  must be within certain bounds with respect to
+   the precision.
+
+Commenting:
+   Comments  are  permitted  on  the  "source"  line  after  the
+   required precision argument.  These comments are preceeded by
+   a  "/*"  delimiter,  similar  to  PL/1 commenting.  A closing
+
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+   comment  delimiter  of  "*/"  is  not required.  A comment is
+   terminated by the end of the input line.
+
+Examples:
+   s real_fix_bin_1 packed pad 3 35 10 /* scaled fixed bin */
+
+   s real_fix_bin_1 packed 35 10
+
+   s real_fix_bin_1 35
+
+
+MTB-672                                Multics Technical Bulletin
+                                                    more_to_more_
+
+04/17/84  target, trgt, t
+
+Syntax:  t data_type|? {packed {pad n}} precision {scale}
+
+Function:  sets information about the data target.
+
+Arguments:
+data_type
+   This  field  indicates  the  data type of the conversion data
+   target.   If  the  user types in ?  a list of valid data type
+   names  will  be  printed,  prefaced  by the data type number.
+   When  entering a data type to the target command only use the
+   data name, and not the type number.
+
+packed
+   This  optional  field indicates that the data item is packed.
+   If  not  specified  the  data item will be indicated as being
+   unpacked.
+
+pad n
+   This  optional  field should only be used if the data item is
+   packed.  It indicates the offset to be skipped before testing
+   the generated data stream.  Padding permits testing of values
+   offset from the default double word alignment.
+
+precision
+   This required number indicates the number of bits, nibbles or
+   bytes of precision required by the target.  If a data item is
+   a  bit length, such as for bits, fixed bin or float bin, this
+   value  is  taken  to  be  bits.  If the item were in nibbles,
+   which are packed two to a byte, the precision is taken as 4.5
+   bit  multiples.   If  the  item  were  a  byte  item, such as
+   characters  or  float decimal, then the precision is in 9-bit
+   bytes.
+
+scale
+   This  optional  signed  value  is the scaling factor for data
+   items which can take a scaling factor.  It can be positive or
+   negative,  but  must be within certain bounds with respect to
+   the precision.
+
+Commenting:
+   Comments  are  permitted  on  the  "target"  line  after  the
+   required precision argument.  These comments are preceeded by
+   a  "/*"  delimiter,  similar  to  PL/1 commenting.  A closing
+
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+   comment  delimiter  of  "*/"  is  not required.  A comment is
+   terminated by the end of the input line.
+
+Examples:
+   t real_fix_bin_1 packed pad 3 35 10 /* scaled fixed bin */
+
+   t real_fix_bin_1 packed 35 10
+
+   t real_fix_bin_1 35
+
+
+MTB-672                                Multics Technical Bulletin
+                                                    more_to_more_
+
+04/17/84  convert, conv, c
+
+Syntax:  c  item, item, ...  {-&gt; {condition {correction}} {item,
+   item, ...}}
+
+Function:   Supplies  a  data  bit  stream  for  conversion  and
+   comparison and specifies condition catching and correction of
+   errors.    Each   item   descriptor   is  of  the  form  "key
+   length/data".   Condition  catching  uses the condition name,
+   with correction possible of character input error conditions,
+   as  with  oncode.   If  a  "-&gt;"  termination  of  the  source
+   description  is seen test_a presumes that a target bit stream
+   descriptor  follows  and  will do the conversion and check to
+   the  target  stream.  If a "-&gt;" is not seen, then test_a will
+   print the results of the conversion.
+
+Arguments:
+item
+   An  item is composed of a key type and stream descriptions.  The
+   key is one of the following strings:
+
+   aci    Data item will be 9-bit characters, bit aligned in the
+          stream.
+   ac4    Data item will be 4-bit characters, bit aligned in the
+          stream.
+   oct    Data item will be an octal numeric value, bit aligned.
+   dec    Data item will be a decimal number, bit aligned.
+   bit    Data item will be a bit stream, high bit aligned.
+
+   The  key specifies the type of data input to be supplied, for
+   example  bits  or  characters,  while  the stream description
+   indicates  the  bit  width  of  the  field  and the data item
+   source.  An example of this syntax is:
+
+   aci 54/"123456"
+
+   aci,  ac4  and  bit  items  will  be  aligned in the next bit
+   position  of  the data stream.  Decimal and octal values will
+   be  the  specified  field of bits, bit aligned in the stream,
+   with  the  numeric  value  right  aligned  within  the field.
+   Decimal values can be signed.
+
+condition
+   A  condition  name  can  be  specified  to  indicate that the
+   condition   is  expected  outcome  of  the  conversion.   The
+   following  condition names indicate termination of processing
+
+
+Multics Technical Bulletin                                MTB-672
+more_to_more_
+
+   for  the  current  conversion,  since  there  is  no recovery
+   possible from the condition occurance.
+
+   size       Indicates a fixed bin size overflow condition.
+   error      Indicates  a  conversion  error  occurred, such as
+              data type.
+   underflow  Indicates  a  floating  point  exponent  underflow
+              occurred.
+   overflow   Indicates   a  floating  point  exponent  overflow
+              occurred.
+
+   The  conversion  signal  indicates  a conversion error should
+   occur,  and  only  is  used  with  character  input.  Since a
+   conversion   error   is  recoverable  by  replacing  the  bad
+   character  with a good character, the conversion argument has
+   recovery  features if followed by the "fix" verb.  This would
+   be of the form:
+
+     c char 5/"1.0l5" -&gt; conversion fix e dec 36/10000
+
+   "l"  occurs  where  an  "e"  should  be seen.  The "fix" verb
+   causes  test_a to replace the character in error with the "e"
+   which follows the "fix" verb and re-try the conversion.
+
+   After re-try of the conversion the result is validated to the
+   fixed  binary value of 10000.  Multiple conversion detections
+   and fixes can be done.
+
+Commenting:
+   Comments  can  be  placed  on  the  conversion  command line,
+   following  a "/*" delimiter.  The comment continues until the
+   end of the input line or until a "*/" delimiter is seen, thus
+   permitting imbedded comments.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

@@ -1,0 +1,1279 @@
+trek: proc;
+declare (sysin, sysprint) file;
+declare
+        (count,
+         count_one,
+         klingon init (1),
+         star_base init (2),
+         star init (3),
+         initial_klingons,
+         local_klingons,
+         local_starbases,
+         local_stars,
+         row_sector,
+         col_sector,
+         row_random,
+         initial_energy,
+         col_random,
+         row_quadrant,
+         col_quadrant,
+         col_one,
+         row_one,
+         col_two,
+         row_two,
+         col_starbase,
+         row_starbase,
+         nova_col_quadrant,
+         nova_row_quadrant,
+         temp_row_sector,
+         temp_col_sector,
+         number_sectors,
+         total_klingons,
+         temp_row_quadrant,
+         temp_col_quadrant,
+         row_torpedo_track,
+         col_torpedo_track,
+         column_one,
+         column_two,
+         column,
+         total_starbases,
+         computer_command,
+         record (3),
+         galaxy (8, 8, 3),
+         computer_record (8, 8, 3),
+         klingon_location (3, 4),
+         count_two) fixed binary (35);
+declare
+        (energy,
+         initial_stardate,
+         length_of_game,
+         repair_time,
+         stardate,
+         photon_torpedo,
+         float_row_torpedo_track,
+         float_col_torpedo_track,
+         row_increment,
+         col_increment,
+         row_coordinate,
+         col_coordinate,
+         course,
+         dilation,
+         warp,
+         klingon_hit_energy,
+         row,
+         phaser_energy,
+         distribute_phaser_energy,
+         hit_phaser_energy,
+         torpedo_course,
+         shields,
+         shield_energy,
+         klingon_shield,
+         float_col_sector,
+         float_row_sector,
+         repair,
+         direction,
+         device (8),
+         klingon_shields) float binary (27);
+declare
+         quadrant_names (16) character (11) varying init ("ANTARES",
+         "SIRIUS", "RIGIL", "DENEB", "PROCYON", "CAPELLA",
+         "VEGA", "BETELGUESE", "CANOPUS", "ALDEBRAN", "ALTAIR",
+         "REGULUS", "SAGITTARIUS", "ARCTURUS", "POLLUX", "SPICA");
+declare
+         device_name (8) character (16) varying init (
+         "WARP ENGINES", "S.R.SENSORS", "L.R. SENSORS", "PHASER CNTRL",
+         "PHOTON TUBES", "DAMAGE CNTRL", "SHIELD CNTRL", "COMPUTER ");
+declare
+        (time,
+         abs,
+         sqrt,
+         trunc,
+         substr,
+         sin,
+         cos,
+         mod,
+         length,
+         unspec,
+         atan) builtin;
+declare
+        (rando,
+         random,
+         disturbance) float decimal (8);
+declare
+         rand character (4),
+         quadrant (8, 8) character (3),
+         line (8) character (60) varying,
+         output_quadrant_name character (20) varying,
+         name_suffix character (3) varying,
+         condition_code character (6) varying,
+         answer character (3) varying,
+         command character (3) varying,
+         galaxy_line character (49) init ("  ----- ----- ----- ----- ----- ----- ----- -----");
+declare
+         fixed_switch bit (1),
+         map_switch bit (1),
+         run bit (1) init ("1"b),
+         exceed_switch bit (1),
+         collision_switch bit (1),
+         first_time bit (1) init ("1"b),
+         docked_code bit (1),
+         docked bit (1) init ("1"b),
+         not_docked bit (1) init ("0"b),
+         game_switch bit (1) init ("1"b),
+         run_switch bit (1),
+         onn bit (1) init ("1"b),
+         off bit (1) init ("0"b);
+declare  static_number fixed binary (35) init (100000000000b);
+declare  pi_over_four fixed decimal (12, 10) init (0.785398164);
+declare
+        (zero init (0b),
+         one init (1b),
+         two init (10b),
+         three init (11b),
+         four init (100b),
+         five init (101b),
+         six init (110b),
+         seven init (111b),
+         eight init (1000b),
+         nine init (1001b),
+         ten init (1010b)) fixed binary (31);
+          on error begin;
+               put edit ("*** PROGRAM ERROR HAS OCCURED ***",
+                    "THE GAME WILL RESUME IN COMMAND CONTROL")
+                    ((2) (skip (2), a));
+               goto command_entry;
+          end;
+                                                            /* ** start of star trek ** */
+          do while (game_switch);
+               run_switch = "1"b;
+               put edit ("E") (a);
+               put edit ("*** *** *** STAR TREK *** *** ***",
+                    "DO YOU NEED INSTRUCTIONS, THEY ARE LONG (yes/no) ? ")
+                    (column (25), a, skip (5), a);
+               get edit (answer) (column (1), a (2));
+               if answer = "ye"
+               then call instructions;
+               else do;
+                    put edit ("WOULD YOU LIKE A COMMAND LIST (yes/no) ?") (skip (3), a);
+                    get edit (answer) (column (1), a (2));
+                    if answer = "ye" then call command_list;
+               end;
+               rand = time;
+               rand = substr (rand, 2, 2);
+               do count = one to rand;
+                    random = random_number ();
+               end;
+               quadrant = " ";
+               stardate = random_number ()*20+20*100;
+               initial_stardate = stardate;                 /* ** beginning stardate   ** */
+               length_of_game = 30;                         /* ** length of game       ** */
+               docked_code = not_docked;                    /* ** not docked code      ** */
+               energy, initial_energy = 3000;               /* ** units of energy      ** */
+               photon_torpedo = ten;                        /* ** no. of photon torp.  ** */
+               klingon_shield = 200;                        /* ** units for klingon    ** */
+               shields = zero;                              /* ** units for enterprise ** */
+               row_quadrant = random_number () * eight + one;
+               col_quadrant = random_number () * eight + one;
+               row_sector = random_number () * eight + one;
+               col_sector = random_number () * eight + one;
+               device = zero;
+               computer_record = zero;
+               total_starbases = zero; total_klingons = zero;
+                                                            /* ** set up what exists in galaxy ** */
+               do count = one to eight;
+                    do count_one = one to eight;
+                         random = random_number ();
+                         if random <= 0.8
+                         then galaxy (count, count_one, klingon) = zero;
+                         else galaxy (count, count_one, klingon) = one;
+                         if random > 0.95
+                         then galaxy (count, count_one, klingon) = two;
+                         if random > 0.98
+                         then galaxy (count, count_one, klingon) = three;
+                         total_klingons = total_klingons+galaxy (count, count_one, klingon);
+                         random = random_number ();
+                         if random > 0.96
+                         then do;
+                              galaxy (count, count_one, star_base) = one;
+                              total_starbases = total_starbases+one;
+                         end;
+                         else galaxy (count, count_one, star_base) = zero;
+                         galaxy (count, count_one, star) = random_number () * eight + one;
+                    end;
+               end;
+               if total_starbases = zero
+               then do;
+                    temp_row_quadrant = random_number () * eight + one;
+                    temp_col_quadrant = random_number () * eight + one;
+                    galaxy (temp_row_quadrant, temp_col_quadrant, star_base) = one;
+                    total_starbases = one;
+               end;
+               initial_klingons = total_klingons;
+               put edit ("YOUR ORDERS ARE AS FOLLOWS:",
+                    "   DESTROY THE ", total_klingons, " KLINGON BATTLE CRUISERS WHICH",
+                    "HAVE INVADED FEDERATION SPACE BEFORE THEY CAN ATTACK",
+                    "FEDERATION HEADQUARTERS ON STARDATE ",
+                    initial_stardate + length_of_game, ".  THIS GIVES",
+                    "YOU ", length_of_game, " STARDATES.")
+                    (skip (3), a,
+                    skip (1), a, f (3), a,
+                    skip (1), a,
+                    skip (1), a, f (5), a,
+                    skip (1), a, f (3), a);
+               if total_starbases = one
+               then put edit ("THERE IS ONE STARBASE") (skip (3), a);
+               else put edit ("THERE ARE ", total_starbases, " STARBASES") (skip (2), a, f (3), a);
+               put edit ("IN THE GALAXY FOR RESUPPLYING YOUR SHIP.") (skip (1), a);
+               call new_quadrant;
+command_entry:                                              /* ** entry point on errors to continue playing the game **
+*/
+               do while (run_switch);
+                    if shields + energy <= ten |
+                    ((energy <= ten) &
+                    (device (7) < zero))
+                    then do;
+                         run_switch = off;
+                         put edit ("        ***_2FATAL ERROR_3***",
+                              "YOU HAVE STRANDED YOUR SHIP IN SPACE !",
+                              "YOU HAVE INSUFFICIENT MANUEVERING ENERGY AND SHIELD CONTROL",
+                              "IS INCAPABLE OF CROSS-CIRCUITING TO THE ENGINE ROOM !")
+                              ((4) (skip (1), a));
+                    end;
+                    else do;
+                         put edit ("COMMAND ?") (skip (2), a);
+                         get edit (command) (column (1), a (3));
+                         if command = "nav"
+                         then call course_control;
+                         else if command = "she"
+                         then call shield_control;
+                         else if command = "srs"
+                         then call short_range_sensor_scan;
+                         else if command = "lrs"
+                         then call long_range_sensor_scan;
+                         else if command = "pha"
+                         then call phaser_control;
+                         else if command = "tor"
+                         then call torpedo_control;
+                         else if command = "dam"
+                         then call damage_control;
+                         else if command = "com"
+                         then call libarary_computer;
+                         else if command = "xxx"
+                         then call end_time_starbases;
+                         else if command = "???"
+                         then call command_list;
+                         else;
+                         call super_nova;
+                         if docked_code = docked
+                         then do;
+                              energy = 3000;
+                              photon_torpedo = 10;
+                         end;
+                    end;
+               end;
+               put edit ("THE FEDERATION NEEDS A NEW STARSHIP COMMANDER",
+                    "FOR A SIMILAR MISSION -- IF THERE IS A VOLUNTEER,",
+                    "LET HIM STEP FOWARD AND ENTER ""aye"", else ""xx"".", "?")
+                    ((3) (skip (1), a), skip (3), x (5), a);
+               get edit (answer) (column (1), a (2));
+               if answer ^= "ay"
+               then do;
+                    game_switch = off;
+                    put edit ("GAME FINISHED, YOU ARE IN COMMAND MODE.") (skip (5), a);
+                    put skip (3);
+               end;
+               else;
+          end;
+new_quadrant: proc;
+               if col_quadrant = one | col_quadrant = five
+               then name_suffix = " I";
+               else if col_quadrant = two | col_quadrant = six
+               then name_suffix = " II";
+               else if col_quadrant = three | col_quadrant = seven
+               then name_suffix = " III";
+               else if col_quadrant = four | col_quadrant = eight
+               then name_suffix = " IV";
+               if col_quadrant >= five
+               then count = row_quadrant * two;
+               else count = (row_quadrant * two) - one;
+               output_quadrant_name = quadrant_names (count) || name_suffix;
+               if stardate = initial_stardate
+               then put edit ("YOUR MISSION BEGINS WITH YOUR STARSHIP LOCATED",
+                    "IN THE GALACTIC QUADRANT, """, output_quadrant_name, """.")
+                    (skip (2), a, skip, 3 a);
+               else put edit ("NOW ENTERING "" ", output_quadrant_name, """ QUADRANT ...")
+                    (skip (2), 3 a, skip);
+               local_klingons = galaxy (row_quadrant, col_quadrant, klingon);
+               local_starbases = galaxy (row_quadrant, col_quadrant, star_base);
+               local_stars = galaxy (row_quadrant, col_quadrant, star);
+               if local_klingons ^= zero
+               then do;
+                    put edit ("_2COMBAT AREA_3------ _2CONDITION RED") (skip (4), a);
+                    if shields <= 200
+                    then put edit ("     SHIELDS DANGEROUSLY_2LOW_3 !!") (skip (2), a);
+               end;
+               quadrant = " ";
+               quadrant (row_sector, col_sector) = "EEE";
+               klingon_location = zero;
+               do count = one to local_klingons;
+                    call random_hole;
+                    quadrant (row_random, col_random) = "+++";
+                    klingon_location (count, one) = row_random;
+                    klingon_location (count, two) = col_random;
+                    klingon_location (count, star) = klingon_shield;
+               end;
+               do count = one to local_starbases;
+                    call random_hole;
+                    quadrant (row_random, col_random) = ">!<";
+                    row_starbase = row_random; col_starbase = col_random;
+               end;
+               do count = one to local_stars;
+                    call random_hole;
+                    quadrant (row_random, col_random) = " * ";
+               end;
+               call short_range_sensor_scan;
+          end new_quadrant;
+random_hole: proc;
+               do while (run);
+                    row_random = random_number () * eight + one;
+                    col_random = random_number () * eight + one;
+                    if quadrant (row_random, col_random) = "   "
+                    then return;
+               end;
+          end random_hole;
+short_range_sensor_scan: proc;
+               put edit ("E") (a);
+               if (quadrant (row_sector - one, col_sector + one) = ">!<" |
+               quadrant (row_sector, col_sector + one) = ">!<" |
+               quadrant (row_sector + one, col_sector + one) = ">!<" |
+               quadrant (row_sector + one, col_sector) = ">!<" |
+               quadrant (row_sector + one, col_sector - one) = ">!<" |
+               quadrant (row_sector, col_sector - one) = ">!<" |
+               quadrant (row_sector - one, col_sector - one) = ">!<" |
+               quadrant (row_sector - one, col_sector) = ">!<") &
+               (docked_code ^ docked)
+               then do;
+                    docked_code = docked;
+                    condition_code = "DOCKED";
+                    energy = 3000;
+                    photon_torpedo = ten;
+                    put edit ("***_2SHIELDS DROPPED FOR DOCKING PURPOSES_3***")
+                         (skip (2), a);
+                    shields = zero;
+               end;
+               else do;
+                    docked_code = not_docked;
+                    if local_klingons > zero
+                    then condition_code = "_2RED";
+                    else if energy < initial_energy * 0.1
+                    then condition_code = "_2YELLOW";
+                    else condition_code = "GREEN";
+               end;
+               if device (2) >= zero
+               then do;
+                    if shields = zero
+                    then quadrant (row_sector, col_sector) = " E ";
+                    else if shields >= 200
+                    then quadrant (row_sector, col_sector) = "[E]";
+                    else quadrant (row_sector, col_sector) = "<E>";
+                    line (*) = " ";
+                    do count = one to eight;
+                         do count_one = one to eight;
+                              line (count) = line (count) || quadrant (count, count_one) || " ";
+                         end;
+                    end;
+                    put edit ("---------------------------------",
+                         line (1),
+                         line (2), "     STARDATE           ", stardate,
+                         line (3), "     CONDITION          ", condition_code,
+                         line (4), "     QUADRANT           ", row_quadrant, " , ", col_quadrant,
+                         line (5), "     SECTOR             ", row_sector, " , ", col_sector,
+                         line (6), "     TOTAL ENERGY       ", energy,
+                         line (7), "     PHOTON TORPEDOS    ", photon_torpedo,
+                         line (8), "     SHIELDS            ", shields,
+                         "---------------------------------")
+                         (skip (1), a,
+                         skip (2), a,
+                         skip (1), a, a, f (6, 1),
+                         skip (1), a, a, a,
+                         skip (1), a, a, f (1), a, f (1),
+                         skip (1), a, a, f (1), a, f (1),
+                         skip (1), a, a, f (6, 1),
+                         skip (1), a, a, f (2),
+                         skip (1), a, a, f (6, 1),
+                         skip (2), a);
+               end;
+               else put edit ("***_2SHORT RANGE SENSORS ARE INOPERATIVE_3***") (skip (2), a);
+          end short_range_sensor_scan;
+course_control: proc;
+               if stardate - initial_stardate > two
+               then put edit (" (COURSE ( 1 - 9 ) , WARP FACTOR ( 1 - 12 ))", "? ") (skip (3), a, skip (2), a);
+               else put edit (
+                    "                   5",
+                    "                 4 | 6",
+                    "                  \|/",
+                    "      COURSE  3 <-- --> 7,  WARP FACTOR (1 - 12)",
+                    "                  /|\",
+                    "                 2 | 8",
+                    "                   1", "?")
+                    (skip (3), a,
+                    (6) (skip (1), a),
+                    skip (1), x (5), a);
+               get list (course, warp);
+               if course < one | course > nine
+               then do;
+                    put edit ("LT. SULU REPORTS, ""INCORRECT COURSE DATA, SIR!""") (skip (1), a);
+                    return;
+               end;
+               if warp <= zero | warp > 12
+               then do;
+                    put edit ("CHIEF ENGINEER SCOTT ""THE ENGINES WON""T",
+                         "     TAKE WARP ", warp, ".""")
+                         (skip (2), a,
+                         skip (1), a, f (5, 1), a);
+                    return;
+               end;
+               if device (1) < zero & warp > 0.2
+               then do;
+                    put edit ("WARP ENGINES ARE DAMAGED.  MAXIMUM WARP IS 0.2") (skip (1), a);
+                    return;
+               end;
+               if warp > eight & warp <= 12 then call time_dilation;
+               number_sectors = warp * eight + 0.5;
+               if energy - number_sectors < zero
+               then do;
+                    put edit ("ENGINEERING REPORTS : INSUFFICIENT ENERGY AVAILABLE",
+                         "FOR MANEUVERING AT WARP ", warp, " !")
+                         (skip (2), a,
+                         skip (1), a, f (4, 1), a);
+                    if shields < number_sectors - energy | device (7) < zero then return; else;
+                    put edit ("DEFLECTOR CONTROL ROOM ACKNOWLEDGES  ", shields, " units")
+                         (skip (2), a, f (3), a);
+                    put edit ("    UNITS OF ENERGY PRESENTLY DEPLOYED TO SHIELDS.") (skip (1), a);
+                    return;
+               end;
+                                                            /* ** klingons move/fire on moving starship ** */
+               do count = one to local_klingons;
+                    if (klingon_location (count, 3) > zero)
+                    then do;
+                         quadrant (klingon_location (count, 1), klingon_location (count, 2)) = "   ";
+                         call random_hole;
+                         klingon_location (count, 1) = row_random; klingon_location (count, 2) = col_random;
+                         quadrant (row_random, col_random) = "+++";
+                    end;
+               end;
+               call klingon_fire;
+               repair = warp;
+               if warp >= one
+               then repair = one;
+                                                            /* ** make repairs to ship ** */
+               fixed_switch = off;
+               do count = one to eight while (fixed_switch = off);
+                    if device (count) < zero
+                    then do;
+                         device (count) = device (count) + repair;
+                         if device (count) >= zero
+                         then do;
+                              fixed_switch = onn;
+                              put edit ("DAMAGE CONTROL REPORT :",
+                                   " ""REPAIR COMPLETED ON ", device_name (count), " "" ")
+                                   (skip (4), a,
+                                   skip (2), (3) (a));
+                         end;
+                    end;
+               end;
+               if (random_number () <= 0.2) & (warp >= 3.0)
+               then do;
+                    random = random_number () * eight + one;
+                    if random_number () < 0.6
+                    then do;
+                         device (random) = device (random) - random_number () * five - one;
+
+                         put edit (device_name (random), " DAMAGED DURING MANUEVER ...") (skip (2), (2) (a));
+                    end;
+                    else do;
+                         device (random) = device (random) + random_number () * three + one;
+                         put edit ("REPAIRS MADE TO ", device_name (random), " DURING MANEUVER") (skip (2), (3) (a
+);
+                    end;
+               end;
+                                                            /* ** begin moving starship ** */
+               call gravity_disturbance;
+               quadrant (row_sector, col_sector) = "   ";
+               col_increment = -sin ((course - one) * pi_over_four);
+               row_increment = cos ((course - one) * pi_over_four);
+               call maneuver_energy;
+               if warp < one
+               then stardate = stardate + warp;
+               else stardate = stardate + one;
+               if stardate > initial_stardate+length_of_game
+               then do;
+                    call end_time_starbases;
+                    return;
+               end;
+               float_row_sector = row_sector;
+               float_col_sector = col_sector;
+               collision_switch = off;
+               exceed_switch = off;
+               do count = one to number_sectors while ((collision_switch = off) & (exceed_switch = off));
+                    float_row_sector = float_row_sector + row_increment;
+                    float_col_sector = float_col_sector + col_increment;
+                    temp_row_sector = float_row_sector;
+                    temp_col_sector = float_col_sector;
+                    if temp_row_sector < one |
+                    temp_row_sector > eight |
+                    temp_col_sector < one |
+                    temp_col_sector > eight
+                    then exceed_switch = onn;
+                    else if quadrant (temp_row_sector, temp_col_sector) ^= "   "
+                    then collision_switch = onn;
+                    else;
+               end;
+               if exceed_switch = onn
+               then do;
+                    call exceed_quadrant;
+                    call new_quadrant;
+               end;
+               else if collision_switch = onn
+               then do;
+                    row_sector = float_row_sector - row_increment;
+                    col_sector = float_col_sector - col_increment;
+                    put edit ("WARP ENGINES SHUT DOWN AT SECTOR ", row_sector, ",", col_sector,
+                         " DO TO BAD NAVIGATION.")
+                         (skip (2), a, f (1), a, f (1), a);
+                    call short_range_sensor_scan;
+               end;
+
+               else do;
+                    row_sector = temp_row_sector;
+                    col_sector = temp_col_sector;
+                    call short_range_sensor_scan;
+               end;
+          end course_control;
+exceed_quadrant: proc;
+               exceed_switch = off;
+               row_quadrant = row_sector + eight * (row_quadrant + warp * row_increment);
+               col_quadrant = col_sector + eight * (col_quadrant + warp * col_increment);
+               row_sector = row_quadrant;
+               col_sector = col_quadrant;
+               row_quadrant = row_quadrant / eight;
+               col_quadrant = col_quadrant / eight;
+               row_sector = row_sector - row_quadrant * eight;
+               col_sector = col_sector - col_quadrant * eight;
+               if row_sector = zero
+               then do;
+                    row_quadrant = row_quadrant-one;
+                    row_sector = eight;
+               end;
+               if col_sector = zero
+               then do;
+                    col_quadrant = col_quadrant-one;
+                    col_sector = eight;
+               end;
+               if row_quadrant < one
+               then do;
+                    exceed_switch = onn;
+                    row_quadrant = one;
+                    row_sector = one;
+               end;
+               if col_quadrant < one
+               then do;
+                    exceed_switch = onn;
+                    col_quadrant = one;
+                    col_sector = one;
+               end;
+               if row_quadrant > eight
+               then do;
+                    exceed_switch = onn;
+                    row_quadrant = eight;
+                    row_sector = eight;
+               end;
+               if col_quadrant > eight
+               then do;
+                    exceed_switch = onn;
+                    col_quadrant = eight;
+                    col_sector = eight;
+               end;
+               if exceed_switch = onn
+               then do;
+                    exceed_switch = off;
+                    put skip (2);
+                    put edit ("LT. UHURA REPORTS MESSAGE FROM STARFLEET COMMAND ",
+                         """PERMISSION TO ATTEMPT CROSSING OF GALACTIC PERIMETER",
+                         "IS HEREBY  ***_2DENIED_3***.  SHUT DOWN YOUR ENGINES.""",
+                         "CHIEF ENGINEER SCOTT REPORTS "" WARP ENGINES SHUT DOWN",
+                         "  AT SECTOR ", row_sector, ",", col_sector, " OF QUADRANT ", row_quadrant, ",",
+                         col_quadrant, """")
+                         ((4) (skip, a), skip, a, f (2), a, f (2), a, f (2), a, f (2), a);
+                    if stardate > initial_stardate + length_of_game
+                    then do;
+                         call end_time_starbases;
+                         return;
+                    end;
+               end;
+          end exceed_quadrant;
+maneuver_energy: proc;
+               energy = energy - number_sectors - ten;
+               if energy < zero
+               then do;
+                    put edit ("SHIELD CONTROL SUPPLIED ENERGY TO COMPLETE THE MANEUVER")
+                         (skip (1), a);
+                    shields = shields - energy;
+                    energy = zero;
+                    if shields < zero
+                    then shields = zero;
+               end;
+          end maneuver_energy;
+long_range_sensor_scan: proc;
+               if device (3) < zero
+               then do;
+                    put edit ("***_2LONG RANGE SENSORS ARE INOPERABLE_3***") (skip (1), a);
+                    return;
+               end;
+               put edit ("LONG RANGE SENSOR SCAN FOR QUADRANT ", row_quadrant, ",", col_quadrant,
+                    "...................")
+                    (skip (4), a, f (2), a, f (2), skip (1), column (7), a);
+               do count = row_quadrant-one to row_quadrant+one;
+                    record (*) = zero;
+                    do count_one = col_quadrant-one to col_quadrant+one;
+                         if ^ (count < one | count > eight | count_one < one | count_one > eight)
+                         then do;
+                              record (count_one - col_quadrant + two) =
+                                   galaxy (count, count_one, klingon) * 100 +
+                                   galaxy (count, count_one, star_base) * ten +
+                                   galaxy (count, count_one, star);
+                              computer_record (count, count_one, klingon) = galaxy (count, count_one, klingon);
+                              computer_record (count, count_one, star_base) = galaxy (count, count_one, star_base);
+                              computer_record (count, count_one, star) = galaxy (count, count_one, star);
+                         end;
+                    end;
+                    put edit (": ", record (1), " : ", record (2), " : ", record (3), " : ",
+                         "...................")
+                         (col (7), a, f (3), a, f (3), a, f (3), a, skip (1), column (7), a);
+               end;
+          end long_range_sensor_scan;
+libarary_computer: proc;
+               if device (8) < zero
+               then do;
+                    put edit ("***_2COMPUTER DISABLED_3***") (skip (1), a);
+                    return;
+               end;
+               put edit ("COMPUTER ACTIVE AND AWAITING COMMAND   ? ") (skip (1), a);
+               get list (computer_command);
+               if computer_command < zero | computer_command > five
+               then do;
+                    put edit ("COMMANDS AVAILABLE FROM THE LIBRARY COMPUTER",
+                         "   0 - CUMULATIVE GALACTIC RECORD",
+                         "   1 - STATUS REPORT",
+                         "   2 - PHOTON TORPEDO DATA",
+                         "   3 - STARBASE NAV DATA",
+                         "   4 - DIRECTION / DISTANCE CALCULATOR",
+                         "   5 - GALAXY / REGION NAME MAP", "?")
+                         (skip (2), a, (7) (skip (1), a), skip (2), a);
+                    get list (computer_command);
+               end;
+               if computer_command = zero
+               then do;
+                    put edit ("COMPUTER RECORD OF GALAXY FOR QUADRANT "
+                         , row_quadrant, ",", col_quadrant) (skip (2), a, f (1), a, f (1));
+                    call galaxy_map;
+               end;
+               else if computer_command = one
+               then call status_report;
+               else if computer_command = two
+               then do;
+                    do count = one to local_klingons while (klingon_location (count, 3) > 0);
+                         column_one = col_sector;
+                         row_one = row_sector;
+                         column_two = klingon_location (count, two);
+                         row_two = klingon_location (count, one);
+                         put edit ("FROM ENTERPRISE TO KLINGON BATTLE CRUISER")
+                              (skip (two), a);
+                         call direction_and_distance;
+                    end;
+                    return;
+               end;
+               else if computer_command = three
+               then do;
+                    if local_starbases ^= zero
+                    then do;
+                         put edit ("FROM ENTERPRISE TO STARBASE") (skip (1), a);
+                         column_two = col_starbase;
+                         row_two = row_starbase;
+                         column_one = col_sector;
+                         row_one = row_sector;
+                         call direction_and_distance;
+                    end;
+                    else do;
+                         put edit ("MR. SPOCK REPORTS : ""SENSOR SHOW NO ",
+                              "STARBASES IN THIS QUADRANT.""") (skip, a, skip, a);
+                    end;
+                    return;
+               end;
+               else if computer_command = four
+               then do;
+                    put edit ("DIRECTION / DISTANCE CALCULATOR") (skip (1), a);
+                    put edit ("YOU ARE AT QUADRANT (", row_quadrant, ",", col_quadrant, ")",
+                         " SECTOR (", row_sector, ",", col_sector, ")") (skip (2), 2 (a, f (1)), a, 2 (a, f (1)), a);
+                    put edit ("PLEASE ENTER --") (skip (1), a);
+                    put edit ("COLUMN COORDINATE, ROW CORRDINATE (col,row) ? ")
+                         (skip (2), a);
+                    get list (row_coordinate, col_coordinate);
+                    column_one = col_sector;
+                    row_one = row_sector;
+                    column_two = col_coordinate;
+                    row_two = row_coordinate;
+                    call direction_and_distance;
+               end;
+               else if computer_command = five
+               then do;
+                    map_switch = onn;
+                    put edit ("                     THE GALAXY") (skip (1), a);
+                    call galaxy_map;
+               end;
+          end libarary_computer;
+galaxy_map: proc;
+               put edit (" ") (skip (5), a);
+               do count = one to eight;
+                    put edit ("     ", count)
+                         (a, f (1));
+               end;
+               put edit (galaxy_line) (skip (1), a);
+               do count = one to eight;
+                    put edit (count, "  ") (skip (1), f (1), a);
+                    if map_switch = onn
+                    then do;
+                         output_quadrant_name = quadrant_names ((count * two) - one);
+                         put edit (output_quadrant_name) (col (15-length (output_quadrant_name)/2), a);
+                         output_quadrant_name = quadrant_names (count * two);
+                         put edit (output_quadrant_name) (col (34-length (output_quadrant_name)/2), a);
+                    end;
+                    else do count_one = one to eight;
+                         if count = row_quadrant & count_one = col_quadrant
+                         then put edit ("(E)   ") (a);
+                         else put edit (computer_record (count, count_one, *), "   ") (3 f (1), a);
+                    end;
+                    put edit (galaxy_line) (skip, a);
+               end;
+               map_switch = off;
+          end galaxy_map;
+status_report: proc;
+               put edit (" STATUS REPORT") (skip (1), a);
+               if total_klingons = one
+               then name_suffix = "";
+               else name_suffix = "S";
+               put edit (total_klingons, " KLINGON", name_suffix, " LEFT",
+                    "MISSION MUST BE COMPLETED IN ",
+                    initial_stardate + length_of_game - stardate, " STARDATES")
+                    (skip (2), f (3), (3) (a),
+                    skip (1), a,
+                    skip (1), f (6, 2), a);
+               if total_starbases = one
+               then name_suffix = "";
+               else name_suffix = "S";
+               if total_starbases ^= zero
+               then put edit ("THE FEDERATION IS MAINTAINING", total_starbases,
+                    " STARBASE", name_suffix, " IN THE GALAXY.") (skip (1), a, f (3), 3 a);
+               else do;
+                    put edit ("YOUR STUPIDITY HAS LEFT YOU ON YOUR OWN IN",
+                         " THE GALAXY -- YOU HAVE NO STARBASES LEFT")
+                         (skip (2), a,
+                         skip (1), a);
+               end;
+          end status_report;
+direction_and_distance: proc;
+               if row_one = row_two
+               then if column_one < column_two
+                    then direction = seven;
+                    else direction = three;
+               else if column_one = column_two
+               then if row_one < row_two
+                    then direction = one;
+                    else direction = five;
+               else do;
+                    column = column_one - column_two;
+                    row = row_one - row_two;
+                    direction = row / column;
+                    direction = atan (direction) / pi_over_four /* ** 45 degrees ** */;
+                    if column < zero
+                    then direction = direction + seven;
+                    else direction = direction + three;
+               end;
+               put edit ("DIRECTION =", direction, "   DISTANCE =", sqrt (column**2 + row**2))
+                    (skip (2), a, f (6, 2), a, f (6, 2));
+          end direction_and_distance;
+random_number: proc returns (float decimal (6));
+(nofixedoverflow): static_number = static_number*131069;
+               if static_number < zero
+               then substr (unspec (static_number), 1, 1) = off;
+               rando = static_number*2.9103830e-11;
+               return (rando);
+          end random_number;
+phaser_control: proc;
+               if local_klingons = zero
+               then put edit ("SCIENCE OFFICER SPOCK REPORTS",
+                    """SENSORS SHOW NO ENEMY SHIPS IN THIS QUADRANT""")
+                    (skip (2), x (5), a,
+                    skip (1), x (5), a);
+               else if device (4) < 0
+               then put edit ("***_2PHASERS INOPERATIVE_3***")
+                    (skip (2), x (5), a);
+               else do;
+                    if device (8) < zero
+                    then put edit ("COMPUTER FAILURE HAMPERS ACCURACY ...")
+                         (skip (2), x (5), a);
+                    else;
+                    put edit ("PHASERS LOCKED ON TARGET",
+                         "ENERGY AVAILABLE = ", energy,
+                         "NUMBERS OF UNITS TO FIRE ? ")
+                         (skip (2), x (5), a,
+                         skip (1), x (5), a, f (4),
+                         skip (1), x (5), a);
+                    get list (phaser_energy);
+                    if phaser_energy <= zero |
+                    (energy - phaser_energy) < zero
+                    then return;
+                    else do;
+                         energy = energy - phaser_energy;
+                         call klingon_fire;
+                         if device (8) < zero
+                         then phaser_energy = phaser_energy * random_number ();
+                         else;
+                         distribute_phaser_energy = phaser_energy / local_klingons;
+                         do count = one to local_klingons;
+                              hit_phaser_energy = (distribute_phaser_energy /
+                                   (sqrt ((klingon_location (count, one) - row_sector) ** two +
+                                   (klingon_location (count, two) - col_sector) ** two))) *
+                                   (random_number ());
+
+                              if hit_phaser_energy <= 0.15 * klingon_location (count, 3)
+                              then put edit ("SENSORS SHOW NO DAMAGE",
+                                   " TO ENEMY AT",
+                                   klingon_location (count, 1), ", ", klingon_location (count, 2))
+                                   (skip (2), x (5), a, a, f (1), a, f (1));
+                              else do;
+                                   klingon_location (count, 3) =
+                                        klingon_location (count, 3) -
+                                        hit_phaser_energy -
+                                        klingon_location (count, four);
+                                   put edit (hit_phaser_energy,
+                                        " UNIT HIT AT KLINGON SECTOR ",
+                                        klingon_location (count, 1), ", ", klingon_location (count, 2))
+                                        (skip (2), x (5), f (4), a, f (1), a, f (1));
+                                   if klingon_location (count, 3) <= zero
+                                   then do;
+                                        put edit ("*** _2KLINGON DESTROYED_3 
+**")
+                                             (skip (2), x (5), a);
+                                        local_klingons = local_klingons - one;
+                                        total_klingons = total_klingons - one;
+                                        quadrant (klingon_location (count, 1), klingon_location (count, 2)) = "   ";
+                                        galaxy (row_quadrant, col_quadrant, klingon) = local_klingons;
+                                        computer_record (row_quadrant, col_quadrant, klingon) = local_klingons;
+                                   end;
+                                   else put edit ("SENSORS SHOW ",
+                                        klingon_location (count, 3),
+                                        " UNITS REMAINING")
+                                        (skip (2), x (5), a, f (4), a);
+                              end;
+                         end;
+                    end;
+               end;
+               if total_klingons = zero
+               then call win_game;
+               else;
+          end phaser_control;
+torpedo_control: proc;
+               if device (5) < zero
+               then put edit ("***_2PHOTON TUBES NOT OPERATIONAL_3***")
+                    (skip (2), x (5), a);
+               else if photon_torpedo = zero
+               then put edit ("***_2 ALL PHOTON TORPEDOS EXPENDED_3***")
+                    (skip (2), x (5), a);
+               else do;
+                    put edit ("TORPEDO COURSE (1 - 9) ? ") (skip (2), a);
+                    get list (torpedo_course);
+                    if torpedo_course < one | torpedo_course > nine
+                    then put edit ("ENSIGN CHECKOV REPORTS",
+                         " ""INCORECT COURSE DATA, SIR !""")
+                         (skip (2), x (5), a,
+                         skip (2), x (5), a);
+                    else do;
+                         if torpedo_course = nine then torpedo_course = one;
+                         col_increment = -sin ((torpedo_course - one) * pi_over_four);
+                         row_increment = cos ((torpedo_course - one) * pi_over_four);
+                         energy = energy - two;
+                         float_row_torpedo_track = row_sector;
+                         float_col_torpedo_track = col_sector;
+                         photon_torpedo = photon_torpedo - one;
+                         put edit ("TORPEDO TRACK :")
+                              (skip (2), x (2), a);
+                         float_row_torpedo_track = (float_row_torpedo_track + row_increment);
+                         float_col_torpedo_track = (float_col_torpedo_track + col_increment);
+                         row_torpedo_track = float_row_torpedo_track;
+                         col_torpedo_track = float_col_torpedo_track;
+                         do while ((row_torpedo_track >= one) & (row_torpedo_track <= eight) &
+                                   (col_torpedo_track >= one) & (col_torpedo_track <= eight));
+                              put edit (row_torpedo_track, ", ", col_torpedo_track)
+                                   (skip (1), x (20), f (1), a, f (1));
+                              if quadrant (row_torpedo_track, col_torpedo_track) = "+++"
+                              then do;
+                                   put edit ("*** _2KLINGON DESTROYED_3 ***")
+                                        (skip (2), x (5), a);
+                                   local_klingons = local_klingons - one;
+                                   total_klingons = total_klingons - one;
+                                   do count = one to three;
+                                        if row_torpedo_track = klingon_location (count, 1) &
+                                        col_torpedo_track = klingon_location (count, 2)
+                                        then klingon_location (count, *) = zero;
+                                        else;
+                                   end;
+                                   quadrant (row_torpedo_track, col_torpedo_track) = "   ";
+                                   galaxy (row_quadrant, col_quadrant, klingon) = local_klingons;
+                                   computer_record (row_quadrant, col_quadrant, klingon) = local_klingons;
+                                   if total_klingons = zero
+                                   then call win_game;
+                                   else return;
+                              end;
+                              if quadrant (row_torpedo_track, col_torpedo_track) = " * "
+                              then do;
+                                   put edit ("***_2STAR AT ",
+                                        row_torpedo_track,
+                                        ", ",
+                                        col_torpedo_track,
+                                        " ABSORBED TORPEDO ENERGY_3***")
+                                        (skip (2), x (5), a, f (1), a, f (1), a);
+                                   return;
+                              end;
+                              else;
+                              if quadrant (row_torpedo_track, col_torpedo_track) = ">!<"
+                              then do;
+                                   put edit ("*** _2STARBASE DESTROYED_3 ***")
+                                        (skip (2), x (5), a);
+                                   local_starbases = local_starbases - one;
+                                   total_starbases = total_starbases - one;
+                                   docked_code = not_docked;
+                                   quadrant (row_torpedo_track, col_torpedo_track) = " ";
+                                   galaxy (row_quadrant, col_quadrant, star_base) = local_starbases;
+                                   computer_record (row_quadrant, col_quadrant, star_base) = local_starbases;
+                                   if total_starbases > zero
+                                   then do;
+                                        put edit ("STARFLEET COMMAND REVIEWING YOUR RECORD TO CONSIDER",
+                                             "***_2COURT MARTIAL_3***")
+                                             (skip (2), x (5), a,
+                                             skip (1), x (15), a);
+                                        return;
+                                   end;
+                                   else do;
+                                        put edit ("_2THAT DOES IT, CAPTIAN ! YOU ARE HEREBY RELIEVED OF COMMAND",
+                                             "_2AND SENTENCED TO 99 STARDATES AT HARD LABOR ON CYGNUS 12")
+                                             (skip (2), x (5), a,
+                                             skip (1), x (5), a);
+                                        call end_time_starbases;
+                                        return;
+                                   end;
+                              end;
+                              float_row_torpedo_track = (float_row_torpedo_track + row_increment);
+                              float_col_torpedo_track = (float_col_torpedo_track + col_increment);
+                              col_torpedo_track = float_col_torpedo_track;
+                              row_torpedo_track = float_row_torpedo_track;
+                         end;
+                         put edit ("***_2TORPEDO MISSED_3***")
+                              (skip (2), x (5), a);
+                         call klingon_fire;
+                    end;
+               end;
+               return;
+          end torpedo_control;
+shield_control: proc;
+               if device (7) < zero
+               then put edit ("***_2SHIELD CONTROL INOPERABLE_3***")
+                    (skip (2), x (5), a);
+               else do;
+                    put edit ("ENERGY AVAILABLE = ",
+                         energy + shields,
+                         ". NUMBER OF UNITS TO SHIELDS ? ")
+                         (skip (2), x (5), a, f (7, 1), a);
+                    get list (shield_energy);
+                    if shield_energy < 0 | shields = shield_energy
+                    then put edit ("***_2SHIELDS UNCHANGED_3***")
+                         (skip (2), x (5), a);
+                    else if (energy + shields - shield_energy) >= zero
+                    then do;
+                         put edit ("DEFLECTOR CONTROL ROOM REPORT:",
+                              " ""SHIELDS NOW AT ", shield_energy, " AS PER YOUR COMMAND"" ")
+                              (skip (2), x (5), a,
+                              skip (1), x (5), a, f (4), a);
+                         energy = energy + shields - shield_energy;
+                         shields = shield_energy;
+                    end;
+                    else ;
+               end;
+               return;
+          end shield_control;
+damage_control: proc;
+               if docked_code = not_docked & device (6) < zero
+               then do;
+                    put skip edit ("DAMAGE CONTROL REPORT NOT AVAILABLE") (a);
+                    return;
+               end;
+               if docked_code = docked
+               then do;
+                    repair_time = zero;
+                    do count = one to eight;
+                         if device (count) < zero then repair_time = repair_time + 0.1;
+                    end;
+                    if repair_time = zero then return;
+                    repair_time = repair_time + 0.5 * random_number ();
+                    if repair_time >= one then repair_time = 0.9;
+                    put edit ("TECHNICIANS STANDING BY TO EFFECT SHIP REPAIRS ",
+                         "ESTIMATED REPAIR TIME: ", repair_time, " STARDATES",
+                         "WILL YOU AUTHORIZE THE REPAIR ORDER (yes/no) ? ")
+                         (skip (3), a,
+                         skip (1), a, f (3, 1), a,
+                         skip (1), a);
+                    get edit (answer) (a (3));
+                    if answer = "yes"
+                    then do;
+                         stardate = stardate + repair_time + 0.1;
+                         do count = one to eight;
+                              if device (count) < zero
+                              then device (count) = zero;
+                              else;
+                         end;
+                    end;
+               end;
+               put edit ("DEVICE --- STATE OF REPAIR") (skip (2), a);
+               put skip (1);
+               do count = one to eight;
+                    put edit (device_name (count), " : ", device (count)) (skip (1), a, column (15), a, f (6, 3));
+               end;
+          end damage_control;
+klingon_fire: proc;
+               if local_klingons = zero then return;
+               if docked_code = docked
+               then do;
+                    put edit ("STARBASE SHIELDS PROTECT THE ENTERPRISE") (skip (2), a);
+                    return;
+               end;
+               do count = one to local_klingons;
+                    if klingon_location (count, 3) > zero
+                    then do;
+                         klingon_hit_energy = (klingon_location (count, three) /
+                              (sqrt ((klingon_location (count, one) - col_sector) ** two +
+                              (klingon_location (count, two) - row_sector) ** two))) *
+                              (random_number ());
+                         klingon_location (count, four) = klingon_hit_energy;
+                         shields = shields - klingon_hit_energy;
+                         put edit (klingon_hit_energy, " UNIT HIT ON ENTERPRISE FROM SECTOR ", klingon_location (count,
+1),
+                              ", ", klingon_location (count, 2)) (skip (2), f (4), a, f (2), a, f (2));
+                         if shields < zero
+                         then do;
+                              put edit ("_1THE ENTERPRISE HAS BEEN DESTROYED !_3",
+                                   "THE FEDERATION WILL BE CONQUERED !") (skip (5), (2) (skip (1), a));
+                              call end_time_starbases;
+                              return;
+                         end;
+                         put edit (" SHIELDS DOWN TO ", shields, " UNITS.") (skip (1), a, f (4), a);
+                         if klingon_hit_energy >= 20 &
+                         random_number () <= 0.6 &
+                         klingon_hit_energy / shields >= 0.02
+                         then do;
+                              random = (random_number () * eight + one);
+                              device (random) = device (random) - (klingon_hit_energy / shields + 0.5 * random_number (
+);
+                              put edit ("DAMAGE CONTROL REPORTS "" ", device_name (random),
+                                   " DAMAGED BY KLINGON FIRE !""""") (skip (3), (3) (a));
+                         end;
+                    end;
+               end;
+          end klingon_fire;
+end_time_starbases: proc;
+               put edit ("IT IS STARDATE ", stardate, ".",
+                    "THERE WERE ", total_klingons, " KLINGON BATTLE CRUISERS LEFT",
+                    "THE END OF THE MISSION !")
+                    (skip (5), a, f (6, 1), a,
+                    skip (1), a, f (2), a,
+                    skip (1), a);
+               run_switch = off;
+          end end_time_starbases;
+win_game: proc;
+               put edit ("***_2CONGRATULATIONS,_2CAPTAIN_3***",
+                    " THE LAST KLINGON BATTLE CRUISER",
+                    "MENACING THE FEDERATION HAS BEEN DESTROYED.",
+                    "YOUR EFFICIENCY RATING IS ", (initial_klingons/ (stardate - initial_stardate)*1000), ".")
+                    (skip (5), x (5), a, skip (2), a, skip (1), a, skip (1), a, f (15, 5), a);
+               run_switch = off;
+          end win_game;
+time_dilation: proc;
+
+               dilation = random_number ();
+               if dilation >= 0.8
+               then do;
+                    if dilation > 0.9
+                    then stardate = stardate + random_number () * (warp / two);
+                    else stardate = stardate - random_number () * (warp / two) ;
+                    put edit ("***_2WARNING_3***",
+                         "MR. SPOCK""S SENSORS INDICATE THAT WARP ", warp, " CAUSED A TIME DILATION",
+                         "IT IS STARDATE ", stardate, ".")
+                         (skip (2), x (5), a,
+                         skip (1), a, f (5, 1), a,
+                         skip (1), a, f (6, 1), a);
+               end;
+          end time_dilation;
+gravity_disturbance: proc;
+               disturbance = random_number ();
+               if disturbance >= 0.95
+               then do;
+                    if random_number () > 0.5
+                    then course = course + random_number ();
+                    else course = course - random_number ();
+                    if course > nine
+                    then course = course - eight;
+                    else if abs (course) < one
+                    then course = nine - abs (abs (course) - one);
+                    else;
+                    put edit ("***_2WARNING_3***",
+                         "MR. SPOCK REPORTS THAT SENSORS DECTECT A GRAVITY",
+                         "DISTURBANCE IN THIS AREA !")
+                         (skip (2), x (5), a,
+                         (2) (skip (1), a));
+               end;
+          end gravity_disturbance;
+super_nova: proc;
+               if random_number () <= 0.025
+               then do;
+                    nova_row_quadrant = random_number () * eight + one;
+                    nova_col_quadrant = random_number () * eight + one;
+                    total_klingons = total_klingons -
+                         galaxy (nova_row_quadrant, nova_col_quadrant, klingon);
+                    galaxy (nova_row_quadrant, nova_col_quadrant, *) = zero;
+                    computer_record (nova_row_quadrant, nova_col_quadrant, *) = zero;
+                    if row_quadrant = nova_row_quadrant & col_quadrant = nova_col_quadrant
+                    then do;
+                         put edit ("STARBASE COMMAND REPORTS :",
+                              "_2""THE ENTERPRISE WAS LOST IN QUADRANT ",
+                              row_quadrant, ",", col_quadrant,
+                              "_2WITH ALL HANDS ABOARD DUE TO A SUPER NOVA ! """)
+                              (skip (5), a, f (1), a, f (1), skip (1), a);
+                         call end_time_starbases;
+                    end;
+                    else do;
+                         put edit ("MR. SPOCK REPORTS THAT LONG RANGE SENSORS SHOW A",
+                              "SUPER NOVA IN QUADRANT ", nova_row_quadrant, ",", nova_col_quadrant, ".")
+                              (skip (5), a, skip (1), a, f (1), a, f (1), a);
+                    end;
+               end;
+               else;
+               if total_klingons <= zero
+               then call win_game;
+          end super_nova;
+command_list: proc;
+               put edit ("ENTER ONE OF THE FOLLOWING :",
+                    " nav (FOR COURSE AND SPEED)",
+                    " srs (FOR SHORT RANGE SENSORS)",
+                    " lrs (FOR LONG RANGE SENSORS)",
+                    " pha (FOR PHASER CONTROL)",
+                    " tor (FOR PHOTON TORPEDO CONTROL)",
+                    " she (FOR SHIELD CONTROL)",
+                    " dam (FOR DAMAGE CONTROL)",
+                    " com (FOR LIBARY COMPUTER)",
+                    " xxx (FOR RESIGNATION OF COMMAND)",
+                    " ??? (FOR COMMAND LIST)")
+                    (skip (2), (11) (skip (1), a));
+          end command_list;
+instructions: proc;
+               put edit ("      INSTRUCTIONS FOR  STAR TREK ",
+                    "THE GALAXY IS DIVIDED INTO AN 8 X 8 QUADRANT GRID",
+                    "AND EACH QUADRANT IS FURTHER DIVIDED INTO AN  8 X 8 SECTOR GRID")
+                    (skip (4), a, (3) (skip (1), a));
+               put edit ("     YOU WILL BE ASSIGNED A STARTING POINT SOMEWHERE IN THE GALAXY",
+                    "TO BEGIN A TOUR OF DUTY AS COMMANDER OF THE STARSHIP ""ENTERPRISE"",",
+                    "YOUR MISSION: TO SEEK AND DESTROY THE FLEET OF KLINGON WARSHIPS",
+                    "WHICH ARE MENACING THE UNITED FEDERATION OF PLANETS.")
+                    (skip (2), (4) (skip (1), a));
+               put edit ("YOU HAVE THE FOLLOWING COMMANDS AVAILABLE TO YOU AS",
+                    "CAPTAIN OF THE STARSHIP ENTERPRISE:",
+                    " ""nav"" COMMAND = WARP ENGINE CONTROL --",
+                    " COURSE IS IN A CIRCULAR              5",
+                    " VECTOR ARRANGEMENT AS SHOWN.       4 | 6",
+                    " INTEGER AND REAL VALUES MAY BE      \|/",
+                    " USED. (THUS, COURSE 1.3 HALF-   3 <-- --> 7",
+                    " WAY BETWEEN 1 AND 2.)               /|\",
+                    "                                    2 | 8",
+                    " VALUES MAY APPROACH 9.0, WHICH       1",
+                    " ITSELF IS EQUIVALENT TO 1,0.",
+                    "                                    COURSE",
+                    " ONE WARP FACTOR IS THE SIZE OF",
+                    " ONE QUADRANT.  THEREFORE TO GET",
+                    " FROM QUADRANT 6,5 TO 6,4, YOU WOULD",
+                    " USE COURSE 3, WARP FACTOR 1.")
+                    (skip (2), (16) (skip (1), a));
+               put edit (" ""srs"" COMMAND = SHORT RANGE SENSOR SCAN",
+                    " SHOWS YOU A SCAN OF YOUR PRESENT QUADRANT.",
+                    " SYMBOLOGY ON YOUR SENSOR SCREEN IS AS FOLLOWS.",
+                    "      "" E "" = ENTERPRISE WITH ZERO SHIELDS",
+                    "      ""<E>"" = ENTERPRISE WITH LESS THAN 200 IN SHIELDS",
+                    "      ""[E]"" = ENTERPRISE WITH MORE THAN 200 IN SHIELDS",
+                    "      ""+++"" = KLINGON BATTLE CRUISER",
+                    "      "">!<"" = FEDERATION STARBASE (REFUEL/REPAIR/RE-ARM HERE !)",
+                    "      "" * "" = STARS",
+                    " A CONDENSED ""STATUS REPORT"" WILL ALSO BE PRESENTED.")
+                    (skip (2), (9) (skip (1), a));
+               put edit (" ""lrs"" COMMAND = LONG RANGE SENSOR SCAN",
+                    " SHOWS CONDITIONS IN SPACE FOR THE QUADRANT ON EACH SIDE",
+                    " OF THE ENTERPRISE (WHICH IS IN THE MIDDLE OF THE SCAN)",
+                    " THE SCAN IS CODED IN THE FORM ""XXX"", WHERE THE UNITS DIGIT",
+                    " IS THE NUMBER OF STARS,  TENS DIGIT IS THE NUMBER OF STARBASES,",
+                    " AND HUNDREDS DIGIT IS THE NUMBER OF KLINGONS.",
+                    "  EXAMPLE -- 207 = 2 KLINGONS, NO STARBASES, 7 STARS")
+                    (skip (2), (7) (skip (1), a));
+               put edit (" ""pha"" COMMAND = PHASER CONTROL.",
+                    " ALLOWS YOU TO DESTROY THE KLINGON BATTLE CRUISERS BY",
+                    " ZAPPING THEM WITH SUITABLE LARGE UNITS OF ENERGY TO ",
+                    " DEPLETE THEIR SHIELD ENERGY.  (REMEMBER, KLINGONS HAVE",
+                    " PHASERS TOO !)")
+                    (skip (2), (5) (skip (1), a));
+               put edit (" "" tor"" COMMAND = PHOTON TORPEDO CONTROL",
+                    " TORPEDO COURSE IS THE SAME AS USED IN WARP ENGINE CONTROL.",
+                    " IF YOU HIT THE KLINGON VESSEL, HE IS DESTROYED AND",
+                    " CANNOT FIRE BACK AT YOU.  IF YOU MISS,  YOU ARE SUBJECT TO ",
+                    " HIS PHASER FIRE.",
+                    "    NOTE: THE LIBARY-COMPUTER (""com"" COMMAND) HAS AN",
+                    "          OPTION TO COMPUTE TORPEDO TRAJECTORY FOR YOU (OPTION 2)")
+                    (skip (2), (7) (skip (1), a));
+               put edit (" ""she"" COMMAND = SHIELD CONTROL.",
+                    " DEFINES NUMBER OF ENERGY UNITS TO BE ASSIGNED TO SHIELDS.",
+                    " ENERGY IS TAKEN FROM TOTAL SHIPS""S ENERGY.")
+                    (skip (2), (3) (skip (1), a));
+               put edit (" ""dam"" COMMAND = DAMAGE CONTROL REPORT",
+                    " GIVES STATE OF REPAIR OF ALL DEVICES, WHERE A NEGATIVE",
+                    " ""STATE OF REPAIR"" SHOWS THAT THE DEVICE IS TEMPORARILY",
+                    " DAMAGED.",
+                    " NOTE: ""nav"" WILL RANDOMLY DAMAGE OR REPAIR A DEVICE.")
+                    (skip (2), (5) (skip (1), a));
+               put edit (" ""com"" COMMAND = LIBRARY-COMPUTER",
+                    " THE LIBRARY-COMUTER CONTAINS SIX OPTIONS:",
+                    " OPTION: 0 = CUMULATIVE GALACTIC RECORD",
+                    " WHICH SHOWS COMPUTER MEMORY OF THE RESULTS OF ALL PREVIOUS",
+                    " LONG RANGE SENSOR SCANS.",
+                    " OPTION: 1 = STATUS REPORT",
+                    " WHICH SHOWS THE NUMBER OF KLINGONS, STARDATES, AND STARBASES",
+                    " REMAINING IN THE GAME.",
+                    " OPTION: 2 = PHOTON TORPEDO DATA",
+                    " WHICH GIVES DIRECTION AND DISTANCES FROM THE ENTERPRISE",
+                    " TO ALL KLINGONS IN YOUR QUADRANT.",
+                    " OPTION: 3 = STARBASE NAV DATA",
+                    " WHICH GIVES DIRECTION AND DISTANCE TO ANY STARBASE",
+                    " WITHIN YOUR QUADRANT",
+                    " OPTION: 4 = DIRECTION / DISTANCE CALCULATOR",
+                    " WHICH ALLOWS YOU TO ENTER COORDINATES FOR",
+                    " DIRECTION / DISTANCE CALCULATIONS.",
+                    " OPTION: 5 = GALACTIC ""REGION NAME"" MAP",
+                    " WHICH PRINTS THE NAMES OF THE SIXTEEN MAJOR GALACTIC",
+                    " REGIONS REFFERRED TO IN THE GAME")
+                    (skip (2), (30) (skip (1), a));
+               call command_list;
+          end instructions;
+     end trek;

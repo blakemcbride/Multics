@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>The Multics Scheduler</title>
+    <meta name="description" content="The processor scheduling features of the Multics operating system.">
+    <meta name="keywords" content="Multics, operating system, timesharing, time sharing, scheduler, dispatcher, computer, software, mainframe">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+    <style>
+     .outer {min-width: 200px; max-width: 1000px; width: auto !important; width: 800px; margin: 0px auto;}
+    </style>
+<script src="js/dhtml-lightbox.js"></script>
+<style>
+ #slide {
+  position: absolute; z-index: 1020; display: none; 
+  top: 0px; padding: 0px 8px 8px 8px; 
+  background-color: #222222; cursor: pointer; text-align: right; font: bold 12px "helvetica neue",Arial, Helvetica, sans-serif;
+ }
+ #cover {
+  position: fixed; width: 100%; height: 100%; z-index: 1010; display: none; 
+  background-color: #000000; opacity: .75; 
+  filter:progid:DXImageTransform.Microsoft.BasicImage(opacity=.75); 
+  top: 0px; left: 0px;
+ }
+ .slideControl { color: red; }
+ .capt { color: white; }
+</style>
+  </head>
+  <body>
+    <div class="outer">
+      <div class="headbar">
+	<div class="headbar2">
+	  <span class="headinglogo"><a href="multics.html"><img src="mulimg/multics-redblack50x50.gif" alt="multics logo" height="25" width="25"></a></span>
+	  <span class="headingmult"><a href="multics.html">Multics</a></span>
+	  <span class="headingdate">&gt; <a href="biblio.html">Library</a> &gt; <a href="articles.html">Articles</a><br><a href="changes.html">25 Jan 2016</a></span>
+          <div class="h1holder"><h1>The Multics Scheduler</h1></div>
+	</div>
+      </div>
+<!-- ================ menus 2024-07-15 16:19 generated from gen-menubar.htmt ================ -->
+<div class="redmenubar" id="main-nav" role="navigation" aria-label="Main">
+  <nav>
+  <ul id="nav">
+    <li>
+      <a href="index.html">Home</a>
+    </li>
+    <li>
+      <a href="history.html" title="History of Multics">History&nbsp;&nbsp;&nbsp;&raquo;&nbsp;&nbsp;</a>
+  <ul>
+    <li>
+      <a href="features.html" title="Features of the system">Features</a>
+  </li>
+  <li>
+    <a href="myths.html" title="Incorrect statements about Multics found on the web">Myths</a>
+  </li>
+  <li>
+    <a href="project-mac.html" title="History of MIT Project MAC">Project MAC</a>
+  </li>
+  <li>
+    <a href="chrono.html" title="List of Multics related events in time order">Dates</a>
+  </li>
+  <li>
+    <a href="mgloss.html" title="Multics terms, concepts, and jargon">Glossary</a>
+  </li>
+  <li>
+    <a href="mhp.html" title="Multics History Project">History Proj</a>
+  </li>
+  <li>
+    <a href="corby-letter.html" title="Letter from Corby in 2000">Last site</a>
+      </li>
+    </ul>
+    <div class="clr"></div>
+  </li>
+  <li>
+    <a href="multicians.html" title="People who contributed to Multics">People&nbsp;&nbsp;&nbsp;&raquo;&nbsp;&nbsp;</a>
+  <ul>
+    <li>
+      <a href="multics-stories.html" title="Stories about Multics">Stories</a>
+  </li>
+  <li>
+    <a href="people-pictures.html" title="Pictures of Multicians">People Pictures</a>
+  </li>
+  <li>
+    <a href="multics-humor.html" title="Jokes about Multics">Humor</a>
+  </li>
+  <li>
+    <a href="memorabilia.html" title="Trinkets, T-shirts, and Ties">Memorabilia</a>
+      </li>
+    </ul>
+    <div class="clr"></div>
+  </li>
+  <li>
+    <a href="biblio.html" title="Information available online">Library&nbsp;&nbsp;&nbsp;&raquo;&nbsp;&nbsp;</a>
+  <ul>
+    <li>
+      <a href="papers.html" title="Classic papers about Multics available on the Web">Papers</a>
+  </li>
+  <li>
+    <a href="articles.html" title="Technical articles">Articles</a>
+  </li>
+  <li>
+    <a href="devdoc.html" title="Development document series">Dev Docs</a>
+  </li>
+  <li>
+    <a href="multics-source.html" title="Index to source code modules on this site">Source</a>
+  </li>
+  <li>
+    <a href="simulator.html" title="Multics Simulator">Simulator</a>
+      </li>
+    </ul>
+    <div class="clr"></div>
+  </li>
+  <li>
+    <a href="sites.html" title="Where Multics was used">Sites&nbsp;&nbsp;&nbsp;&raquo;&nbsp;&nbsp;</a>
+  <ul>
+    <li>
+      <a href="site-timeline.html" title="Chart of site history">Site Timeline</a>
+  </li>
+  <li>
+    <a href="site-afdsc.html" title="US Air Force Data Services Center, Pentagon, Washington DC">AFDSC</a>
+  </li>
+  <li>
+    <a href="site-asea.html" title="ASEA, V&auml;ster&aring;s, Sweden">ASEA</a>
+  </li>
+  <li>
+    <a href="site-avon.html" title="Avon Universities Computing Centre, Bristol, England">Avon</a>
+  </li>
+  <li>
+    <a href="site-bellcan.html" title="Bell Canada, 2 sites">Bell Canada</a>
+  </li>
+  <li>
+    <a href="site-cisl.html" title="Honeywell Cambridge Information Systems Laboratory, Cambridge MA">CISL</a>
+  </li>
+  <li>
+    <a href="site-cno.html" title="Honeywell Corporate Network Operations, Minneapolis MN">CNO</a>
+  </li>
+  <li>
+    <a href="site-dndh.html" title="Canadian Department of National Defence, Halifax NS">DND-H</a>
+  </li>
+  <li>
+    <a href="site-dockmaster.html" title="US National Security Agency, Linthicum MD">DOCKMASTER</a>
+  </li>
+  <li>
+    <a href="site-ford.html" title="Ford Motor Company, Detroit, MI">FORD</a>
+  </li>
+  <li>
+    <a href="site-gm.html" title="General Motors Corporate, Detroit, MI">GM</a>
+  </li>
+  <li>
+    <a href="site-mainz.html" title="Johannes Gutenberg Universitaet, Mainz, Germany">Mainz</a>
+  </li>
+  <li>
+    <a href="site-mit.html" title="Massachusetts Institute of Technology, Cambridge, MA">MIT</a>
+  </li>
+  <li>
+    <a href="site-nwgs.html" title="US Navy Naval War Games system, 4 sites">NWGS</a>
+  </li>
+  <li>
+    <a href="site-ou.html" title="Oakland University, Rochester MI">OU</a>
+  </li>
+  <li>
+    <a href="site-prha.html" title="Puerto Rican Highway Authority, San Juan, PR">PRHA</a>
+  </li>
+  <li>
+    <a href="site-radc.html" title="Rome Air Development Center, Griffiss AFB, Rome NY">RADC</a>
+  </li>
+  <li>
+    <a href="site-rae.html" title="Royal Aircraft Establishment, Farnborough, Hampshire, England">RAE</a>
+  </li>
+  <li>
+    <a href="site-stc.html" title="Standard Telephones and Cables, New Southgate, London, England">STC</a>
+  </li>
+  <li>
+    <a href="site-sysm.html" title="Honeywell System M, Phoenix AZ">System-M</a>
+  </li>
+  <li>
+    <a href="vanderschooten/index.html" title="Bull Systeme X, Louveciennes, France">Systeme X</a>
+  </li>
+  <li>
+    <a href="site-uc.html" title="University of Calgary, Calgary, Alberta, Canada">UC/ACTC</a>
+  </li>
+  <li>
+    <a href="site-usgs.html" title="US Geological Survey, 3 sites">USGS</a>
+  </li>
+  <li>
+    <a href="site-usl.html" title="University of Southwestern Louisiana, Lafayette LA">USL</a>
+  </li>
+  <li>
+    <a href="site-vpi.html" title="Virginia Polytechnic Institute, Blacksburg, VA">VPI</a>
+      </li>
+    </ul>
+    <div class="clr"></div>
+  </li>
+  <li>
+    <a href="about-multics.html" title="About the web site">About&nbsp;&nbsp;&nbsp;&raquo;&nbsp;&nbsp;</a>
+  <ul>
+    <li>
+      <a href="changes.html" title="Reverse chronological list of website changes this year">Changes</a>
+  </li>
+  <li>
+    <a href="multics-news.html" title="Current Multics events">News</a>
+  </li>
+  <li>
+    <a href="mult-links.html" title="Links to other sites on the Web relevant to Multics">Links</a>
+  </li>
+  <li>
+    <a href="multics-images.html" title="Thumbnails of images on the site">Image Gallery</a>
+  </li>
+  <li>
+    <a href="sitemap.html" title="Site Map">Site Map</a>
+        </li>
+      </ul>
+      <div class="clr"></div>
+    </li>
+  </ul>
+  </nav>
+  <!-- ================ red magnifying glass ================ -->
+  <a href="gsearch.html" style="float:right;" target="_blank"><img src="mulimg/mg2.gif" width="25" height="25" alt="search" title="search multicians.org"></a>
+</div> <!-- redmenubar -->
+<!-- ================ alt menubar for iphone, thanks erik ================ -->
+<div class="altmenubar" id="alt-main-nav" role="navigation" aria-label="Main">
+  <nav>
+    <div id="menuToggle">
+      <!-- A fake / hidden checkbox is used as click receiver, so you can use the :checked selector on it. -->
+      <input type="checkbox" id="switchmenus">
+      <!-- instead of a hamburger. -->
+      <a href="gsearch.html" target="_blank"><img src="mulimg/mg2.gif" width="25" height="25" alt="search" title="search multicians.org" style="float:right; display:inline;"></a>
+      <label for="switchmenus" class="altmenuword">&nbsp;MENU</label>
+      <!-- Abbreviated menu for small screens. Does not link to all the sites. -->
+      <div class="peekaboo">
+	<span>
+	<br><a href="history.html">History</a>:
+	    <a href="features.html">Features</a> |
+	    <a href="myths.html">Myths</a> |
+	    <a href="project-mac.html">Project MAC</a> |
+	    <a href="chrono.html">Dates</a> |
+	    <a href="mgloss.html">Glossary</a> |
+	    <a href="mhp.html">History Proj</a> |
+	    <a href="corby-letter.html">Last site</a> |
+	<br><a href="multicians.html">People</a>:
+	    <a href="multics-stories.html">Stories</a> |
+	    <a href="people-pictures.html">People Pictures</a> |
+	    <a href="multics-humor.html">Humor</a> |
+	    <a href="memorabilia.html">Memorabilia</a> |
+	<br><a href="biblio.html">Library</a>:
+	    <a href="papers.html">Papers</a> |
+	    <a href="articles.html">Articles</a> |
+	    <a href="devdoc.html">Dev Docs</a> |
+	    <a href="multics-source.html">Source</a> |
+	    <a href="simulator.html">Simulator</a> |
+	<br><a href="sites.html">Sites</a>:
+	    <a href="site-timeline.html">Site Timeline</a> |
+	<br><a href="about-multics.html">About</a>:
+	    <a href="changes.html">Changes</a> |
+	    <a href="multics-news.html">News</a> |
+	    <a href="mult-links.html">Links</a> |
+	    <a href="multics-images.html">Image Gallery</a> |
+	    <a href="sitemap.html">Site Map</a> |
+        </span>
+      </div>
+    </div>
+  </nav>
+</div>
+<!-- ================ end menus ================ -->
+	
+      <div class="main">
+<div id="cover" onClick="hideLightBox()">&nbsp;</div>
+<div id="slide" class="headbar">
+  <div class="headbar2">
+  <span class="headinglogo"><a href="multics.html"><img src="mulimg/multics-redblack50x50.gif" alt="multics logo" height="25" width="25"></a></span>
+  <span class="headingmult"><a href="multics.html">Multics</a></span>
+  <span class="slideControl" onclick="hideLightBox()">Close &otimes;</span>
+  </div>
+  <div id="photoSlide" class="clr">Loading</div>
+</div>
+<p><a href="multicians.html#MullenRE" title="Multician: System (CISL): Core dump, Scheduler, edm, I/O, merge_ascii, Transaction proc, performance, covert channels."><span class="author">Bob Mullen</span></a> </p>
+
+<div class="rtpic" style="width: 150px;"><img src="mulimg/mullen74.jpg" width="150" height="150" alt="Multician Bob Mullen, CISL, 1974" title="Bob Mullen, CISL, 1974" srcset="mulimg/mullen74.jpg 1x, mulimg/mullen74-2x.jpg 2x" onClick="showLightBox2('mulimg/mullen74-big.jpg','648','648','Multician Bob Mullen, CISL, 1974','Bob Mullen, CISL, 1974','Bob Mullen, CISL, Cambridge, 1974. [THVV]','mulimg/mullen74-big-2x.jpg')"><p class="caption">Bob Mullen, CISL, Cambridge, 1974. <span class="click">Click for a larger view.</span></p></div>
+
+<h2>Introduction</h2>
+<p>
+  The Multics design distinguishes between <em>dispatching</em> a CPU and <em>scheduling</em> processes,
+  but the implementation is all done in a single module. 
+  Dispatching switches a CPU from one process to another;
+  this should be as efficient as possible, so we precompute a list of eligible processes to switch to. 
+  Scheduling computes the order of this list. 
+  Jerry Saltzer's 1966 PhD thesis, <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/mit/lcs/tr/MIT-LCS-TR-0030.pdf" title="Traffic control in a multiplexed computer system" target="_blank" rel="noopener">Traffic Control in a Multiplexed Computing System</a></span>
+  defined this distinction, and introduced the concepts of <a href="mgp.html#process" title="glossary: An address space and a locus of control. A...">processes</a>, block, and wakeup. 
+</p>
+
+<p>
+  The implementation of the Multics scheduler is in the module <strong>pxss</strong>, Process Exchange Switch Stack. 
+  Its ALM source code is <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/system_library_1/source/bound_tc_priv.s.archive" title="Multics source file" target="_blank" rel="noopener"><span class=code>pxss.alm</span></a></span> <span class="attribution">[THVV]</span>
+</p>
+
+<h3>Eligibility</h3>
+<p>
+  In order to be dispatched, a process has to be in the <a href="mge.html#eligible" title="glossary: Eligible for multiprogramming. The various scheduling algorithms over the...">eligible</a> queue.
+  Among other things, this means that the two essential <a href="mgp.html#page" title="glossary: Fixed size piece of memory. The hardware supports both...">pages</a> needed for execution are present in memory.
+  Scheduling policy mostly amounts to deciding which process to make eligible next,
+  if indeed any at all, and how much CPU time the process can use before losing eligibility.
+</p>
+
+<p>
+  Processes in the eligible queue are typically in the states
+</p>
+<ol>
+  <li>running -- is now executing on some processor</li>
+  <li>ready -- could run if a CPU was available</li>
+  <li>waiting -- for some imminent event, an unlocking, a page-read</li>
+</ol>
+<p>
+  If a process calls <a href="mgb.html#block" title="glossary: &quot;Block and wakeup&quot; is one of two interprocess synchronization...">block</a>, for example to wait for <a href="mgt.html#TTY" title="glossary: Teletype. Generic term for any asynchronous terminal device. Terminal...">TTY</a> input or some other long-term event outside of the kernel's control,
+  it is removed from the eligible queue, and not threaded in any queue.
+  If a process's time slice ends it is threaded in some ready-but-not-eligible queue described below.
+</p>
+
+<p>
+  Ordinarily processes are added to the tail of the eligible queue.
+  They tend to float toward the top as other processes lose eligibility.
+  An IO bound process (use little CPU, do many waits...) tends to wind up at the top of the queue, a desirable situation:
+  One wants the processes that consume CPU time to be at the bottom of the queue, to soak up CPU, so the CPU does not idle during IO bursts.
+</p>
+
+<h2>Foreground-Background Scheduler</h2>
+<p>
+  The first Multics scheduler, circa 1967, was descended from the one in use on CTSS.
+  It was sometimes described as a "Greenberger-Corbat&#243; exponential scheduler."
+  The scheduler had N queues, something like 6. When the scheduler wanted to choose a process to run,
+  it took the one at the head of the highest priority empty queue.
+  A process that started requesting service would be put at the tail of the highest priority queue.
+  Processes from that queue were given a small time slice, called the QUANTUM.
+  If the timer went off and the process was still running, it was sent to the tail of the next lower queue,
+  and when processes from that queue were run, they got a time slice twice as long (thus, exponentially longer time slices).
+  The lowest priority queue was called the "background" queue.
+  Thus, long-running jobs would not run until higher priority jobs were done;
+  the scheduler would then run these background jobs for long blocks of time.
+  A job that blocked on disk I/O was skipped over but didn't lose its position in queue;
+  a job that blocked on terminal I/O started over at the top queue when it received an input wakeup.
+  There are more details, but that's a general idea. [THVV] 
+</p>
+
+<h2>Percentage Scheduler</h2>
+<p>
+  In 1975, Bob Mullen implemented the Multics "Workclass" scheduler,
+  originally done to provide different percentages of the machine to different groups of users.
+  It was not that each user got a few percent, but that a group was to get some total percent.
+  (Scheduling of time for users within the group was done by what is called an FB-n algorithm,
+  meaning n levels of foreground and background priorities.) 
+</p>
+
+<p>
+  This scheduler was overlaid on the original FB-n scheduler,
+  in the sense that scheduling within a group was done by the FB-n scheduler.
+  The workclass scheduler decided to make a process "eligible" based on its workclass being the most worthy;
+  the ready queue for each workclass was sorted as an FB-n queue.
+</p>
+
+<p>
+  The administrative interface for the workclass scheduler was written by Tom Casey
+  and the Scheduler/Dispatcher algorithms by Bob Mullen.
+  The percentage allocations could be varied by <a href="mgs.html#shift" title="glossary: The accounting system defines up to 8 shifts, which...">shift</a>. There could be 16 workclasses.
+  The initial proposal for this set of changes was in <a href="mtbs/MTB-193.pdf" target="_blank" rel="noopener">MTB-193 Priority Scheduler</a> (1975-05-19).
+</p>
+
+
+<h3>Objective</h3>
+<p>
+  Allow a site administrator to assign each user to one of 16 groups,
+  and to assign a percentage of the machine to each group.
+  The percentages add up to 100 percent.
+  Each Multics <a href="mgp.html#project" title="glossary: Group of Multics users working together, for the same...">project</a> is assigned to one of the groups,
+  and so all user processes derive their work class assignment at login. 
+</p>
+
+<p>
+  The minimal expectation is that if all groups are presenting an offered load which exceeds their allotment,
+  the amount received will match what was specified.
+  Other implicit expectations are assumed and drive parts of the implementation described below:
+</p>
+
+<ol>
+  <li>
+    <p>
+      Assume that when some groups are not presenting sufficient demand, other groups are allowed to use the time. In other words we never idle to constrain a group. 
+    </p>
+  </li>
+
+  <li>
+    <p>
+      The time unused is divided among groups able to use it, roughly in proportion to their original allotments. 
+    </p>
+  </li>
+
+  <li>
+    <p>
+      A key question has to do with the time scale at which the control takes place: how often,
+      and more importantly the integration period on which the control decision is based.
+      An extreme example, in a time sharing system at 3pm, a group should not be affected by how much time it used in the morning.
+      To refine that, consider that time sharing users expect a response time of about a second
+      and use about a second --- and if not run within a second will perhaps understand the decision
+      if it is based on time used by them or their group in the present second or the last few.
+      They will not accept that they cannot run now because during an idle period 20 seconds ago
+      their group got lucky and chewed up their share of the next several minutes. 
+    </p>
+    <p>
+      (If your group is allotted 40% of the machine and it has used 40% of the last second
+      and is likely to use 40% of the next second, and yet you cannot run --- your gripe is with the admin/budget person
+      that sets your group's percent, not with the algorithm.)
+    </p>
+  </li>
+
+  <li>
+    <p>
+      Even if the scheduler does not make hard commitments of future time allotments,
+      one should consider the decision to begin running a job from a certain group as increasing the spend rate of that group in the near future.
+      In the case of a time sharing user being given a time slice, one does not know for sure whether the user will use the whole time slice or not.
+      However there is the possibility the user will.
+      The concrete application of this consideration can be stated simply as:
+      If the machine is idle at times S &amp; T which are arbitrarily close together (= if bandwidth becomes available at S &amp; T etc.),
+      and if there are users from several groups available to run
+      and if one of the groups is most deserving of time at time S and gets it,
+      then it is NOT true that at time T a user from the same group should be run.
+      That is: one could easily imagine an algorithm which, based on the near identity of the system states at times S &amp; T,
+      made the same decision at both times --- it would be wrong.
+      The fix is to immediately decrement the credits of the group whose member was selected at time S by some amount,
+      for example the time slice awarded.
+      Then if there is an immediately following allocation of run time,
+      a member of the same group will only be selected if that group remained most worthy, after the subtraction. 
+    </p>
+    <p>
+      Obviously at some point the arbitrary subtraction should be added back in, and the amount of time actually used should be subtracted instead.
+    </p>
+  </li>
+
+  <li>
+    One must be careful not to ruin the response time of the groups with small percentages.
+    They are already at a disadvantage due to elementary queuing theory results if the percentage scheduler works close to spec.
+    A group assigned 10% that offers a load of 15% will perceive poorer response than a group assigned 60% that offers a load of 65%.
+    This is understandable without queueing theory.
+    A group assigned 10% that offers a (random) load of 9% will see worse response than a group assigned 60% that offers a load of 54%;
+    this follows from queuing theory, assuming service times are the same for users in the two groups.
+    What must be avoided are "lumps" in the algorithm that make things worse than they need to be.
+    (Note the 9% user could buy 11% and greatly reduce his response time under heavy load.)
+  </li>
+</ol>
+
+<h3>Idealized Algorithm</h3>
+<p>
+  Suppose A is the time slice that can be awarded, or what should be roughly the same, the responsiveness desired from the system. 
+</p>
+
+<p>
+  As the time is used by anyone, add time credits to all groups in proportion to each groups assigned percentage.
+  Thus in general, for every second of time used by anyone, a total of one second worth of credits are distributed. (SCATTER CREDITS)
+</p>
+
+<p>
+  Decide which job to run on the basis of which group has the most credits at the moment.
+</p>
+
+<p>
+  As jobs run, subtract time credits from their group. This and SCATTER CREDITS essentially conserve the number of credits in the system.
+</p>
+
+<p>
+  SCATTER CREDITS, the run decision, and the subtraction of time used for the using group address the primary goal, percentages specified by the admin.
+</p>
+
+<p>
+  When a job is started running, subtract some fixed amount A from its group's credits.
+  When the job is done, add A back into its group's credits.
+  These two operations, on average, conserve the number of credits in the system. Together they address point 4 above.
+</p>
+
+<p>
+  A group's credits can never exceed 4*A, nor go below 0.
+  Thus SCATTER CREDITS says group.credits = min (group.credits + delta, 4*A).
+  And as a job runs, group.credits = max (group.credits - used, 0).
+  These two operations destroy and create credits, and limit the integration time of the system.
+  If for some extended period only one group demands (and gets) service,
+  the other groups will not build up more than 4*A credits,
+  and the active group's credits will not go below zero.
+  Thus if other groups suddenly became active the first group will be back in the ball game fairly quickly,
+  more quickly if it is a 60% group, less quickly if it is a 10% group.
+  This addresses point 3 above, a short integration time (4*A);
+  also point 2, if some group is not using its credits, additional credits are passed out to demanding groups on the same ratio as originally specified.
+</p>
+
+<p>
+  One could argue that the max # of credits (the cap) should be proportional to the groups' percentages,
+  rather than the same across all groups.
+  There are two problems with that.
+  First it would mean the integration time, the memory of the system,
+  could be longer for some groups than others, making behavior less predictable.
+  Second, it would work to the advantage of the larger groups to allow them a larger buildup of credits.
+  It will be (relatively) better for the smaller groups to not do that --- this addresses point 5 above.
+  Note this is only an issue if there is some measurable idle time.
+  If there is no idle time, the lower % group will have no advantage.
+</p>
+
+<h3>Compromise for Responsiveness</h3>
+<p>
+  It is a result of queueing theory that if you place 25% of the users in 4 queues each assigned 25% of the cpu time,
+  the response time for all users will be 4 times worse than if they shared a single queue running at 100% (under comparable heavy loads).
+  This implies that schedulers dividing up cpu-time --- or bandwidth of any kind --- cannot avoid drastically degrading response time.
+  Because this phenomenon was visible during testing,
+  an additional queue was created for ready non-eligible process that had just interacted.
+  This "interactive-queue" was examined before the workclass queues and allowed all users to
+  receive their initial time-slices in first-come-first-served order regardless of recent usage by their workclass or the percentage assigned to it.
+  Of course the credits for their workclass were decremented in the same manner as above.
+  Because the first time slice was short,
+  it was rare for a workclass to exceed its percentage due to this loophole.
+  On the one hand this maintained good response time to simple commands;
+  on the other, response to longer commands is not subject to stringent user expectations.
+  Without the "interactive-queue" the rest of the percentage scheduler would have been doomed by elementary queueing theory.
+  Even today it is worth asking of any new scheduling algorithm, "What does it do to average response time?" 
+</p>
+
+<h2>Deadline Scheduler</h2>
+<p>
+  In 1975-1976, Bob Mullen added features to the scheduler to 
+</p>
+
+<ul>
+  <li>
+    provide more efficient support for <a href="mgd.html#daemon" title="glossary: A beneficent spirit. A process, not associated with a...">daemons</a> driving physical devices such as <a href="printer.html" title="Printers, listings, and crash dumps.">printers</a>.
+  </li>
+  <li>
+    allow precise tuning of workloads for competitive <a href="benchmarks.html" title="Stories of benchmark tests done to sell Multics.">benchmarks</a>.
+  </li>
+</ul>
+<p>
+  The version of the scheduler is called the "Deadline Scheduler." 
+</p>
+
+<p>
+  The deadline scheduler used the workclass structures to implement a wholly different scheduler
+  in which neither the FB-n nor the percentage parameters were used.
+  Considering that most people do not understand the FB-n algorithm,
+  the top level view was that the scheduler could be operated in either "percent" mode or "deadline" mode.
+</p>
+
+<p>
+  Using some workclasses with virtual deadlines along with a few with realtime deadlines
+  was a convenient way to tune benchmarks with response time requirements which varied for different user scripts.
+  However realtime workclasses can also be used in conjunction with percentage groups, and such a use was common at customer sites.
+</p>
+
+<h3>Virtual Deadlines</h3>
+<p>
+  Here each workclass was given two pairs of numbers;
+  R1 and R2 could be though of as response times, and Q1 and Q2 were time quanta.
+  When a process received an interactive wakeup the scheduler read the clock and set 
+</p>
+<pre>
+  process.deadline. = clock() + workclass.R1
+</pre>
+<p>
+  Then the process was sorted by deadline into a queue of ready (but not eligible) processes from all workclasses.
+  The process at the head of this deadline queue would be the next process to be made eligible.
+  There was no attempt to meet the deadline, nor to delay running until the deadline;
+  the deadlines were just a way to sort the work to be done.
+  Thus the deadlines were virtual, meaning not real. 
+</p>
+
+<p>
+  When the process became eligible it was given a quantum of Q1,
+  and placed at the end of the eligible queue.
+  When its time slice expired it was resorted into the ready queue, after another clock reading:
+</p>
+<pre>
+  process.deadline. = clock() + workclass.R2
+</pre>
+<p>
+  When it was made eligible again, it would receive a quantum of Q2.
+  The allocation of R2 responses and Q2 quanta continued until the next interactive wakeup. 
+</p>
+
+<h3>Realtime Deadlines</h3>
+<p>
+  Realtime deadlines were not deadlines for completion of work, but for the start of work.
+  If a workclass was identified as realtime its processes were sorted into a special "realtime" ready queue by deadline.
+  Until the deadline arrived no new eligibility would be granted to a realtime process,
+  unless there was nothing else to do.
+  However when the deadline arrived, a realtime process was moved to the head of the eligible queue
+  (ignoring any restriction on max_eligible, working set size, etc.).
+  Subsequent deadlines and time slices were computed as for virtual deadlines,
+  the sorting and dispatching used the realtime ready queue. 
+</p>
+
+<h3>Remarks on Realtime</h3>
+<p>
+  In general it would be a mistake to have too many realtime processes.
+  The assumption was that the administrator would not have too many and the amount of processor time committed to them
+  (asymptotically at most Q2/(R2+Q2) fraction of a processor,
+  less due to IO waits...) would not be large.
+  For example to keep a double buffered line printer busy that required 50 ms of CPU time to fill a buffer
+  that would generate 2 seconds of printing, one would set: 
+</p>
+<pre>
+  R1 = 1.9 sec        R2 = 5.0 sec
+  Q1 =  .06 sec       Q2 =  .05 sec
+</pre>
+<p>
+  One needs to know that the refresh-buffer wakeup from the printer driver to the printer process gave interactive credit to the process.
+  Thus under ordinary operation the printer process would start running within 1.9 sec and complete running before using .06 sec.
+  For about 3% of a processor the printer would never halt if there was work to do.
+  If the printer went into a loop, or someone tried to use the printer process to do a compile,
+  the process would receive additional time slices very slowly,
+  for a rate of 1% of a processor. Similar applications included RJE lines and backup processes. 
+</p>
+
+<p>
+  The present author would use a realtime workclass for himself in the early stages of tuning a benchmark,
+  in order to never be locked out of the system due to poor response time.
+</p>
+
+
+<h2>The View from Multics Marketing</h2>
+<p>
+  <a href="multicians.html#Quackenboss" title="Multician: Marketing (HIS): Site Analyst (GM); Marketing (PMDC).">Harry Quackenboss</a> gave a presentation on <a href="hvq-sched.pdf" title="HLSUA Presentation, Forum XXV.">Priority Scheduling</a>
+  at the Multics Users' Group at <a href="mgh.html#HLSUA" title="glossary: Honeywell Large Systems Users Association. Pronounced &quot;h&#39;lashua&quot;. Also, colloquially,...">HLSUA</a> XXV, on 18 Oct 1977.
+  He writes:
+</p>
+
+<p>
+  [HVQ] Of all the things that I did with Multics, the Workclass Scheduler definition with Bob Mullen was one of the most enjoyable,
+  and I think significant contributions to Multics sales.
+</p>
+
+<p>
+  The Multics system purchased by the <a href="site-avon.html" title="Avon Universities Computing Centre, Bristol, England">Universities of Bristol and Bath</a> in the U.K. might have happened anyway,
+  but the ability to allocate guaranteed percentages of the system CPU and other resources was pretty important.
+  This was a highly unusual situation in that Bath, with a much smaller computer acquisition budget,
+  wasn't able to purchase a Multics system on their own.
+  I don't know whether it was the Honeywell sales team, led by <a href="multicians.html#Aldred" title="Multician: Marketing (HISUK): Avon, Brunel, RAE, Cardiff.">Neil Aldred</a> who fostered the idea,
+  or whether the two universities decided on their own to pool their budgets,
+  but being able to pool their funds to buy one system, housed at Bristol, with remote access by Bath,
+  and guarantee that Bath was going to get their fair share was essential to the sale,
+  and also a pretty big leap of faith by Bath.
+  As often happened with University users, the more the faculty and graduate students learned about Multics, the more they liked what they saw.
+</p>
+
+<p>
+  This also represented the first U.K. Multics installation,
+  and was crucial to Honeywell Information Systems Ltd. to making the investment in sales, technical support,
+  and heavy pre-sales expenses to respond to RFPs and run complex benchmarks.
+</p>
+
+<p>
+  In the 1970s, various big benchmarks often required tests such as
+  "run 80 interactive users with a mean response time of 2 seconds maximum, and complete 80 batch jobs in an hour."
+  The work class scheduler was a much more straightforward tool for matching the system behavior to particular workloads
+  than what Multics had previously, and what competitors had to do to meet the benchmarks. 
+</p>
+
+<p>
+  The scheduler also became important to other university sales where Multics was offered as both an academic computing platform,
+  supporting widely varying demands based on what professors and researchers wanted to do,
+  but also allowing the administrative computing users to be assured that the academic side would not hog the machine.
+</p>
+
+<p>
+  But there is another chapter to the story.
+  Much of the impetus to implement this capability to guarantee resources to particular user groups came as a request from <a href="site-gm.html" title="General Motors Corporate, Detroit, MI">General Motors</a>,
+  the first commercial customer.
+  When I decided to join Honeywell as part of the support team on the GM Multics installation,
+  I had interviewed with GM to work on the same system.
+  The argument that swayed me was made by the Honeywell systems manager:
+  If you want to be on the leading edge, go to work for the vendor.
+  I decided years later this wasn't always true, and there were several examples where Multics customers led Honeywell in its use.
+  But at the time it was a powerful argument.
+</p>
+
+<p>
+  At the time I joined the Honeywell team,
+  the internal group at General Motors responsible for the Multics system justified the purchase in large measure
+  as a response to the rapid growth of GM's computing costs going to outside time sharing services.
+  The biggest of those users was a group in General Motors' marketing research and analysis section, that reported to my father.  
+</p>
+
+<p>
+  When I interviewed with Honeywell, one of the interviewers was concerned about the politics and my loyalties,
+  but it never once caused a problem.
+  However, my dad went to the time sharing service he was using and told them unless they came up with a new pricing scheme,
+  he was going to be cutting back their business.
+  He and his group had pretty strong game theory backgrounds,
+  and proposed to the supplier that they could commit to a certain volume of business,
+  as long as they could get better pricing,
+  and could use otherwise idle CPU while still paying a flat rate.
+  Their supplier came up with a much simpler scheme than the workclass scheduler,
+  but it nonetheless worked pretty well for them.
+  By delaying their lunch time, or coming in early,
+  the marketing staff users could actually get better response time,
+  while lowering their total bill.
+</p>
+
+<p>
+  With this approach the outside service made the case to other GM departments that they were actually the more economical choice.
+  In response, the GM Multics team asked Honeywell for a way to offer a similar capability.
+</p>
+
+<p>
+  It took about forty years, but in the modern era of virtual machines,
+  you can see similar but harder to use,
+  less elegant mechanisms being employed to achieve similar goals.
+</p>
+
+<p class="datemod">
+  Written: 08/21/95
+  <br> modified: 03/04/00 with info from Bob
+  <br> modified: 01/26/16 with info from Harry
+  <br> modified: 06/24/24 updated ptr to pxss source
+
+</p> 
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+	      <nav id="footer-nav" aria-label="Footer">
+<div id="l2nav" class="textnav">Library links: <a href="papers.html" title="Classic papers about Multics available on the Web">Papers</a> | <a href="articles.html" title="Technical articles">Articles</a> | <a href="devdoc.html" title="Development document series">Dev Docs</a> | <a href="multics-source.html" title="Index to source code modules on this site">Source</a> | <a href="simulator.html" title="Multics Simulator">Simulator</a>
+
+</div>       <a href="multics.html">Home</a> | 
+       <a href="history.html">History</a> | 
+       <a href="multicians.html">People</a> | 
+       <a href="biblio.html">Library</a> | 
+       <a href="sites.html">Sites</a> |
+       <a href="about-multics.html">About</a>  | 
+         <a href="sitemap.html">Site Map</a> | 
+         <a href="changes.html">Changes</a>
+
+              </nav>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

@@ -1,0 +1,427 @@
+salvage_tape:
+          procedure ();
+
+          /* * * * * AUTOMATIC STORAGE DECLARATIONS  * * * */
+
+     declare
+         (num_args fixed binary (17),
+          err_code fixed binary (35),
+          wdir character (168),
+          seg_ptr pointer)
+               automatic;
+
+     declare
+          abort_command variable entry options (variable) initial (abort_command_invocation)
+               automatic;
+
+
+          /* * * * * INTERNAL STATIC DECLARATIONS  * * * * */
+
+          /* * * * * TEXT SECTION REFERENCES * * * * * * * */
+
+     declare
+          PROG character (32) initial ("salvage_tape")
+               internal static options (constant);
+
+     declare
+         (HEADER_word_0       initial ("110111000011001100011101101010100101"b),
+          HEADER_word_7       initial ("101001010101101110001100110000111011"b),
+          TRAILER_word_0      initial ("001000111100110011100010010101011010"b),
+          TRAILER_word_7      initial ("010110101010010001110011001111000100"b))
+               bit (36) internal static options (constant);
+
+     declare
+          STATUS_EOF9         initial ("100000000000000000000000100100010011"b)
+               bit (36) internal static options (constant);
+
+          /* * * * BASED & TEMPLATE DECLARATIONS * * * * * */
+
+          /* * * * * EXTERNAL STATIC DECLARATIONS  * * * * */
+
+     declare
+         (error_table_$badopt,
+          error_table_$namedup,
+          error_table_$noarg,
+          error_table_$segknown)
+               fixed binary (35) external static;
+
+          /* * * * * ENTRY & PROCEDURE DECLARATIONS  * * * */
+
+     declare
+          com_err_ constant entry options (variable),
+          cu_$arg_count constant entry () returns (fixed bin (17)),
+          cu_$arg_list_ptr constant entry () returns (ptr),
+          cu_$arg_ptr_rel constant entry (fixed bin (17), ptr, fixed bin (24), fixed bin (35), ptr),
+          cu_$gen_call constant entry (entry, ptr),
+          cv_dec_check_ constant entry (char (*), fixed bin (35)) returns (fixed bin (35)),
+          debug constant entry (),
+          expand_path_ constant entry (ptr, fixed bin (24), ptr, ptr, fixed bin (35)),
+          get_wdir_ constant entry () returns (char (168)),
+          hcs_$initiate_count constant entry (char (*), char (*), char (*), fixed bin (24), fixed bin (2),
+                    ptr, fixed bin (35)),
+          hcs_$make_seg constant entry (char (*), char (*), char (*), fixed bin (5), ptr, fixed bin (35)),
+          hcs_$terminate_noname constant entry (ptr, fixed bin (35)),
+          hcs_$truncate_seg constant entry (ptr, fixed bin (19), fixed bin (35)),
+          ioa_ constant entry options (variable),
+          ios_$read constant entry (char (*), ptr, fixed bin (24), fixed bin (24), fixed bin (24), 1 aligned like statu
+_template),
+          ios_$write constant entry (char (*), ptr, fixed bin (24), fixed bin (24), fixed bin (24), 1 aligned like stat
+s_template);
+
+     declare
+          (addr, divide, length, null, substr)
+               builtin;
+
+          /* * * * * STACK REFERENCES  * * * * * * * * * * */
+
+     declare
+          cleanup condition,
+          error condition;
+
+          /* * * * * INCLUDE FILES * * * * * * * * * * * * */
+
+          % include net_status_template;
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+          err_code = 0;
+
+          num_args = cu_$arg_count ();
+
+          if num_args < 0
+          then do;
+               call ioa_ ("Usage is:^/^10x^a inputseg -outputseg-", PROG);
+               return;
+               end;
+
+          call process_options (cu_$arg_list_ptr ());
+
+          on cleanup
+               call cleanup_after_command ();
+
+          wdir = get_wdir_ ();
+
+          call hcs_$make_seg (wdir, "tape_temp_", "", 01011b, seg_ptr, err_code);
+          if (err_code ^= 0) & (err_code ^= error_table_$segknown) & (err_code ^= error_table_$namedup)
+          then call abort_command (err_code, PROG, "Create tape_temp_ segment.");
+
+          call perform_function (seg_ptr);
+
+          call cleanup_after_command ();
+
+return_from_command:
+          return;
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+perform_function:
+          procedure (p_seg_ptr);
+
+          /* * * * * PARAMETER DECLARATIONS  * * * * * * * */
+
+     declare
+          p_seg_ptr pointer
+               parameter;
+
+          /* * * * * AUTOMATIC STORAGE DECLARATIONS  * * * */
+
+     declare
+         (file_num fixed binary (17),
+          num_read fixed binary (24),
+          max_rec_in fixed binary (24),
+          record_out (0 : 254) bit (1))
+               automatic;
+
+     declare
+          1 io_status aligned automatic like status_template;
+
+     declare
+          1 tape_buffer aligned automatic,
+             2 word (0 : 1399) bit (36) unaligned;
+
+          /* * * * * DEFINED DECLARATIONS  * * * * * * * * */
+
+     declare
+          1 tape_record unaligned defined (tape_buffer.word),
+             2 header,
+                3 word_0 bit (36),
+                3 rec_uid bit (72),
+                3 phys_rec_num bit (18),
+                3 phys_file_num bit (18),
+                3 data_bits bit (18),
+                3 total_bits bit (18),
+                3 flag_bits bit (36),
+                3 header_checksum bit (36),
+                3 word_7 bit (36),
+             2 data (0 : 1023) bit (36),
+             2 trailer,
+                3 word_0 bit (36),
+                3 rec_uid bit (72),
+                3 total_bits_so_far bit (36),
+                3 padding_bit_pattern bit (36),
+                3 reel_info bit (36),
+                3 phys_rec_in_log_tape bit (36),
+                3 word_7 bit (36);
+
+          /* * * * * BASED & TEMPLATE DECLARATIONS * * * * */
+
+     declare
+          1 page (0 : 254) aligned based (p_seg_ptr),
+             2 word (0 : 1023) bit (36) unaligned;
+
+          /* * * * * * * * * * * * * * * * * * * * * * * * */
+
+          file_num = 0;
+          call init_record_array ();
+
+          do while ("1"b);
+               call ios_$read ("tape_in", addr (tape_buffer.word), 0, dimension (tape_buffer.word, 1), num_read, io_sta
+us);
+               if io_status.error_code ^= ""b
+               then call process_status (io_status.error_code, num_read);
+               else call process_record (num_read);
+               end;
+
+          return;
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+init_record_array:
+          procedure ();
+
+          /* * * * * * * * * * * * * * * * * * * * * * * * */
+
+          call hcs_$truncate_seg (p_seg_ptr, 0, (0));
+
+          max_rec_in = -1;
+          record_out (*) = "1"b;
+
+          return;
+
+end;      /* end init_record_array                         */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+process_status:
+          procedure (p_io_status, p_num_read);
+
+          /* * * * * PARAMETER DECLARATIONS  * * * * * * * */
+
+     declare
+         (p_num_read fixed binary (24),
+          p_io_status bit (36) aligned)
+               parameter;
+
+          /* * * * * AUTOMATIC STORAGE DECLARATIONS  * * * */
+
+     declare
+          num_written fixed binary (24)
+               automatic;
+
+     declare
+          1 write_status aligned automatic like status_template;
+
+          /* * * * * * * * * * * * * * * * * * * * * * * * */
+
+          if (p_num_read = 0) & (p_io_status = STATUS_EOF9)
+          then do;
+               call ioa_ ("EOF (file ^d) -- max rec in = ^d.", file_num, max_rec_in);
+               if substr (string (record_out), 1, max_rec_in + 1) ^= ""b
+               then call ioa_ ("Not all records are in.");
+
+               call debug ();
+
+               call ios_$write ("tape_out", p_seg_ptr, 0, 1024 * (max_rec_in + 1), num_written, write_status);
+               if write_status.error_code ^= ""b
+               then call ioa_ ("write error: ^24.3b", string (write_status));
+
+               if num_written ^= 1024 * (max_rec_in + 1)
+               then call ioa_ ("Nowt enough words written.");
+
+               call ioa_ ("^d words written to tape_out.", num_written);
+
+               call init_record_array ();
+               file_num = file_num + 1;
+               call ioa_ ("New file num is ^d.", file_num);
+
+               return;
+               end;
+
+          call ioa_ ("io status = ^w, num_read = ^d.", p_io_status, p_num_read);
+
+          call debug ();
+          call process_record (p_num_read);
+
+          return;
+
+end;      /* end process_status                            */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+process_record:
+          procedure (p_num_read);
+
+          /* * * * * PARAMETER DECLARATIONS  * * * * * * * */
+
+     declare
+          p_num_read fixed binary (24)
+               parameter;
+
+          /* * * * * AUTOMATIC STORAGE DECLARATIONS  * * * */
+
+     declare
+          record_number fixed binary (17)
+               automatic;
+
+          /* * * * * * * * * * * * * * * * * * * * * * * * */
+
+          call ioa_ ("read ^d words.", p_num_read);
+
+          if tape_record.header.word_0 ^= HEADER_word_0
+          then call ioa_ ("header word 0 doesnt match.");
+
+          if tape_record.header.word_7 ^= HEADER_word_7
+          then call ioa_ ("header word 7 doesnt match.");
+
+          if tape_record.trailer.word_0 ^= TRAILER_word_0
+          then call ioa_ ("trailer word 0 doesnt match.");
+
+          if tape_record.trailer.word_7 ^= TRAILER_word_7
+          then call ioa_ ("trailer word 7 doesnt mach.");
+
+          if tape_record.flag_bits ^= ""b
+          then call ioa_ ("flags bits = ^w.", tape_record.flag_bits);
+
+          if substr (tape_record.flag_bits, 1, 1) = "1"b
+          then do;
+               call ioa_ ("Administrative record.");
+               return;
+               end;
+
+
+          record_number = binary (tape_record.phys_rec_num, 17);
+          max_rec_in = max (max_rec_in, record_number);
+          record_out (record_number) = "0"b;
+
+          page (record_number).word (*) = tape_record.data (*);
+
+          call ioa_ ("file ^d, rec ^d.", binary (tape_record.phys_file_num, 17), record_number);
+
+          return;
+
+end;      /* end process_record                            */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+end;      /* end perform_function                          */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+process_options:
+          procedure (P_arg_list_ptr);
+
+          /* * * * * PARAMETER DECLARATIONS  * * * * * * * */
+
+     declare
+          P_arg_list_ptr pointer
+               parameter;
+
+          /* * * * * AUTOMATIC STORAGE DECLARATIONS  * * * */
+
+     declare
+          (arg_indx fixed binary (17),
+          arg_length fixed binary (24),
+          arg_ptr pointer)
+               automatic;
+
+          /* * * * * BASED & TEMPLATE DECLARATIONS * * * * */
+
+     declare
+          based_argument character (arg_length)
+               based;
+
+          /* * * * * * * * * * * * * * * * * * * * * * * * */
+
+          do arg_indx = 1 repeat (arg_indx + 1) while (got_argument (arg_indx));
+               call process_control_argument (arg_ptr -> based_argument);
+               end;
+
+          return;
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+got_argument:
+          procedure (P_arg) returns (bit (1));
+
+          /* * * * * PARAMETER DECLARATIONS  * * * * * * * */
+
+     declare
+          P_arg fixed binary (17)                           /* index of the argument which we are to address  */
+               parameter;
+
+          /* * * * * * * * * * * * * * * * * * * * * * * * */
+
+          call cu_$arg_ptr_rel (P_arg, arg_ptr, arg_length, err_code, P_arg_list_ptr);
+          if err_code = 0
+          then return ("1"b);
+
+          if err_code = error_table_$noarg
+          then return ("0"b);
+
+          call abort_command (err_code, PROG, "Attempting to get argument #^d.", P_arg);
+
+end;      /* end got_argument                              */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+process_control_argument:
+          procedure (p_control_arg);
+
+          /* * * * * PARAMETER DECLARATIONS  * * * * * * * */
+
+     declare
+          p_control_arg character (*)
+               parameter;
+
+          /* * * * * * * * * * * * * * * * * * * * * * * * */
+
+          call abort_command (error_table_$badopt, PROG, p_control_arg);
+
+end;      /* end process_control_argument                  */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+end;      /* end process_options                           */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+cleanup_after_command:
+          procedure ();
+
+          /* * * * * * * * * * * * * * * * * * * * * * * * */
+
+          return;
+
+end;      /* end cleanup_after_command                     */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+abort_command_invocation:
+          procedure ();
+
+          /* * * * * * * * * * * * * * * * * * * * * * * * */
+
+          revert error;
+
+          call cu_$gen_call (com_err_, cu_$arg_list_ptr ());
+
+          call cleanup_after_command ();
+
+          goto return_from_command;
+
+end;      /* end abort_command_invocation                  */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+          /* end salvage_tape                              */
+end;

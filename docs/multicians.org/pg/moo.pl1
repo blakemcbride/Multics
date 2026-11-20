@@ -1,0 +1,704 @@
+/* Beginning of modification history */
+/* Created and modified by J. M. Grochow, MIT Information Processing
+     Services */
+/* Modified 94-06-18 by Paul Green to clean up the code, format
+     for 75 character line limit, and convert to ANSI PL/I. */
+/* End of modification history */
+
+/* The game of moo is a fairly simple game played according to
+   the following algorithm:
+
+   1. The computer selects four random digits (0 to 9).
+   2. The player attempts to guess these digits, in order.
+   3. The computer gives the player information as to the correctness
+      of his guess.
+   a. For every digit guessed in order, a "Bull" is scored.
+   b. For every digit guessed out of order, a "Cow" is scored.
+   4. The player continues making guesses until four Bulls are scored
+      indicating that he has guessed all four digits correctly.
+
+   A short example should help:
+   The computer picks 1 2 3 4.
+   Player: 5 6 7 8. Score: nothing.
+   Player: 1 1 1 1. Score: 1 Bull, 3 Cows.
+   Player: 2 3 4 1. Score: 4 Cows.
+   Player: 1 2 4 3. Score: 2 Bulls, 2 Cows.
+   Player: 1 2 3 4. Score: 4 Bulls. The game is over.
+
+
+   To play moo, type the following command:
+
+   moo
+
+   To play moo without having your score recorded on the ladder, type:
+
+   moo -d
+
+   To cause the ladder to be recomputed, type:
+
+   moorank
+
+   To see the ladder:
+
+   mooprint
+
+   To see a particular entry in the ladder, e.g. Jones' entry:
+
+   mooprint Jones
+
+    */
+
+moo:
+     procedure;
+
+/* automatic */
+
+dcl  arg            char (256) var;          /* argument storage */
+dcl  array (4)      bin (31);                /* storage for random digits */
+dcl  arrayf(20)     float binary (27);       /* for generating random numbers */
+dcl  arrayp         ptr;                     /* pointer to generated array */
+dcl  avg            float;                   /* for printing the ladder */
+dcl (b,c)           bin;                     /* bull and cow counters */
+dcl (bf, cf)        float;                   /* comparison temporaries */
+dcl  begin_time     bin (31);                /* time game started (secs) */
+dcl  code           bin;                     /* VOS status code */
+dcl  end_time       bin (31);                /* time game ended (secs) */
+dcl  flag           bin;                     /* flag for conversion */
+dcl (i, j, k)       bin;                     /* do loop indices */
+dcl  person_name    char (32) var;           /* person name */
+dcl  random_value   float bin (53);          /* random value */
+dcl (s1, s2)        char (4);                /* output strings */
+dcl  seed           dec (18);                /* seed for random number */
+dcl  sort_sw        bit (1) aligned;         /* TRUE to sort name list */
+dcl  time           bin (31);                /* elapsed time (secs) */
+dcl  update_sw      bit (1) aligned;         /* TRUE to update ladder */
+dcl  user_name      char (65) var;           /* user name */
+dcl  x(4)           bin;                     /* player's four digit input */
+
+/* based */
+
+dcl arrayff (20)    bin (31) based (arrayp); /* overlay */
+dcl timea (0:1)     bin (31) based (lp1);    /* overlay for 71 bit number */
+
+dcl 1 ladder,                                /* ladder declaration */
+    2 key char (64) var,
+    2 max fixed bin(31),
+    2 num fixed bin(31),
+    2 games fixed bin(31),
+    2 lowavg float,
+    2 lowscore fixed bin(31),
+    2 lsperson char(20),
+    2 message char(24),
+    2 e(500) char(48);
+
+dcl 1 e based(lp),                           /* entry declaration */
+    2 person char(24),                       /* name */
+    2 space fixed bin(31),
+    2 totaltime fixed bin(31),
+    2 ngames fixed bin(31),
+    2 totscore fixed bin(31),
+    2 avg float,
+    2 rank fixed bin(31);
+
+/* builtins */
+
+dcl  null builtin;
+
+/* entries */
+
+dcl  before         entry (char (*) var in,       /* string1 */
+                         char (*) var in)         /* string2 */
+                         returns (char (256) var);/* result */
+
+dcl  s$error        entry (
+                         bin (15) in,             /* code */
+                         char (*) var in,         /* name */
+                         char (*) var in)         /* text */;
+
+dcl  s$get_arg      entry (bin (15) in,           /* arg_num */
+                         char (256) var,          /* arg */
+                         bin (15))                /* code */;
+
+dcl  s$get_random_value
+                    entry (
+                         fixed dec (18),          /* seed */
+                         float bin (53))          /* random_value */;
+
+dcl  s$get_user_name
+                    entry (char (65) var)         /* user_name */;
+
+dcl  s$init_random_value
+                    entry (
+                         fixed dec (15) in,       /* arbitrary_integer */
+                         fixed dec (18))          /* seed */;
+
+dcl  s$int_date_time
+                    entry (bin (31));             /* date/time */;
+
+/* files */
+
+dcl  ladder_file    file record keyed update;
+
+/* internal static */
+
+dcl  alpha          char(26) int static init('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+dcl  count          bin(31) int static;               /* number of tries */
+dcl (lp, lp1)       ptr internal static init(null);
+dcl  printsw        bin(31) int static init(0);     /* switch to indicate print program */
+
+%page;
+
+/* program */
+
+/* set up a special 'quit' handler so that 'moo' can take
+   appropriate action */
+
+     update_sw = '1'b;                  /* update ladder by default */
+     printsw = 0;                       /* for benefit of quit handler */
+     on break call mooquit;             /* field all quits */
+     count = 0;
+
+/* see if an argument is typed (-d or -x) */
+
+     call s$get_arg(1, arg, code);
+     if code ^= 0
+     then do;
+          put edit ('For instructions, type ''print >udd>sa>g>moo.instr''')
+               (a);
+          put skip;
+          put edit ('To see the ladder, type ''moo$mooprint''')(a);
+          put skip;
+          put edit ('To avoid these comments in the future, type ''moo -x''^/')
+               (a);
+          put skip;
+          end;
+     else if arg = '-d'
+     then do;
+          put edit('Demonstration: no ladder update.') (a);
+          put skip;
+          update_sw = '0'b;
+          go to noladder;
+          end;
+
+/* Now initiate the ladder and find the person's entry or get
+   his name.  Name of the ladder is computed to try to frustrate
+   reverse-engineering types.  */
+
+     call open_ladder_file (code);
+     if code ^= 0
+     then do;
+          call s$error (code, 'moo', 'ladder file');
+          return;
+          end;
+
+noladder: 
+     call s$get_user_name (user_name);
+     person_name = before (user_name, '.');
+
+     if update_sw
+     then do;
+          if ladder.lowavg = 0
+          then ladder.lowavg = 1.0e2;
+
+          if ladder.lowscore = 0
+          then ladder.lowscore = 100;
+
+          do i = 1 to ladder.num;
+               lp = addr(ladder.e(i));
+               if person_name = lp->e.person
+               then go to top;
+          end;
+          ladder.num = ladder.num + 1;
+          i = ladder.num;
+          lp = addr(ladder.e(i));
+          lp->e.person = person_name;
+          lp->e.rank = 0;
+          end;
+
+/* get the time and get the four random numbers */
+
+top:      
+     call s$int_date_time (begin_time);
+     call s$init_random_value ((begin_time), seed);
+     do i = lbound (arrayf, 1) to hbound (arrayf, 1);
+          call s$get_random_value (seed, random_value);
+          arrayf (i) = random_value;
+     end;
+
+     arrayp = addr(arrayf);
+
+     do i = 1 to 4;
+          flag = 1;
+          array(i) = mod(arrayff(21-i), 10);
+gen:      do j = 1 to i-1;
+               if array(i) = array(j)
+               then do;
+                    if flag = 17
+                    then go to top;
+
+                    array(i) = mod(arrayff(flag), 10);
+                    flag = flag + 1;
+                    go to gen;
+                    end;
+          end;
+     end;
+
+     put edit ('answer: ', array (1), array (2), array (3), array (4))
+          (a, f (5), f(5), f(5), f(5));
+     put skip;
+
+/* do some initialization */
+
+     count = 0;
+
+/* do the basic loop for each move - get the numbers, check
+   them, and find bulls and cows */
+
+beginrun:
+     s1 = ' ';
+     s2 = ' ';
+
+     call get_digits ('Type guess: ', x, i, flag);
+
+     if flag ^= 0
+     then do;                      /* an alpha character was typed! */
+          if ^ update_sw
+          then return;             /* demonstration mode: return */
+
+          if count = 0
+          then go to returnt;      /* if first guess return with no penalty */
+
+          put edit
+              ('It is antisocial to try to leave a game which is not going well. Please continue.')
+              (a);
+          put skip;
+          go to continue;          /* can't quit in the middle! */
+          end;
+
+     if flag = 0
+     then if i ^= 4
+          then do;
+               put edit ('4 digits required. Replay this move.') (a);
+               go to beginrun;
+               end;
+
+     do i = 1 to 4;
+          if x(i) > 9
+          then do;
+continue:      put edit
+                    ('All numbers must be between 0 and 9. Replay this move.')
+                    (a);
+               put skip;
+               go to beginrun;
+               end;
+     end;
+
+/* now determine score on this move */
+
+     count = count+1;
+     b = 1;
+     c = 1;
+
+/* record bulls and cows */
+
+     do i = 1 to 4;
+          if array(i) = x(i)
+          then do;
+               substr(s1, b, 1) = 'B';
+               b = b+1;
+               end;
+
+          do j = 1 to 4;
+               if j ^= i
+               then if array(j) = x(i)
+                    then do;
+                         substr(s2, c, 1) = 'C';
+                         c = c+1;
+                         end;
+          end;
+     end;
+
+/* now print his score for this guess */
+
+     put edit (rtrim (s1) || rtrim (s2)) (a);
+     put skip;
+
+/* if all four bulls are found, then do the appropriate ladder updating */
+
+     if b = 5
+     then do;
+          call s$int_date_time (end_time);
+          time = end_time - begin_time;           /* compute time for this game */
+          if update_sw
+          then do;
+               lp->e.ngames = lp->e.ngames +1;
+               ladder.games = ladder.games + 1;
+
+               if mod(ladder.games, 1000) = 0
+               then do;
+                    put edit ('Congratulations: you have just played the ',
+                         ladder.games, 'th game of moo.')
+                         (a, f (5), a);
+                    put skip;
+                    end;
+
+               lp->e.totscore = lp->e.totscore + count;
+               lp->e.avg = (lp->e.totscore + 0.0e0) / lp->e.ngames;
+               lp->e.totaltime =
+                    lp->e.totaltime + divide(time, 1000000, 31, 0);
+
+               if lp->e.avg < ladder.lowavg
+               then if lp->e.ngames >= 10
+                    then ladder.lowavg = lp->e.avg;
+
+               if count < ladder.lowscore
+               then do;
+                    ladder.lowscore = count;
+                    ladder.lsperson = person_name;
+                    end;
+          end;
+          put edit (count, ' attempts, ', divide(time, 1000000, 31, 0),
+               ' seconds.') (f (5), a, f (5), a);
+          put skip (2);
+          go to top;
+     end;
+
+/* go and initiate another game */
+
+     go to beginrun;
+
+/* terminate ladder before returning */
+
+returnt:
+     rewrite file (ladder_file) from (ladder);
+     close file (ladder_file);
+     return;
+
+%page;
+
+/* entry point to print the ladder or your entry in it */
+
+mooprint:
+     entry;
+
+/* field all quits */
+
+     update_sw = '0'b;
+     printsw = 1;
+     on break call mooquit;             /* field all quits */
+     on zerodivide;
+
+/* initiate the ladder and see if there are any arguments */
+
+     call open_ladder_file (code);
+     if code ^= 0
+     then do;
+          call s$error (code, 'moo', 'ladder file');
+          return;
+          end;
+
+     sort_sw = '1'b;
+
+     call s$get_arg (1, arg, code);
+     if code = 0
+     then if arg = '-no_sort'
+          then sort_sw = '0'b;
+
+/* print the header */
+
+     put skip edit (ladder.message) (a);
+     put skip;
+     put edit ('Number of people: ', ladder.num, '; Number of games: ',
+          ladder.games) (a, f(5), a, f (5));
+     put skip;
+     put edit ('Lowest sustained avg.: ', ladder.lowavg) (f (5,2));
+     put skip;
+     put edit ('Lowest single time score: ', ladder.lowscore,
+          '(by ', ladder.lsperson, ')') (a, f (5), a, a, a);
+     put skip (2);
+     put edit('Rank   Avg.  Avg.T  Games  Score  Name') (a);
+     put skip;
+
+     go to sortblock;
+
+%page;
+
+/* entry point to do ranking */
+
+moorank:
+     entry;
+
+/* field all quits */
+
+     update_sw = '0'b;
+     printsw = -1;
+     on break call mooquit;             /* field all quits */
+
+/* initiate the ladder */
+
+     call open_ladder_file (code);
+     if code ^= 0
+     then do;
+          call s$error (code, 'moo', 'ladder file');
+          return;
+          end;
+
+/* a special block to do the sorting - allocates an array to help */
+
+sortblock:
+     begin;
+
+dcl nums(3000) fixed bin(31);
+
+          do i = 1 to ladder.num;
+               nums(i) = i;
+          end;
+
+/* check if this is print with no sorting necessary */
+
+          if printsw = 1
+          then if ^ sort_sw
+               then go to print1;
+
+/* routine to perform interchange sort using the array nums to
+   store array indices */
+
+sortl:    j = 0;
+          do i = 1 to ladder.num-1;
+               lp = addr(ladder.e(nums(i)));
+               lp1 = addr(ladder.e(nums(i+1)));
+               if printsw = 1
+               then do;
+                    if lp->e.rank = 0
+                    then bf = 3000;
+                    else bf = lp->e.rank;
+
+                    if lp1->e.rank = 0
+                    then cf = 3000;
+                    else cf = lp1->e.rank;
+                    end;
+               else do;
+                    bf = lp->e.avg;
+                    cf = lp1->e.avg;
+                    end;
+                    if bf > cf
+                    then do;
+                         k = nums(i);
+                         nums(i) = nums(i+1);
+                         nums(i+1) = k;
+                         j = 1;
+                         end;
+                    end;
+
+          if j ^= 0
+          then go to sortl;
+
+/* if this is the print program, then print out the ladder */
+
+print1:   if printsw = 1
+          then do;
+               do i = 1 to ladder.num;
+                    lp = addr(ladder.e(nums(i)));
+                    if ^ sort_sw
+                    then if arg ^= lp->e.person
+                         then go to prendl;
+
+                    flag = divide(lp->e.totaltime, lp->e.ngames, 31, 0);
+                    put edit (lp->e.rank,
+                         lp->e.avg,
+                         flag,
+                         lp->e.ngames,
+                         lp->e.totscore,
+                         lp->e.person)
+                         (f (4), x (2),
+                         f (5, 2), x (2),
+                         f (5), x (2),
+                         f (4), x (2),
+                         f (5), x (2),
+                         a);
+                    put skip;
+                    if sort_sw
+                    then go to returnt;
+prendl:        end;
+               put skip;
+               go to returnt;
+               end;
+
+/* if this is the rank program, then put in the new ranking */
+
+          avg = 1.0e2;                                 /* set it high */
+          flag = 0;                                    /* to account for those with 0 average */
+          do i = 1 to ladder.num;
+               lp = addr(ladder.e(nums(i)));
+               if (lp->e.avg = 0.0e0) | (lp->e.ngames < 5)
+               then do;
+                    lp->e.rank = 0;
+                    flag = flag + 1;
+                    go to endloop;
+                    end;
+
+               if lp->e.ngames > 10
+               then if lp->e.avg < avg
+                    then avg = lp->e.avg;
+
+               lp->e.rank = i - flag;
+               do j = i to 1 by -1;
+                    lp1 = addr(ladder.e(nums(j)));
+                    if lp->e.avg = lp1->e.avg
+                    then lp->e.rank = lp1->e.rank;
+
+                    if lp->e.avg > lp1->e.avg
+                    then go to endloop;
+               end;
+endloop:  end;
+
+          ladder.lowavg = avg;                      /* adjust the low average */
+          go to returnt;
+      end;
+
+END_MOO:
+     return;
+
+%page;
+
+get_digits:
+     procedure (p_prompt, p_digits, p_num, p_flag);
+
+/* parameters */
+
+dcl  p_prompt       char (*) in;
+dcl  p_digits (4)   bin;
+dcl  p_num          bin;
+dcl  p_flag         bin;
+
+/* automatic */
+
+dcl  n              bin;
+dcl  token          char (32) var;
+
+/* program */
+
+     if p_prompt ^= ''
+     then put edit (p_prompt) (a);
+
+     do n = 1 to 4;
+          get list (token);
+
+          if verify (token, '0123456789') = 0
+          then do;
+               p_flag = 0;
+               p_digits (n) = binary (token, 15);
+               end;
+          else do;
+               p_flag = -1;
+               p_digits (n) = 0;
+               goto DONE;
+               end;
+     end;
+
+DONE:
+     p_num = n - 1;
+
+     end get_digits;
+
+%page;
+
+/* entry point to handle console quits so as not to give the
+   user any unfair advantages */
+
+mooquit:
+     procedure;
+
+     put edit ('MOOQUIT') (a);
+
+/* if quit while in print or rank then simply terminate the
+   ladder */
+
+     if printsw ^= 0
+     then go to mooqret1;
+
+/* if the 'try' count is zero then simply inform the user of the
+   proper way to terminate play */
+
+     if count = 0
+     then do;
+          put edit (
+               ': Normal exit is by typing ''q'' instead of your first move.')
+               (a);
+          put skip;
+          go to mooqret;
+          end;
+
+/* if the ladder way not initiated then simply unwind the stack
+ */
+
+     if ^ update_sw
+     then do;
+mooqret1: put skip;
+          go to mooqret;
+          end;
+
+/* otherwise, add 10 to his score and tell him that he isn't
+   playing fair */
+
+     else do;
+          put edit (': Ten points have been added to your total score.')
+               (a);
+          put skip;
+
+          lp->e.totscore = lp->e.totscore + 10;
+
+          if lp->e.ngames > 0
+          then lp->e.avg = (lp->e.totscore + 0.0e0) / lp->e.ngames;
+
+          put edit ('Your new average is ', lp->e.avg) (a, f (5, 2));
+          put skip;
+          end;
+
+/* terminate the ladder and unwind the stack */
+
+mooqret:
+     close file (ladder_file);
+     goto END_MOO;
+
+     end mooquit;
+
+%page;
+
+open_ladder_file:
+     procedure (p_code);
+
+/* parameters */
+
+dcl  p_code bin (15);
+
+/* program */
+
+     p_code = 0;
+
+     /* If the ladder file doesn't exist, return an error code.
+        */
+
+     on undefinedfile (ladder_file)
+          begin;
+               p_code = oncode ();
+               goto DONE;
+          end;
+
+     /* Try to open the file.  */
+
+     open file (ladder_file)
+          title ('%es#m49>l>pg>hh>' || substr(alpha,6,1) ||
+          substr(alpha,15,1) || substr(alpha,15,1) || ' -keyis 1 64')
+          record keyed update;
+
+     /* Try to read the ladder data from the file.  */
+
+     read file (ladder_file) into (ladder) key ('moo_ladder');
+
+DONE:
+     return;
+
+     end open_ladder_file;
+
+     end moo;

@@ -1,0 +1,2707 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Multiplexing Control Points in a Process.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+MULTICS TECHNICAL BULLETIN                    MTB-753, Revision 2
+
+To:       MTB Distribution
+
+From:     Gary M. Palter  &amp;  Stan Cox
+
+Date:     10 July 1986
+
+Subject:  Multiplexing Control Points in a Process
+
+ABSTRACT
+
+This MTB  proposes changes to  support simple user  ring tasking.
+Control  points are sub-process  entities whose execution  can be
+interleaved.   The  proposal  includes  general  descriptions  of
+commands and subroutines to manipulate  tasks, and changes to the
+system to deal with the more complex environment.
+
+Comments should be sent:
+
+via Forum:
+     &gt;udd&gt;m&gt;mtgs&gt;control_point_management (cpm_) on System-M
+
+_________________________________________________________________
+
+Multics  Project  internal  working  documentation.   Not  to  be
+distributed outside the project without the consent of the author
+or the Director of Multics System Development.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+                             CONTENTS
+
+                                                           Page
+
+                 Reason  . . . . . . . . . . . . . . .       2
+                 Solution  . . . . . . . . . . . . . .       2
+                    Example  . . . . . . . . . . . . .       3
+                    Creating the Listen Control Point        3
+                    Destroying the Listen Control
+                     Point . . . . . . . . . . . . . .       4
+                    Creating a Control Point for each
+                     Connection Request  . . . . . . .       4
+                    Control Within Each Control Point        4
+                 Implementation  . . . . . . . . . . .       4
+                       Multiple control points . . . .       6
+                    Example  . . . . . . . . . . . . .       6
+                 Documentation . . . . . . . . . . . .       7
+
+Appendix A    Changes to Existing Subroutines  . . . .     A-1
+                    ipc_ . . . . . . . . . . . . . . .     A-2
+                       reassign_call_channels  . . . .     A-2
+                       wait_for_an_event . . . . . . .     A-2
+
+Appendix B    Changes to Existing Structures . . . . .     B-1
+
+Appendix C    Commands . . . . . . . . . . . . . . . .     C-1
+                    control_point_manager_call . . . .     C-2
+                       cl_intermediary . . . . . . . .     C-3
+                       create  . . . . . . . . . . . .     C-3
+                       destroy . . . . . . . . . . . .     C-6
+                       enable  . . . . . . . . . . . .     C-6
+                       enabled . . . . . . . . . . . .     C-7
+                       generate_call . . . . . . . . .     C-7
+                       id  . . . . . . . . . . . . . .     C-8
+                       list  . . . . . . . . . . . . .     C-9
+                       pop_preferred . . . . . . . . .    C-10
+                       preferred . . . . . . . . . . .    C-10
+                       probe . . . . . . . . . . . . .    C-11
+                       program_interrupt . . . . . . .    C-12
+                       push_preferred  . . . . . . . .    C-12
+                       run . . . . . . . . . . . . . .    C-13
+                       scheduler . . . . . . . . . . .    C-16
+                       select  . . . . . . . . . . . .    C-16
+                       set_cl_intermediary . . . . . .    C-17
+                       set_preferred . . . . . . . . .    C-18
+                       start . . . . . . . . . . . . .    C-18
+                       stop  . . . . . . . . . . . . .    C-19
+                       wakeup  . . . . . . . . . . . .    C-19
+
+Appendix D    Subroutines  . . . . . . . . . . . . . .     D-1
+                    cpm_ . . . . . . . . . . . . . . .     D-2
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+                                                           Page
+
+                       block . . . . . . . . . . . . .     D-2
+                       create  . . . . . . . . . . . .     D-2
+                       destroy . . . . . . . . . . . .     D-6
+                       generate_call . . . . . . . . .     D-7
+                       generate_call_preferred . . . .     D-8
+                       generate_call_when_ready  . . .     D-9
+                       get_control_point_meters  . . .    D-10
+                       get_preferred_control_point . .    D-11
+                       get_scheduler_meters  . . . . .    D-12
+                       get_user_cl_intermediary  . . .    D-14
+                       pop_preferred_control_point . .    D-15
+                       push_preferred_control_point  .    D-15
+                       scheduler . . . . . . . . . . .    D-17
+                       set_preferred_control_point . .    D-17
+                       set_user_cl_intermediary  . . .    D-18
+                       start . . . . . . . . . . . . .    D-19
+                       stop  . . . . . . . . . . . . .    D-20
+                       wakeup  . . . . . . . . . . . .    D-21
+                    cpm_data_  . . . . . . . . . . . .    D-23
+                       n_control_points  . . . . . . .    D-23
+                    get_control_point_id_  . . . . . .    D-24
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+REASON
+
+A  task can be  thought of as  a set of  independent states in  a
+process.  Each task can be defined by its ability to:
+
+  o  have its own stack
+
+  o  optionally have its own LOT
+
+  o  optionally have its own ISOT
+
+  o  optionally have its own RNT
+
+  o  optionally have its own user free area
+
+  o  optionally have its own IO switches
+
+  o  have its own ips_mask
+
+  o  have its own cl_intermediary
+
+The  target   applications  for  control  point   management  are
+restricted   environments  such   as  network   servers.   In   a
+well-defined environment such as this, each task will not require
+its own RNT, LOT, ISOT, and user free area.  This is because each
+task does not require that it be able to manage its own namespace
+in the limited environment that it  runs in.  We define a control
+point  as a simple  task, having its  own stack, but  sharing the
+namespace and static variables of the primary (or root) task.
+
+SOLUTION
+
+The control point manager provides  a simple form of multitasking
+within a process.  Each task can be in a given state as indicated
+by the directed graph in figure 1.
+
+A  queue of  ready control  points is  maintained by  the control
+point scheduler to determine which control point to run.  A stack
+of preferred control points is also taken into account, in case a
+ready  control point  should be  given a  higher priority.   Each
+control point has its own stack,  and each stack has a pointer to
+the  control_point_data structure  for that  control point.   The
+control_point_data structure contains  the control point specific
+information  including  priority,   state,  IO  switch  pointers,
+ips_mask, and  system privilege.  It  also contains links  to the
+previous and next child and sibling control points (if any).
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+                    ___________  $start           ___________
+          $create   |         |------------------&gt;|         |
+          ---------&gt;| stopped |  $stop            | ready   |
+          |         |         |&lt;------------------|         |
+          |         |_________|     |------------&gt;|_________|
+          |              |^          | $wakeup_____|_____|^  |
+          |              |          |       |      |       |
+___________              |          |       |      |  _____|
+| deleted |              |    ------|----   |      |  |
+|   or    |              -----|         |   |      |  | $schedule
+|^existant|              $stop| blocked |&lt;--|      |  | OR
+|_________|                   |_________|$block    |  | ipc_
+          ^|                            |^           |  v
+          |         ___________        |___________|_________
+          |         |         |         ipc_      |         |
+          ----------|destroyed| $destroy          | running |
+                    |_________|&lt;------------------|_________|
+
+                  Figure 1.  Task State Digraph
+
+Example
+
+The following  example is an  example from the  DSA login server,
+which  is responsible  for managing  user requests  for access to
+Multics from communications channels managed by the login server.
+The  login server creates  a control point  which listens to  the
+endpoint, and creates a control point for each connection request
+that comes in.
+
+Creating the Listen Control Point
+
+create_control_point_info.version =
+     CREATE_CONTROL_POINT_INFO_VERSION_1;
+create_control_point_info.comment = rtrim ("listening");
+create_control_point_info.initproc.entry = login_server_$listen;
+create_control_point_info.initproc.info_ptr = ls_listen_info_ptr;
+create_control_point_info.priority = 1;
+string (create_control_point_info.flags) = ""b;
+create_control_point_info.independent = "1"b;
+create_control_point_info.header.pad = "0"b;
+
+call cpm_$create (ccpi_ptr, control_point_id, code);
+call cpm_$start (control_point_id, code);
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+Destroying the Listen Control Point
+
+     call cpm_$destroy (control_point_id, code);
+
+Creating a Control Point for each Connection Request
+
+create_control_point_info.version =
+     CREATE_CONTROL_POINT_INFO_VERSION_1;
+create_control_point_info.comment = "login dialogue";
+create_control_point_info.initproc.entry =
+     login_server_connection_;
+create_control_point_info.initproc.info_ptr = ls_cp_info_ptr;
+create_control_point_info.priority = 1;
+string (create_control_point_info.flags) = ""b;
+create_control_point_info.independent = "1"b;
+
+if attach_description ^= ""
+then do; /* allow for varying attach descriptions */
+     create_control_point_info.separate_standard_iocbs = "1"b;
+     create_control_point_info.user_io_attach_desc_given = "1"b;
+end;
+
+create_control_point_info.header.pad = ""b;
+create_control_point_info.user_io_attach_desc =
+     attach_description;
+
+call cpm_$create (ccpi_ptr, control_point_id, code);
+call cpm_$start (control_point_id, code);
+
+Control Within Each Control Point
+
+The  code for  a control  point has  no control  point management
+specific calls.  It simply calls  ipc_ entries in the normal way.
+For instance in the above example, login_server_connection_ will:
+engage  in   the  login  dialogue   between  the  user   and  the
+Initializer, set up disconnect  and process termination handlers,
+and wake up the user process.
+
+IMPLEMENTATION
+
+The control point id is the  segment number of the stack for that
+control point.  The data segment,  cpm_data_, contains a bit map,
+indexed by segment number, indicating if a segment is a stack for
+a live control point.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+Creating  a  control  point  creates  its  stack, initializes its
+control_point_data structure and adds its stack segment number to
+the bit map in cpm_data_.  The created control point is initially
+in the stopped state.  A temporary  segment is obtained to use as
+the control  point's stack.  The control point's  stack is copied
+from  the parent,  then the  stack_begin_ptr, stack_end_ptr,  and
+control point_data_ptr are modified.  The id of the control point
+is the  segment number of the temporary  segment with unique_bits
+in the least significant bits.
+
+Starting a control point  changes its state in control_point_data
+and adds that control point to  the ready queue.  The ready queue
+is a queue of pointers to control_point_data structures.
+
+The control point scheduler  determines which ready control point
+is put  into the running  state by picking  the preferred control
+point,  or if  there is   no preferred  control point,  the first
+control point  in the ready queue.   A stack frame is  created on
+the  new  stack  containing  the  entry  point  to an alm routine
+(cpm_alm_$call_overseer)  to be  returned to.   When a  different
+control point is run the stacks  of the current control point and
+the   selected   control   point    are   switched   by   calling
+cpm_alm_$switch_stack.  When  cpm_alm_$call_overseer is "returned
+to"  it calls  a pl1  routine, cpm_overseer_,  which sets  up the
+cl_intermediary  to cpd.cl_intermediary  and creates  separate IO
+switches, if  needed, for the  new control point.   It then calls
+cu_$generate_call to  call the entrypoint specified  by the user.
+When  the  user  routine   completes  execution,  it  returns  to
+cpm_overseer,  which  returns  to  cpm_alm_$call_overseer,  which
+calls cpm_$self_destruct  to kill the control point  and call the
+scheduler.
+
+If a control  point calls ipc_$block, then that  control point is
+put in the blocked state  by ipc_ (which calls cpm_$block).  When
+a wakeup  occurs for a  control point, it  is put into  the ready
+state  by ipc_  (which  calls  cpm_$wakeup).  The  next available
+control  point   is  scheduled  by  calling   cpm_$schedule.   If
+cpm_$schedule     has     nothing     to     run,     it    calls
+ipc_$wait_for_an_event, which  waits for any ipc  event to occur,
+and then notifies the waiting control point.  A user program will
+not typically block and schedule control points itself.  The ipc_
+facility  is the primary  caller of cpm_$block,  cpm_$wakeup, and
+cpm_$schedule.
+
+The entry  point cpm_$destroy destroys a control  point by having
+the   control  point   do  a    non-local  goto   to  the   label
+cpm_$self_destruct, which changes the state of this control point
+to destroyed and calls the control point scheduler.
+
+The  scheduler periodically   garbage collects  destroyed control
+points  by destroying  the stack  and control_point_data  for the
+given control point and all of its children.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+MULTIPLE CONTROL POINTS
+
+There can only be one control point associated with an event call
+channel, but there can be multiple control points associated with
+an  event wait  channel.  If  there are  multiple control  points
+blocked on the same event, then the one with the highest priority
+will run first.   When the others are run, they  will try to read
+the message, but it will be  gone and they will go blocked again.
+The  control point  to be  run  next  can be  made the  preferred
+control point so it will be run when it is ready.
+
+Example
+
+The  following example  traces the   calls to  ipc_ and  cpm.  It
+assumes a  program, get_input, is  running in control  point 245,
+and  is looping  getting input   from the  user_input switch.   A
+program, wait_for_wakeup, is running in control point 300, and is
+waiting for a wakeup.
+
+The   program   get_input   calls   iox_$get_line   which   calls
+ipc_real_$full_block,  which  checks  stack_header.cpm_enabled to
+see  if there  is more  than  one  control point  defined in  the
+process.   If   there  is  more  than  one   control  point  then
+get_control_point_id_ is called to get the current control point,
+and add_to_waiting_lists  is called to  add the control  point to
+the  list  of  control  points  waiting  for  an event.  Then the
+internal  procedure  block_if_no_pending_events  is  called.   It
+first checks the event_wait_list  (input parameter to ipc_$block)
+to see  if any events are  pending.  If there are  none, then all
+call channels are checked to see if they are owned by the current
+control point and have pending events.  In this example there are
+no pending events for the current  control point, so we enter the
+blocked state by calling cpm_$block.
+
+The  entry cpm_$block  marks the  current control  point as being
+blocked, and control returns  to ipc_real_$full_block which calls
+cpm_$scheduler to  find another control point to  run.  There are
+no   other  control   points  which   can  be   scheduled,  since
+wait_for_wakeup in  the other control point has  not yet received
+its  wakeup, so  ipc_real_$wait_for_an_event is  called.  When an
+event        arrives         the        internal        procedure
+wakeup_blocked_control_points  is called,  to check  all wait and
+call channels.  If an event wait channel has control points to be
+woken up, then the waiting_control_point  list is run through and
+cpm_$wakeup is called to change the state of the control point to
+ready.  If a message has arrived  for an event call channel, then
+cpm_$wakeup  is  called  for  the  control  point  which owns the
+channel    to    change    its     state    to    ready.     When
+wakeup_blocked_control_points   returns,   control   returns   to
+cpm_$scheduler, which  returns to ipc,  which returns to  tty_ to
+get the input line.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+If  the control  point running  get_input is  blocked waiting for
+input  and a  wakeup arrives  for the  waiting_for_wakeup program
+which is running  in the other control point,  then the following
+occurs.       The      entry      ipc_real_$full_block      calls
+block_if_no_pending_events,  which  blocks  the  current  control
+point.  Control  returns to ipc_real_$full_block which  calls the
+internal procedure wakeup_blocked_control  points.  This internal
+procedure calls  cpm_$wakeup to change  the state of  the control
+point  running  waiting_for_wakeup.   The  full_block  entry then
+calls  cpm_$scheduler which switches  to the other  control point
+which received the wakeup.
+
+DOCUMENTATION
+
+     The remainder  of this MTB  consists of the  Commands Manual
+writeup  for  control_point_manager_call,   and  the  Subroutines
+Manual writeups  for cpm_, cpm_data_,  and get_control_point_id_,
+all of which  will be bound together as  bound_cpm_ and installed
+in  &gt;system_library_tools.  The changes  made to ipc_  to support
+control    point   management     are   also    described.    The
+control_point_manager_call command, and the subroutines cpm_, and
+get_control_point_id_ are to be considered internal interfaces.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+                            APPENDIX A
+
+                 CHANGES TO EXISTING SUBROUTINES
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+ipc_                                                         ipc_
+____                                                         ____
+
+Name:  ipc_
+
+             ________________________________________
+
+Entry:  ipc_$reassign_call_channels
+
+     This  entrypoint reassigns  call channels  from one  control
+point to another one whenever a control point is destroyed.
+
+USAGE
+
+     dcl  ipc_$reassign_call_channels entry (bit (36) aligned,
+               bit (36) aligned);
+
+     call ipc_$reassign_call_channels (old_control_point_id,
+               new_control_point_id);
+
+ARGUMENTS
+
+old_control_point_id
+                    (Input)
+          is the unique ID of the control point to be destroyed.
+
+new_control_point_id
+          is the  unique ID of  the control point  to be assigned
+          the event call channel.
+
+             ________________________________________
+
+Entry:  ipc_$wait_for_an_event
+
+     Wait for an  ipc_ event when there are no  control points in
+the ready states.
+
+USAGE
+
+     dcl  ipc_$wait_for_an_event entry ();
+
+     call ipc_$wait_for_an_event ();
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+ipc_                                                         ipc_
+____                                                         ____
+
+NOTES
+
+     The arrival of an event will cause the control point waiting
+for that event to be put into the ready state.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+                            APPENDIX B
+
+                  CHANGES TO EXISTING STRUCTURES
+
+Changes to ect_structures.incl.pl1
+
+     dcl 1 waiting_control_point
+                         aligned based (wcpp),
+           2 word_0,
+             3 block_count
+                         fixed bin (17) unal,
+             3 type      fixed bin (17) unal,
+           2 control_point_id
+                         bit (36) aligned,
+           2 chain,
+             3 next_wcpp pointer,
+             3 prev_wcpp pointer,
+
+where:
+
+block_count
+          is the  number of ipc_$block calls made  by the control
+          point
+
+type      is  the type  of waiting  control point  (currently not
+          used).
+
+control_point_id
+          is the id of the waiting control point
+
+next_wcpp is a pointer to the next waiting control point.
+
+prev_wcpp is a pointer to the previous waiting control point.
+
+o  The structure wait_channel has the following added:
+
+     dcl 1 wait_channel       aligned based (ectep),
+           2 word_0,
+             3 unused1             fixed bin (17) unal,
+             3 type         fixed bin (17) unal,
+           2 next_chanp         ptr unal,
+           2 prev_chanp         ptr unal,
+           2 word_3,
+             3 fast_channel
+                              bit (1) unal,
+             3 inhibit_count
+                          fixed bin (16) unal,
+             3 wakeup_control_points
+                         bit (1) unal,
+             3 wakeup_count
+                              fixed bin (17) unal unsigned,
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+           2 name           bit (72),
+           2 first_ev_msgp
+                             ptr unal,
+           2 last_ev_msgp
+                              ptr unal,
+           2 first_wcpp  ptr unal,
+           2 last_wcpp   ptr unal,
+           2 fast_channel_id
+                         fixed binary,
+           2 unused2     fixed bin;
+
+where:
+
+wakeup_control_points
+          indicates  the control  point waiting  on this  channel
+          should be woken up.
+
+first_wcpp
+          is the  pointer to the  first control point  waiting on
+          this   channel.     See   the   description    of   the
+          waiting_control_point structure above.
+
+last_wcpp is  the pointer  to the  last control  point waiting on
+          this   channel.     See   the   description    of   the
+          waiting_control_point structure above.
+
+o  The structure call_channel has the following added:
+
+     dcl 1 call_channel       aligned based (ectep),
+           2 word_0,
+             3 priority           fixed bin (17) unal,
+             3 type         fixed bin (17) unal,
+           2 next_chanp         ptr unal,
+           2 prev_chanp         ptr unal,
+           2 word_3,
+             3 call_inhibit
+                              bit (1) unal,
+             3 inhibit_count
+                          fixed bin (16) unal,
+             3 wakeup_control_points
+                         bit (1) unal,
+             3 wakeup_count
+                              fixed bin (18) unal unsigned,
+           2 name           bit (72),
+           2 first_ev_msgp
+                             ptr unal,
+           2 last_ev_msgp
+                              ptr unal,
+           2 data_ptr             ptr unal,
+           2 procedure_value,
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+             3 procedure_ptr
+                         ptr unal,
+             3 environment_ptr
+                         ptr,
+           2 control_point_id
+                         bit (36) al;
+
+where:
+
+wakeup_control_points
+          indicates  the control  point waiting  on this  channel
+          should be woken up.
+
+control_point_id
+          is the control point which owns this channel
+
+o  The following was added to the stack_header:
+
+     dcl 1 stack_header  based (sb) aligned,
+           2 pad1        (4) fixed bin,
+           2 old_lot_ptr  ptr,
+           2 combined_stat_ptr
+                          ptr,
+           2 clr_ptr      ptr,
+           2 max_lot_size
+                          fixed bin (17) unal,
+           2 main_proc_invoked
+                          fixed bin (11) unal,
+           2 have_static_vlas
+                          bit (1) unal,
+           2 pad4         bit (2) unal,
+           2 run_unit_depth
+                         fixed bin (2) unal,
+           2 cur_lot_size
+                          fixed bin (17) unal,
+           2 pad2         bit (18) unal,
+           2 system_free_ptr
+                          ptr,
+           2 user_free_ptr
+                          ptr,
+           2 null_ptr     ptr,
+           2 stack_begin_ptr
+                          ptr,
+           2 stack_end_ptr
+                          ptr,
+           2 lot_ptr      ptr,
+           2 signal_ptr   ptr,
+           2 bar_mode_sp  ptr,
+           2 pl1_operators_ptr
+                          ptr,
+           2 call_op_ptr  ptr,
+           2 push_op_ptr  ptr,
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+           2 return_op_ptr
+                          ptr,
+           2 return_no_pop_op_ptr
+                          ptr,
+           2 entry_op_ptr
+                          ptr,
+           2 trans_op_tv_ptr
+                          ptr,
+           2 isot_ptr     ptr,
+           2 sct_ptr      ptr,
+           2 unwinder_ptr
+                          ptr,
+           2 sys_link_info_ptr
+                          ptr,
+           2 rnt_ptr      ptr,
+           2 ect_ptr      ptr,
+           2 assign_linkage_ptr
+                          ptr,
+           2 cpd_ptr     ptr unaligned,
+           2 cpm_enabled bit (36),
+           2 trace,
+             3 frames,
+               4 count,  fixed bin,
+               4 top_ptr  ptr unal,
+             3 in_trace   bit (36) aligned,
+           2 pad3        (3) bit (36) aligned;
+
+where:
+
+cpd_ptr   is  a pointer  to the  control_point_data structure for
+          the  control point  which  owns  this stack  if control
+          point management is enabled.
+
+cpm_enabled
+          is  set to  control_point_data.id of  the control point
+          for which  this is a stack if  control point management
+          is enabled, and is "0" otherwise.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+                            APPENDIX C
+
+                             COMMANDS
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+__________________________             __________________________
+
+control_point_manager_call             control_point_manager_call
+__________________________             __________________________
+
+Name:  control_point_manager_call, cpmc
+
+     This command  is the command level interface  to the control
+point management facility.
+
+SYNTAX AS A COMMAND
+
+     cpmc operation {arguments} {-control_args}
+
+SYNTAX AS AN ACTIVE FUNCTION
+
+     [cpmc operation {arguments}]
+
+ARGUMENTS
+
+operation identifies  the  operation  to  be  performed  by  this
+          invocation  of   control_point_manager_call.   Detailed
+          descriptions of the supported operations follow.
+
+arguments
+-control_args
+          are  specific  to  the   requested  operation  and  are
+          described below.
+
+NOTES
+
+     Many of  the operations described below act  on an arbitrary
+control  point as  opposed to   the current  control point.   The
+desired control point is selected by supplying the operation with
+the control point's unique ID.  A  control point's unique ID is a
+12 digit  octal value which  is displayed by  this command's list
+operation.   In addition,  the list  operation also  displays a 6
+digit short form  of the ID which may also be  used to select the
+control  point.  When  using either  form of  the control point's
+unique ID, leading zeroes may be omitted
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+__________________________             __________________________
+
+control_point_manager_call             control_point_manager_call
+__________________________             __________________________
+
+control_point_manager_call Operation:  cl_intermediary
+
+     This operation returns or displays  the identity of the user
+supplied  command level  intermediary for  the specified  control
+point.
+
+SYNTAX AS AN ACTIVE FUNCTION
+
+     [cpmc cl_intermediary ID]
+
+SYNTAX AS A COMMAND
+
+     cpmc cl_intermediary ID
+
+ARGUMENTS
+
+ID        is the unique ID of the desired control point.
+
+NOTES
+
+     When used as an active  function, this operation returns the
+identity of the command level intermediary in a form suitable for
+use with the set_cl_intermediary operation described below.
+
+             ________________________________________
+
+control_point_manager_call Operation:  create, cr
+
+     This operation creates a new control point.
+
+SYNTAX
+
+     cpmc cr ENTRY {INFO_PTR} {-control_args}
+
+ARGUMENTS
+
+ENTRY     is the initial  procedure to be run in  the new control
+          point.   ENTRY is a  virtual entrypoint as  accepted by
+          the cv_entry_ subroutine.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+__________________________             __________________________
+
+control_point_manager_call             control_point_manager_call
+__________________________             __________________________
+
+INFO_PTR  is a pointer which is  passed as the single argument to
+          the new control point's initial procedure.  INFO_PTR is
+          a   virtual  pointer   as  accepted   by  the   cv_ptr_
+          subroutine.   If  no  INFO_PTR  is  specified,  a  null
+          pointer is passed to the initial procedure.
+
+CONTROL ARGUMENTS
+
+-long, -lg
+          displays a  message giving the ID of  the newly created
+          control point.  (Default)
+
+-brief, -bf
+          does not display the message described above.
+
+-start, -sr
+          marks  the new  control point  as ready  for execution.
+          Actual execution  of the control point  will begin when
+          all higher  priority control points in  the process are
+          blocked waiting for an IPC wakeup.
+
+-no_start, -nsr
+          does  not  mark  the  new  control  point  as ready for
+          execution.  (Default)
+
+-preferred
+          makes  the  new  control  point  the  preferred control
+          point.   This  control  argument  may  not be specified
+          unless "-start" is also specified.
+
+-not_preferred
+          does  not  make  the  new  control  point the preferred
+          control point.  (Default)
+
+-priority N
+          sets the  scheduling priority of the  new control point
+          to N which  must be an integer.  A  ready control point
+          whose  priority is  1  is  always scheduled  before any
+          ready  control point  whose  priority  is 2,  etc.  The
+          default priority is 1.
+
+-comment STR, -com STR
+          specifies a description of  the new control point which
+          will  be displayed  by the  list operation  The default
+          description is the name  of the control point's initial
+          procedure.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+__________________________             __________________________
+
+control_point_manager_call             control_point_manager_call
+__________________________             __________________________
+
+-independent
+          specifies   that  the   new  control   point  will   be
+          independent of all other control points in the process.
+          At  present, the independence  of a control  point only
+          affects when  the storage it has used  will be released
+          after it is destroyed.  (Default)
+
+-dependent
+          specifies that the new control point will be a child of
+          the current control point.
+
+-cl_intermediary ENTRY
+          specifies  the entrypoint  to  be  used as  the command
+          level intermediary for the new control point.  ENTRY is
+          a  virtual  entrypoint  as  accepted  by  the cv_entry_
+          subroutine.
+
+-default_cl_intermediary
+          specifies  that the  new control  point is  to used the
+          standard  command level   intermediary provided  by the
+          control point manager.  (Default)
+
+-separate_io_switches {STR}, -sepios {STR}
+          specifies that the new control point is to have its own
+          set   of  standard    I/O  switches   (i.e.,  user_i/o,
+          user_input, user_output, and  error_output).  If STR is
+          supplied,  it is  the  attach  description for  the new
+          control  point's  user_i/o  switch.    If  STR  is  not
+          supplied,  its user_i/o will  be attached via  the syn_
+          I/O module to the current control point's user_i/o.  In
+          either case, the actual  attachment of the I/O switches
+          will be  performed in the new control  point before its
+          initial procedure is invoked.
+
+-shared_io_switches, -shios
+          specifies that the new control point is to use the same
+          set  of standard  I/O switches  as the  current control
+          point (Default)
+
+NOTES
+
+     The run operation, described  below, is the preferred method
+to execute a command line in a control point.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+__________________________             __________________________
+
+control_point_manager_call             control_point_manager_call
+__________________________             __________________________
+
+control_point_manager_call Operation:  destroy
+
+     This operation destroys the specified control point.
+
+SYNTAX
+
+     cpmc destroy ID
+
+ARGUMENTS
+
+ID        is the unique ID of the control point to be destroyed.
+
+NOTES
+
+     When a  control point is destroyed, the  cleanup handlers of
+all entrypoints  still active in  the control point  are run, the
+control  point's  standard  I/O  switches  are  detached, and the
+storage used by its stack is released.
+
+             ________________________________________
+
+control_point_manager_call Operation:  enable, invoke
+
+     This operation enables control point management.
+
+SYNTAX
+
+     cpmc enable
+
+NOTES
+
+Control  point management is  enabled automatically by  the first
+use of  this command's create or  run operations or by  the first
+call to the cpm_$create entrypoint.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+__________________________             __________________________
+
+control_point_manager_call             control_point_manager_call
+__________________________             __________________________
+
+control_point_manager_call Operation:  enabled, invoked
+
+     This operation returns "true" if control point management is
+already enabled in the process and "false" otherwise.
+
+SYNTAX AS AN ACTIVE FUNCTION
+
+     [cpmc enabled]
+
+SYNTAX AS A COMMAND
+
+     cpmc enabled
+
+             ________________________________________
+
+control_point_manager_call Operation:  generate_call, gc
+
+     This operation queues a call to an arbitrary entrypoint in a
+specific  control  point  and,  optionally,  forces the immediate
+execution of said call.
+
+SYNTAX
+
+     cpmc gc ID ENTRY {INFO_PTR} {-control_args}
+
+ARGUMENTS
+
+ID        is  the unique  ID of  the control  point in  which the
+          entrypoint is to be run.
+
+ENTRY     identifies  the  entrypoint  to  be  run.   ENTRY  is a
+          virtual  entrypoint   as  accepted  by   the  cv_entry_
+          subroutine.
+
+INFO_PTR  is a pointer which is  passed as the single argument to
+          the above entrypoint.  INFO_PTR is a virtual pointer as
+          accepted by the cv_ptr_  subroutine.  If no INFO_PTR is
+          specified, a null pointer is passed to the entrypoint.
+
+CONTROL ARGUMENTS
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+__________________________             __________________________
+
+control_point_manager_call             control_point_manager_call
+__________________________             __________________________
+
+-immediate, -im
+          specifies that  execution of the entrypoint  is to take
+          place immediately.  (Default)
+
+-defer_until_ready, -dur
+          specifies  that execution of  the entrypoint is  not to
+          occur  until  the  control  point  is  next  ready  for
+          execution and is subsequently selected for execution by
+          the control  point scheduler.  If the  control point is
+          already   ready  for    execution,  execution   of  the
+          entrypoint will still be  delayed until said control is
+          next scheduled.
+
+-preferred
+          specifies  that  the  target  control  point  is  to be
+          temporarily  made  the  preferred  control  point while
+          execution of the entrypoint  takes place.  This control
+          argument is incompatible  with the "-defer_until_ready"
+          control argument.
+
+-not_preferred
+          specifies  that the  target control  point will  not be
+          made   the   preferred   control   point   during   the
+          entrypoint's execution.  (Default)
+
+NOTES
+
+     This operation enables  an entry point to be  executed as if
+it were executed by the control point itself.
+
+             ________________________________________
+
+control_point_manager_call Operation:  id
+
+     This operation returns the unique  ID of the current control
+point.
+
+SYNTAX AS AN ACTIVE FUNCTION
+
+     [cpmc id]
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+__________________________             __________________________
+
+control_point_manager_call             control_point_manager_call
+__________________________             __________________________
+
+SYNTAX AS A COMMAND
+
+     cpmc id
+
+             ________________________________________
+
+control_point_manager_call Operation:  list, ls
+
+     This  operation lists  the status   of some  or all  control
+points active in the process.
+
+SYNTAX
+
+     cpmc ls {IDs} {-control_args}
+
+ARGUMENTS
+
+IDs       are the  unique IDs of individual  control points whose
+          status is to be displayed.
+
+CONTROL ARGUMENTS
+
+-all, -a  specifies that the status  of all active control points
+          is to be displayed.
+
+-meters   specifies that  the usage meters of  the control points
+          listed  are also  to be  displayed.  A  control point's
+          usage meters  includes its CPU usage,  segment and page
+          faults counts, and VTOC I/O counts.
+
+-no_meters
+          specifies  that no  usage meters  are to  be displayed.
+          (Default)
+
+NOTES
+
+     At least one control point ID or the "-all" control argument
+must be specified for this  operation.  Use of both control point
+IDs and the "-all" control argument is not permitted.
+
+     The information always displayed for  a control point is its
+unique ID in  both long and short forms, its  state (e.g., ready,
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+__________________________             __________________________
+
+control_point_manager_call             control_point_manager_call
+__________________________             __________________________
+
+blocked),  and  its  description  as  supplied  in  the  call  to
+cpm_$create  or   the  use  of  this  command's   create  or  run
+operations.
+
+     If the  status of more  than one control  point is requested
+and  usage meters  are also  requested via  the "-meters" control
+argument, this  operation will also  display the usage  meters of
+the control point scheduler.
+
+             ________________________________________
+
+control_point_manager_call Operation:  pop_preferred
+
+     This operation resets the preferred control point to the one
+in  force before  the last  use of  the push_preferred operation.
+See the push_preferred operation below for more information.
+
+SYNTAX
+
+     cpmc pop_preferred FLAG
+
+ARGUMENTS
+
+FLAG      is  either "true"  or "false"  and should  be the value
+          returned  by   the  last  use  of   the  push_preferred
+          operation.
+
+             ________________________________________
+
+control_point_manager_call Operation:  preferred
+
+     This  entrypoint returns  the  ID  of the  preferred control
+point, if any.
+
+SYNTAX AS AN ACTIVE FUNCTION
+
+     [cpmc preferred]
+
+SYNTAX AS A COMMAND
+
+     cpmc preferred
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+__________________________             __________________________
+
+control_point_manager_call             control_point_manager_call
+__________________________             __________________________
+
+NOTES
+
+     The  preferred control  point is  always given  priority for
+execution  over all  other control  points whenever  it is ready.
+The effect  of this treatment  is to cause  the preferred control
+point to  have control over the  user's terminal, if it  uses the
+terminal,  as it will  receive all IPC  wakeups generated by  the
+terminal.   When control point  management is first  enabled, the
+root control point is made the preferred control point.
+
+             ________________________________________
+
+control_point_manager_call Operation:  probe, pb
+
+     This operation  invokes the probe debugger  in the specified
+control point.
+
+SYNTAX
+
+     cpmc pb ID
+
+ARGUMENTS
+
+ID        is the unique ID of the control point in which probe is
+          to be run.
+
+NOTES
+
+     This  operation will  make the  specified control  point the
+preferred  control point  while probe  is executing  in order  to
+insure that probe can communicate with the user's terminal.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+__________________________             __________________________
+
+control_point_manager_call             control_point_manager_call
+__________________________             __________________________
+
+control_point_manager_call Operation:  program_interrupt, pi
+
+     This  operation signals  the program_interrupt  condition on
+the stack of the specified control point.
+
+SYNTAX
+
+     cpmc pi ID {-control_args}
+
+ARGUMENTS
+
+ID        is  the  unique  ID  of  the  control  point  in  which
+          program_interrupt is to be signalled.
+
+CONTROL ARGUMENTS
+
+-preferred
+          specifies  that  the  control  point  will  be made the
+          preferred  control  point  before  program_interrupt is
+          signalled.  (Default)
+
+-not_preferred
+          specifies that  the control point will not  be made the
+          preferred control point.
+
+             ________________________________________
+
+control_point_manager_call Operation:  push_preferred
+
+     This  operation  makes  the   specified  control  point  the
+preferred control point on a temporary basis.
+
+SYNTAX AS AN ACTIVE FUNCTION
+
+     [cpmc push_preferred ID]
+
+SYNTAX AS A COMMAND
+
+     cpmc push_preferred ID
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+__________________________             __________________________
+
+control_point_manager_call             control_point_manager_call
+__________________________             __________________________
+
+ARGUMENTS
+
+ID        is the  unique ID of the  control point which is  to be
+          made the preferred control point.
+
+NOTES
+
+     This  operation returns "true"  if it was  able to make  the
+specified control point the  preferred control point.  The result
+of this  operation should be  used as input  to the pop_preferred
+operation  described  above  to  restore  the  previous preferred
+control point when the actions requiring the new control point to
+be preferred are completed.
+
+     The following  version 2 exec_com fragment  demonstrates the
+proper use of the push_preferred and pop_preferred operations.
+
+     &amp;set pushed false
+     &amp;on cleanup &amp;begin
+          cpmc pop_preferred &amp;(pushed)
+          &amp;end
+     &amp;set pushed [cpmc push_preferred &amp;1]
+     ...
+     cpmc pop_preferred &amp;(pushed)
+
+             ________________________________________
+
+control_point_manager_call Operation:  run
+
+     This operation  creates a new  control point to  execute the
+supplied command  line.  The control point is  destroyed when the
+command line completes.
+
+SYNTAX
+
+     cpmc run {-control_args} COMMAND_LINE
+
+ARGUMENTS
+
+COMMAND_LINE
+          is the  command line to be executed.   The command line
+          starts with the first  non-control argument supplied to
+          the  run operation.   If the  command line  is to start
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+__________________________             __________________________
+
+control_point_manager_call             control_point_manager_call
+__________________________             __________________________
+
+          with  a  hyphen (-),  the  "-string"  control  argument
+          should  be used  to signify  the start  of the  command
+          line.
+
+CONTROL ARGUMENTS
+
+-long, -lg
+          displays a  message giving the ID of  the newly created
+          control point.  (Default)
+
+-brief, -bf
+          does not display the message described above.
+
+-start, -sr
+          marks  the new  control point  as ready  for execution.
+          Actual execution  of the control point  will begin when
+          all higher  priority control points in  the process are
+          blocked waiting for an IPC wakeup.  (Default)
+
+-no_start, -nsr
+          does  not  make  the  new  control  point  as ready for
+          execution.
+
+-preferred
+          makes  the  new  control  point  the  preferred control
+          point.  This control argument  is incompatible with the
+          "-no_start" control argument.  (Default)
+
+-not_preferred
+          does  not  make  the  new  control  point the preferred
+          control point.
+
+-priority N
+          sets the  scheduling priority of the  new control point
+          to N which  must be an integer.  A  ready control point
+          whose  priority is  1  is  always scheduled  before any
+          ready  control point  whose  priority  is 2,  etc.  The
+          default priority is 1.
+
+-comment STR, -com STR
+          specifies a description of  the new control point which
+          will  be displayed  by the  list operation  The default
+          description is the command line which it will execute.
+
+-independent
+          specifies   that  the   new  control   point  will   be
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+__________________________             __________________________
+
+control_point_manager_call             control_point_manager_call
+__________________________             __________________________
+
+          independent of all other control points in the process.
+          At  present, the independence  of a control  point only
+          affects when  the storage it has used  will be released
+          after it is destroyed.  (Default)
+
+-dependent
+          specifies that the new control point will be a child of
+          the current control point.
+
+-cl_intermediary ENTRY
+          specifies  the entrypoint  to  be  used as  the command
+          level intermediary for the new control point.  ENTRY is
+          a  virtual  entrypoint  as  accepted  by  the cv_entry_
+          subroutine.
+
+-default_cl_intermediary
+          specifies  that the  new control  point is  to used the
+          standard  command level   intermediary provided  by the
+          control point manager.  (Default)
+
+-separate_io_switches {STR}, -sepios {STR}
+          specifies that the new control point is to have its own
+          set   of  standard    I/O  switches   (i.e.,  user_i/o,
+          user_input, user_output, and  error_output).  If STR is
+          supplied,  it is  the  attach  description for  the new
+          control  point's  user_i/o  switch.    If  STR  is  not
+          supplied,  its user_i/o will  be attached via  the syn_
+          I/O module to the current control point's user_i/o.  In
+          either case, the actual  attachment of the I/O switches
+          will be  performed in the new control  point before its
+          initial procedure is invoked.
+
+-shared_io_switches, -shios
+          specifies that the new control point is to use the same
+          set  of standard  I/O switches  as the  current control
+          point (Default)
+
+-string COMMAND_LINE, -str COMMAND_LINE
+          specifies that  the command line to  be executed starts
+          with the next argument to the run operation.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+__________________________             __________________________
+
+control_point_manager_call             control_point_manager_call
+__________________________             __________________________
+
+control_point_manager_call Operation:  scheduler
+
+     This operation blocks the  current control point and invokes
+the scheduler to run the appropriate ready control point.
+
+SYNTAX
+
+     cpmc scheduler
+
+NOTES
+
+     It  is  not  usually  necessary  to  use  this  operation to
+schedule  control points,  because ipc_  calls the  control point
+scheduler when a wakeup is sent to a control point.
+
+             ________________________________________
+
+control_point_manager_call Operation:  select, sl
+
+     This  operation marks the  specified control point  as ready
+for execution and makes it the preferred control point.
+
+SYNTAX
+
+     cpmc sl ID
+
+ARGUMENTS
+
+ID        is the unique ID of the control point to be selected.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+__________________________             __________________________
+
+control_point_manager_call             control_point_manager_call
+__________________________             __________________________
+
+control_point_manager_call Operation:  set_cl_intermediary
+
+     This operation  sets the command level  intermediary for the
+specified control point.
+
+SYNTAX
+
+     cpmc set_cl_intermediary ID {ENTRY} {-control_args}
+
+ARGUMENTS
+
+ID        is  the unique  ID of  the control  point whose command
+          level intermediary is to be set.
+
+ENTRY     is   the  new   command  level   intermediary  for  the
+          entrypoint.  ENTRY is a  virtual entrypoint as accepted
+          by the cv_entry_ subroutine.
+
+CONTROL ARGUMENTS
+
+-default, -dft
+          specifies that  the command level intermediary  for the
+          control point is to be restored to the default supplied
+          by the control point manager.
+
+NOTES
+
+     Either  an entrypoint  must  be  supplied or  the "-default"
+control argument must be used.  Both an entrypoint and "-default"
+may not be used in a single invocation of this command.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+__________________________             __________________________
+
+control_point_manager_call             control_point_manager_call
+__________________________             __________________________
+
+control_point_manager_call Operation:  set_preferred
+
+     This  entrypoint  makes  the  specified  control  point  the
+preferred control.
+
+SYNTAX
+
+     cpmc set_preferred ID
+
+ARGUMENTS
+
+ID        is the unique ID of the control point which will become
+          the preferred control point.
+
+             ________________________________________
+
+control_point_manager_call Operation:  start, sr
+
+     This entrypoint  marks the specified control  point as ready
+for execution.
+
+SYNTAX
+
+     cpmc sr ID
+
+ARGUMENTS
+
+ID        is the  unique ID of the  control point which is  to be
+          marked ready.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+__________________________             __________________________
+
+control_point_manager_call             control_point_manager_call
+__________________________             __________________________
+
+control_point_manager_call Operation:  stop
+
+     This  entrypoint marks  the specified  control point  as not
+ready for execution.  The control point  will not run until it is
+again made ready by this  command's select or start operations or
+by a call to the cpm_$start entrypoint.
+
+SYNTAX
+
+     cpmc stop ID
+
+ARGUMENTS
+
+ID        is the  unique ID of the  control point which is  to be
+          stopped.
+
+             ________________________________________
+
+control_point_manager_call Operation:  wakeup
+
+     This  operation  sends  a  generic  wakeup  to the specified
+control point.
+
+SYNTAX
+
+     cpmc wakeup ID
+
+ARGUMENTS
+
+ID        is the  unique ID of the  control point which is  to be
+          awakened.
+
+NOTES
+
+     It is not usually necessary  to use this operation to wakeup
+blocked  control points,  because  ipc_  calls the  control point
+scheduler when a wakeup is sent to a control point.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+                            APPENDIX D
+
+                           SUBROUTINES
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+Name:  cpm_
+
+     This  subroutine is the  main programmer's interface  to the
+control point management facility.
+
+             ________________________________________
+
+Entry:  cpm_$block
+
+     This  entrypoint places  the  current  control point  in the
+blocked state.
+
+USAGE
+
+     dcl  cpm_$block entry ();
+
+     call cpm_$block ();
+
+NOTES
+
+     Once a  control point is in  the blocked state, it  will not
+become  eligible  for  execution   until  a  subsequent  call  to
+cpm_$wakeup  or cpm_$generate_call.   Therefore, this  entrypoint
+should  be  used  with  caution.   The  primary  caller  of  this
+entrypoint is intended to be ipc_.
+
+             ________________________________________
+
+Entry:  cpm_$create
+
+     This entrypoint creates a new control point.
+
+USAGE
+
+     dcl  cpm_$create entry (pointer, bit (36) aligned,
+               fixed binary (35));
+
+     call cpm_$create (ccpi_ptr, control_point_id, code);
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+ARGUMENTS
+
+ccpi_ptr            (Input)
+          is a pointer to the create_control_point_info structure
+          which describes the control  point to be created.  This
+          structure  is declared  in the  cpm_create_ctrl_pt_info
+          include file as follows:
+
+               dcl 1 create_control_point_info
+                                   aligned based (ccpi_ptr),
+                     2 header,
+                       3 version   character (8) unaligned,
+                       3 comment   character (64) unaligned,
+                       3 initproc,
+                         4 entry   entry (pointer) variable,
+                         4 info_ptr
+                                   pointer,
+                       3 user_cl_intermediary
+                                   entry (bit (1) aligned)
+                                   variable,
+                       3 priority  fixed binary,
+                       3 flags,
+                         4 independent
+                                   bit (1) unaligned,
+                         4 separate_standard_iocbs
+                                   bit (1) unaligned,
+                         4 user_io_attach_desc_given
+                                   bit (1) unaligned,
+                         4 user_cl_intermediary_given
+                                   bit (1) unaligned,
+                         4 pad     bit (32) unaligned,
+                       3 pad       bit (36) aligned,
+                       3 user_io_attach_desc_length
+                                   fixed binary (21),
+                     2 user_io_attach_desc
+                                   character
+                                   (ccpi_user_io_attach_desc_length
+                                   refer
+                                   (create_control_point_info .
+                                   user_io_attach_desc_length))
+                                   unaligned;
+
+          where:
+
+          version   is  the current   version of  this structure.
+                    The version of  this structure described here
+                    is given  by the value of  the named constant
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+                    CREATE_CONTROL_POINT_INFO_VERSION_1  which is
+                    defined   in    the   cpm_create_ctrl_pt_info
+                    include file.
+
+          comment   is the  description of the new  control point
+                    which will be displayed by the list operation
+                    of the control_point_manager_call command.
+
+          initproc.entry
+                    is the  initial procedure of the  new control
+                    point.
+
+          initproc.info_ptr
+                    is  the pointer which  will be passed  as the
+                    argument to the above initial procedure.
+
+          user_cl_intermediary
+                    is the command level intermediary for the new
+                    control                point               if
+                    flags.user_cl_intermediary_given   is   "1"b;
+                    otherwise, this  element of the  structure is
+                    ignored.
+
+          priority  is  the  scheduling   priority  for  the  new
+                    control.    A  ready   control  point   whose
+                    priority is 1 is  always scheduled before any
+                    ready control point whose priority is 2, etc.
+
+          flags.independent
+                    if  "1"b,  the  new  control  point  will  be
+                    independent  of all  other control  points in
+                    the process;  if "0"b, the new  control point
+                    will be a child of the current control point.
+                    At  present, the   independence of  a control
+                    point only controls when  its storage will be
+                    released after it is destroyed.
+
+          flags.separate_standard_iocbs
+                    if "1"b, the new  control point will be given
+                    its own  set of standard I/O  switches (i.e.,
+                    user_i/o,   user_input,    user_output,   and
+                    error_output); if "0"b, the new control point
+                    will share the standard  switches of the root
+                    control  point if  it is  independent or  the
+                    current control point if it is dependent.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+          flags.user_io_attach_desc_given
+                    is          only          valid          when
+                    flags.separate_standard_iocbs is to "1"b.  If
+                    "1"b,  an  attach  description  for  the  new
+                    control  point's user_i/o switch  is supplied
+                    in  the user_io_attach_desc  element of  this
+                    structure; if  "0"b, the new  control point's
+                    user_i/o switch will be attached via the syn_
+                    I/O module to its parent's user_i/o switch.
+
+          flags.user_cl_intermediary_given
+                    if  "1"b,  the  user_cl_intermediary  element
+                    above contains the command level intermediary
+                    for the  new control point; if  "0"b, the new
+                    control point  will use the  standard command
+                    level  intermediary supplied  by the  control
+                    point manager.
+
+          user_io_attach_desc_length
+                    is  the  length  of  the  user_io_attach_desc
+                    element of this structure.
+
+          user_io_attach_desc
+                    is the attach description for the new control
+                    point's       user_i/o        switch       if
+                    flags.user_io_attach_desc_given    is   "1"b;
+                    otherwise, this  element of the  structure is
+                    ignored.
+
+control_point_id    (Output)
+          is set  to the unique  ID of the  newly created control
+          point.
+
+code                (Output)
+          is a standard system status code.  Amongst the possible
+          returned  codes,  the   following  codes  have  special
+          significance to this entry:
+
+          error_table_$unimplemented_version
+                    The version  of the create_control_point_info
+                    structure  supplied  by  the  caller  is  not
+                    supported by this entrypoint.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+NOTES
+
+     The control is created in the stopped state.  It will not be
+scheduled for execution until after a call to cpm_$start.
+
+     If the  new control point  is to have  separate standard I/O
+switches, they are created and  attached in the new control point
+before the initial procedure is invoked.
+
+             ________________________________________
+
+Entry:  cpm_$destroy
+
+     This entrypoint destroys the specified control point.
+
+USAGE
+
+     dcl  cpm_$destroy entry (bit (36) aligned,
+               fixed binary (35));
+
+     call cpm_$destroy (control_point_id, code);
+
+ARGUMENTS
+
+control_point_id    (Input)
+          is the unique ID of the control point to be destroyed.
+
+code                (Output)
+          is a standard system status code.  Amongst the possible
+          returned  codes,  the   following  codes  have  special
+          significance to this entry:
+
+          cpm_et_$cant_destroy_root
+                    The  ID supplied  above is  that of  the root
+                    control point which can never be destroyed.
+
+          cpm_et_$control_point_not_found
+                    The  ID supplied  above does  not identify an
+                    active control point.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+NOTES
+
+     When a  control point is destroyed, the  cleanup handlers of
+all entrypoints  still active in  the control point  are run, the
+control  point's  standard  I/O  switches  are  detached, and the
+storage used by its stack is released.
+
+             ________________________________________
+
+Entry:  cpm_$generate_call
+
+     This entrypoint runs the specified entrypoint immediately in
+the requested control point.
+
+USAGE
+
+     dcl  cpm_$generate_call entry (bit (36) aligned,
+               entry (pointer), pointer, fixed binary (35));
+
+     call cpm_$generate_call (control_point_id, userproc,
+               userproc_info_ptr, code);
+
+ARGUMENTS
+
+control_point_id    (Input)
+          is  the unique  ID of  the control  point in  which the
+          entrypoint is to be run.
+
+userproc            (Input)
+          is the entrypoint to be run.
+
+userproc_info_ptr   (Input)
+          is a pointer  which is supplied as the  argument to the
+          above entrypoint.
+
+code                (Output)
+          is a standard system status code.  Amongst the possible
+          returned  codes,  the   following  codes  have  special
+          significance to this entry:
+
+          cpm_et_$control_point_not_found
+                    The  ID supplied  above does  not identify an
+                    active control point.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+Entry:  cpm_$generate_call_preferred
+
+     This entrypoint runs the specified entrypoint immediately in
+the requested control point.   In addition, this entrypoint makes
+the specified control point the preferred control point while the
+requested entrypoint is being executed.
+
+USAGE
+
+     dcl  cpm_$generate_call_preferred entry (bit (36) aligned,
+               entry (pointer), pointer, fixed binary (35));
+
+     call cpm_$generate_call_preferred (control_point_id,
+               userproc, userproc_info_ptr, code);
+
+ARGUMENTS
+
+control_point_id    (Input)
+          is  the unique  ID of  the control  point in  which the
+          entrypoint is to be run.
+
+userproc            (Input)
+          is the entrypoint to be run.
+
+userproc_info_ptr   (Input)
+          is  a pointer which  is passed as  the argument to  the
+          above entrypoint.
+
+code                (Output)
+          is a standard system status code.  Amongst the possible
+          returned  codes,  the   following  codes  have  special
+          significance to this entry:
+
+          cpm_et_$control_point_not_found
+                    The  ID supplied  above does  not identify an
+                    active control point.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+Entry:  cpm_$generate_call_when_ready
+
+     This entrypoint queues a call to the specified entrypoint in
+the  requested control  point which   will be  executed when  the
+scheduler next runs said control point.
+
+USAGE
+
+     dcl  cpm_$generate_call_when_ready entry (bit (36) aligned,
+               entry (pointer), pointer, fixed binary (35));
+
+     call cpm_$generate_call_when_ready (control_point_id,
+               userproc, userproc_info_ptr, code);
+
+ARGUMENTS
+
+control_point_id    (Input)
+          is  the unique  ID of  the control  point in  which the
+          entrypoint is to be run.
+
+userproc            (Input)
+          is the entrypoint to be run.
+
+userproc_info_ptr   (Input)
+          is  a pointer which  is passed as  the argument to  the
+          above entrypoint.
+
+code                (Output)
+          is a standard system status code.  Amongst the possible
+          returned  codes,  the   following  codes  have  special
+          significance to this entry:
+
+          cpm_et_$control_point_not_found
+                    The  ID supplied  above does  not identify an
+                    active control point.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+Entry:  cpm_$get_control_point_meters
+
+     This entrypoint  returns the usage meters  for the specified
+entrypoint.
+
+USAGE
+
+     dcl  cpm_$get_control_point_meters entry (bit (36) aligned,
+               pointer, fixed binary (35));
+
+     call cpm_$get_control_point_meters (control_point_id,
+               cpma_ptr, code);
+
+ARGUMENTS
+
+control_point_id    (Input)
+          is the unique ID of  the control point whose meters are
+          to be returned.
+
+cpma_ptr            (Input)
+          is  a  pointer   to  the  control_point_meters_argument
+          structure  into which  this entrypoint  will place  the
+          usage   meters.     The   control_point_meters_argument
+          structure is declared in the cpm_ctrl_pt_meters include
+          file as follows.
+
+               dcl 1 control_point_meters_argument
+                                   aligned based (cpma_ptr),
+                     2 version     character (8) unaligned,
+                     2 meters,
+                       3 n_schedules
+                                   fixed binary,
+                       3 pad       fixed binary,
+                       3 real_time fixed binary (71),
+                       3 usage     like process_usage;
+
+          where:
+
+          version             (Input)
+                    is  the current   version of  this structure.
+                    The version of  this structure described here
+                    is given  by the value of  the named constant
+                    CONTROL_POINT_METERS_ARGUMENT_VERSION_1 which
+                    is declared in the cpm_ctrl_pt_meters include
+                    file.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+          meters.n_schedules  (Output)
+                    is  set  to  the  number  of  times  that the
+                    requested control point has actually been run
+                    by the control point scheduler.
+
+          meters.real_time    (Output)
+                    is set to the  number of microseconds of wall
+                    clock time  that this control point  has been
+                    running.
+
+          meters.usage        (Output)
+                    is  set to the  actual usage meters  for this
+                    control  point.   See   the  writeup  of  the
+                    hcs_$get_process_usage   entrypoint   for   a
+                    detailed explanation of  the elements of this
+                    structure.
+
+code                (Output)
+          is a standard system status code.  Amongst the possible
+          returned  codes,  the   following  codes  have  special
+          significance to this entry:
+
+          cpm_et_$control_point_not_found
+                    The  ID supplied  above does  not identify an
+                    active control point.
+
+          error_table_$unimplemented_version
+                    The          version          of          the
+                    control_point_meters_argument   requested  by
+                    the   caller  is    not  supported   by  this
+                    entrypoint.
+
+             ________________________________________
+
+Entry:  cpm_$get_preferred_control_point
+
+     This  entrypoint  returns  the  unique  ID  of the preferred
+control point.
+
+USAGE
+
+     dcl  cpm_$get_preferred_control_point entry ()
+               returns (bit (36) aligned);
+
+     control_point_id = cpm_$get_preferred_control_point ();
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+ARGUMENTS
+
+control_point_id    (Output)
+          is set to the unique  ID of the preferred control point
+          or to  "0"b if there is presently  no preferred control
+          point in the process.
+
+NOTES
+
+     The  preferred control  point is  always given  priority for
+execution  over all  other control  points whenever  it is ready.
+The effect  of this treatment  is to cause  the preferred control
+point to  have control over the  user's terminal, if it  uses the
+terminal,  as it will  receive all IPC  wakeups generated by  the
+terminal.   When control point  management is first  enabled, the
+root control point is made the preferred control point.
+
+             ________________________________________
+
+Entry:  cpm_$get_scheduler_meters
+
+     This  entrypoint returns  the  usage  meters of  the control
+point scheduler.
+
+USAGE
+
+     dcl  cpm_$get_scheduler_meters entry (pointer,
+               fixed binary (35));
+
+     call cpm_$get_scheduler_meters (cpma_ptr, code);
+
+ARGUMENTS
+
+cpma_ptr            (Input)
+          is  a  pointer   to  the  control_point_meters_argument
+          structure  into which  this entrypoint  will place  the
+          usage   meters.     The   control_point_meters_argument
+          structure is declared in the cpm_ctrl_pt_meters include
+          file as follows.
+
+               dcl 1 control_point_meters_argument
+                                   aligned based (cpma_ptr),
+                     2 version     character (8) unaligned,
+                     2 meters,
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+                       3 n_schedules
+                                   fixed binary,
+                       3 pad       fixed binary,
+                       3 real_time fixed binary (71),
+                       3 usage     like process_usage;
+
+          where:
+
+          version             (Input)
+                    is  the current   version of  this structure.
+                    The version of  this structure described here
+                    is given  by the value of  the named constant
+                    CONTROL_POINT_METERS_ARGUMENT_VERSION_1 which
+                    is declared in the cpm_ctrl_pt_meters include
+                    file.
+
+          meters.n_schedules  (Output)
+                    is  set  to  the  number  of  times  that the
+                    scheduler has been invoked.
+
+          meters.real_time    (Output)
+                    is set to the  number of microseconds of wall
+                    clock  time that  the scheduler  has been  in
+                    control of  the process.  This  time includes
+                    the  time  spent   blocked  waiting  for  IPC
+                    wakeups from devices or other processes.
+
+          meters.usage        (Output)
+                    is  set to  the actual  usage meters  for the
+                    scheduler.    See   the    writeup   of   the
+                    hcs_$get_process_usage   entrypoint   for   a
+                    detailed explanation of  the elements of this
+                    structure.
+
+code                (Output)
+          is a standard system status code.  Amongst the possible
+          returned  codes,  the   following  codes  have  special
+          significance to this entry:
+
+          error_table_$unimplemented_version
+                    The          version          of          the
+                    control_point_meters_argument   requested  by
+                    the   caller  is    not  supported   by  this
+                    entrypoint.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+Entry:  cpm_$get_user_cl_intermediary
+
+     This  entrypoint returns  the command  level intermediary in
+use by the specified control point.
+
+USAGE
+
+     dcl  cpm_$get_user_cl_intermediary entry (bit (36) aligned,
+               entry (bit (1) aligned), fixed binary (35));
+
+     call cpm_$get_user_cl_intermediary (control_point_id,
+               user_cl_intermediary, code);
+
+ARGUMENTS
+
+control_point_id    (Input)
+          is   the  unique   ID  of   the  control   point  whose
+          intermediary is desired.
+
+user_cl_intermediary
+                    (Output)
+          is  set to  the entrypoint  which is  the command level
+          intermediary for the specified control point.
+
+code                (Output)
+          is a standard system status code.  Amongst the possible
+          returned  codes,  the   following  codes  have  special
+          significance to this entry:
+
+          cpm_et_$control_point_not_found
+                    The  ID supplied  above does  not identify an
+                    active control point.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+Entry:  cpm_$pop_preferred_control_point
+
+     This entrypoint restores the  preferred control point to the
+one     in     force     before      the     last     call     to
+cpm_$push_preferred_control_point.
+
+USAGE
+
+     dcl  cpm_$pop_preferred_control_point entry
+               (bit (1) aligned);
+
+     call cpm_$pop_preferred_control_point
+               (pushed_preferred_control_point);
+
+ARGUMENTS
+
+pushed_preferred_control_point
+                    (Input/Output)
+          is   the   value   returned   by   the   last  call  to
+          cpm_$push_preferred_control_point.    This   entrypoint
+          will always set this  argument to "0"b before returning
+          to its caller.
+
+             ________________________________________
+
+Entry:  cpm_$push_preferred_control_point
+
+     This  entrypoint  makes  the  specified  control  point  the
+preferred control point if possible  while saving the identity of
+the  prior   preferred  control  point  in  a   stack  for  later
+restoration by the cpm_$pop_preferred_control_point entrypoint.
+
+USAGE
+
+     dcl  cpm_$push_preferred_control_point entry
+               (bit (36) aligned, bit (1) aligned,
+               fixed binary (35));
+
+     call cpm_$push_preferred_control_point (control_point_id,
+               pushed_preferred_control_point, code);
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+ARGUMENTS
+
+control_point_id    (Input)
+          is the  unique ID of the  control point which is  to be
+          made the preferred control point.
+
+pushed_preferred_control_point
+                    (Output)
+          is  set  to  "1"b  if  the  requested  control point is
+          successfully   made   the   preferred   control  point;
+          otherwise, this argument is set to "0"b.
+
+code                (Output)
+          is a standard system status code.  Amongst the possible
+          returned  codes,  the   following  codes  have  special
+          significance to this entry:
+
+          cpm_et_$control_point_not_found
+                    The  ID supplied  above does  not identify an
+                    active control point.
+
+          cpm_et_$preferred_cant_be_stopped
+                    The  ID supplied  above identifies  a control
+                    point in the stopped  state.  A control point
+                    in  the stopped  state  may  not be  made the
+                    preferred control point.
+
+          cpm_et_$preferred_stack_overflow
+                    The  stack  of  preferred  control  points if
+                    full.
+
+NOTES
+
+     The   setting  of  pushed_preferred_control_point   is  made
+indivisibly with making the specified control point the preferred
+control point.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+Entry:  cpm_$scheduler
+
+     This entrypoint  invokes the control point  scheduler to run
+an appropriate ready control point.
+
+USAGE
+
+     dcl  cpm_$scheduler entry ();
+
+     call cpm_$scheduler ();
+
+NOTES
+
+     The primary caller of this entrypoint is intended to be ipc_
+when another control point is to be scheduled to run.
+
+             ________________________________________
+
+Entry:  cpm_$set_preferred_control_point
+
+     This  entrypoint  makes  the  specified  control  point  the
+preferred control point.
+
+USAGE
+
+     dcl  cpm_$set_preferred_control_point entry
+               (bit (36) aligned, fixed binary (35));
+
+     call cpm_$set_preferred_control_point (control_point_id,
+               code);
+
+ARGUMENTS
+
+control_point_id    (Input)
+          is the  unique ID of the  control point which is  to be
+          made the preferred control point.
+
+code                (Output)
+          is a standard system status code.  Amongst the possible
+          returned  codes,  the   following  codes  have  special
+          significance to this entry:
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+          cpm_et_$control_point_not_found
+                    The  ID supplied  above does  not identify an
+                    active control point.
+
+          cpm_et_$preferred_cant_be_stopped
+                    The  ID supplied  above identifies  a control
+                    point in the stopped  state.  A control point
+                    in  the stopped  state  may  not be  made the
+                    preferred control point.
+
+             ________________________________________
+
+Entry:  cpm_$set_user_cl_intermediary
+
+     This entrypoint sets the  command level intermediary for the
+specified control point.
+
+USAGE
+
+     dcl  cpm_$set_user_cl_intermediary entry (bit (36) aligned,
+               entry (bit (1) aligned), fixed binary (35));
+
+     call cpm_$set_user_cl_intermediary (control_point_id,
+               user_cl_intermediary, code);
+
+ARGUMENTS
+
+control_point_id    (Input)
+          is  the unique  ID of  the control  point whose command
+          level imtermediary is to be set.
+
+user_cl_intermediary
+                    (Input)
+          is the  entrypoint which is to be  the new intermediary
+          for the above control point.  This entry is declared as
+          dcl user_cl_intermediary entry  (bit (1) aligned); call
+          user_cl_intermediary (return_from_intermediary);
+
+          ARGUMENTS
+
+          return_from_intermediary (Input)
+                    is  "1"b if  cpm_overseer_$cl_intermediary is
+                    to  return  as  if  "start"  had  been typed,
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+                    without  getting  a   new  command  level  or
+                    stopping the current control point.
+
+code                (Output)
+          is a standard system status code.  Amongst the possible
+          returned  codes,  the   following  codes  have  special
+          significance to this entry:
+
+          cpm_et_$control_point_not_found
+                    The  ID supplied  above does  not identify an
+                    active control point.
+
+NOTES
+
+     The     cl_intermediary    is     always    set     to    be
+cpm_overseer_$cl_intermediary, which creates a new listener level
+if  the root control  point is running,  and otherwise stops  the
+current  control   point  and  calls  the   cpm_$scheduler.   The
+user_cl_intermediary,     if     given,      is     called     by
+cpm_overseer_$cl_intermediary.
+
+             ________________________________________
+
+Entry:  cpm_$start
+
+     This  entrypoint   marks  a  control  point   as  ready  for
+execution.
+
+USAGE
+
+     dcl  cpm_$start entry (bit (36) aligned, fixed binary (35));
+
+     call cpm_$start (control_point_id, code);
+
+ARGUMENTS
+
+control_point_id    (Input)
+          is the unique ID of the control point to be started.
+
+code                (Output)
+          is a standard system status code.  Amongst the possible
+          returned  codes,  the   following  codes  have  special
+          significance to this entry:
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+          cpm_et_$already_started
+                    The  ID supplied  above identifies  a control
+                    point  which  is  already  started.   Such  a
+                    control  point  is  in  either  the  ready or
+                    blocked state.
+
+          cpm_et_$control_point_not_found
+                    The  ID supplied  above does  not identify an
+                    active control point.
+
+             ________________________________________
+
+Entry:  cpm_$stop
+
+     This entrypoint places a control point in the stopped state.
+Once in the stopped state, the scheduler will not run the control
+point until after a subsequent call to cpm_$start.
+
+USAGE
+
+     dcl  cpm_$stop entry (bit (36) aligned, fixed binary (35));
+
+     call cpm_$stop (control_point_id, code);
+
+ARGUMENTS
+
+control_point_id    (Input)
+          is the unique ID of the control point to be stopped.
+
+code                (Output)
+          is a standard system status code.  Amongst the possible
+          returned  codes,  the   following  codes  have  special
+          significance to this entry:
+
+          cpm_et_$already_stopped
+                    The  ID supplied  above identifies  a control
+                    point which is already in the stopped state.
+
+          cpm_et_$cant_stop_root
+                    The  ID supplied  above is  that of  the root
+                    control point which can never be stopped.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+          cpm_et_$control_point_not_found
+                    The  ID supplied  above does  not identify an
+                    active control point.
+
+             ________________________________________
+
+Entry:  cpm_$wakeup
+
+     This  entrypoint sends  a  generic  wakeup to  the specified
+control point.  The wakeup changes the control point's state from
+blocked  to ready  and informs   the scheduler  that it  is again
+eligible for execution.
+
+USAGE
+
+     dcl  cpm_$wakeup entry (bit (36) aligned,
+               fixed binary (35));
+
+     call cpm_$wakeup (control_point_id, code);
+
+ARGUMENTS
+
+control_point_id    (Input)
+          is the unique ID of the control point to be awakened.
+
+code                (Output)
+          is a standard system status code.  Amongst the possible
+          returned  codes,  the   following  codes  have  special
+          significance to this entry:
+
+          cpm_et_$cant_wakeup_when_stopped
+                    The  ID supplied  above identifies  a control
+                    point in the stopped state.  Wakeups can only
+                    be  sent to control  points which are  in the
+                    blocked state.
+
+          cpm_et_$control_point_not_found
+                    The  ID supplied  above does  not identify an
+                    active control point.
+
+          cpm_et_$wakeup_ignored
+                    The  ID supplied  above identifies  a control
+                    point which is already in the ready state.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+____                                                         ____
+
+cpm_                                                         cpm_
+____                                                         ____
+
+NOTES
+
+     The primary  caller of cpm_$wakeup  is intended to  be ipc_.
+This entry sets the state of  the control point to ready and puts
+the control point into the control point ready queue.
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+_________                                               _________
+
+cpm_data_                                               cpm_data_
+_________                                               _________
+
+Name:  cpm_data_
+
+     This  data  segment  contains  useful  information about the
+state of control point management in the process.
+
+             ________________________________________
+
+Entry:  cpm_data_$n_control_points
+
+     This  datum is the  number of active  control points in  the
+process.
+
+USAGE
+
+     dcl  cpm_data_$n_control_points fixed binary external;
+
+
+MTB-753, Revision 2  Control Point Management MTB-753, Revision 2
+
+_____________________                       _____________________
+
+get_control_point_id_                       get_control_point_id_
+_____________________                       _____________________
+
+Name:  get_control_point_id_
+
+     This subroutine returns the unique ID of the current control
+point.
+
+USAGE
+
+     dcl  get_control_point_id_ entry ()
+               returns (bit (36) aligned);
+
+     control_point_id = get_control_point_id_ ();
+
+ARGUMENTS
+
+control_point_id    (Output)
+          is set to the unique ID of the current control point.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

@@ -1,0 +1,3349 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Date/time system (2) Commands and subroutines.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  MULTICS TECHNICAL BULLETIN 617-03                          page 1
+
+  To:       Distribution
+
+  From:     James A Falksen, Gary Dixon
+
+  Date:     July 2, 1984
+
+  Subject:  Date/time system (2) Commands and subroutines
+
+  ABSTRACT
+
+  This  MTB   describes  the  command   and  subroutine  interfaces
+  supporting the changes described in MTB616.
+
+  Version 01 is a re-issue which adds to the command and subroutine
+  descriptions as well as  showing interface changes.  The descrip-
+  tion of  time strings is  enhanced, including details  of default *
+  values.
+
+  Version  02  is  a  re-issue (with  change  bars)  which includes
+  adjustments  to  format   strings,  new  date_time_$valid_format,
+  rename of  display_time_data to display_time_info_,  splitting of
+  time_defaults into set_time_defaults and print_time_defaults, and
+  addition of a named format table to time_info_.
+
+  Version 03 is  a re-issue (with change bars  with respect to -02)
+  which  includes  float  dec(20)  values  in time_offset.incl.pl1,
+  conversion of  date_time_$format into a  function using sub_err_,
+  addition  of  cv_fstime_, and  slight adjustment  to error_table_
+  names and messages.
+
+  Send comments on the MTB by one of the following means:
+       In forum meeting:
+          &gt;udd&gt;m&gt;jaf&gt;mtgs&gt;date_time
+       By Multics mail:
+          Falksenj.Multics at M
+          GDixon.Multics at MIT
+       By Telephone:
+          HVN 357-6618 or 602-862-6618
+
+  _________________________________________________________________
+
+  Multics Project  working documentation.  Not to  be reproduced or
+
+
+                              SECTION 3
+
+            NAMING, COMMAND LANGUAGE, AND TERMINAL USAGE
+
+                                . . .
+        The change bars in this section indicate the changes
+          which were made against a portion of the existing
+                  MPM Reference Guide description.
+                                . . .
+
+  CONSTRUCTING AND INTERPRETING NAMES
+
+                                . . .
+                          The discussion of
+                        time strings does not                       *
+            belong under this heading, hence it is being
+                   moved to a section of its own.
+                                . . .
+
+
+
+  DATE/TIME HANDLING
+
+  Inputting Dates and Times
+
+       Often, the user  must supply date and time  information to a
+  command.  Programs which accept date and time information use the
+* convert_date_to_binary_ subroutine to convert a time string to an
+  internal  (binary) value.   (See MPM  Subroutines for  details on
+  convert_date_to_binary_.)
+
+*      The  time  string  can have  up  to six  parts  -- adverbial
+  offset, date,  time, day of  week, signed offset,  and time zone.
+  Adverbial  offsets,  if  present,  must  appear  leftmost  in the
+  string.  Beyond that, all of the parts are optional and may be in
+  any  order.   The  parts may  be  made up  of  alphabetic fields,
+  numeric fields, and special characters.
+
+       An alphabetic field is made up of letters and must contain a
+  whole word or an abbreviation (usually made up of the first three
+  letters of  the word).  No distinction  is made between uppercase
+  and lowercase characters.  Although  this description gives exam-
+  ples  in  English,  each of  the  words is  available  in several
+* languages.  Any of  these languages may be used  in time strings,
+  but all words within a given string must be in the same language.
+  To see the languages defined on your site, type
+
+       display_time_data -lang
+
+       A numeric field consists of  an optionally signed integer of
+  one or more  decimal digits.  The special characters  that may be
+  used in either alphabetic or  numeric fields are:  the slash (/),
+  the period (.),  the colon (:), the plus (+),  the minus (-), and
+  the comma  (,).  Blanks are  not required between  alphabetic and
+* numeric fields  in the time  strings; however, they  are required
+  between two numeric fields unless  the second field begins with a
+  plus (+) or minus (-) sign.  For example:
+
+       2days4hours10minutes
+       1245.17+7hours
+       10/17/79Wednesday
+
+*      Underscores  may  be used  in  place of  blanks in  the time
+  string.  For example:
+
+       09/25/79__1442.6_+5_hours
+
+*    Usually  when a  user enters a  time string, the  time zone is
+  omitted.  Although the zone is seldom seen, it is very important.
+* The time zone determines the interpretation of items given in the
+
+
+
+  time string.  Also, the zone is involved in defaults supplied for
+  missing items.  All defaults are  taken from the current absolute
+  time, adjusted by a working time zone.  If a zone is given in the
+  string,  that becomes  the working zone.   Otherwise, the process
+  default time zone is used.
+
+       This  means  that  whether  you  convert  a  string  with an
+  explicit zone, such  as "XXXX_ast" or set the  process default to
+  "ast"  and  then  convert the  string  "XXXX", you  get  the same
+  absolute time.  (Note that setting  the process default will also
+  influence output  conversion, while giving an  explicit zone does
+  not.)  To display your default zone, type:
+
+       time_defaults -zone
+
+       The six  parts of the  time string are  described below.  In *
+  these  descriptions, whenever  an assumed value  is mentioned, it
+  refers to the current zone-adjusted date/time.
+
+  1.   date
+               is  the day  of the year  and may  be specified only
+               once.   Dates  may  be specified  using  normal date
+               format, calendar date format,  day of the week, date |
+               keywords, fiscal week, request-id, or may be omitted
+               entirely.  If  no date is present,  it is assumed to
+               be  the next  occurance of the  time specified.  For
+               example, "10A" gives the  date on which 10:00am next
+               occurs.  If  no date and no  time are specified, the
+               current date is used.
+
+               In normal date format,  dates are specified as month
+               (or month abbreviation), day  of month, and year; or
+               as  day  of month,  month,  and year.   The  year is
+               optional and, if omitted, is  assumed to be the year
+               in  which  the date  will occur  next.  That  is, if
+               today is March 16, 1978, then March 20 is equivalent
+               to  March 20,  1978; while March  12 is  the same as
+               March  12, 1979.   There are  three forms  of normal
+               date, illustrated by the examples below:
+
+                    16 March   16 March 1978
+                    March 16   March 16 1978   March 16, 1978
+                        (The comma is optional.)
+                    3/16    3/16/78    3/16/1978
+
+               Calendar date  format permits dates  to be specified
+               as  a year,  month, and  day of  month, separated by
+               minus  signs.  This  is the  International Standards
+               Organization  (ISO)  standard format.   The  year is
+               required, and may be given as a year of the century.
+               The  calendar  date  format  is  illustrated  by the
+               examples below:
+
+
+
+                    79-12-31  or  1979-12-31
+                         (represents December 31, 1979)
+
+|              The day of  the week is a date  specifier if present
+|              with  no other  form of  date.  It  then selects the
+|              first occurance of the named day AFTER today.
+
+               The  date  keywords  are  "yesterday",  "today", and
+               "tomorrow".  For example,
+
+                    6:35A today
+                    yesterday +120days
+
+               The fiscal  week is of  the form FWyyyyww.   "FW" is
+               the  fiscal  indicator (in  English), "yyyy"  is the
+               year  number,  and  "ww"  is the  week  number.  The
+               fiscal  week begins  on Monday  and ends  on Sunday.
+               This form converts to the  date of the Monday, but a
+               day within the week may  be selected by adding a day
+               name.      For    example,     "FW198413 m"    gives
+               "03/26/84  0000. Mon", while  "FW198413 m Wed" gives
+               "03/28/84  0000. Wed".  The fiscal  indicator may be
+               separated  from  the  number but  the  ordering must
+               remain,  i.e.   "FW185425"  or  "FW 185425"  but not
+               "185425 FW".
+
+               A  request-id  is  a  19-character  string  used  by
+               several   programs   in    the   system,   such   as
+               enter_output_request.   It contains  a complete date
+               from year, in century down thru microseconds in this
+               form:
+
+                    yymmddHHMMSS.SSSSSS
+
+               If no  zone is specified, it  is interpreted in GMT,
+               not the  process default.  A  request-id specifies a
+               time as well as a  date, so no other time specifica-
+               tion may be given.
+
+| 2.   day of week
+               is  the day  of the week  (e.g., Monday)  and may be
+|              present  only  once.  When  the day  of the  week is
+|              present along  with one of  the other forms  of date
+|              specification, that date must  fall on the indicated
+|              day of the week.
+
+| 3.   time
+               is the time of day and may only be present once.  If
+               omitted, it is assumed to be the current time.  Time
+               may be  given as 24-hour format,  12-hour format, or
+               the  time  keyword "now".   The 24-hour  time format
+               consists  of  a  four-digit  number  followed  by  a
+
+
+
+               period.  (hhmm.,  where hh represents  hours, and mm
+               represents minutes)  This number may  be followed by
+               an   optional  decimal   fraction-of-a-minute  field
+               (e.g.,  hhmm.m).   Also  acceptable  are  hours  and
+               minutes  fields separated  by colons  (hh:mm).  This
+               may   be    optionally   followed   by    either   a
+               fraction-of-a-minute  field (hh:mm.m),  or a seconds
+               field  (hh:mm:ss).   The  seconds, in  turn,  may be
+               include    a    fraction-of-second    field   (e.g.,
+               hh:mm:ss.s).  Examples of 24-hour time are:
+
+                    1545.
+                    1545.715
+                    15:45
+                    15:45.715
+                    15:45:42
+                    15:45:42.08
+
+               The  12-hour time  format must  end with  a meridiem
+               designator  (i.e.,  A,  P,  am,  pm,  noon,  (or n),
+               midnight (or m).  Midnight and noon can be indicated
+               by  simply  giving  the  meridiem  designator.   The
+               designator  may  be  preceded by  time  expressed as
+               hours,   hours:minutes,   or   hours:minutes:seconds
+               (including  an  optional  fraction  of  a  second or
+               fraction of a minute, as mentioned above).
+                 Examples of 12-hour time are:
+
+                    midnight
+                    5 am
+                    5:45A
+                    3:59:59.000001pm
+                    11:07:30.5pm
+                    12 n
+
+               There is a set  of illegal times, 24:00-24:59, which
+               are  handled  anyway.   These   are  taken  to  mean
+               0:00-0:59 of the following  day.  Note that midnight
+               is the beginning of a day (00:00) not the end.
+
+  4.   signed offset
+               is  an  adjustment to  be  made to  the  clock value
+               specified  by  the  other  fields.   Offsets  may be
+               specified  in  any and  all  of the  following units
+               (i.e.  singular, plural, or abbreviation):
+
+                       year         years        yr
+                       month        months       mo
+                       week         weeks        wk
+                       day          days         da
+                       hour         hours        hr
+                       minute       minutes      min
+
+
+
+                       second       seconds      sec
+                       microsecond  microseconds usec
+
+               Each  unit may  be present  one or  more times, each
+               preceded by an optionally signed fixed point number.
+               If  offset fields  are the  only thing  present, the
+               offsets are added to the  default values of date and
+               time, as described above.
+
+               If  the month  offset results in  a nonexistent date
+               (e.g., "Jan 31 3 months"  would yield April 31), the
+               last  date  of the  resulting  month is  used (e.g.,
+               April 30).  Examples of offset fields are:
+
+                    3 weeks -60 hours
+                       (60 hours before 3 weeks after now)
+                    1.5 hr 5min
+                       (an hour and 35 minutes from now)
+                    1 hour 5 minutes
+                       (an hour and five minutes from now)
+
+               The order in which offset  values are applied to the
+               clock  value can  affect the  resultant clock value.
+               Offset values are applied in the following order:
+
+*                    year, month, week, day, hour,
+                      minute, second, microsecond
+
+               "Monday  6 am  2 weeks"  means "two  weeks after the
+|              next occurrence of Monday, at 6:00 am on that day".
+
+               Assuming that today is September 25, 1979, then:
+
+                    10/1 -1 day +1 month
+
+               results in  a clock value for  10/31/79, rather than
+               for 10/30/79.
+
+                                 ----------------
+               There  is  also  a  non-offset use  of  these words,
+               available in combination with  the word "this", i.e.
+               "this month".  These combinations are NOT forms, but
+               may be  used in building  date and time  parts.  For
+               example, "this_month_1,_this_year" or "this_hour:23"
+               is valid,  while just "this_day" is  not.  The exact
+               form  of  this  combination will  vary  according to
+               language.   In some  languages, the  word for "this"
+               changes  according to  which unit it  is applied to.
+               In other languages, there may be a single word which
+               does the job.
+                                 ----------------
+
+
+
+  5.   adverbial offset
+               is a before/after kind of adjustment and may be used
+               any number  of times.  This offset  is recognized by
+               the  presence of  "before", "on", or  "after" in the *
+               time  string.   If present,  adverbial  offsets must
+               appear first.  These are the forms available:
+
+                    DAY-NAME before
+                    DAY-NAME on or before
+                    DAY-NAME before or on
+                    DAY-NAME after
+                    DAY-NAME on or after
+                    DAY-NAME after or on
+                    SIGNED-OFFSETs before
+                    SIGNED-OFFSETs after
+
+               When adverbial offsets are present, they partition a
+               string  into a  series of adjustments  followed by a
+               base time.  These sections  are processed in a right
+               to  left  manner.   Referring to  the  first example
+               below, there are 3 sections.  First "6:00 am 400sec"
+               is  handled,  supplying all  necessary  defaults and
+               making  the  ordinary  (400sec)  offset  adjustment.
+               Then "Monday after" is applied  to give a new value.
+               And finally  "2 wk -5min  after" is applied  to this
+               new value to give the final value.
+
+                    2 wk -5min after Monday after 6:00 am 400sec
+                    20 minutes before now
+                    2 days after today
+                    2500 weeks after 1776-7-4
+                    Tue after Mon on or after 11/1
+
+               This  last item  describes election day  in the USA,
+               i.e.   the first  Tuesday after the  first Monday in
+               November.
+
+  6.   zone
+               is the time zone to be used in making the conversion
+               to Greenwich  mean time, which is  the internal form
+               of  all  clock readings.   It may  be either  a zone
+               differential, or any of the zone abbreviations known
+               at the  site.  A zone differential  is a 5-character
+               string, "sHHMM"  ("s" is a  sign, "HH" is  a 2-digit
+               hour, and "MM" is a  2-digit minute).  This may only
+               be used immediately  following a time specification.
+               "12:15-0330" says  that 12:15 is the  local time and
+               -0330 specifies that the local time was generated by
+               subtracting  3.5 hours  from GMT.  To  list the zone
+               abbreviations known at a site, type:
+
+                    display_time_data -zones
+
+
+
+               If any  defaults are needed, the  current instant in
+               time is  broken down into years,  months, days, etc.
+               with respect to a "working zone".  This working zone
+               can  make a  great deal of  difference, because, for
+               example, at a given instant it can be Tuesday in New
+               York and Wednesday in Bankok,  or it can be 22:07 in
+               London and 3:37 in Singapore.   Thus, the zone is as
+               important for week days and years as it is for hours
+               and minutes.
+
+               Many  of the  date/time commands  allow a  "-zone X"
+               argument to  specified.  In this case,  X may be any
+               of  the zones  known at the  site.  It may  NOT be a
+               time differential.
+
+  Dates and Times:  A Brief History
+
+       Julius Caesar reformed the Roman calendar in 46 B.C.  giving
+  what is now  known as the Julian calendar.  This  year came to be
+  known as "the last year of confusion" (read on!).  It was decided
+  that the vernal equinox would fall  on March 25, the beginning of
+  the  year  was moved  to  January 1,  and  an additional  day was
+  inserted every 4  years.  The extra day was  added after February
+  24, giving  a second February  24.  Somewhat later  the extra day
+  was moved to February 29.
+
+       In 325 A.D.  the Council of Nicaea noticed that the calendar
+  was lagging the  vernal equinox by 3 days.   It was still thought
+  that the  year was 365.25  days long, so they  assumed that there
+  had been an error in the  original determination and so moved the
+  vernal equinox  to March 21,  believing it would  then be stable.
+  This, of course, did not  work since the correct tropical (solar)
+  year is 365.2422 days long.
+
+       By 1582, the error in the  Julian calendar of 11 minutes, 14
+  seconds  per year  had caused  the calendar  date to  be ten days
+  earlier than  it should have  been.  Pope Gregory  XIII corrected
+  this  discrepancy by  decreeing that the  day following Thursday,
+  October  4, 1582  would be Friday,  October 15,  1582.  Thus, the
+  year  1582  had  only  355  days.   He  then  reformed  the  year
+  calculation to  avoid discrepancies in  the future by  removing 3
+  intercalary (leap)  days every 400 years.   The pope decreed that
+  centential years would not be  leap years unless they were evenly
+  divisible by 400.  This reformed calendar is called the Gregorian
+  calendar.
+
+       This  calendar was  was not accepted  overnight.  France and
+  the Netherlands adopted it in  December 1582; the Catholic states
+  of Germany, in  1584; and Poland in 1586.   The Protestant states
+  in Germany and Switzerland accepted it in 1700.  England (and its
+  colonies)  and  Sweden accepted  in  1752.  Lastly,  the orthodox
+  countries preserved  the Julian calendar until  the 20th Century,
+  by  which time  there was  a 13  day lag.   Thus a  date would be
+
+
+
+  written January 10/23, 1920 -- the 10th in old style, the 23rd in
+  new style.
+
+       Time  zones  are  a  new  invention,  brought  about  by the
+  railroads.  For centuries each town  had its own time, local mean
+  time (LMT), based on when the  sun was overhead, or rose, or set.
+  The railroads needed some way to be able to publish a schedule so
+  that passengers would be at the station when the train was.  They
+  standardized times into zones and worked with these times.  These
+  times  were not  immediately accepted.   At the  beginning of the
+  20th century, Minnesota still used  LMT.  Saudi Arabia still sets
+  the clock to midnight at sundown each day.
+
+       This is a great simplification  of the history of calendars.
+  For a look at the confusion that has really existed, refer to the
+  Encyclopedia Britannica.
+
+       Needless to say, Multics does not take all of these oddities
+  into  account.   The  Julian  calendar  is  used  for  dates from
+  0001-01-01 thru 1582-10-04.  The dates  from October 5, 1582 thru
+  October 14,  1582 do not  exist.  The Gregorian  calendar is used
+  for  dates  from 1582-10-15  thru  9999-12-31.  The  leap  day is
+  always February 29.   The lower limit on dates of  Jan 1, 0001 AD
+  was picked since it begins the  era.  The upper limit on dates of
+  Dec 31, 9999  was chosen to limit year numbers  to 4 digits.  The
+  time zones as now defined are used regardless of the year.
+
+  Outputting Dates and Times
+
+       One important way to get a  clock value into a readable form
+  is  by means  of the date/time  commands:  calendar_clock, clock,
+  day_name,  day,  date_time,  date,  hour,  long_year,  long_date,
+  month_name, month, minute, time, and year.  The first argument to
+  clock is a control string  describing the format wanted.  All the
+  rest have intrinsic formats.  Command  use is really going from a
+  readable  form to  a readable  form without  keeping the internal
+  value.
+
+       By means  of convert_date_to_binary_ (CDTB_),  an input time *
+  string is converted to internal form.  This is the usual form for
+  storing  dates in  data bases.   To convert  one of  these into a
+  readable  form, a  programmer may call  upon date_time_  to get a
+  24-character form like this:
+
+       03/14/79  0000.0 cet Fri
+
+  But  when other  formats are needed,  date_time_$format is avail-
+  able.  It takes a clock value and a control string describing the
+  format wanted and returns a string ready for printing.
+
+       We  have tried  as much  as possible  to make  all date/time
+  outputs from the system software be usable as date/time inputs to
+  system  software.  But,  the control  string mechanism  is highly
+
+
+
+  flexible and may be easily used to generate formats which are not
+  recognizable.   Worse yet  are the  strings which  are apparently
+  recognized.   A  point  in  case  is  the  commonly  used  string
+  "7/1/82".  In  the US, this  means the 7th month,  first day; but
+  many places in Europe, this would be taken to mean the 7th day of
+  the first month.
+
+  FORMAT STRINGS
+
+      The control  string to date_time_$format is  either a keyword
+  or a  character string consisting of  text and/or selectors.  The
+  selectors are always identified by a leading circumflex character
+| (^).  There are 2 types  of selectors; ^&lt;keyword&gt;, which allows a
+| keyword to  imbedded within a  format, and the  general form ^XX.
+  XX is a 2 letter code which specifies what information is wanted.
+  An optional PL/I picture specification  may be placed between the
+  ^ and  XX if the  default form is  not adequate.  If  the control
+  string does  not contain any circumflex  characters, it must then
+  be one of  the known set of keywords.   Each keyword identifies a
+  control string for a predetermined format named by that keyword.
+
+  List of format keywords:
+  all
+     ^9999yc-^my-^dm__^Hd:^MH:^99.(6)9UM^zd_^za_^da ^fi
+        ^(6)9fw ^ma dy^dy dc^dc Uc^Uc
+     (This line is broken only for publishing purposes,
+      there is nothing between "^fi" and "^(6".)
+  calendar_clock
+     ^9999yc-^my-^dm__^Hd:^MH:^99.(6)9UM_^za_^da
+  clock
+     ^9999yc-^my-^dm  ^Hd:^MH:^99.(6)9UM ^za ^da
+  date
+     the process default value for date
+  date_time
+     the process default value for date and time
+  iso_date
+     ^9999yc-^my-^dm
+  iso_date_time
+     ^9999yc-^my-^dm ^Hd:^MH:^SM ^za
+  iso_long_date
+     ^9999yc-^my-^dm ^da
+  iso_long_date_time
+     ^9999yc-^my-^dm ^Hd:^MH:^99.(6)9UM ^za
+  iso_long_time
+     ^Hd:^MH:^99.(6)9UM
+  iso_time
+     ^Hd:^MH:^SM
+  multics_date
+     ^my/^dm/^yc
+  multics_date_time
+     ^my/^dm/^yc  ^Hd^99v.9MH ^xxxxza^xxxda
+  multics_time
+
+
+
+     ^Hd:^MH
+  request_id
+     ^yc^my^dm^Hd^MH^99.(6)9UM
+  system_date_time
+     the system default value for date and time
+  system_date
+     the system default value for date
+  system_time
+     the system default value for time
+  time
+     the process default value for time
+
+      A site  may change the "system"  strings.  For an application
+  which depends upon the historic  formats, the 3 builtin "multics"
+  strings are available.
+
+      Processing  of  a  control  string proceeds  by  scanning the
+  control  string until  a circumflex is  found, or the  end of the
+  string is  reached.  Any text (including  any blanks) passed over
+  is copied to the output string.  The selector is then interpreted
+  and executed.  This causes a datum  from the input clock value to
+  be edited  into the output string.   Processing continues in this
+  way until the control string is exhausted.
+
+          Dates  and  times  placed  in the  output  string  may be
+  expressed in units of years, months, weeks, days, hours, minutes,
+  seconds  and  microseconds.   The  total  calendar  value  can be
+  expressed  as  a single  unit.  For  example, the  calendar value
+  representing 79-09-08 9:42A GMT could be expressed as 1979 years,
+  as  722702 days,  or as 722702.112499  days.  This is  the set of
+  "total" selectors:
+
+     ^yc    total number of Years in the Calendar value.
+
+     ^mc    total number of Months in the Calendar value.
+
+     ^dc    total number of Days in the Calendar value.
+
+     ^Hc    total number of Hours in the Calendar value.
+
+     ^Mc    total number of Minutes in the Calendar value.
+
+     ^Sc    total number of Seconds in the Calendar value.
+
+     ^Uc    total number of Microseconds in the Calendar value.
+
+      Dates and times may also be  expressed as the number of units
+  remaining after a larger unit  has been removed from the calendar
+  value.  For example, 09/08/79 09:42  includes units for 9th month
+  of the year, 8th day of the  month, 9th hour of the day, and 42nd
+  minute of the hour.  The following are the most common:
+
+
+
+     ^my    Month in the Year
+
+     ^dm    Day of the Month.
+
+     ^dw    Day of the Week.
+
+     ^Hd    Hour of the Day (24-hour format).
+
+     ^Hh    Hour in Half-day (12-hour format).
+
+     ^MH    Minute of the Hour.
+
+     ^SM    Second of the Minute.
+
+     ^US    Microsecond of the Second
+
+      There  are   several  items  of  date/time   data  which  are
+  non-numeric,  such as  day of week,  day of month,  and time zone
+  used for conversion.
+
+     ^mn    month name
+
+     ^ma    Month name, Abbreviated (char (3))
+
+     ^dn    Day Name
+
+     ^da    Day name, Abbreviated (char (3))
+
+     ^zn    time Zone Name
+
+     ^za    time Zone name, Abbreviated (char (4))
+
+     ^zd    Zone differential (char(5))
+
+     ^mi    Meridiem Indicator ("A" or "P")
+
+     ^fi    Fiscal Indicator ("FW" in english)
+
+      The selectors of  numeric data are, in general,  made up of 2
+  letters taken from this sequence:  c y m w d H M S U
+
+      The letters stand for calendar, year, month, week, day, Hour,
+  Minute,  Second, and  microsecond.  All 81  combinations are not,
+  however,  valid.   The form  can  generally be  read as  "unit of
+  unit", i.e.  "seconds of week".  The first unit is always smaller
+  than the second one.  In trying to keep the specifiers reasonably
+  mnemonic (in English) there is  a problem.  Both month and minute
+  begin  with an  "m".  To  that end, all  date values  are used as
+  lower case letters while all time values are in upper case.
+
+      It proves difficult to try to  handle all the forms needed in
+  a general manner.  "Hd" is Hour  in Day and is thus 24-hour time.
+  This is  not always what  is wanted.  "Hh"  is chosen as  Hour in
+
+
+
+  Half-day to get the 12-hour form  of time.  To go along with this
+  there is "mi"  for Meridiem Indicator.  This gives  "A" or "P" to
+  make up AM  or PM.  This does not give  "AM" or "PM" because ANSI
+  and ISO standards specify that time  be given as "3P", not "3PM".
+  The  users who  want the  M will  just put  the literal  in, i.e.
+  "^miM".
+
+      One other way  of looking at a calendar value  is in terms of
+  fiscal week.  This is selected with the "^fw" code.  Its value is
+  4  digits  of year  followed  by 2  digits  of week  number, i.e.
+  "yyyymm".  The default picture has been chosen to give a value of
+  "ymm"
+
+      This  table  shows the  complete set  of selectors.   The row
+  specifies what  unit is wanted, the  column specifies within what
+  other unit, i.e.  ^Sy is "Seconds of Year".
+
+                                DATE/TIME SELECTORS
+         | of   | of   | of   | of   | of   | of   | of   | of   |
+         |calen-| year |month | week | day  | hour |minute|second|
+  -------|  dar |      |      |      |      |      |      |      |
+  micro- +------+------+------+------+------+------+------+------+
+  second | ^Uc  | ^Uy  | ^Um  | ^Uw  | ^Ud  | ^UH  | ^UM  | ^US  |
+         +------+------+------+------+------+------+------+------+
+  second | ^Sc  | ^Sy  | ^Sm  | ^Sw  | ^Sd  | ^SH  | ^SM  |
+         +------+------+------+------+------+------+------+
+  minute | ^Mc  | ^My  | ^Mm  | ^Mw  | ^Md  | ^MH  |
+         +------+------+------+------+------+------+
+    hour | ^Hc  | ^Hy  | ^Hm  | ^Hw  | ^Hd  |
+         +------+------+------+------+------+
+     day | ^dc  | ^dy  | ^dm  | ^dw  |        month    day    zone
+         +------+------+------+------+      +------+------+------+
+   month |      | ^my  |             name   | ^mn  | ^dn  | ^zn  |
+         +------+------+                    +------+------+------+
+    year | ^yc  |                    abbrev | ^ma  | ^da  | ^za  |
+         +------+                           +------+------+------+
+         | ^Hh  | &lt;-hour of half-day      differential    | ^zd  |
+         +------+    (12 hour form)                       +------+
+         | ^mi  | &lt;-meridiem indicator
+         +------+
+         | ^fw  | &lt;-fiscal week (form: yyyyww)
+         +------+
+         | ^fi  | &lt;-fiscal indicator ("FW" in english)
+         +------+
+
+      The formatting of  date and time values can  be controlled by
+  an optional PL/I picture  specification included in the selector.
+  For  example, a  code of "^99yc"  formats the total  years in the
+  calendar value into a 2-digit  year of the 20th century.  ^9999yc
+  provides  a  full,  4-digit  year.   The  following  is  a  brief
+  description of the most  frequently-used picture characters.  For
+  a more complete discussion of PL/I pictures, refer to the Multics
+  PL/I  Language  Specification manual,  Order  No.  AG94,  and the
+  Multics PL/I Reference Manual, Order No.  AM83.
+
+
+
+   9  represents a mandatory decimal digit in the displayed value.
+
+   z  represents   a   decimal  digit   in  the   displayed  value.
+      Nonsignificant zeros on the left are replaced by a space when
+      they occupy a "z" digit position.
+
+   .  produces  a  period  in  the displayed  value.   This  has no
+      relation to  the location of  the decimal point  in the value
+      actually being displayed.  If  zero suppression is in effect,
+      this is replaced with a space.
+
+   ,  produces  a comma  in the  displayed value.   It has  all the
+      characteristics of the period.
+
+           v locates the value's decimal point in the result.  This
+      determines how the value digits  are oriented with respect to
+      the picture specification.  If no "v" is given, it is assumed
+      to appear after the rightmost picture character.
+
+      The  picture characters  above are  sufficient for displaying
+  most   numeric   values.    For  example,   the   control  string
+  ^99Hd^99.v9MH represents the time in  hours, minutes and tenth of
+  minutes.  The control string ^zz9.999vUS represents the number of
+  milliseconds of  the second, using  the decimal point  and "v" to
+  scale the microsecond  unit.  Scaling can also be  performed by a
+  picture scale factor.
+
+  f(N)      scales the value by multiplying  or dividing by a power
+            of 10, thus shifting the  location of the decimal point
+            in the  value.  For example, f(2)  shifts the decimal 2
+            places  left,  effectively dividing  the value  by 100.
+            f(-3) shifts 3 places right, effectively multiplying by
+            1000.
+
+      Using a picture scale factor, the milliseconds in excess of a
+  second can  be displayed to  the nearest tenth  using the control
+  string
+     ^zz9.9f(3)US
+  A  value  of 48634  microseconds  would be  displayed  as " 48.6"
+  milliseconds.
+
+      There are 2 extensions to numeric picture handling.
+
+   Z  represents   a   decimal  digit   in  the   displayed  value.
+      Nonsignificant  zeros to  the left  of the  decimal point are
+      omitted from the displayed value when they occupy a "Z" digit
+      position.  Nonsignificant  zeros to the right  of the decimal
+      point are omitted from the displayed value when they occupy a
+      "Z" digit position.
+
+       "Z"  characters  must appear  as  the leftmost  or rightmost
+       digit  positions in  the picture  specification, since these
+       are  the  positions which  nonsignificant zeros  can occupy.
+       "Z" performs a selective ltrim  or rtrim (of zero) operation
+
+
+
+       on  the  displayed  value.   For  example,  our  millisecond
+       specification given  above could be  specified as ^ZZ9.9ZZUS
+       without using a picture  scale factor.  With this specifica-
+       tion,  48630  microseconds  would  be  displayed  as "48.63"
+       milliseconds (without the leading space or trailing zero).
+
+   O  represents a  decimal digit in  the displayed value  which is
+      not  wanted.   Specifying ^99yc  for  a year  like  1941 will |
+      result in a size condition, since it takes 4 digits to handle
+      that  number.   To  get  the year  in  century,  you  may use
+      ^OO99yc.  This gives 4 digits  into which the value is placed
+      and  then  the first  2  digits are  discarded.  Note  that a |
+      picture like OOz9 with a value of 1502 will give "02" because |
+      the zero-suppression applies to the 1502 and then the first 2 |
+      digits are dropped.                                           |
+
+      Character  date/time values  such as  day of  the week, month
+  name, and  time zone can  be formatted using  a character picture
+  specification with the "x" picture character.
+
+  x         represents a position which  may contain any character.
+            Since  national characters  occur in  some of  the time
+            names, the use of the  "a" character should be avoided.
+            Values are left-justified in the picture specification,
+            with  truncation  of  the rightmost  characters  if the
+            value  is  longer  than  the picture,  or  padding with
+            spaces on  the right if  the value is  shorter than the
+            picture.
+
+      For example, ^xxxxxxxxdn causes  Wednesday to be displayed as
+  "Wednesday" and Monday to be displayed as "Monday   ".  A picture
+  repetition factor  can be used  to shorten the  control string to
+  "^(9)xdw".  With ^(5)xmn, January is displayed as "Janua" and May
+  is displayed as "May  ".(1)
+
+      The selector picture specification allows an extension of the
+  "x" picture specification.
+
+  X         represents  an  optional   character  position  in  the
+            displayed value.  The character  position is omitted if
+            there is no corresponding  character in the value being
+            displayed.
+
+      "X" characters  must appear as the  rightmost character posi-
+  tions in the picture specification, since this is the position in
+  which nonsignificant spaces can occupy.  "X" performs a selective
+  rtrim operation on the displayed value.
+
+  _________________________________________________________________
+
+  (1) Remember that  in some languages, the  abbreviation of a time
+      name is not the first 3 letters of it.
+
+
+
+      The code  ^(9)Xdw displays Wednesday and  Monday both without
+  trailing spaces.
+
+      This table  shows the default picture  specifications for all
+  selectors.   The row  specifies what  unit is  wanted, the column
+  specifies within what other unit, i.e.  ^Sy is "Seconds of Year".
+                               DEFAULT PICTURE VALUES
+         | of   | of   | of   | of   | of   | of   | of   | of   |
+         |calen-|year  |month |week  | day  |hour  |minute|second|
+  _______|  dar |      |      |      |      |      |      |      |
+  micro- +------+------+------+------+------+------+------+------+
+  second |(18)Z9|(14)Z9|(13)Z9|(12)Z9|(11)Z9|(10)Z9|(8)Z9 |(5)Z9 |
+         +------+------+------+------+------+------+------+------+
+  second |(12)Z9|(12)Z9|(8)Z9 |(6)Z9 |(5)Z9 |(4)Z9 |  99  |
+         +------+------+------+------+------+------+------+
+  minute |(10)Z9|(6)Z9 |(5)Z9 |(5)Z9 |(4)Z9 |  99  |
+         +------+------+------+------+------+------+
+    hour |(8)Z9 |(4)Z9 |(3)Z9 |(3)Z9 |  99  |
+         +------+------+------+------+------+
+     day |(7)Z9 | 999  |  99  |  9   |      month    day    zone
+         +------+------+------+------+      +------+------+------+
+   month |      |  99  |             name   |(32)X |(32)X |(64)X |
+         +------+------+                    +------+------+------+
+    year | OO99 |                    abbrev | (8)X | (8)X | (8)X |
+         +------+                           +------+------+------+
+         | 99   | &lt;-hour of half-day      differential    |s9999 |
+         +------+    (12 hour form)                       +------+
+         |  x   | &lt;-meridiem indicator
+         +------+
+         |OOO999| &lt;-fiscal week (form: yyyyww)
+         +------+
+         |  xx  | &lt;-fiscal indicator
+         +------+
+
+          Examples:  The  following table shows how  date and times
+  strings are displayed by a variety of control strings.
+
+
+
+       CONTROL STRING
+          "DISPLAYED VALUE"
+       ^mn ^Z9dm, ^9999yc
+          "September 8, 1979"
+       ^mn ^z9dm, ^9999yc
+          "September  8, 1979"
+       ^dm ^ma ^9999yc ^zn
+          "08 Sep 1979 Mountain Standard Time"
+       ^my/^dm/^yc  ^Hd^99v.9MH ^za ^da
+          "09/08/79  0242.4 mst Sat"
+       ^Hd:^MH:^SM^zd
+          "02:42:25-0700"
+       ^9999yc-^my-^dm__^Hd:^MH:^99.(6)9UM_^za_^da
+          "1979-09-08__02:42:25.048634_mst_Sat"
+       &lt;-^&lt;multics_time&gt;xyz^&lt;multics_date&gt;-&gt;
+          "&lt;-02:42xyz09/08/79-&gt;"
+
+  In and Out In No Time At All
+
+       Sometimes  the  action  of  the  date/time  software  can be
+  confusing.  This  often relates to input  vs.  output time zones.
+  To aid in understanding why a "funny" looking thing has happened,
+  we  present  a description  of steps  involved in  the in-and-out
+  processing of  date/time data.  A command  execution will be used
+  as an example.
+
+       This is what happens when the user types
+                 clock date_time 6P 82-3-2 -zone cet mdt 2weeks
+
+       1)        The command processor calls clock, passing the
+                 arguments "date_time", "6P", "82-3-2", "-zone",
+                 "cet", "mdt", and "2weeks".
+
+       2)        clock builds the string "6P 82-3-2 mdt 2weeks"
+                 from all the positional arguments.
+
+       3)        clock calls convert_date_to_binary (CDTB), passing
+                 the string that was formed.
+
+       3.1)      CDTB parses the string, recognizing the forms.
+
+       3.2)      CDTB calls date_time_$from_clock (DTFC), passing
+                 the current clock value and the input zone "mdt".
+
+       3.2.1)    DTFC decodes the current time relative to zone
+                 "mdt".
+
+       3.2.2)    DTFC returns: year, month, etc. values.
+
+       3.3)      CDTB creates a complete set of time values (year,
+                 month, etc.) and offsets.  It begins with the
+                 things specified in the string and then fills in
+
+
+
+                 any missing values from the decoded current time
+                 by applying the defaulting rules.  The time
+                 values include the input zone "mdt".
+
+       3.4)      CDTB calls date_time_$to_clock (DTTC), passing
+                 the time values.
+
+       3.5.1)    DTTC combines the values into a clock value
+
+       3.5.2)    DTTC returns: 2561414400000000
+
+       3.6)      CDTB calls date_time_$offset_to_clock (DTOTC),
+                 passing the clock value and the set of offsets.
+
+       3.6.1)    DTOTC applies the offsets to this clock value
+
+       3.6.2)    DTOTC returns: 2562624000000000
+
+       3.7       CDTB will call DTOTC once for each adverbial
+                 offset present, working from right to left as
+                 things appeared in the original string.
+
+       3.8)      CDTB returns: 2562624000000000
+
+       4)        clock calls date_time_$format (DTF), passing the
+                 control string "date_time", the clock value, and
+                 the output zone "cet".
+
+       4.1)      DTF examines the control string, finds no format
+                 selectors, and so checks for a format keyword.
+                 Since it is one of the defined ones, it supplies
+                 the real control string needed.
+
+       4.2)      DTF calls date_time_$from_clock, passing the
+                 current clock value and the zone "cet"
+
+       4.2.1)    DTFC decodes the clock value relative to zone
+                 "cet".
+
+       4.2.2)    DTFC returns: year, month, etc.
+
+       4.3)      DTF processes format control string, using the
+                 set of decoded values as needed.
+
+       4.4)      DTF returns "03/17/82  0100.0 cet Wed"
+
+       5)        clock prints "03/17/82  0100.0 cet Wed"
+
+       Whether the user types "time  ahst" or "time ist" or "time",
+  the result is  the same.  This may not  seem right, but examining
+  the action  shows why it  is correct.  In the  first example, the
+  current instant, "T" (in GMT), is used relative to AHST to create
+
+
+
+  a set of values (all default).  When this set is converted into a
+  clock value, it  gets adjusted to GMT.  The  adjustment into AHST
+  is exactly opposite  that into GMT, thus the  result is identical
+  to  the original  "T".  So  all 3  instances will  yield the same
+  clock value.  The  output zone is not specified,  so all 3 output
+  strings are equal.
+
+  The  table  below  demonstrates  the  conversion  of  3 different
+  strings, all at the same instant  in time, with a process default
+  of  MST.  Each  result is  shown under  3 different  output zones
+  (OZ).
+
+       +---------+----+-------------------------+
+       | string  | OZ |      converts to        |
+       +---------+----|-------------------------+
+       |1/20     |mst |01/20/84  1618.3 mst Fri |
+       |1/20     |ast |01/20/84  1918.3 ast Fri |
+       |1/20     |sast|01/21/84  0848.3 sastSat |
+       |1/20 ast |mst |01/20/84  1618.3 mst Fri |
+       |1/20 ast |ast |01/20/84  1918.3 ast Fri |
+       |1/20 ast |sast|01/21/84  0848.3 sastSat |
+       |1/20 sast|mst |01/19/84  1618.3 mst Thu |
+       |1/20 sast|ast |01/19/84  1918.3 ast Thu |
+       |1/20 sast|sast|01/20/84  0848.3 sastFri |
+       +---------+----+-------------------------+
+
+
+
+                              SECTION 2
+
+                       SUBROUTINE DESCRIPTIONS
+
+              ________________________________________
+
+  Name: convert_date_to_binary_
+
+  The convert_date_to_binary_ subroutine  converts a character rep-
+  resentation of a  date and time into a  72-bit clock reading.  It
+  accepts  a wide  variety of  date and  time forms,  including the
+  output of the date_time_ subroutine.
+
+  USAGE
+
+     declare convert_date_to_binary_ entry (char(*), fixed bin(71),
+        fixed bin(35));
+
+     call convert_date_to_binary_ (string, clock, code);
+
+  ARGUMENTS
+
+  string
+     the string to be  converted.  (Input) See Multics Programmers'
+     Reference Manual for a description of acceptable strings.
+
+  clock
+     the  resulting clock  value.  (Output)  Unchanged if  an error
+     occurs.
+
+  code (output)
+     is a standard  status code.  It can have  one of the following
+     values--
+
+
+  _______________________                   _______________________
+
+  convert_date_to_binary_                   convert_date_to_binary_
+  _______________________                   _______________________
+
+     error_table_$bad_conversion
+           a conversion condition occurred while trying to convert
+           a value.
+
+     error_table_$dt_ambiguous_time
+           there is no language common to all words in the time
+           string.
+
+     error_table_$dt_bad_fw
+           fiscal_week &lt; 1 or fiscal_week &gt; year_max (which is 52
+           or 53).
+
+     error_table_$dt_hour_gt_twelve
+           the hour given exceeds 12.
+
+     error_table_$dt_multiple_date_spec
+           more than one instance of a date has been given.
+
+     error_table_$dt_multiple_diw_spec
+           day of the week specified more than once.
+
+     error_table_$dt_multiple_meaning
+           the time string does not have the same meaning in all
+           potential languages, these being the intersection of
+           all the languages possible for all words present.
+
+     error_table_$dt_multiple_time_spec
+           more than one instance of a time has been given.
+
+     error_table_$dt_multiple_zone_spec
+           the zone may only be specified once.
+
+     error_table_$dt_time_conversion_error
+           For any of the following reasons:
+            a.  General syntax error
+            b.  Month without a day number.
+            c.  Midnight or noon preceded by an hour other than 12.
+            d.  Improper use of comma or period.
+            e.  Improper use of offset.
+
+     error_table_$dt_size_error
+           the  size condition  occurred while  converting the time
+        string.
+
+     error_table_$too_many_tokens
+           the time string contains more tokens than the
+           routine is prepared to handle.
+
+
+  _______________________                   _______________________
+
+  convert_date_to_binary_                   convert_date_to_binary_
+  _______________________                   _______________________
+
+     error_table_$dt_unknown_word
+           a word in a time string is not found in the time_info_
+           token list.
+
+  Entry:  convert_date_to_binary_$relative
+
+  This entry point is  similar to the convert_date_to_binary_ entry
+  point,  except  that  the  clock  reading  returned  is  computed
+  relative  to an  input clock time  rather than  the current clock
+  time.  Thus the clock reading  returned for the string "March 26"
+  is the clock  reading for the first March  26 following the input
+  clock time, rather than the clock  reading for the first March 26
+  following the current  clock time.  Given a 72-bit  clock time to
+  use, this  entry point converts  a character representation  of a
+  date and time to the equivalent 72-bit clock reading.
+
+  USAGE
+
+     declare convert_date_to_binary_$relative entry (char(*), fixed
+        bin(71), fixed bin(71), fixed bin(35));
+
+     call convert_date_to_binary_$relative (string, clock,
+        clock_in, code);
+
+  ARGUMENTS
+
+  string
+     is the character representation  of the clock reading desired.
+     (Input)
+
+  clock
+     is the computed clock value relative to the clock_in argument.
+     (Output)
+
+  clock_in
+     is the clock time used to compute the clock value.  (Input)
+
+  code (output)
+     is a standard status code.
+
+
+  __________                                    ___________________
+
+  cv_fstime_                                    encode_clock_value_
+  __________                                    ___________________
+
+| Name: cv_fstime_
+
+| Given a file  system time value, this function  returns a Multics
+| clock value.
+
+| USAGE
+
+|    declare cv_fstime_ entry (bit(36) aligned) returns (fixed
+|       bin(71));
+
+|    clock_value = cv_fstime (fstime);
+
+| ARGUMENTS
+
+| fstime
+|    the file system time to be converted.  (Input) This is a value
+|    as is returned by hcs_$status_, etc.
+
+| clock_value
+|    the Multics clock value which corresponds to fstime.  (Output)
+
+              ________________________________________
+
+  Name: encode_clock_value_
+
+  This subroutine (obsolete) is a temporary replacement for correct
+  calling of the new date/time  facilities.  It relays data between
+  the user and the date/time system.
+
+  takes a  given month, day  of the month,  year, hour of  the day,
+  minute, second,  microsecond, and time zone  and returns a system
+  clock  reading.  When  given a  day of  the week,  it performs an
+  optional check  on the clock  reading to ensure that  it falls on
+  the given day.
+
+  A system clock  reading is encoded as the  number of microseconds
+  from  January 1,  1901 0000.0, Greenwich  mean time  (GMT) to the
+  given date, time, and time zone.
+
+
+  ___________________                           ___________________
+
+  encode_clock_value_                           decode_clock_value_
+  ___________________                           ___________________
+
+  USAGE
+
+     declare encode_clock_value_ entry (fixed bin, fixed bin, fixed
+        bin, fixed bin, fixed bin, fixed bin, fixed bin(71), fixed
+        bin, char(3), fixed bin(71), fixed bin(35));
+
+     call encode_clock_value_ (month, dom, year, hour, minute, sec-
+        ond, microsecond, dow, zone, clock, code);
+
+  This entry point takes a system clock reading, a day of the week,
+  and  year,  month, day,  hour,  minute, second,  and microsecond,
+  offset values.   The offset values may  be positive, negative, or
+  zero.  It returns a clock reading  that has been adjusted to fall
+  on the  given day of  the week, and  which is then  offset by the
+  given number of years, months, days, hours, minutes, seconds, and
+  microseconds.
+
+  USAGE
+
+     declare encode_clock_value_$offsets entry (fixed bin(71),
+        fixed bin, fixed bin, fixed bin, fixed bin, fixed bin,
+        fixed bin, fixed bin(71), fixed bin, char(3), fixed
+        bin(71), fixed bin(35));
+
+     call encode_clock_value_$offsets (clock_in, month_off,
+        day_off, year_off, hour_off, minute_off, second_off,
+        microsec_off, dow_offset, zone, clock_out, code);
+
+              ________________________________________
+
+  Name: decode_clock_value_
+
+  This subroutine (obsolete) is a temporary replacement for correct
+  calling of the new date/time  facilities.  It relays data between
+  the user and the date/time system.
+
+  takes a given system clock reading and returns the month, the day
+  of the month, the year, the time of day, the day of the week, and
+  the local time zone.
+
+
+  ___________________                           ___________________
+
+  decode_clock_value_                           decode_clock_value_
+  ___________________                           ___________________
+
+  USAGE
+
+     declare decode_clock_value_ entry (fixed bin(71), fixed bin,
+        fixed bin, fixed bin, fixed bin(71), fixed bin, char(3));
+
+     call decode_clock_value_ (clock, month, dom, year, tod, dow,
+        zone);
+
+  ARGUMENTS
+
+  clock
+     is the system clock value to be decoded.  (Input)
+
+  month
+     is the month (January = 1, ..., December = 12).  (Output)
+
+  dom
+     is the day of the month, i.e., 1 to 31.  (Output)
+
+  year
+     is the year, e.g., 1978.  (Output)
+
+  tod
+     is the  time of day  (number of microseconds  since midnight).
+     (Output)
+
+  dow
+     is  the  day  of  the week  (Monday  =  1, ...,  Sunday  = 7).
+     (Output)
+
+  zone
+     is a  three-character lowercase abbreviation of  the time zone
+     currently  used  by  this  process  (for  example,  mst, edt).
+     (Output)
+
+  NOTES
+
+  If the clock value does not  lie within the range 0001-01-01 thru
+  9999-12-31, then  zero values are returned  for month, dom, year,
+  tod, and dow.
+
+  This entry point is given a  system clock reading and returns the
+  month, the day of the month,  the year, the hour, the minute, the
+  second, the  microseconds within a  second, the day  of the week.
+
+
+  ___________________                                    __________
+
+  decode_clock_value_                                    date_time_
+  ___________________                                    __________
+
+  The time zone in which the decoded clock reading is expressed may
+  be given as input, or the current time zone can be used.
+
+  USAGE
+
+     declare decode_clock_value_$date_time entry (fixed bin(71),
+        fixed bin, fixed bin, fixed bin, fixed bin, fixed bin,
+        fixed bin, fixed bin(71), fixed bin, char(3), fixed
+        bin(35));
+
+     call decode_clock_value_$date_time (clock, month, dom, year,
+        hour, minute, second, microsecond, dow, zone, code);
+
+              ________________________________________
+
+  Name: date_time_
+
+  The  date_time_  system  is  a  utility  which  encodes, decodes,
+  adjusts, or formats a Multics standard calendar clock value.  The
+  clock  reading  is  assumed  to be  in  microseconds  relative to
+  1901-01-01  0:00 gmt.   The ASCII  times involved  may be  one of
+  several languages and in a choice of time zones around the world.
+
+  The date_time_ subroutine converts a  system clock value to ASCII
+  representation.   It  will be  in  terms of  the  process default
+  language and zone.
+
+  USAGE
+
+     declare date_time_ entry (fixed bin(71), char(*));
+
+     call date_time_ (clock, str);
+
+  ARGUMENTS
+
+  clock
+     is the clock value to be formatted
+
+  str (output)
+     is the resultant character string.  (Input)
+
+
+  __________                                             __________
+
+  date_time_                                             date_time_
+  __________                                             __________
+
+  NOTES
+
+  The format string which produces the resultant string is:
+    "^my/^dm/^yc  ^Hd^99v.9MH ^za ^da"
+  which produces strings like this:
+     07/14/83  1435.4 mst Thu
+|    mm/dd/yy  HHMM.M zzz ddd
+  See  Multics Programmers'  Reference Manual for  a description of
+  acceptable strings.
+
+  The  ASCII representation  of time, which  date_time_ attempts to
+  return in string,  is 24 characters long.  If  string is declared
+  by the caller with a length of N and N is less than 24, then only
+  the first  N characters are  returned.  If N is  greater than 24,
+  then the result is returned padded on the right with spaces.
+
+  If  clock  is  not  a valid  date,  "01/01/01  0000.0 gmt Tue" is
+  returned.
+
+  Entry:  date_time_$format
+
+  This entry  does a generalized  formatting of a  Multics standard
+  calendar  clock  value.   A   format  string  is  supplied  which
+  describes the layout and content of the desired result.  The zone
+  and/or  language in  which the result  is to be  displayed may be
+  specified.
+
+| USAGE
+
+|    declare date_time_$format entry(char(*), fixed bin(71),
+|       char(*), char(*)) returns (char(250) var);
+
+|    result = date_time_$format (format, clock, zone, lang);
+
+  ARGUMENTS
+
+  format
+     either a keyword, or an ioa-like control string describing the
+     desired  result in  terms of literal  characters and date/time
+     selectors.  (Input)
+
+  clock
+     a clock value to be displayed
+
+
+  __________                                             __________
+
+  date_time_                                             date_time_
+  __________                                             __________
+
+  zone (input)
+     the  short  name of  the zone  in which  output time  value is
+     expressed.  "system_zone"  means use the  system default zone.
+     "" means use the per-process default zone.  (Input)
+
+  lang (input)
+     the language  in which month  names, day names  and time zones
+     are  expressed.   "system_lang" means  use the  system default
+     time  language.  ""  means use  per-process default  time lan-
+     guage.
+
+  result
+     is the string which is the result of the conversion.  (Output)
+
+  Error Handling                                                    |
+
+     There are many errors which may occur while trying to format a |
+     string.   These  will seldom  occur  in a  thoroughly debugged |
+     environment,  so there  is no  error code  used to  report the |
+     (usual) success.  Instead, the sub_err_ mechanism is used when |
+     an  error  occurs.   The  information  in  the  sub_error_info |
+     structure is generally quite explicit  as to the type of error |
+     and  usually  quite  detailed  in its  explanation.   Within a |
+     sub_error_  handler  it is  quite easy  to display  this data. |
+     First,  sub_error_info.name will  contain "date_time_$format". |
+     Then a nice-looking message will be produced by:               |
+
+       call com_err_ (sub_error_info.status_code, "my_name", "^a",  |
+         sub_error_info.info_string);                               |
+
+     This is  an example of  a detailed message  which could result |
+     from this:                                                     |
+         my_name: The picture contains a syntax error.              |
+         Format is: "^yc-^98my-^99dm"                               |
+          error at:       ^                                         |
+
+     This  is  the  set  of  values which  may  be  present  in the |
+     status_code field:                                             |
+
+     error_table_$badcall
+           the environment was not set up properly before calling
+           this procedure.
+
+     error_table_$bad_conversion
+           a conversion condition occurred while trying to convert
+           a value.
+
+
+  __________                                             __________
+
+  date_time_                                             date_time_
+  __________                                             __________
+
+     error_table_$dt_bad_format_selector
+           unrecognized selector in format string.
+
+     error_table_$dt_date_too_big
+           the date given is after 9999-12-31_23:59:59.999999_GMT.
+
+     error_table_$dt_date_too_small
+           the date given is before 0001-01-01_00:00:00.000000_GMT.
+
+     error_table_$dt_no_format_selector
+           the format string contains no selectors and is not a
+           known keyword.
+
+     error_table_$dt_unknown_time_language
+           the language specified by the caller was not found in
+           time_info_.
+
+     error_table_$dt_year_too_big
+           the clock value given, when converted to the specified
+           time zone, is after the year 9999.
+
+     error_table_$dt_year_too_small
+           the clock value given, when converted to the specified
+           time zone, is before the year 0001.
+
+     error_table_$picture_bad
+           the picture supplied is in error.
+
+     error_table_$picture_scale
+           the picture scale factor not in the range -128:+127.
+
+     error_table_$picture_too_big
+           the normalized picture exceeds 64 characters.
+
+     error_table_$size_error
+           the size condition occurred during processing.
+
+     error_table_$unimplemented_version
+           a structure is not a version this procedure can handle.
+
+     error_table_$unknown_zone
+           the time zone specified by the caller was not found in
+           time_info_.
+
+
+  __________                                             __________
+
+  date_time_                                             date_time_
+  __________                                             __________
+
+  NOTES
+
+       The control string to  date_time_$format is either a keyword
+  or a  character string consisting of  text and/or selectors.  The
+  selectors are always identified by a leading circumflex character
+  (^).  There are 2 types  of selectors; ^&lt;keyword&gt;, which allows a |
+  keyword to  imbedded within a  format, and the  general form ^XX. |
+  XX is a 2 letter code which specifies what information is wanted.
+  An optional PL/I picture specification  may be placed between the
+  ^ and  XX if the  default form is  not adequate.  If  the control
+  string does  not contain any circumflex  characters, it must then
+  be one  of the known  set of keywords.   See Multics Programmers'
+  Reference Manual for a description of acceptable strings.
+
+  Entry:  date_time_$from_clock
+
+  Given a Multics standard calendar  clock value and an output time
+  zone name, return the month, day of the month, the year, the hour
+  of the day, the minute of the hour, the second of the minute, the
+  number of microseconds, the day in week, the day in year, and the
+  day in  clock.  The caller may  specify one of the  time zones in
+  the  time_info_  in  which  the  decoded  clock  value  is  to be
+  expressed, or may  request that the value be  expressed in one of
+  the default time zones.
+
+  USAGE
+
+     declare date_time_$from_clock entry (fixed bin(71), char(*),
+        ptr, fixed bin(35));
+
+     call date_time_$from_clock (clock, zone, addr(time_value),
+        code);
+
+  ARGUMENTS
+
+  clock
+     is the clock value to be decoded.  (Input)
+
+  zone (input)
+     the  short  name of  the zone  in which  output time  value is
+     expressed.  "system_zone"  means use the  system default zone.
+     "" means use the per-process default zone.
+
+
+  __________                                             __________
+
+  date_time_                                             date_time_
+  __________                                             __________
+
+  time_value
+     is the  structure containing time parts.   (Output) The struc-
+     ture is defined in time_value.incl.pl1.
+
+  code (output)
+     is a standard  status code.  It can have  one of the following
+     values--
+
+     error_table_$dt_date_too_big
+           the date given is after 9999-12-31_23:59:59.999999_GMT.
+
+     error_table_$dt_date_too_small
+           the date given is before 0001-01-01_00:00:00.000000_GMT.
+
+     error_table_$dt_year_too_big
+           the clock value given, when converted to the specified
+           time zone, is after the year 9999.
+
+     error_table_$dt_year_too_small
+           the clock value given, when converted to the specified
+           time zone, is before the year 0001.
+
+     error_table_$unimplemented_version
+           a structure is not a version this procedure can handle.
+
+     error_table_$unknown_zone
+           the time zone specified by the caller was not found in
+           time_info_.
+
+  NOTES
+
+  This is  the structure used by  date_time_$from_clock to hold the
+  parts of a  clock value.  It is also  used by date_time_$to_clock
+  to  hold the  offset values  which are to  be combined  to make a
+  clock value.
+
+  dcl 1 time_value    aligned based(Ptime_value),
+        2 version     char (8),
+        2 yc          fixed bin,
+        2 my          fixed bin,
+        2 dm          fixed bin,
+        2 Hd          fixed bin,
+        2 MH          fixed bin,
+        2 SM          fixed bin,
+        2 US          fixed bin,
+        2 fw          fixed bin,
+        2 dw          fixed bin,
+        2 dy          fixed bin,
+
+
+  __________                                             __________
+
+  date_time_                                             date_time_
+  __________                                             __________
+
+        2 dc          fixed bin(22),
+        2 Uc          fixed bin(71),
+        2 za          char (5),
+        2 zone_index  fixed bin,
+        2 leap_year   fixed bin;
+
+  STRUCTURE ELEMENTS
+
+  version
+     Version of this structure (Vtime_value_1).
+
+  yc
+     Year part of date (e.g.   1978).  All values in this structure
+     are time zone adjusted.
+
+  my
+     Month part of date (e.g.  7= July)
+
+  dm
+     Day of month part of date (e.g.  4)
+
+  Hd
+     Hour of the day (e.g.  18)
+
+  MH
+     Minute of the hour (e.g.  35)
+
+  SM
+     Second of the minute (e.g.  59)
+
+  US
+     Microseconds in excess of second
+
+  fw
+     Fiscal week (a number representing yyyyww)
+
+  dw
+     Day of the week (1=Mon, 7=Sun).
+
+  dy
+     Day of the year (e.g.  12/31 = 365 or 366).
+
+  dc
+     Number of days in calendar value (e.g.  Jan 1, 0001 =&gt; 1).
+
+  Uc
+     Number of  microseconds in calendar  value (e.g.  Jan  1, 0001
+     midnight =&gt; 0).
+
+
+  __________                                             __________
+
+  date_time_                                             date_time_
+  __________                                             __________
+
+  za
+     The name of the zone in which the data is expressed.
+
+  zone_index
+     The index in time_info_$zone_names of the zone.
+
+  leap_year
+     This is a 1 if it is a leap year, otherwise it is a 0.
+
+  Entry:  date_time_$from_clock_interval
+
+  Given 2 clock values, return  the number of years, months, weeks,
+  days,  hours,  minutes, seconds,  and microseconds  between them.
+  The set of units to use is  specified, as well as whether any are
+  to include the fractional remainder.
+
+  USAGE
+
+     declare date_time_$from_clock_interval entry (fixed bin(71),
+        fixed bin(71), ptr, fixed bin(35));
+
+     call date_time_$from_clock_interval (clock1, clock2, addr
+        (time_offsets), code);
+
+  ARGUMENTS
+
+  clock1
+     is  the  base time  value.   (Input) The  output  is expressed
+     relative to this value.
+
+  clock2
+     is  the  offset  time  value.  (Input)  clock1  is  in essence
+     subtracted  from  this value.   If  this value  is  later, all
+     results  will  be positive.   If  this value  is  earlier, all
+     results will be negative.
+
+  time_offsets
+     is the  structure containing resulting  time values.  (Output)
+     Structure is defined in time_offsets.incl.pl1.
+
+  code (output)
+     is a standard  status code.  It can have  one of the following
+     values--
+
+
+  __________                                             __________
+
+  date_time_                                             date_time_
+  __________                                             __________
+
+     error_table_$dt_bad_day_of_week
+           the returned clock reading does not fall on the given
+           day of the week.
+
+     error_table_$dt_bad_dm
+           day_in_month&lt;1 or day_in_month&gt;month_size.
+
+     error_table_$dt_bad_dy
+           day_in_year &lt; 0 or day_in_year &gt; year_size (which is
+           355 for 1582).
+
+     error_table_$dt_bad_my
+           month_in_year&lt;1 or month_in_year&gt;12.
+
+     error_table_$dt_date_not_exist
+           the date given is in the non-existant range of
+           1582-10-05 through 1582-10-14
+
+     error_table_$dt_date_too_big
+           the date given is after 9999-12-31_23:59:59.999999_GMT.
+
+     error_table_$dt_date_too_small
+           the date given is before 0001-01-01_00:00:00.000000_GMT.
+
+     error_table_$dt_no_interval_units
+           no units given in which to express the interval.
+
+     error_table_$dt_offset_too_big_negative
+           an offset is so big that when it is applied, it
+           yields a date before 0001-01-01_00:00:00.000000_GMT.
+
+     error_table_$dt_offset_too_big_positive
+           a negative offset is so big that when it is applied,
+           it yields a date after 9999-12-31_23:59:59.999999_GMT.
+
+     error_table_$dt_year_too_big
+           the clock value given, when converted to the specified
+           time zone, is after the year 9999.
+
+     error_table_$dt_year_too_small
+           the clock value given, when converted to the specified
+           time zone, is before the year 0001.
+
+     error_table_$unimplemented_version
+           a structure is not a version this procedure can handle.
+
+
+  __________                                             __________
+
+  date_time_                                             date_time_
+  __________                                             __________
+
+  NOTES
+
+  This    is    the    structure    which   is    used    by   both
+  date_time_$from_clock_interval   and  date_time_$offset_to_clock.
+  For  from_clock_interval, it  contains all  of the  offset values
+  which  define  the indicated  interval.  For  offset_to_clock, it
+  contains all the values to be added to clock value.
+
+  dcl 1 time_offset             aligned based(Ptime_offset),
+        2 version     char (8),
+        2 flag,
+          3 yr        fixed bin,
+          3 mo        fixed bin,
+          3 wk        fixed bin,
+          3 da        fixed bin,
+          3 hr        fixed bin,
+          3 min       fixed bin,
+          3 sec       fixed bin,
+          3 Usec      fixed bin,
+        2 dw          fixed bin,
+        2 val,
+|         3 yr        float dec (20),
+|         3 mo        float dec (20),
+|         3 wk        float dec (20),
+|         3 da        float dec (20),
+|         3 hr        float dec (20),
+|         3 min       float dec (20),
+|         3 sec       float dec (20),
+|         3 Usec      float dec (20);
+
+  STRUCTURE ELEMENTS
+
+  version
+     Version of this structure (Vtime_offsets_1).
+
+  flag
+     For from_clock_interval, this  structure specifies which units
+     are to be used to  express the interval.  For offset_to_clock,
+     it  specifies  which fields  contain data  to be  used.  These
+     fields may  contain one of  3 values.  The  meaning depends on
+     which operation is being done.
+        value  $offset_to_clock     $from_clock_interval
+          0         unused                unused
+          1          used                 integer
+          2          used             integer+fraction
+     The  fields  in  this sub-structure  represent  years, months,
+     weeks, days, hours, minutes, seconds, and microseconds.
+
+
+  __________                                             __________
+
+  date_time_                                             date_time_
+  __________                                             __________
+
+  dw
+     This field specifies a day of week adjustment to be applied to
+     the base  clock value.  It  may range from  -7 to +7  with the
+     negative  amount  refering  to  the  past  (-7=last  Sun, ...,
+     -1=last  Mon, 0=unused,  1=next Mon,  ..., 7=next  Sun).  This
+     field is not used by from_clock_interval.
+
+  val
+     The fields  in this sub-structure contain  the various values.
+     For  offset_to_clock they  are the values  to be  added to the
+     clock.  They may be negative if need be.  For FCO they are the
+     values which  made up the  indicated interval.  Each  of these
+     fields is  in use only if  its flag is set.   These fields are
+     named just like the flags are.
+
+  Entry:  date_time_$fstime
+
+  This entry  performs the same  function as date_time_$date_time_,
+  given a 36-bit storage system date value.
+
+  USAGE
+
+     declare date_time_$fstime entry (bit(36) aligned, char(*));
+
+     call date_time_$fstime (ssclock, str);
+
+  ARGUMENTS
+
+  ssclock
+     is an internal storage system clock value.  (Input)
+
+  str
+     is the resultant character string .  (Output)
+
+  Entry:  date_time_$offset_to_clock
+
+  This entry point  creates a new Multics clock  value by adjusting
+  an input clock  value to a specified day-of-week  and then adding
+  relative  date/time  offsets.    The  relative  date/time  values
+  include  a year  offset, month  offset, week  offset, day offset,
+  hour  offset,  minute  offset,  second  offset,  and  microsecond
+  offset.  Any  of these values  may be zero (no  offset from input
+  clock  value)  or  negative  (backwards offset  from  input clock
+  value).  In addition, an input time zone is specified.
+
+
+  __________                                             __________
+
+  date_time_                                             date_time_
+  __________                                             __________
+
+  USAGE
+
+     declare date_time_$offset_to_clock entry (ptr, fixed bin(71),
+        char(*), fixed bin(71), fixed bin(35));
+
+     call date_time_$offset_to_clock (addr(time_offsets), clock_in,
+        zone, clock, code);
+
+  ARGUMENTS
+
+  time_offset
+     is  the  structure  containing  time  offsets  to  be  aplied.
+     (Input) Structure is defined in time_offsets.incl.pl1
+
+  clock_in
+     is the clock value to which offsets are applied.  (Input)
+
+  zone
+     is the zone in which clock_in is to be interpreted.  (Input)
+
+  clock
+     is the resulting clock value.  (Output)
+
+  code (output)
+     is a standard  status code.  It can have  one of the following
+     values--
+
+     error_table_$dt_bad_day_of_week
+           the returned clock reading does not fall on the given
+           day of the week.
+
+     error_table_$dt_bad_dm
+           day_in_month&lt;1 or day_in_month&gt;month_size.
+
+     error_table_$dt_bad_dy
+           day_in_year &lt; 0 or day_in_year &gt; year_size (which is
+           355 for 1582).
+
+     error_table_$dt_bad_my
+           month_in_year&lt;1 or month_in_year&gt;12.
+
+     error_table_$dt_date_not_exist
+           the date given is in the non-existant range of
+           1582-10-05 through 1582-10-14
+
+     error_table_$dt_date_too_big
+           the date given is after 9999-12-31_23:59:59.999999_GMT.
+
+
+  __________                                             __________
+
+  date_time_                                             date_time_
+  __________                                             __________
+
+     error_table_$dt_date_too_small
+           the date given is before 0001-01-01_00:00:00.000000_GMT.
+
+     error_table_$dt_offset_too_big_negative
+           an offset is so big that when it is applied, it
+           yields a date before 0001-01-01_00:00:00.000000_GMT.
+
+     error_table_$dt_offset_too_big_positive
+           a negative offset is so big that when it is applied,
+           it yields a date after 9999-12-31_23:59:59.999999_GMT.
+
+     error_table_$dt_year_too_big
+           the clock value given, when converted to the specified
+           time zone, is after the year 9999.
+
+     error_table_$dt_year_too_small
+           the clock value given, when converted to the specified
+           time zone, is before the year 0001.
+
+     error_table_$unimplemented_version
+           a structure is not a version this procedure can handle.
+
+  NOTES
+
+  See  the  notes   under  date_time_$from_clock_interval  for  the
+  description of the time_offsets structure.  The order of applying
+  these  offsets  can affect  the  resultant clock  value.   In all
+  cases,  the  order required  by convert_date_to_binary_  has been
+  used.  The order is as follows:
+
+    1) decode the input clock  value into absolute date/time values
+       specified in  terms of the  input time zone.   This zone may
+       affect the day-of-week represented by the input clock value,
+       and hence, may affect any day-of-week offset adjustment.
+
+    2) apply  any  day-of-week  offset  by  adding/subtracting days
+       to/from the absolute date  until the day-of-week represented
+       by the decoded clock value equals the specified day-of-week.
+
+    3) apply  any  year  offset  to the  decoded  clock  value.  If
+       applying  the year  offset results  in a  non-existant date,
+       then use the previous  existing day, e.g.  "1583-10-10 -1yr"
+       would yield 1582-10-04.
+
+    4) apply  any  month offset  to  the decoded  clock  value.  If
+       applying  the month  offset results in  a non-existent date,
+       then use the  last day of the month  (taking leap years into
+
+
+  __________                                             __________
+
+  date_time_                                             date_time_
+  __________                                             __________
+
+       account),  e.g.   "Jan 31  3 months"  would yield  April 31.
+       instead.
+
+    5) apply  the day  offset, hour  offset, minute  offset, second
+       offset, and microsecond offset.
+
+    6) encode the  resultant absolute date/time  specification into
+*      the output clock value.
+
+  Entry:  date_time_$set_lang
+
+  This entry sets or resets the user's default time language.
+
+  USAGE
+
+     declare date_time_$set_lang entry(char(*), fixed bin(35));
+
+     call date_time_$set_lang (lang, code);
+
+  ARGUMENTS
+
+  lang (input)
+     the language which is to be made current.  "system_lang" means
+     use the system default time language.
+
+  code (output)
+     is a standard  status code.  It can have  one of the following
+     values--
+
+     error_table_$dt_unknown_time_language
+           the language specified by the caller was not found in
+           time_info_.
+
+  Entry:  date_time_$set_zone
+
+  This entry sets or resets the user's default zone.
+
+  USAGE
+
+     declare date_time_$set_zone entry(char(*), fixed bin(35));
+
+     call date_time_$set_zone (zone, code);
+
+
+  __________                                             __________
+
+  date_time_                                             date_time_
+  __________                                             __________
+
+  ARGUMENTS
+
+  zone (input)
+     the  short  name of  the  zone which  is  to be  made current.
+     "system_zone" means use the system default zone.
+
+  code (output)
+     is a standard  status code.  It can have  one of the following
+     values--
+
+     error_table_$unknown_zone
+           the time zone specified by the caller was not found in
+           time_info_.
+
+  Entry:  date_time_$to_clock
+
+  Given any  or all of  the following- years,  months, days, hours,
+  minutes, seconds, microseconds, day in  week, day in year, or day
+  in  clock, returns  a standard  clock value  which represents the
+  encoding  of these  values.  All the  values must  be valid, i.e.
+  hours ^&gt; 23, etc.
+
+  USAGE
+
+     declare date_time_$to_clock entry (ptr, fixed bin(71), fixed
+        bin(35));
+
+     call date_time_$to_clock (addr (time_value), clock, code);
+
+  ARGUMENTS
+
+  time_value
+     is the structure containing time parts.  (Input) The structure
+     is defined in time_value.incl.pl1.
+
+  clock
+     is the encoded clock value.  (Output)
+
+  code (output)
+     is a standard  status code.  It can have  one of the following
+     values--
+
+     error_table_$bad_time
+           the time represented by hour, minute and second is
+           invalid, e.g.  23:60 or negative time values
+
+
+  __________                                             __________
+
+  date_time_                                             date_time_
+  __________                                             __________
+
+     error_table_$dt_bad_day_of_week
+           the returned clock reading does not fall on the given
+           day of the week.
+
+     error_table_$dt_bad_dm
+           day_in_month&lt;1 or day_in_month&gt;month_size.
+
+     error_table_$dt_bad_dy
+           day_in_year &lt; 0 or day_in_year &gt; year_size (which is
+           355 for 1582).
+
+     error_table_$dt_bad_my
+           month_in_year&lt;1 or month_in_year&gt;12.
+
+     error_table_$dt_conflict
+           there is a conflicting combination of day-in-calendar,
+           day-in-year, month-in-year, day-in-month and
+           fiscal-week.
+
+     error_table_$dt_date_not_exist
+           the date given is in the non-existant range of
+           1582-10-05 through 1582-10-14
+
+     error_table_$dt_date_too_big
+           the date given is after 9999-12-31_23:59:59.999999_GMT.
+
+     error_table_$dt_date_too_small
+           the date given is before 0001-01-01_00:00:00.000000_GMT.
+
+     error_table_$unimplemented_version
+           a structure is not a version this procedure can handle.
+
+     error_table_$unknown_zone
+           the time zone specified by the caller was not found in
+           time_info_.
+
+  NOTES
+
+  See the notes under  date_time_$from_clock for the description of
+  the time_value structure.
+
+  "day"  (as  opposed  to "time")  data  is only  valid  in certain
+  combinations.  This table shows with  the *'s which fields may be
+  present together.  All others must be zero.
+
+                  +-1-+-2-+-3-+-4-+
+    time_value.yc | * | * |   |   |  In cases 1, 2, &amp; 4, if dw is
+
+
+  __________                                             __________
+
+  date_time_                                             date_time_
+  __________                                             __________
+
+    time_value.my | * |   |   |   |  present,  it is used to verify
+    time_value.dm | * |   |   |   |  the value converted.
+    time_value.fw |   |   | * |   |
+    time_value.dw |   |   |(*)|   |  In case 3 it actually defines
+    time_value.dy |   | * |   |   |  a day.  If not present, Monday
+    time_value.dc |   |   |   | * |  is assumed.
+                  +-v-+-v-+-v-+-v-+
+                    |   |   |   +-clock_days = dc
+                    |   |   +-----clock_days = converted (fw,dw)
+                    |   +---------clock_days = converted (yc,dy)
+                    +-------------clock_days = converted (yc,my,dm)
+
+  Entry:  date_time_$valid_format
+
+  This entry checks the validity of a format string using precisely
+  the same tests as date_time_$format.
+
+  USAGE
+
+     declare date_time_$valid_format entry (char(*), fixed bin,
+        fixed bin(35));
+
+     call date_time_$valid_format (format, errloc, code);
+
+  ARGUMENTS
+
+  format
+     either a keyword, or an ioa-like control string describing the
+     desired  result in  terms of literal  characters and date/time
+     selectors.  (Input)
+
+  errloc
+     is the  character index in  the format string  where the error
+     occured.  (Output) This is meaningful  only if it and code are
+     both non-zero.
+
+  code (output)
+     is a standard  status code.  It can have  one of the following
+     values--
+
+     error_table_$dt_bad_format_selector
+           unrecognized selector in format string.
+
+     error_table_$bad_conversion
+           a conversion condition occurred while trying to convert
+           a value.
+
+
+  __________                                            ___________
+
+  date_time_                                            request_id_
+  __________                                            ___________
+
+     error_table_$dt_no_format_selector
+           the format string contains no selectors and is not a
+           known keyword.
+
+     error_table_$picture_bad
+           the picture supplied is in error.
+
+     error_table_$picture_scale
+           the picture scale factor not in the range -128:+127.
+
+     error_table_$picture_too_big
+           the normalized picture exceeds 64 characters.
+
+     error_table_$size_error
+           the size condition occurred during processing.
+
+     error_table_$unimplemented_version
+           a structure is not a version this procedure can handle.
+
+|             ________________________________________
+
+| Name: request_id_
+
+| Given a Multics standard clock  value, this entry point returns a
+| char(19)   formatted  date   (expressed  in  GMT)   in  the  form
+| "^yc^my^dm^Hd^MH^99.999999UM",      e.g.      830718105806.808512
+| (yymmddHHMMSS.SSSSSS)  This is  a request id  as used  by ear and
+| eor.
+
+| USAGE
+
+|    declare request_id_ entry(fixed bin(71)) returns(char(19));
+
+|    result = request_id_ (clock);
+
+| ARGUMENTS
+
+| clock
+|    is the clock value to be formatted.  (Input)
+
+| result
+|    is the resultant character string.  (Output)
+
+
+
+                              SECTION 3
+
+                              COMMANDS
+
+              ________________________________________
+
+  Name: calendar_clock
+
+  SYNTAX AS A COMMAND
+
+  calendar_clock {date_time_words} {-control_args}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [calendar_clock {date_time_words} {-control_args}]
+
+  FUNCTION:
+  returns the complete clock value  from the 4-digit year down thru |
+  the  microsecond in  a sequence  which allows  direct comparison, |
+  e.g., "1982-12-23__18:06:30.421857_gmt_Thu" The  format string to |
+  produce this is "^9999yc-^my-^dm__^Hd:^MH:^99.(6)9UM_^za_^da".    |
+
+  ARGUMENTS
+
+  date_time_words
+     these arguments  indicate the date about  which information is
+     desired.   If  none are  present,  the current  time  is used.
+     These arguments  are concatenated into a  date/time string and
+     passed  to   convert_date_to_binary_.   These  words   may  be
+     interspersed with control args, i.e.  "gmt -zone gmt 10:00".
+
+
+  ______________                                              _____
+
+  calendar_clock                                              clock
+  ______________                                              _____
+
+  CONTROL ARGUMENTS
+
+  -language STR, -lang STR
+     STR  specifies the  language in  which month-names, day-names,
+     and zone-names are to be expressed.  The default is ENGLISH.
+
+  -zone STR
+     STR  specifies the  zone which  is to  be used  to express the
+     result.  The default is GMT
+|     (Greenwich Mean Time).
+
+  NOTES
+
+  Use  the  print_time_defaults  command  to  display  the  default
+  language and zone.
+
+              ________________________________________
+
+  Name: clock
+
+  SYNTAX AS A COMMAND
+
+  clock FORMAT {date_time_words} {-control_args}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [clock FORMAT {date_time_words} {-control_args}]
+
+  FUNCTION:
+| returns a string whose content is entirely controlled by specifi-
+| cations in the FORMAT string.
+
+  ARGUMENTS
+
+  FORMAT
+     an ioa_-like  control string describing the  desired result in
+     terms of  literal characters and/or  date/time selectors.  See
+     MPM Reference Guide for a description of this control string.
+
+
+  _____                                                        ____
+
+  clock                                                        date
+  _____                                                        ____
+
+  date_time_words
+     these arguments  indicate the date about  which information is
+     desired.   If  none are  present,  the current  time  is used.
+     These arguments  are concatenated into a  date/time string and
+     passed  to   convert_date_to_binary_.   These  words   may  be
+     interspersed with control args, i.e.  "gmt -zone gmt 10:00".
+
+  CONTROL ARGUMENTS
+
+  -language STR, -lang STR
+     STR  specifies the  language in  which month-names, day-names,
+     and  zone-names  are  to  be expressed.   The  default  is the
+     process default.
+
+  -zone STR
+     STR  specifies the  zone which  is to  be used  to express the
+     result.  The default is the process default.
+
+  NOTES
+
+  Use  the  print_time_defaults  command  to  display  the  default
+  language and zone.
+
+              ________________________________________
+
+  Name: date
+
+  SYNTAX AS A COMMAND
+
+  date {date_time_words} {-control_args}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [date {date_time_words} {-control_args}]
+
+  FUNCTION:
+  returns  a date  of the  form "mm/dd/yy",  e.g., "12/23/82".  The |
+  format string to produce this is "^my/^dm/^yc".                   |
+
+
+  ____                                                    _________
+
+  date                                                    date_time
+  ____                                                    _________
+
+  ARGUMENTS
+
+  date_time_words
+     these arguments  indicate the date about  which information is
+     desired.   If  none are  present,  the current  time  is used.
+     These arguments  are concatenated into a  date/time string and
+     passed  to   convert_date_to_binary_.   These  words   may  be
+     interspersed with control args, i.e.  "gmt -zone gmt 10:00".
+
+  CONTROL ARGUMENTS
+
+  -zone STR
+     STR  specifies the  zone which  is to  be used  to express the
+     result.  The default is the process default.
+
+  NOTES
+
+  Use the print_time_defaults command to display the default zone.
+
+| Due to exec_coms, etc.  which have been built around the expected
+| date format, this command does  not honor the process date format
+| (set  by set_time_default).   Users are encouraged  to use "clock
+| date"  in  place  of  this  command  to  get  the  proper default
+| handling.
+
+              ________________________________________
+
+  Name: date_time
+
+  SYNTAX AS A COMMAND
+
+  date_time {date_time_words} {-control_args}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [date_time {date_time_words} {-control_args}]
+
+  FUNCTION:
+  returns a  date and time  value for a specified  date-time or the
+* current  date-time consisting  of a date,  a time  from 0000.0 to
+
+
+  _________                                               _________
+
+  date_time                                               date_time
+  _________                                               _________
+
+  2359.9, a  time zone, and a  day of the week.   The date and time
+  value  is  returned  as  a  single,  quoted  string  of  the form |
+  "mm/dd/yy  hhmm.m  zzzzwww",   e.g.   "06/01/84  0840.9 mst Fri". |
+  The      format      string      to      produce      this     is |
+  "^my/^dm/^yc  ^Hd^99v.9MH ^xxxxza^xxxda".                         |
+
+  ARGUMENTS
+
+  date_time_words
+     these arguments  indicate the date about  which information is
+     desired.   If  none are  present,  the current  time  is used.
+     These arguments  are concatenated into a  date/time string and
+     passed  to   convert_date_to_binary_.   These  words   may  be
+     interspersed with control args, i.e.  "gmt -zone gmt 10:00".
+
+  CONTROL ARGUMENTS
+
+  -language STR, -lang STR
+     STR  specifies the  language in  which month-names, day-names,
+     and  zone-names  are  to  be expressed.   The  default  is the
+     process default.
+
+  -zone STR
+     STR  specifies the  zone which  is to  be used  to express the
+     result.  The default is the process default.
+
+  NOTES
+
+  Use  the  print_time_defaults  command  to  display  the  default
+  language and zone.
+
+  Due to exec_coms, etc.  which have been built around the expected |
+  date_time  format,  this  command  does  not  honor  the  process |
+  date_time format (set by set_time_default).  Users are encouraged |
+  to  use "clock  date_time" in  place of  this command  to get the |
+  proper default handling.                                          |
+
+
+  __________________                             __________________
+
+  date_time_interval                             date_time_interval
+  __________________                             __________________
+
+  Names: date_time_interval, dti
+
+  SYNTAX AS A COMMAND
+
+  dti {date1} date2 {-control_args}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [dti {date1} date2 {-control_args}]
+
+  FUNCTION:
+  returns  the difference  between 2  date values,  relative to the
+  first, in offset terms:
+    "0 yr 0 mo -2 da -6 hr 0 min -4.64 sec"
+  The user is  able to specify that the result  be only in terms of
+  certain units.
+
+  ARGUMENTS
+
+  date1
+     is  the  beginning of  the  interval.  If  not  specified, the
+     current time is used.
+
+  date2
+     is the  end of the interval.   If the end is  earlier than the
+     beginning, all numbers will be preceeded by a minus sign.
+
+  CONTROL ARGUMENTS
+
+  -brief, -bf
+     specifies that the units displayed  will be in the abbreviated
+     form (Default).
+
+  -fractional_digits {N}, -fd {N}
+     specifies  the  maximum  number  of  fractional  digits  to be
+|    included on  the smallest unit.  The  value being formatted is
+|    rounded to the number of digits specified.  All trailing zeros
+     are removed and  then the decimal point if it  is last.  N may
+|    not  exceed 20.   Default is  2.  If  N is  not specified, the
+     maximum is used.
+
+
+  __________________                             __________________
+
+  date_time_interval                             date_time_interval
+  __________________                             __________________
+
+  -zero_units, -zu
+     specifies that all units will be output even if their value is
+     zero.
+       Example:  "2 da 0 hr 0 min 4.2 sec"
+
+  -language STR, -lang STR
+     STR  specifies  the  language in  which  the result  is  to be
+     expressed.  This may  be in any of the  languages known to the
+     date/time system.  If STR is "system_lang", the system default
+     is  used.   If this  control argument  is not  given or  it is
+     present with STR being "", the per-process default is used.
+
+  -long, -lg
+     specifies   that   the  units   displayed   will  be   in  the
+     singular/plural form.
+
+  -no_zero_units, -nzu
+     specifies that any unit which has  a value of zero will not be
+     included in the  output.  However, if all units  are zero, the
+     smallest will be shown with the value of "0".  (Default)
+       Example:  "2 da 4.2 sec"
+
+  -units STRs
+     specifies  that the  result is to  be expressed in  terms of a
+     given  set of  units.  All  arguments following  -units on the
+     command line are taken as the  set of units to use.  Therefore
+     -units, if present, must be the last control argument present.
+     The units may be entered in any language available on the site
+     and  in any  order.  All units,  however, must be  in the same
+     language.  These are the units which may be specified:
+           year month week day hour minute second microsecond
+     The output will appear in the order shown in the list above.
+
+  NOTES
+
+  When no units have been specified, this set is used:
+     years months days hours minutes seconds
+  A default result could look like this:
+   "-2 da -6 hr -4.05 sec"
+  But if the arguments given were:
+    -fd -units hr min
+  the same interval could be:
+   -54 hr -0.0676252166666666666 min                                |
+
+  Note  there is  a truncation in  the first instance  to 2 decimal
+  places with the corresponding loss of accuracy.
+
+
+  ___                                                           ___
+
+  day                                                           day
+  ___                                                           ___
+
+  Name: day
+
+  SYNTAX AS A COMMAND
+
+  day {date_time_words} {-control_args}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [day {date_time_words} {-control_args}]
+
+  FUNCTION:
+| returns a one- or two-digit number of  a day of the month, from 1
+| thru 31.  The format string to produce this is "^Z9dm".
+
+  ARGUMENTS
+
+  date_time_words
+     these arguments  indicate the date about  which information is
+     desired.   If  none are  present,  the current  time  is used.
+     These arguments  are concatenated into a  date/time string and
+     passed  to   convert_date_to_binary_.   These  words   may  be
+     interspersed with control args, i.e.  "gmt -zone gmt 10:00".
+
+  CONTROL ARGUMENTS
+
+  -zone STR
+     STR  specifies the  zone which  is to  be used  to express the
+     result.  The default is the process default.
+
+  NOTES
+
+  Use the print_time_defaults command to display the default zone.
+
+
+  ________                                                 ________
+
+  day_name                                                 day_name
+  ________                                                 ________
+
+  Name: day_name
+
+  SYNTAX AS A COMMAND
+
+  day_name {date_time_words} {-control_args}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [day_name {date_time_words} {-control_args}]
+
+  FUNCTION:
+  returns the full  name of a day of the  week for a specified date |
+  or the current date.  The format string to produce this is "^dn". |
+
+  ARGUMENTS
+
+  date_time_words
+     these arguments  indicate the date about  which information is
+     desired.   If  none are  present,  the current  time  is used.
+     These arguments  are concatenated into a  date/time string and
+     passed  to   convert_date_to_binary_.   These  words   may  be
+     interspersed with control args, i.e.  "gmt -zone gmt 10:00".
+
+  CONTROL ARGUMENTS
+
+  -language STR, -lang STR
+     STR  specifies the  language in  which month-names, day-names,
+     and  zone-names  are  to  be expressed.   The  default  is the
+     process default.
+
+  -zone STR
+     STR  specifies the  zone which  is to  be used  to express the
+     result.  The default is the process default.
+
+  NOTES
+
+  Use  the  print_time_defaults  command  to  display  the  default
+  language and zone.
+
+
+  _________________                               _________________
+
+  display_time_info                               display_time_info
+  _________________                               _________________
+
+  Names: display_time_info, dsti
+
+  SYNTAX AS A COMMAND
+
+  dsti -control_args
+
+  FUNCTION:
+  This command displays information selected from time_info_.
+
+  CONTROL ARGUMENTS
+
+  -all, -a
+     specifies all data are to be printed.
+
+  -day
+     asks for a list of all the day names.
+
+  -format, -fmt
+     asks for  a list of all  the named formats known  on the site.
+     These  are names  which may  be given  to date_time_$format in
+     place  of  an  explicit  format string.   This  list  does not
+     include  "date",  "date_time",  and  "time"  as  they  are not
+     contained in time_info_.  Use print_time_defaults to see them.
+
+  -language, -lang
+     asks for a  list of all the time  languages available, showing
+     the name of  each language IN each language.   This form would
+     usually be used alone to enable a person to see what languages
+     she can refer to.
+
+  -language STR, -lang STR
+     asks for the output to be  given in language STR.  The default
+     is to show requested data in the process default language.
+
+  -map
+     asks for  a time zone map  of the world, with  all the defined
+     time  zones and  their offsets.   Each zone  is at  its proper
+     place on  this map.  The map  is horizontally broken according
+     to the linelength currently in effect.
+
+  -month
+     asks for a list of all the month names.
+
+
+  _________________                                            ____
+
+  display_time_info                                            hour
+  _________________                                            ____
+
+  -offset
+     asks for all the offset words to be printed.
+
+  -table STR, -tb STR
+     STR specifies the pathname of  the table to be displayed.  The
+     default is the reference name "time_info_".
+
+  -token {STR}
+     Displays  the structure  used for binary  searching the tokens
+     declared  in  the table.   The display  shows all  words, with
+     their meanings,  in all languages, grouped  by token.  A token
+     is a word converted to lowercase.   If STR is given, then only
+     the  data for  that token  is shown.   Since STR  represents a
+     token and not a word, it must be entered in lowercase.
+
+  -word
+     asks for all of the miscellaneous words to be printed.
+
+  -zone
+     asks for a list of all the zones available.
+
+              ________________________________________
+
+  Name: hour
+
+  SYNTAX AS A COMMAND
+
+  hour {date_time_words} {-control_args}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [hour {date_time_words} {-control_args}]
+
+  FUNCTION:
+  returns the one- or two-digit number  of an hour of the day, from |
+  0 to 23.  The format string to produce this is "^Z9Hd".           |
+
+  ARGUMENTS
+
+  date_time_words
+     these arguments  indicate the date about  which information is
+     desired.   If  none are  present,  the current  time  is used.
+
+
+  ____                                                    _________
+
+  hour                                                    long_date
+  ____                                                    _________
+
+     These arguments  are concatenated into a  date/time string and
+     passed  to   convert_date_to_binary_.   These  words   may  be
+     interspersed with control args, i.e.  "gmt -zone gmt 10:00".
+
+  CONTROL ARGUMENTS
+
+  -zone STR
+     STR  specifies the  zone which  is to  be used  to express the
+     result.  The default is the process default.
+
+  NOTES
+
+  Use the print_time_defaults command to display the default zone.
+
+              ________________________________________
+
+  Name: long_date
+
+  SYNTAX AS A COMMAND
+
+  long_date {date_time_words} {-control_args}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [long_date {date_time_words} {-control_args}]
+
+  FUNCTION:
+| returns a month name, a day number, and a year as a single string
+| in  the  form "month  day,  year", e.g.,  November 2,  1976.  The
+| format string to produce this is "^mn ^dm, ^9999yc".
+
+  ARGUMENTS
+
+  date_time_words
+     these arguments  indicate the date about  which information is
+     desired.   If  none are  present,  the current  time  is used.
+     These arguments  are concatenated into a  date/time string and
+     passed  to   convert_date_to_binary_.   These  words   may  be
+     interspersed with control args, i.e.  "gmt -zone gmt 10:00".
+
+
+  _________                                               _________
+
+  long_date                                               long_year
+  _________                                               _________
+
+  CONTROL ARGUMENTS
+
+  -language STR, -lang STR
+     STR  specifies the  language in  which month-names, day-names,
+     and  zone-names  are  to  be expressed.   The  default  is the
+     process default.
+
+  -zone STR
+     STR  specifies the  zone which  is to  be used  to express the
+     result.  The default is the process default.
+
+  NOTES
+
+  Use  the  print_time_defaults  command  to  display  the  default
+  language and zone.
+
+              ________________________________________
+
+  Name: long_year
+
+  SYNTAX AS A COMMAND
+
+  long_year {date_time_words} {-control_args}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [long_year {date_time_words} {-control_args}]
+
+  FUNCTION:
+  returns the  four-digit number of  a year in the  clock from 0001 |
+  thru 9999.  The format string to produce this is "^9999yc".       |
+
+  ARGUMENTS
+
+  date_time_words
+     these arguments  indicate the date about  which information is
+     desired.   If  none are  present,  the current  time  is used.
+     These arguments  are concatenated into a  date/time string and
+     passed  to   convert_date_to_binary_.   These  words   may  be
+     interspersed with control args, i.e.  "gmt -zone gmt 10:00".
+
+
+  _________                                                  ______
+
+  long_year                                                  minute
+  _________                                                  ______
+
+  CONTROL ARGUMENTS
+
+  -zone STR
+     STR  specifies the  zone which  is to  be used  to express the
+     result.  The default is the process default.
+
+  NOTES
+
+  Use the print_time_defaults command to display the default zone.
+
+              ________________________________________
+
+  Name: minute
+
+  SYNTAX AS A COMMAND
+
+  minute {date_time_words} {-control_args}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [minute {date_time_words} {-control_args}]
+
+  FUNCTION:
+| returns  the one-  or two-digit number  of a minute  of the hour,
+| from 0 to 59.  The format string to produce this is "^Z9MH".
+
+  ARGUMENTS
+
+  date_time_words
+     these arguments  indicate the date about  which information is
+     desired.   If  none are  present,  the current  time  is used.
+     These arguments  are concatenated into a  date/time string and
+     passed  to   convert_date_to_binary_.   These  words   may  be
+     interspersed with control args, i.e.  "gmt -zone gmt 10:00".
+
+
+  ______                                                      _____
+
+  minute                                                      month
+  ______                                                      _____
+
+  CONTROL ARGUMENTS
+
+  -zone STR
+     STR  specifies the  zone which  is to  be used  to express the
+     result.  The default is the process default.
+
+  NOTES
+
+  Use the print_time_defaults command to display the default zone.
+
+              ________________________________________
+
+  Name: month
+
+  SYNTAX AS A COMMAND
+
+  month {date_time_words} {-control_args}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [month {date_time_words} {-control_args}]
+
+  FUNCTION:
+  returns the one- or two-digit number of a month of the year, from |
+  1 to 12.  The format string to produce this is "^Z9my".           |
+
+  ARGUMENTS
+
+  date_time_words
+     these arguments  indicate the date about  which information is
+     desired.   If  none are  present,  the current  time  is used.
+     These arguments  are concatenated into a  date/time string and
+     passed  to   convert_date_to_binary_.   These  words   may  be
+     interspersed with control args, i.e.  "gmt -zone gmt 10:00".
+
+
+  _____                                                  __________
+
+  month                                                  month_name
+  _____                                                  __________
+
+  CONTROL ARGUMENTS
+
+  -zone STR
+     STR  specifies the  zone which  is to  be used  to express the
+     result.  The default is the process default.
+
+  NOTES
+
+  Use the print_time_defaults command to display the default zone.
+
+              ________________________________________
+
+  Name: month_name
+
+  SYNTAX AS A COMMAND
+
+  month_name {date_time_words} {-control_args}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [month_name {date_time_words} {-control_args}]
+
+  FUNCTION:
+| returns the full  name of a month of the  year (e.g.  "June") The
+| format string to produce this is "^mn".
+
+  ARGUMENTS
+
+  date_time_words
+     these arguments  indicate the date about  which information is
+     desired.   If  none are  present,  the current  time  is used.
+     These arguments  are concatenated into a  date/time string and
+     passed  to   convert_date_to_binary_.   These  words   may  be
+     interspersed with control args, i.e.  "gmt -zone gmt 10:00".
+
+
+  __________                                    ___________________
+
+  month_name                                    print_time_defaults
+  __________                                    ___________________
+
+  CONTROL ARGUMENTS
+
+  -language STR, -lang STR
+     STR  specifies the  language in  which month-names, day-names,
+     and  zone-names  are  to  be expressed.   The  default  is the
+     process default.
+
+  -zone STR
+     STR  specifies the  zone which  is to  be used  to express the
+     result.  The default is the process default.
+
+  NOTES
+
+  Use  the  print_time_defaults  command  to  display  the  default
+  language and zone.
+
+              ________________________________________
+
+  Names: print_time_defaults, print_time_default, ptd
+
+  SYNTAX AS A COMMAND
+
+  ptd {keys} {-control_arg}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [ptd key {-control_arg}]
+
+  FUNCTION:
+  This  command displays  system or  process time-related defaults.
+  If set_time_default has pushed any  values, these are also shown.
+  The keys  specify which defaults  to print.  When  called with no
+  keys,  all  time-related defaults  are  shown.  When  used  as an
+  active  function,  it returns  the  current value  of one  of the
+  defaults.
+
+  ARGUMENTS
+
+  key
+     selects which default value is to be displayed.
+
+
+  ___________________                           ___________________
+
+  print_time_defaults                           print_time_defaults
+  ___________________                           ___________________
+
+  CONTROL ARGUMENTS
+
+  -system, -sys
+     This requests that the system defaults be displayed instead of
+     the process defaults.
+
+  LIST OF keys
+
+  date
+     Display  the  default date  format.  A  date format  shows the
+     year, month, and day in month.
+
+  date_time
+     Display the default date/time format.  This combines both date
+     and time.
+
+  language, lang
+*    Display the  default language.  Any time  words in output time
+     strings will be in this language.
+
+  time
+     Display  the  default time  format.  A  time format  shows the
+     hour, minutes, and perhaps seconds.
+
+  zone
+     Display the default time  zone name.  Unless explicitly speci-
+     fied, all  input time strings will  be interpreted relative to
+     this  zone, and  all output time  values will  be expressed in
+     this zone.
+
+  NOTES
+
+  The values displayed are in this order:
+     date, date_time, time, language, zone.
+
+
+  _________________                               _________________
+
+  set_time_defaults                               set_time_defaults
+  _________________                               _________________
+
+  Names: set_time_defaults, set_time_default, std                   |
+
+  SYNTAX AS A COMMAND
+
+  std key value {-control_arg}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [std key value {-control_arg}]
+
+  FUNCTION:
+  This  command  sets a  default date/time  value for  the process.
+  When used as an active function,  it returns "true" if the action
+  requested was successful.  Otherwise, it returns "false".
+
+  ARGUMENTS
+
+  key
+     is a keyword representing the default to set.
+
+  value
+     is  a  value  to become  the  new  default.  If  the  value is
+     "-system"  (or "-sys"),  the system  default is  used.  If the
+     value is -pop, it uses a remembered value, saved by an earlier
+     setting with the  -push option.  It is an  error if no earlier
+     -push has been done.
+
+  CONTROL ARGUMENTS
+
+  -push
+     saves the current  value of the default before  setting to the
+     new value.
+
+  LIST OF keys
+
+  date
+     Set the process default date.  The value must be acceptable to
+     date_time_$format (see note below).                            |
+
+
+  _________________                                   _____________
+
+  set_time_defaults                                   set_time_zone
+  _________________                                   _____________
+
+  date_time
+     Set the process default date_time.   The value must be accept-
+|    able to date_time_$format (see note below).
+
+  language, lang
+     Set the process default language.  The language name may be in
+     any of the languages known to the date/time system.
+
+  time
+     Set the process default date.  The value must be acceptable to
+|    date_time_$format.  (see note below).
+
+  zone
+     Set the process default zone.  The zone abbreviation may be in
+     any of the languages known to the date/time system.
+
+| NOTES
+
+| The named  format strings acceptable to  date_time_$format may be
+| seen  by typing  "display_time_info -format".   The names "date",
+| "time", and "date_time" are not allowed in this context.
+
+              ________________________________________
+
+  Names: set_time_zone, stz
+
+  SYNTAX AS A COMMAND
+
+  stz {zone {offset}} {-control_arg}
+
+  FUNCTION:
+  This command (obsolete)  sets the default time zone  used in this
+  process.  Use set_time_default instead.
+
+  ARGUMENTS
+
+  zone
+     is the  zone name to be  used as the default  in this process.
+     This name must be present in time_info_.
+
+
+  _____________                                                ____
+
+  set_time_zone                                                time
+  _____________                                                ____
+
+  offset
+     is the difference in hours  between the time zone specified by
+     "zone" and  Greenwich Mean Time  (GMT) or Universal  Time (Z).
+     It  must match  the offset  found in  time_info_ for  the zone
+     named.
+
+  CONTROL ARGUMENTS
+
+  -system, -sys
+     causes  the user's  process to  use the  system default system
+     time zone.
+
+              ________________________________________
+
+  Name: time
+
+  SYNTAX AS A COMMAND
+
+  time {date_time_words} {-control_args}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [time {date_time_words} {-control_args}]
+
+  FUNCTION:
+  returns a  five-character time of  day of the  form "HH:MM", e.g. |
+  "16:15".  The format string to produce this is "^Hd:^MH".         |
+
+  ARGUMENTS
+
+  date_time_words
+     these arguments  indicate the date about  which information is
+     desired.   If  none are  present,  the current  time  is used.
+     These arguments  are concatenated into a  date/time string and
+     passed  to   convert_date_to_binary_.   These  words   may  be
+     interspersed with control args, i.e.  "gmt -zone gmt 10:00".
+
+
+  ____                                                         ____
+
+  time                                                         year
+  ____                                                         ____
+
+  CONTROL ARGUMENTS
+
+  -zone STR
+     STR  specifies the  zone which  is to  be used  to express the
+     result.  The default is the process default.
+
+  NOTES
+
+  Use the print_time_defaults command to display the default zone.
+
+| Due to exec_coms, etc.  which have been built around the expected
+| time format, this command does  not honor the process time format
+| (set  by set_time_default).   Users are encouraged  to use "clock
+| time"  in  place  of  this  command  to  get  the  proper default
+| handling.
+
+              ________________________________________
+
+  Name: year
+
+  SYNTAX AS A COMMAND
+
+  year {date_time_words} {-control_args}
+
+  SYNTAX AS AN ACTIVE FUNCTION
+
+  [year {date_time_words} {-control_args}]
+
+  FUNCTION:
+| returns  the two-digit  number of a  year of the  century from 00
+| thru 99.  The format string to produce this is "^yc".
+
+  ARGUMENTS
+
+  date_time_words
+     these arguments  indicate the date about  which information is
+     desired.   If  none are  present,  the current  time  is used.
+     These arguments  are concatenated into a  date/time string and
+     passed  to   convert_date_to_binary_.   These  words   may  be
+     interspersed with control args, i.e.  "gmt -zone gmt 10:00".
+
+
+  ____                                                         ____
+
+  year                                                         year
+  ____                                                         ____
+
+  CONTROL ARGUMENTS
+
+  -zone STR
+     STR  specifies the  zone which  is to  be used  to express the
+     result.  The default is the process default.
+
+  NOTES
+
+  Use the print_time_defaults command to display the default zone.
+
+
+
+                              CONTENTS
+
+                                                           Page
+
+  Section 3Naming, Command Language, and Terminal Usage .  3-1
+              Constructing and Interpreting Names . . . .  3-1
+              Date/Time Handling  . . . . . . . . . . . .  3-16
+                 Inputting Dates and Times  . . . . . . .  3-16
+                       Dates and Times:  A Brief History   3-22
+                 Outputting Dates and Times . . . . . . .  3-23
+                    Format Strings  . . . . . . . . . . .  3-24
+                 In and Out In No Time At All . . . . . .  3-31
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

@@ -1,0 +1,1659 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-612</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-612: Command Environment Extensions.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+
+To:       Distribution
+
+From:     Gregory A.  Baryza
+
+Date:     16 March 1983
+
+Subject:  Command Environment Extensions
+
+1.  Abstract
+
+This MTB describes  features and functions which can  be added to
+the present Multics command  processor as extensions.  They allow
+interpretive command  files (such as EC)  or special environments
+(such  as LISP)  to be  invoked as  if they  were commands.  This
+gives a  more uniform appearance  to the command  environment for
+end-users and  damps the effects of  changes in implementation on
+all users.
+
+Comments on this MTB should be sent to the author -
+
+     via Multics mail to:
+
+        Baryza.Multics
+
+     via posted mail to:
+
+        Gregory A.  Baryza
+        Honeywell Information Systems, Inc.
+        575 Technology Square
+        Cambridge, Massachusetts, U.S.A.   02139
+
+     via telephone to:
+
+        (HVN)-261-9315,
+        (617)-492-9315
+
+     via Multics forum on System-M:
+
+        &gt;udd&gt;Multics&gt;Baryza&gt;Online_Meetings&gt;CP_Extensions
+        &gt;udd&gt;m&gt;Baryza&gt;mtgs&gt;cpx
+
+             ________________________________________
+
+Multics project  internal documentation; not to  be reproduced or
+distributed outside the Multics project.
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+
+                        TABLE OF CONTENTS
+
+Section    Page  Subject
+=======    ====  =======
+
+1             i  Abstract
+2             1  Introduction
+3             2  Present Drawbacks and Limitations
+4             3  Outline of Proposed Solution
+4.1           3  . . Ground rules
+4.1.1         3  . . . . Command Syntax
+4.1.2         3  . . . . Localize Modifications
+4.1.3         3  . . . . Effects on Subsystems
+4.2           4  . . Nature of the Extension
+4.2.1         4  . . . . Search List Ordering
+4.2.2         4  . . . . Command Names
+4.2.3         5  . . . . Transforming the Command Line
+4.2.4         5  . . . . The commands search list
+4.2.5         6  . . . . Interaction with the Command Processor
+4.2.6         6  . . . . How Commands are to be Found
+4.3           7  . . Unresolved Issues
+4.3.1         7  . . . . Definition of the List
+4.3.2         8  . . . . Erroneously Specified Search Procedures
+4.3.3         8  . . . . Other Command Changes
+4.3.4         8  . . . . Archive Component Access
+4.3.5         9  . . . . Additions to Subsystem Commands
+5            10  Commands
+5            11  . . active_function_error
+5            14  . . command_error
+6            16  Entry Points
+6            18  . . XXX
+6            20  . . XXX$XXX_run
+6            21  . . XXX$XXX_search
+6            22  . . XXX$XXX_find_all
+6            23  . . XXX$XXX_info
+7            24  Subroutines
+7            25  . . cmds_sl_info_
+7            26  . . simple_cmd_search_
+7            28  . . simple_cmd_find_all_
+7            30  . . simple_invocation_
+8            31  Include Files
+8.1          31  . . cmd_pathnames.incl.pl1
+8.2          32  . . cmd_search_info.incl.pl1
+9            33  Sample Command Starter
+10           36  Demonstration Facility
+10.1         36  . . Implementation Status
+10.2         37  . . Metering
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+
+2.  Introduction
+
+The present  Multics command processor  distinguishes between two
+classes  of  objects  in  the  virtual  memory:   those  that are
+directly executable (i.e.  object segments), and everything else.
+Objects  in  the first  class  can be  started running  merely by
+typing  their name  because conventions have  been established to
+find  out where  their initial  instruction is,  supply them with
+virtual  memory space,  make their arguments  accessible to them,
+and so on.
+
+However,   many   items   in   the  larger,   second   class  are
+"instructions" also  in a higher-level sense.   They are commands
+to some interpreter (exec_com, ted, linus, etc.)  which functions
+logically   as  an   abstract  machine.   In   these  cases,  the
+interpreter is a member of the first type described above, and is
+started executing by the command processor through the invocation
+of  its name.   One of its  arguments is the  file containing its
+instructions.
+
+This  dichotomy in  execution styles  is effectively  masked from
+many users due  to the presence of the  Multics abbrev processor.
+Rather than typing
+
+     ec  foo  arg1  arg2  ..
+
+each  time,  "foo" will  be made  to  look like  a command  via a
+definition to the abbrev processor of the form
+
+     .ab  foo  exec_com  foo
+
+or  one  of similar  complexity.   Default arguments  or oft-used
+options are frequent partners in this scenario.  Indeed, it would
+surprise no  one if this  were to be  found as the  most frequent
+raison d'etre for abbrev.
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+
+3.  Present Drawbacks and Limitations
+
+The use of abbrev for the  purpose of masking the indirectness of
+command files, while very useful,  still leaves some things to be
+desired.
+
+     1) The   profile   segments   that   contains   each  user's
+        abbreviations cannot be nested.   There is no search list
+        to  say that  the abbrev  processor should,  for example,
+        first  look  in  my  own profile,  then  in  one  or more
+        profiles  located  elsewhere in  the  system.  Presently,
+        each user has  a copy of the abbrev  definition line in a
+        local profile.  More sophisticated users may have several
+        specialized    profiles    with    common   abbreviations
+        duplicated.
+
+     2) The processing  power available in  abbrev definitions is
+        limited  to simple  text substitution.   More complicated
+        needs  often resort  to invocations  of the  "do" command
+        and/or "exec_com".
+
+     3) A  change on  the implementation of  an invoked "command"
+        can have widespread effects on the abbrevs used to get it
+        going.  For example, in large applications systems, it is
+        common  to "bread-board"  infrequently used  commands via
+        exec_coms.   In  these  cases,  the  fact  that  they are
+        exec_coms is disguised by also having the end-user create
+        an  abbreviation to  invoke it  as a  command.  When this
+        "command" is later converted  to compiled code, care must
+        be taken  to eventually get all  the abbrevs removed from
+        end-user's profiles.
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+
+4.  Outline of Proposed Solution
+
+This  section  summarizes  the  ground  rules  for  the  proposed
+solution  and  indicates  the  general nature  of  the extensions
+necessary  to   make  this  happen.    It  also  tries   to  give
+implementation choices and areas which are open to further study.
+
+4.1.  Ground rules
+
+4.1.1.  Command Syntax
+
+The  present Multics  command syntax  will not  change.  In fact,
+most of  the present Multics  command processor will  not change.
+There are about  a dozen lines of code that  do the external call
+to find a  Multics command and invoke it.   These will be changed
+to  use  the  extension  facility, but  the  user  should  see no
+difference.(1)
+
+Note also that  this change is being made as  an extension of the
+standard Multics command processor.   Therefore, nothing will get
+in the way of user-written replacements, and abbrevs can still be
+employed as they are now.
+
+4.1.2.  Localize Modifications
+
+The  implementation of  this extension  will try  to minimize the
+effects on the rest of the system.  There are changes which could
+be made to the search  facility, for example, which would greatly
+assist this effort.  However, a  workable product can be designed
+and installed with the search paths as they exist.  Therefore, no
+such changes  have been proposed.   The only things  affected are
+those in the path of command procedure location and execution.
+
+             ________________________________________
+
+(1) It is acknowledged that it will take longer under this scheme
+    to determine that a given string  is not, in fact, a command.
+    Depending  on the  system's response  time, the  user may see
+    this effect.
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+
+4.1.3.  Effects on Subsystems
+
+Those applications now employing  ssu_ for their internal command
+processing will see no difference.  The extensions mentioned here
+will not  be available unless explicitly  referenced.  The single
+exception is, of course, the use  of ".."  to escape to the full,
+and therefore extended, Multics command processor.
+
+4.2.  Nature of the Extension
+
+4.2.1.  Search List Ordering
+
+In order to  locate the object which is to  be "run" as a Multics
+command, there will  have to be some way of  finding it.  This is
+presently controlled by the order of directories(1) in the search
+rules.  There is only one list to look through, and only one kind
+of thing to look for.
+
+Since the  intent of the  extension is to  allows exec_com files,
+ted macros,  LISP environments, etc.  to  be invoked as commands,
+it seems proper to go about  finding these objects in like manner
+to object segments.  The mechanism for doing this already exists:
+the  search_path_  entries.   In  fact,  this  is  the  discovery
+mechanism which will be used.
+
+The meta-problem  of what order to  utilize existing search lists
+will  be solved  by the creation  of a(nother)  search list which
+specifies  this precedence.   However, it will  be done  so as to
+avoid  the  obvious  recursion   trap.   The  system's  (somewhat
+spurious) distinction between search  paths and search rules will
+also be cosmetically disguised.  This will resolve, on a per-user
+basis, whether  exec_coms get recognized  before object segments,
+and also resolve which kinds of names can designate commands.  It
+also  allows  users  to  build their  own  interpreters  and have
+command  files   for  them  found  and   interpreted  via  common
+interfaces.
+
+             ________________________________________
+
+(1) Properly speaking,  "initiated segments" is  not a directory.
+    Neither is "-referencing_dir", except in a generic sense.
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+
+4.2.2.  Command Names
+
+Besides  stipulating  the order  of the  other search  lists, the
+extension must know  what suffix is to be  optionally appended to
+the command name so that  search_paths_ can locate it.  There are
+two reasons for  this.  First, the suffix name  is not always the
+name  of the  command.  Exec_com files  end in ".ec",  but not so
+with  the  list maintenance  panoply:  lister,  listin, listform.
+Second,  this additional  information is  necessary if  we are to
+support  user-defined interpreters  which have  unpredictable, or
+null, suffices.
+
+4.2.3.  Transforming the Command Line
+
+Using an exec_com  invocation as an example, it  is apparent that
+locating  the  file  of  commands is  not  sufficient.   In fact,
+finding the file serves for  little more than establishing that a
+command exists.  In  the case of exec_com, the  command line must
+be  transformed  by  changing  the command  name  into  the first
+argument of the argument list.  Other arguments must be displaced
+one ordinal position upward.(1)
+
+For  more  complex or  for user-written  interpreters, additional
+reworking  of  the arguments  given  on the  command line  may be
+needed.  Thus,  it seems desirable  to define one  other piece of
+information:   a procedure  to prepare the  desired argument list
+and forward the call to the target executable module.
+
+4.2.4.  The commands search list
+
+The  mechanism employed  to define  the order  of the  search for
+"commands" will be a search  list.  It will be called "commands".
+The search  paths which are  its members will  specify procedures
+which will  be invoked in  order to locate commands  and to start
+them executing.(2)  Specifying object segments  to do the work of
+command location avoids the recursion problem because the command
+search list cannot reference  itself without considerable work on
+the part of the user.
+
+             ________________________________________
+
+(1) While this is the most  common expected transformation, it is
+    not the only one which might be imagined.
+
+(2) Note  that  the dictionary  search  list already  has segment
+    paths  as its  members and MTB-565  provides for considerably
+    more general objects as members of a search list.
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+
+4.2.5.  Interaction with the Command Processor
+
+It appears that,  in addition to the coding  changes necessary to
+implement  the extensions  in the command  processor, several new
+commands are necessary.
+
+These  represent additions  to the  interpretive repertoire which
+bring its capabilities up to  those of objects segments.  Many of
+them mimic actions performed  by standard system subroutines.  An
+example of  this is the active_fnc_err_  subroutine.  It is used,
+among other things,  to notify the user that  a serious error has
+occurred.    It   does   this   by   signalling   the  condition,
+"active_function_error".   The  default error  handling  for this
+condition suspends the execution of the procedure, and returns to
+a new command level so that (presumably) corrective action can be
+taken.
+
+This  capability  is  not  presently  available  to  things  like
+exec_com files.  Yet,  if they are to be  invoked from the user's
+point of view as active  functions, this functionality is needed.
+Without it, interpretive execution will remain a poor relative as
+far as command development is concerned.  It should also be noted
+that  this  capability is  especially  important in  the absentee
+environment where establishing a new command level while handling
+a command error is grounds for process termination.
+
+4.2.6.  How Commands are to be Found
+
+At  this point,  it seems worthwhile  to give the  rules by which
+command  names   are  interpreted.   This   will  illustrate  the
+interaction  between  what  the  user types  and  what  nooks and
+crannies are examined  for the existence of a  command.  They are
+applied in the order given.
+
+     1) If the user types a command name containing an entrypoint
+        name,  only  the  subroutine  "find_command_"  is called.
+        This means that names of the  form, A$B, act like they do
+        now.  They may only be used to invoke compiled (or bound)
+        object  segments.   The rationale  for  this is  that, by
+        Multics convention, this  form applies almost exclusively
+        to  object  segments.   Hence,  there  is  no  purpose in
+        looking for  anything but object  segments.  Furthermore,
+        this rule  applies even when  the "A" part  consists of a
+        relative or absolute pathname.
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+
+     2) Otherwise,  the  name given  is  an absolute  or relative
+        pathname, or  merely a "simple" name.   In this case, the
+        procedures will be called in the order they are specified
+        in  the "commands"  search list,  and supplied  with data
+        from the  command processor's parse of  the command line.
+        Each procedure is expected  to interpret the command name
+        in the following manner.
+
+        A) If  the  command  name  typed contains  a  relative or
+           absolute pathname,  only the specified  directory will
+           be searched.  The subroutine,
+
+                expand_pathname_$add_suffix
+
+           will be used  to form the names.  If  the segment does
+           not exist, the procedure will report failure.
+
+        B) If the  name is not  a pathname, an  attempt to locate
+           that name will be made via a call to
+
+                search_paths_$find_dir
+
+           The  particular search  list used  will depend  on the
+           procedure  doing  the searching.(1)   If it  cannot be
+           located, the procedure reports failure.
+
+In all cases, the searching process will terminate as soon as the
+first   eligible  candidate   is  found.(2)    Upon  finding  the
+appropriate command segment, the procedure which found it will be
+responsible for:
+
+     1) finding  the  object  segment  in the  file  system which
+        interprets this command segment,
+
+     2) transforming  the  argument  list parsed  by  the command
+        processor in a suitable fashion,
+
+             ________________________________________
+
+(1) The  searching procedures  themselves are the  members of the
+    "commands" search list
+
+(2) Eligibility  will  continue to  be determined  as it  is now,
+    i.e.,   by   a   successful   access   of   the   object  via
+    hcs_$status_minf.
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+
+     3) invoking the  object segment identified  above and giving
+        it the transformed argument list to work on.
+
+4.3.  Unresolved Issues
+
+4.3.1.  Definition of the List
+
+Since this is being proposed as an extension, it is possible that
+the  "commands"  search  list will  be  included as  part  of the
+system's standard search lists.   However, deletion of the search
+list  may  cause problems.   It appears  appropriate to  have the
+command  processor's  behavior in  the  absence of  this  list be
+identical to its present actions.
+
+4.3.2.  Erroneously Specified Search Procedures
+
+Since  the  user  may  presently  place  any  pathname  into  the
+"commands" search list, there is the  question of what to do when
+that pathname points at an unsuitable object (e.g.  one that does
+not  have all  the required  entry points).   Each time  the user
+issues a command,  the command processor will attempt  to use the
+procedures  named  in  the   "commands"  search  list  to  locate
+commands.  If one or more of  these are unusable, the user should
+be told the reason.  Warning the user at every command invocation
+seems a  bit heavy-handed.  Not  saying anything and  just trying
+the next  item in the  list may appear  to be too  forgiving.  As
+noted previously, MTB-565 seems to hold a solution for this also.
+
+4.3.3.  Other Command Changes
+
+There are several commands which must be changed if this facility
+is installed.  The  most obvious one is the  "where" command.  It
+will have to  be modified to use the  same (new) command location
+routines  as  the command  processor.   There are  probably other
+commands with similar problems.
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+
+4.3.4.  Archive Component Access
+
+It is an open issue  whether the routines described herein should
+search  archives as  part of  their normal  business.  While this
+would  make  packaging of  exec_com libraries  easier, it  is not
+clear  what  the   cost/benefit  trade-offs  or  representational
+problems are.  The "ec" command  presently does not allow archive
+components  as  part of  its first  argument.  However,  with the
+mechanism proposed  here, it would be  possible to fake execution
+from archives as far as the user was concerned.
+
+4.3.5.  Additions to Subsystem Commands
+
+In  many  ways,  this  extension  would  also  be  useful  in the
+subsystem  environment for  the same  reasons it  is proposed for
+normal  commands.  How  this is to  be done  within the subsystem
+confines has not been thoroughly studied.
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+
+5.  Commands
+
+The following  pages describe several commands  which are used to
+augment the facilities available to interpreted programs.  Please
+note that  these commands are useful  in themselves regardless of
+the attractiveness of the  command processor extensions described
+herein.
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+_____________________                       _____________________
+
+active_function_error                       active_function_error
+_____________________                       _____________________
+
+SYNTAX AS A COMMAND:
+
+   active_function_error {code {name {error_msg {arg1 ...}}}}
+
+FUNCTION:   Invokes the  active_fnc_err_ subroutine  from command
+level using the arguments supplied on the command line.
+
+ARGUMENTS:
+
+code
+   is a  character string which represents  the error status code
+   to  be  used  in  reporting  the  error.   See  below  for its
+   construction and interpretation.
+
+name
+   is the name  of the procedure or program  on whose behalf this
+   error status is being reported
+
+error_msg
+   is  a control  string acceptable  to ioa_.   It is  used as an
+   elaboration of the error status message accompanying the error
+   code defined as the first argument.
+
+argi
+   are  character  strings  to  be substituted  into  the control
+   string  defined  by  "error_msg".   For  further  details, the
+   reader is  referred to the ioa_description  in the Subroutines
+   Manual (AG92).
+
+NOTES:
+
+Before invoking the active_fnc_err_ subroutine, the code given as
+the first argument must be found and converted into an acceptable
+form.   Its internal  value is  found according  to the following
+rules:
+
+     1) If the argument  is the null string (""),  then the error
+        status will set to zero.
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+_____________________                       _____________________
+
+active_function_error                       active_function_error
+_____________________                       _____________________
+
+     2) If  the code  is of the  form A$B, then  the command will
+        attempt to find it via the normal system search rules.
+
+     3) If "code" is a simple name  not containing a "$", then it
+        is assumed  to be an  entry in the  standard system error
+        table.  An attempt will be made to find it there.
+
+     4) If  "code"  is not  given, or  if the  appropriate status
+        cannot be located via either  of the preceding two rules,
+        the     value     of     this     will     default     to
+        error_table_$fatal_error.
+
+If the  second argument is  not given, the name  of the reporting
+procedure   will    be   replaced   with    the   command   name,
+active_function_error.   Note  that  the  most  commonly expected
+value for this argument is the  name of the command file in which
+it  is  embedded.   In the  case  of  an exec_com  file,  this is
+represented by &amp;ec_name.
+
+If the reporting procedure's name is  a null string, or is blank,
+then active_fnc_err_$af_suppress_name entry  to this routine will
+be called instead of active_fnc_err_.
+
+The   ancillary   message   text   and   substitution   arguments
+("error_msg" and  argi), will not  be interpreted or  verified by
+this command.
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+_____________________                       _____________________
+
+active_function_error                       active_function_error
+_____________________                       _____________________
+
+EXAMPLES:
+
+In the following  examples, the command line used  to invoke this
+command is  shown as well  as what appears at  the terminal.  The
+user should also  be aware that this command  will also cause the
+"active_function_error" condition to be signalled in the process.
+The default handler for this condition suspends execution, prints
+the error message, and returns to command level.(1)  The terminal
+output  which  this  engenders  is  not  shown  in  the following
+sequences.
+
+Command:  active_function_error
+
+Result:   active_function_error: A fatal error has occurred.
+
+Command:  active_function_error "" Foo "Warning - missing data"
+
+Result:   Foo:  Warning - missing data
+
+Command:  active_function_error bad_date
+
+Result:   active_function_error: The date is incorrect.
+
+Command:  active_function_error mrds_error_$bad_ident ""
+
+Result:   An identifier contains invalid characters.
+
+Command:  active_function_error not_done print "Missing ^a" foo
+
+Result:   print: Not processed. Missing foo
+
+             ________________________________________
+
+(1) The  user is  referred to  the Multics  Programmers Reference
+    Manual,  AG91-03, chapter  7, "Handling  Unusual Occurences",
+    for a more complete description.
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+_____________                                       _____________
+
+command_error                                       command_error
+_____________                                       _____________
+
+SYNTAX AS A COMMAND:
+
+   command_error {code {name {error_msg {arg1 ...}}}}
+
+FUNCTION:   Invokes  the com_err_  subroutine from  command level
+using the arguments supplied on the command line.
+
+ARGUMENTS:
+
+code
+   is a  character string which represents  the error status code
+   to  be  used  in  reporting  the  error.   See  below  for its
+   construction and interpretation.
+
+name
+   is the name  of the procedure or program  on whose behalf this
+   error status is being reported
+
+error_msg
+   is  a control  string acceptable  to ioa_.   It is  used as an
+   elaboration of the error status message accompanying the error
+   code defined as the first argument.
+
+argi
+   are  character  strings  to  be substituted  into  the control
+   string  defined  by  "error_msg".   For  further  details, the
+   reader is referred to the  ioa_ description in the Subroutines
+   Manual (AG92).
+
+NOTES:
+
+The  command functions  analogously to  the active_function_error
+command.   The   arguments  to  it   are  subject  to   the  same
+interpretation rules.  The major differences are:
+
+     1) The default  command name is  "command_error" rather than
+        "active_function_error".
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+_____________                                       _____________
+
+command_error                                       command_error
+_____________                                       _____________
+
+     2) The     command     invokes      the     com_err_     and
+        com_err_$suppress_name   subroutines   instead   of   the
+        active_fnc_err_ entrypoints.
+
+     3) The  default error  handler for  the condition  raised by
+        this command,  command_error, does not  suspend execution
+        and force another command level.   It prints a message on
+        the terminal  and continues.  Therefore,  if this command
+        is  invoked from  within an  exec_com file,  it should be
+        followed normally by an &amp;quit.
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+
+6.  Entry Points
+
+The  following  pages  give  the specification  for  entry points
+expected  of  procedures  that  implement  the  command processor
+extensions.   The entries  described here  are not  the only ones
+allowed,  however,  they will  be expected  by the  program which
+drives the command search.
+
+Assume  that  "XXX"  is the  name  of  a segment  in  the working
+directory which  implements that searching  conventions described
+in  this  document.  The  user  might add  it  to the  end  of an
+established "commands" search list by issung the command
+
+     add_search_paths  commands  XXX
+
+By  definition,  then,  certain  entrypoints are  expected  to be
+present  in  the segment,  "XXX".   Their names  are formed  in a
+manner  analogous  to  that  used  by  the  I/O  system.(1)   The
+following table gives, by example, entrypoints which are expected
+to be present in this hypothetical "XXX" object segment.
+
+Entrypoint            Type              Description
+====================  ================  =========================
+
+XXX                   command           This   entrypoint  prints
+                      active function   information   about   the
+                                        parameters  it   uses  in
+                                        locating        candidate
+                                        command segments  when it
+                                        is invoked  as a command.
+                                        As an active function, it
+                                        returns     this     data
+                                        (requoted  if  necessary)
+                                        separated by a blanks.
+
+XXX$XXX_run           subroutine        This subroutine  entry is
+                                        given a  command name and
+                                        is  expected to  find its
+                                        location according to the
+                                        search list  it uses.  If
+                                        a  candidate  segment  is
+                                        found,   this  entrypoint
+                                        will start it running.
+
+             ________________________________________
+
+(1) For  example,  the entrypoint  used  by iox_  in  attaching a
+    switch   under   control   of   the   vfile_   io-module   is
+    vfile_$vfile_attach.
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+
+XXX$XXX_search        subroutine        This subroutine  entry is
+                                        given a  command name and
+                                        is  expected to  find its
+                                        location according to the
+                                        search list  it uses.  If
+                                        a  candidate  segment  is
+                                        found,   this  entrypoint
+                                        returns      its     full
+                                        pathname.
+
+XXX$XXX_find_all      subroutine        This subroutine  is given
+                                        a   command    name   and
+                                        returns      the     full
+                                        pathnames  of  all  items
+                                        which    are   candidates
+                                        under  any of  the search
+                                        subroutines.
+
+XXX$XXX_info          subroutine        This  entrypoint  returns
+                                        the  same  information as
+                                        that supplied  by the XXX
+                                        command.  It  is provided
+                                        for    direct    use   by
+                                        programs.
+
+The command,  active function, and subroutine  write-ups for this
+hypothetical  "XXX"  segment  follow  in  the  remainder  of this
+section.
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+___                                                           ___
+
+XXX                                                           XXX
+___                                                           ___
+
+SYNTAX AS A COMMAND:
+
+   XXX {-control_args}
+
+SYNTAX AS AN ACTIVE FUNCTION
+
+   [XXX {-control_args}]
+
+FUNCTION:  Provides information on various parameters used by the
+"commands" search list entry to locate command files.
+
+CONTROL ARGUMENTS:
+
+-all, -a
+   is equivalent to "-procedure -search_list -suffix".
+
+-procedure, -proc
+   returns  the  name  of the  object  segment which  is  used to
+   interpret command files found by this procedure.
+
+-search_list, -sl
+   returns  the name  of the search  list used  to locate command
+   files.
+
+-suffix, -sfx
+   returns  the  suffix  (possibly  null)  which  is  appended to
+   command file names if not present.
+
+NOTES:
+
+If the subject  command does not use a search  path to locate its
+command files, the search list value  will be a null string, with
+one exception.  If  the system search rules are  used to find the
+command  file,  the  value  returned  for  -search_list  will  be
+"-search_rules".
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+___                                                           ___
+
+XXX                                                           XXX
+___                                                           ___
+
+Invoking  the command  or active  function without  any arguments
+will  return  all  available  information.  The  user  can obtain
+information from all the modules  listed in the "commands" search
+list (assuming they are all valid) by typing the command line:
+
+     ([print_search_paths  commands])
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+___________                                           ___________
+
+XXX$XXX_run                                           XXX$XXX_run
+___________                                           ___________
+
+NAME:  XXX$XXX_run
+
+This entrypoint  conducts a search  for a specific  command file.
+If the search is successful, this entry will attempt to place the
+first such file found into  execution.  Failure to find the file,
+or  failure  to  place  it  successfully  in  execution  will  be
+indicated by a non-zero status return.
+
+USAGE
+
+declare XXX$XXX_run entry (char(*), ptr, fixed bin(35));
+
+call XXX$XXX_run (P_command, P_arg_list_p, P_code);
+
+ARGUMENTS
+
+P_command
+     is  the  command  string  which was  parsed  by  the command
+     processor.  (Input)
+
+P_arg_list_p
+     is the argument list developed by the command processor from
+     the command line.  (Input)
+
+P_code
+     is a standard status code.  (Output)
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+______________                                     ______________
+
+XXX$XXX_search                                     XXX$XXX_search
+______________                                     ______________
+
+NAME:  XXX$XXX_search
+
+This entrypoint  conducts a search  for a specific  command file.
+If the search is successful, the  pathname of the command file is
+returned.   Failure  to  find the  file  will be  indicated  by a
+non-zero status return.
+
+USAGE
+
+declare XXX$XXX_search entry (char(*), char(*), fixed bin(35));
+
+call XXX$XXX_search (P_command, P_pathname, P_code);
+
+ARGUMENTS
+
+P_command
+     is  the  command  string  which was  parsed  by  the command
+     processor.  (Input)
+
+P_pathname
+     is the file system pathname of the command file.  (Output)
+
+P_code
+     is a standard status code.  (Output)
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+________________                                 ________________
+
+XXX$XXX_find_all                                 XXX$XXX_find_all
+________________                                 ________________
+
+NAME:  XXX$XXX_find_all
+
+This entrypoint  conducts a search  for a specific  command file.
+It  will return  the names  of all  command files  which could be
+considered candidates to be run.
+
+USAGE
+
+declare XXX$XXX_find_all entry (char(*), ptr, char(8), ptr, fixed
+                                 bin(35));
+
+call XXX$XXX_find_all (P_command, P_area_p,  P_version, P_list_p,
+                                 P_code);
+
+ARGUMENTS
+
+P_command
+     is  the  command  string  which was  parsed  by  the command
+     processor.  (Input)
+
+P_area_p
+     is a pointer to an area where the return info structure will
+     be allocated.  (Input)
+
+P_version
+     is the version of the information desired.  (Input)
+
+P_list_p
+     is a  pointer to the structure  which contains the pathnames
+     of  the  candidate command  files.  It  is described  by the
+     include file, cmd_pathnames.incl.pl1.  (Output)
+
+P_code
+     is a standard system status code.  (Output)
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+____________                                         ____________
+
+XXX$XXX_info                                         XXX$XXX_info
+____________                                         ____________
+
+NAME:  XXX$XXX_info
+
+This entry  returns information about  the parameters controlling
+the search for command files.
+
+USAGE
+
+declare XXX$XXX_info entry (ptr, char(8), ptr, fixed bin(35));
+
+call XXX$XXX_info (P_area_p, P_version, P_info_p, P_code);
+
+ARGUMENTS
+
+P_area_p
+     is a pointer to an area where the return info structure will
+     be allocated.  (Input)
+
+P_version
+     is the version of the information desired.  (Input)
+
+P_info_p
+     is a pointer to the  structure which contains the parameters
+     controlling the  search for command files.   It is described
+     by the include file, cmd_search_info.incl.pl1.  (Output)
+
+P_code
+     is a standard system status code.  (Output)
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+
+7.  Subroutines
+
+The following pages describes  subroutines and data structures of
+use to  those writing procedures responsible  for finding command
+files and getting them into  execution.  These interfaces will be
+made available as part of the standard command processor support.
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+_____________                                       _____________
+
+cmds_sl_info_                                       cmds_sl_info_
+_____________                                       _____________
+
+NAME:  cmds_sl_info_
+
+This    subroutine     handles    the    processing     of    the
+command/active function  invocation of  a procedure  named in the
+"commands" search  list.  It is passed  the argument list pointer
+of the command  and does the standard parsing  of arguments given
+on the command line for the (say) "XXX" command entrypoint.
+
+USAGE
+
+declare cmds_sl_info_ entry (char(*),   ptr,   char(*),  char(*),
+                             char(*), fixed bin(35));
+
+call cmds_sl_info_ (P_command_name,   P_arg_list_p,  P_procedure,
+                    P_search_list, P_suffix, P_code);
+
+ARGUMENTS
+
+P_command_name
+     is the name of the command which was invoked.  (Input)
+
+P_arg_list_p
+     is the argument list pointer of the caller.  (Input)
+
+P_procedure
+     is the name of the object segment used to interpret commands
+     of this type.  (Input)
+
+P_search_list
+     is the name  of the search list which is  used to locate the
+     command file.  (Input)
+
+P_suffix
+     is the suffix  which is appended to the  command name if not
+     present.  (Input)
+
+P_code
+     is a standard system status code.
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+__________________                             __________________
+
+simple_cmd_search_                             simple_cmd_search_
+__________________                             __________________
+
+NAME:  simple_cmd_search_
+
+This subroutine conducts a search  for a given segment name using
+a   specified  suffix,   search  list  name,   and  command  file
+interpreter name.   If the designated segment  is found, its full
+pathname is returned (including suffix, if any).
+
+USAGE
+
+declare simple_cmd_search_ entry (char(*),    char(*),   char(*),
+                                  char(*), fixed bin(35));
+
+call simple_cmd_search_ (P_command,     P_suffix,    P_list_name,
+                         P_pathname, P_code);
+
+ARGUMENTS
+
+P_command
+     is  the  command  string  which was  parsed  by  the command
+     processor.  (Input)
+
+P_suffix
+     is  the  suffix which  is  added to  the segment  portion of
+     P_command (if  not present) when looking  through the search
+     paths.  (Input)
+
+P_list_name
+     is the  name of the search  list which will be  used to find
+     the command file.  (Input)
+
+P_pathname
+     is the full  pathname of the command segment  found by means
+     of the search rules.  (Output)
+
+P_code
+     is a standard status code.  (Output)
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+__________________                             __________________
+
+simple_cmd_search_                             simple_cmd_search_
+__________________                             __________________
+
+NOTES:
+
+This routine will  stop its search at the  first segment found by
+the  given search  rules.  If the  argument supplied  to hold the
+full pathname  of the command  segment found is  not long enough,
+the error status, error_table_$pathlong, will be returned.
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+____________________                         ____________________
+
+simple_cmd_find_all_                         simple_cmd_find_all_
+____________________                         ____________________
+
+NAME:  simple_cmd_find_all_
+
+This subroutine conducts a search  for a given segment name using
+a   specified  suffix,   search  list  name,   and  command  file
+interpreter name.  It returns the  pathnames of all segments with
+that suffix which "match" the command file name.
+
+USAGE
+
+declare simple_cmd_find_all_ entry (char(*),   char(*),  char(*),
+                                    ptr,   char(8),   ptr,  fixed
+                                    bin(35));
+
+call simple_cmd_find_all_ (P_command,    P_suffix,   P_list_name,
+                           P_area_p,     P_version,     P_list_p,
+                           P_code);
+
+ARGUMENTS
+
+P_command
+     is  the  command  string  which was  parsed  by  the command
+     processor.  (Input)
+
+P_suffix
+     is  the  suffix which  is  added to  the segment  portion of
+     P_command (if  not present) when looking  through the search
+     paths.  (Input)
+
+P_list_name
+     is the  name of the search  list which will be  used to find
+     the command files.  (Input)
+
+P_area_p
+     is  a pointer  to an area  where the  structure described by
+     cmd_pathnames.incl.pl1 may be allocated.  (Input)
+
+P_version
+     is the version of the information desired.  (Input)
+
+P_list_p
+     is  a  pointer to  the  structure giving  all  the candidate
+     command files.  (Output)
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+____________________                         ____________________
+
+simple_cmd_find_all_                         simple_cmd_find_all_
+____________________                         ____________________
+
+P_code
+     is a standard status code.  (Output)
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+__________________                             __________________
+
+simple_invocation_                             simple_invocation_
+__________________                             __________________
+
+NAME:  simple_invocation_
+
+This subroutine inserts a pathname into an existing argument list
+at  the  front.  It  then passes  this new  argument list  to the
+object segment whose name is specified as its first argument.
+
+USAGE
+
+declare   simple_invocation_ entry (char(*), char(*),  ptr, fixed
+                                   bin(35));
+
+call simple_invocation_ (P_processor_name,            P_pathname,
+                         P_arg_list_p, P_code);
+
+ARGUMENTS
+
+P_processor_name
+     is the name of the interpreter for the command file given as
+     the second argument.  (Input)
+
+P_pathname
+     is   the   pathname   which   is   to   be   interpreted  by
+     P_processor_name.  It is to be  inserted at the front of the
+     argument list pointed to be P_arg_list_p.  (Input)
+
+P_arg_list_p
+     is the argument list built by the command processor from the
+     additional arguments supplied on the command line.
+
+P_code
+     is a standard status code.  (Output)
+
+NOTES:
+
+The  subroutine,  find_command_,  will  be  used  to  locate  the
+interpreter  given   as  P_processor_name.   Thus,   relative  or
+absolute  pathnames  may  be  supplied as  well  as segment$entry
+forms.
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+
+8.  Include Files
+
+This  section  contains the  declarations and/or  descriptions of
+several include files available for use with this facility.
+
+8.1.  cmd_pathnames.incl.pl1
+
+This structure is returned  by the XXX$XXX_find_all entrypoint of
+the "commands" search list entry.
+
+/* Begin include file ...  cmd_pathnames.incl.pl1 */
+
+dcl  cmd_pathnames_version_1
+                          char (8) internal static
+                          options (constant) init ("cmdpn_1");
+
+dcl  cmd_pathnames_p      ptr;
+
+dcl  cmd_pathnames_count  fixed bin (17);
+
+dcl  1  cmd_pathnames     aligned based (cmd_pathnames_p),
+        2  version        char (8),
+        2  entryname      char (32),
+        2  count          fixed bin (35),
+        2  directory      char (168)
+                          dimension (cmd_pathnames_count
+                          refer (cmd_pathnames.count));
+
+/* End include file ...  cmd_pathnames.incl.pl1 */
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+
+8.2.  cmd_search_info.incl.pl1
+
+This structure is returned by  the XXX$XXX_info entrypoint of the
+"commands" search list entry.
+
+/* Begin include file ...  cmd_search_info.incl.pl1 */
+
+dcl  cmd_search_info_version_1
+                          char (8) internal static
+                          options (constant) init ("cmdsi_1");
+
+dcl  cmd_search_info_p    ptr;
+
+dcl  1  cmd_search_info   aligned based (cmd_search_info_p),
+        2  version        char (8),
+        2  suffix         char (32),
+        2  procedure      char (65),
+        2  search_list_name
+                          char (32);
+
+/* End include file ...  cmd_search_info.incl.pl1 */
+
+NOTES
+
+The structure member, "procedure", is declared char(65) to permit
+full,  32-character segment  and entrynames  with the dollar-sign
+separator.
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+
+9.  Sample Command Starter
+
+Using  the simple_cmd_search_  and simple_invocation_ subroutines
+described  earlier,  it  is  possible to  give  an  example  of a
+fragment  of a  procedure which  can be  added to  the "commands"
+search list.  In this example, the object segment allows exec_com
+segments  to  be invoked  as  commands.  The  properties  of this
+procedure are given in the table below:
+
+Property                    Explanation
+=========================   =====================================
+
+ec_cmd                      The name of  the object segment which
+                            is entered into  the "command" search
+                            list.   Also,   the  entrypoint  name
+                            which print/returns parametric data.
+
+ec_cmd_run                  Subroutine    entrypoints    in   the
+ec_cmd_search               segment, ec_cmd, which  can be called
+ec_cmd_find_all             by  the  command processor  to locate
+ec_cmd_info                 command  files,  run  them,  or  find
+                            information   about  how   they  were
+                            located.
+
+exec_com                    The name of the system-defined search
+                            list  which  contains  the  names  of
+                            directories  to  be examined  for the
+                            existence  of the  given command file
+                            exec_com.
+
+ec                          The   default  suffix   for  exec_com
+                            command files.
+
+exec_com                    The name of  the object segment which
+                            interprets EC command files.
+
+The  program  is rather  brief  since most  of  the work  is done
+elsewhere.  A program of this form could be generated very easily
+to do  most simple requests  of this kind.   The calling sequence
+defined  in this  example, however,  is the  one presumed  by the
+command processing extension.
+
+NOTE  - the  entrypoints ec_cmd_find_all and  ec_cmd_info are not
+shown in this sample program fragment.
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+
+Once this program has been compiled  and is accessible, it may be
+incorporated as another thing to look for by the command
+
+     add_search_paths commands [where ec_cmd] -last
+
+which places this after all  other default types of command files
+to look for.
+
+/* =========================================================== */
+
+/* Data declarations - Parameters */
+
+dcl  P_arg_list_p         pointer           parameter;
+
+dcl  P_command            character (*)     parameter;
+
+dcl  P_command_pathname   character (*)     parameter;
+
+dcl  P_return_status      fixed binary (35) parameter;
+
+/* Data declarations - Local, Constants, External Routines */
+
+dcl  arg_list_p           ptr;
+
+dcl  cmds_sl_info_        entry (char(*), ptr, char(*),
+                                 char(*), char(*));
+
+dcl  command_pathname     char(300);
+
+dcl  cu_$arg_list_ptr     entry (ptr);
+
+dcl  my_name              char(32) internal static
+                          options (constant) init ("ec_cmd");
+
+dcl  processor_name       char(65) internal static
+                          options (constant) init ("exec_com");
+
+dcl  search_list          char(32) internal static
+                          options (constant) init ("exec_com");
+
+dcl  simple_cmd_search_   entry (char(*), char(*), char(*),
+                                 char(*), fixed bin(35));
+
+dcl  simple_invocation_   entry (char(*), char(*),
+                                 ptr, fixed bin(35));
+
+dcl  suffix               char(32) internal static
+                          options (constant) init ("ec");
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+
+/* This  entrypoint  is called  for  command and  active function
+   information. */
+
+ec_cmd:
+     entry ()
+
+     call cu_$arg_list_ptr (arg_list_p);
+     call cmds_sl_info_ (my_name,   arg_list_p,   processor_name,
+                         search_list, suffix);
+
+     return;
+
+/* This   entrypoint   is  called   by   the  command_processor's
+   interpreter to get a exec_com command segment in operation */
+
+ec_cmd_run:
+     entry (P_command, P_arg_list_p, P_return_status);
+
+     P_return_status = 0;
+     call simple_cmd_search_ (P_command,   suffix,   search_list,
+                              command_pathname, P_return_status);
+     if P_return_status = 0 then
+          do;
+          call simple_invocation_ (processor_name,
+                                   command_pathname,
+                                   P_arg_list_p,
+                                   P_return_status);
+          end;
+
+     return;
+
+/* =========================================================== */
+
+/* This entry is used just to find the command location */
+
+ec_cmd_search:
+     entry (P_command, P_command_pathname, P_return_status);
+
+     P_return_status = 0;
+     call simple_cmd_search_ (P_command,   suffix,   search_list,
+                              command_pathname, P_return_status);
+     if P_return_status = 0 then
+          do;
+          P_command_pathname = command_pathname;
+          end;
+
+     return;
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+
+10.  Demonstration Facility
+
+In  order to  refine some of  the ideas presented  here, and gain
+actual  experience in  the issues  which this  facility raises, a
+demonstration implementation has been built.  It is available for
+trial use.  Please contact the author, if you are interested.
+
+10.1.  Implementation Status
+
+At  the time  of the  writing of this  MTB, the  following is the
+status  of the  items described  in this  document.  No inference
+should be drawn as to the final form or disposition of any of the
+items described here.  It is intended, at present, as a prototype
+only.
+
+     A) The  commands,  command_error  and active_function_error,
+        have been  written an incorporated into  a version of the
+        module bound_command_env_.
+
+     B) The module, command_processor_, has been modified to call
+        interpret_command_   rather  than   find_command_.   This
+        module is  driven by the  "commands" search list.   It is
+        part of bound_command_loop_.
+
+     C) The procedures  described earlier in  this document which
+        assist  in  building  a  module  for  insertion  into the
+        "commands" search list:
+
+             cmds_sl_info_
+             simple_cmd_search_
+             simple_cmd_find_all_
+             simple_invocation_
+
+        have been  implemented and are part  of the demonstration
+        bound_cp_extension_.
+
+     D) PL/I  procedures have  been written which  conform to the
+        protocols  expected  of  items in  the  "commands" search
+        list.   They are  part of  bound_cp_extension_.  The ones
+        presently available are:
+
+             objseg_cmd
+             ec_cmd
+             compose_cmd
+             basic_cmd
+
+        There  are  plans to  provide  for qedx  and  ted command
+        files, and for saved LISP environments.
+
+
+Multics Technical Bulletin                                MTB-612
+Command Environment Extensions
+
+     E) The "where" command has not  yet been modified to use the
+        new searching conventions.
+
+10.2.  Metering
+
+Initial  tests  of  the  facility  have  been  done  to establish
+overheads  incurred in  using this  mechanism.  Three  tests were
+run.  In all cases, each  of the modules comprising the extension
+was  compiled with  the options:   -map -table.   Some additional
+speed-up  may   be  expected  without  these   options  and  with
+-optimize.
+
+     Test #1 - Invocations of "nothing$nothing".
+
+               This shows the minimum  overhead introduced by the
+               additional  routine  which  the  command processor
+               must   call   to   properly   interpret  commands.
+               According to the conventions  defined, this is the
+               shortest path through command processing.
+
+     Test #2 - Invocations of "nothing".
+
+               This shows  the average additional  time needed to
+               find  an  object  segment when  the  routine which
+               invokes  then  is first  in the  "commands" search
+               path.  This  will most likely be  the average path
+               when there is a "commands" search list defined and
+               object  segments  are looked  for  before anything
+               else.
+
+     Test #3 - Invocations of an exec_com which just returns.
+
+               This  test was  done with 1)  the standard command
+               processor explicitly invoking the "empty" exec_com
+               and 2) by the new facility implicitly invoking the
+               same exec_com via the  "-working_dir" entry in the
+               "exec_com" search list.  In  this second case, the
+               procedure  which interpreted  commands as exec_com
+               file names  was the second item  in the "commands"
+               search list.
+
+No tests were  run with the facility in  place, but no "commands"
+search list  defined.  The additional time  involved in this case
+should be somewhere between that of tests #1 and #2.
+
+
+MTB-612                                Multics Technical Bulletin
+                                   Command Environment Extensions
+
+The  table below  gives some of  the results  of this preliminary
+metering.  The  numbers are averages over  a thousand invocations
+of the kind specified within a single driver file.
+
+               Standard     Extended             
+     Test      Cmd Proc     Cmd Proc        Delta
+    Number         (ms)         (ms)         (ms)
+    ======   ==========   ==========   ==========
+
+       1         16.699       17.250        0.551
+
+       2         16.065       16.927        0.862
+
+       3        117.154      146.560       29.406
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

@@ -1,0 +1,2578 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Multics  Networking   Architecture  Answering  Service.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  MULTICS TECHNICAL BULLETIN                              MTB751-03
+
+  To:       MTB Distribution
+
+  From:     Eric J. Swenson
+            Gary Dixon
+            Edward C. Brunelle Jr.
+
+  Date:     July 15, 1987
+
+  Subject:   Multics  Networking   Architecture  Answering  Service
+  Changes
+
+                 -----------------------------------
+
+  This MTB  describes proposed changes to the  Answering Service to
+  accommodate the Multics Networking Architecture (MNA).  Under the
+  new architecture,  the responsibility of  managing communications
+  channels is removed from the Initializer process and delegated to
+  a  set of  Login Server  processes.  The  Initializer retains the
+  function of  the Identification and Authentication  (I&amp;A) of user
+  requests to access Multics, as  well as such functions as process
+  manipulation.  This MTB documents the new and changed Initializer
+  process  software which  supports  the  MNA.  In  particular, the
+  Answering  Service  support  of  the  Login  Server  processes is
+  described in detail.
+
+  Revision  1 corrects the  description of MNA  network accounting,
+  dialin terminals and message coordinator terminals.
+
+  Revision  2  augments  the  discussion  of  MCS Answering Service
+  changes to include many additional areas that were modified.
+
+| Revision 3 adds a new access_operations_ code to Appendix B.
+
+                 -----------------------------------
+
+  Comments should be sent to the author:
+
+  via Multics Mail:
+     GDixon at System-M.
+
+  via Forum:
+     &gt;udd&gt;DSA&gt;mtgs&gt;dsaimp.forum
+
+  via telephone:
+     (HVN) 862-3593
+     (602) 862-3593
+
+  _________________________________________________________________
+
+  Multics project  internal documentation; not to  be reproduced or
+  distributed outside the Multics project without permission of the
+  Director of MDC.
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+                               CONTENTS
+
+                                                           Page
+
+     1:  Introduction  . . . . . . . . . . . . . . . . . . . .     1
+     1.1:  Current Architecture  . . . . . . . . . . . . . . .     1
+     1.2:  Problems with Current Architecture  . . . . . . . .     3
+     1.3:  Login Servers . . . . . . . . . . . . . . . . . . .     4
+     2:  MNA Answering Service Changes . . . . . . . . . . . .     5
+     2.1:  Login Server Requests and Responses . . . . . . . .     5
+     2.1.1:  Login Server Requests . . . . . . . . . . . . . .     7
+     2.1.1.1:  Validate Request  . . . . . . . . . . . . . . .     7
+     2.1.1.1.1:  Changes to the UTE  . . . . . . . . . . . . .     8
+     2.1.1.1.2:  Filling in the UTE  . . . . . . . . . . . . .     9
+     2.1.1.1.3:  Other Validation Information  . . . . . . . .     9
+     2.1.1.1.4:  uc_login_ . . . . . . . . . . . . . . . . . .    11
+     2.1.1.1.5:  Communications Channel Access Checking (or       12
+      lack thereof)  . . . . . . . . . . . . . . . . . . . . .
+     2.1.1.2:  Process Request . . . . . . . . . . . . . . . .    12
+     2.1.1.2.1:  Create Sub-Request  . . . . . . . . . . . . .    13
+     2.1.1.2.2:  uc_create_process_check_  . . . . . . . . . .    14
+     2.1.1.2.3:  uc_create_process_  . . . . . . . . . . . . .    14
+     2.1.1.3:  Connect Request . . . . . . . . . . . . . . . .    15
+     2.1.1.3.1:  uc_setup_process_connect_ . . . . . . . . . .    15
+     2.1.1.3.2:  uc_set_pit_tty_info_  . . . . . . . . . . . .    16
+     2.1.1.4:  Destroy Request . . . . . . . . . . . . . . . .    16
+     2.1.1.5:  New_Proc Request  . . . . . . . . . . . . . . .    17
+     2.1.1.6:  List Request  . . . . . . . . . . . . . . . . .    17
+     2.1.1.6.1:  uc_list_disconnected_procs_ . . . . . . . . .    17
+     2.1.1.7:  Disconnect Request  . . . . . . . . . . . . . .    18
+     2.1.1.8:  Logout Request  . . . . . . . . . . . . . . . .    18
+     2.1.1.9:  Dial Request  . . . . . . . . . . . . . . . . .    18
+     2.1.1.9.1:  uc_dial_  . . . . . . . . . . . . . . . . . .    19
+     2.1.1.10: Operator Request  . . . . . . . . . . . . . . .    19
+     2.1.2:  Login Server Request Processing . . . . . . . . .    20
+     2.2:  Process Termination Handler . . . . . . . . . . . .    21
+     2.2.1:  Fatal Process Error Wakeups . . . . . . . . . . .    22
+     2.2.2:  New_Proc Wakeups  . . . . . . . . . . . . . . . .    23
+     2.2.3:  Logout Wakeups  . . . . . . . . . . . . . . . . .    23
+     2.2.4:  Hangup Wakeup . . . . . . . . . . . . . . . . . .    23
+     2.2.5:  Bump, Shutdown, Terminate, Detach Wakeups . . . .    23
+     2.2.6:  Unbump Wakeup . . . . . . . . . . . . . . . . . .    24
+     2.2.7:  Handling of Destroy and New_Proc Preaccess           24
+      Requests . . . . . . . . . . . . . . . . . . . . . . . .
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+                           CONTENTS (cont)
+
+                                                           Page
+
+     2.2.8:  Other Wakeups . . . . . . . . . . . . . . . . . .    24
+     2.2.9:  The Process Termination Cycle . . . . . . . . . .    24
+     2.2.9.1:  User-Initiated Process Terminations . . . . . .    24
+     2.2.9.2:  System-Initiated Process Terminations . . . . .    25
+     2.2.9.3:  Cleanup of Network Connections  . . . . . . . .    26
+     3:  Changes to MCS Answering Service Modules  . . . . . .    27
+     3.1:  User Table Changes  . . . . . . . . . . . . . . . .    27
+     3.2:  dpg_  . . . . . . . . . . . . . . . . . . . . . . .    27
+     3.3:  dial_ctl_ . . . . . . . . . . . . . . . . . . . . .    27
+     3.4:  daemon_user_manager_, absentee_user_manager_,          28
+      ftp_dialup_, and dialup_ . . . . . . . . . . . . . . . .
+     3.5:  as_access_audit_, access_operations_, dial_ctl_ and    28
+      lg_ctl_  . . . . . . . . . . . . . . . . . . . . . . . .
+     3.6:  convert_access_class_ . . . . . . . . . . . . . . .    29
+     3.7:  User Message Facility . . . . . . . . . . . . . . .    29
+     3.8:  login_server_overseer_$test . . . . . . . . . . . .    29
+     3.9:  test_system_control, run_test_as  . . . . . . . . .    29
+     3.10: as_init_  . . . . . . . . . . . . . . . . . . . . .    30
+     3.11: act_ctl_ and load_ctl_  . . . . . . . . . . . . . .    30
+     3.12: as_data_  . . . . . . . . . . . . . . . . . . . . .    31
+     3.13: asu_  . . . . . . . . . . . . . . . . . . . . . . .    31
+     3.14: as_check_condition_ . . . . . . . . . . . . . . . .    31
+     3.15: multics_libraries_  . . . . . . . . . . . . . . . .    32
+     Appendix A:  Subroutine Documentation . . . . . . . . . .    33
+        convert_access_class_  . . . . . . . . . . . . . . . .    34
+     Appendix B:  System Administration Procedures . . . . . .    35
+        Identification and Authentication (I&amp;A)  . . . . . . .    35
+        Process Manipulation . . . . . . . . . . . . . . . . .    39
+        Communications Channel . . . . . . . . . . . . . . . .    40
+           Audit Message Format for Communications Channel        40
+            Attachment . . . . . . . . . . . . . . . . . . . .
+        Table B-1:  access_operations_.alm . . . . . . . . . .    43
+     Appendix C:  Privileged Interfaces MTB  . . . . . . . . .    44
+        login_server_overseer_$test  . . . . . . . . . . . . .    45
+        run_test_as  . . . . . . . . . . . . . . . . . . . . .    46
+        test_system_control  . . . . . . . . . . . . . . . . .    47
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  111:::  IIINNNTTTRRROOODDDUUUCCCTTTIIIOOONNN
+
+  This MTB is part of a  set which documents the Multics Networking
+  Architecture (MNA)  and the changes to  Multics software required
+  to  support this  new architecture.   The reader  is referred  to
+  MTB-748 for a general overview of the networking architecture and
+  is assumed  to be familiar  with its contents.   This MTB details
+  the  proposed  changes  to  the  Answering  Service  software  to
+  accommodate  the  MNA.   Under  this  architecture, the Answering
+  Service software (which runs in the Initializer process) would no
+  longer  have the  responsibility of  managing the  communications
+  channels  over which logins,  dials, dial-outs, and  ftp requests
+  occur.  The motivation for this change is many-fold and discussed
+  in a following section.
+
+  The role  of "communications channel management"  shifts from the
+  Answering Service to inner-ring TCB software as well as user-ring
+  Login  Server software.   Under the  new architecture, inner-ring
+  TCB software manages outbound communications channel connections,
+  such as dial-outs, while Login  Servers, and the body of software
+  executed  by these processes,  manage the inbound  connections to
+  Multics.  The inner-ring TCB software  is described in other MTBs
+  and  is  not  particularly  relevant  to  the  topic of this MTB.
+  However,  the  Login  Server  software  must  interface  with the
+  Answering  Service in order  to "identify and  authenticate" user
+  requests for  Multics service and to initiate  those services.  A
+  later section of this MTB describes the Login Server operation in
+  brief;  the  reader  is  referred  to  MTB-752  for details.  The
+  operation of  the Answering Service support for  Login Servers is
+  described in considerable depth in this MTB.
+
+  While  the  MNA  defines  the  direction  Multics  communications
+  software should  take in the  future, and provides  the framework
+  for the Distributed Systems  Architecture (DSA) implementation on
+  Multics  for MR12,  it is  not clear  if, and  when, the  Multics
+  Communications  System (MCS)  might be  converted to  comply with
+  this  new  architecture.   For  MR12,  only  DSA  will be made to
+  conform  to MNA.  It  should be kept  in mind, however,  that the
+  architecture is intended to be generalized and DSA is only one of
+  its  clients.  There  is no,  or should  be no,  knowledge of DSA
+  within the body of software which implements MNA.
+
+  Before  proceeding  with  a  description  of  the  design  of the
+  Answering Service changes, a  brief description of the motivation
+  for  the changes  follows a   short description  of the  current,
+  i.e. pre-MR12 architecture.
+
+  111...111:::  CCCuuurrrrrreeennnttt AAArrrccchhhiiittteeeccctttuuurrreee
+
+  In MR11, the  primary means of user access to  Multics is through
+  communications  channels  connected  directly  or  indirectly  to
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  Frontend Network Processors (FNPs).   In concert with the Multics
+  Communications Systems (MCS), a body  of software which runs both
+  in  the FNPs  and in  the Multics  ring-0 Trusted  Computing Base
+  (TCB),  the  FNP  hardware  components  provide  asynchronous and
+  synchronous  communications  channel   access  to  Multics.   The
+  Answering  Service,  a  user-ring  subsystem  which  runs  in the
+  Initializer process on Multics,  both manages all MCS connections
+  and  engages users  in the  login dialogue  necessary to properly
+  identify and authenticate user access to the system.
+
+  A secondary  interface to Multics  is provided by  the separately
+  priced TCP/IP  software, which allows connections  to the Defense
+  Data  Network (DDN).   The TCP/IP  software, however,  indirectly
+  uses  MCS  through  ring-0  simulation  of  FNP connections.  The
+  Software  Terminal  (STY)  software,  part  of  MCS, presents the
+  Answering Service  with a communications channel  interface which
+  is   virtually   indistinguishable   from   normal   FNP  channel
+  connections.
+
+  The Answering  Service uses as  one of its  central databases for
+  managing  interactive user logins  (either through FNPs  or STYs)
+  the Channel Definition Table (CDT).  The present software assumes
+  that  every  interactive  user  has  an  entry  in  the CDT which
+  describes  the MCS  channel over   which the  user is  logged in.
+  Further, any process which desires  to perform a slave attachment
+  of a  communications channel, or  dial out over  a communications
+  channel  must  request  the  Answering  Service  to  provide  the
+  service.   This allows  the Answering  Service to  perform access
+  control checks, perform access auditing, and call upon ring-0 MCS
+  to assign the communications channel to the user process.
+
+  All  communications  channels  are   initially  assigned  to  the
+  Answering  Service  (Initializer   process).   MCS  notifies  the
+  Answering Service  of any dialups  or hangups on  the channel, as
+  well as other I/O-related events.  After the channel is delegated
+  to a user process (for instance  as the primary login channel for
+  the user), the Answering Service retains the supervisory role for
+  the  channel, receiving  notification of  the "hangup" condition.
+  Most other I/O-related events are  signalled to the user process.
+  The  "hangup" condition  signals  the  Answering Service  that it
+  should unassign the channel from the user process and perform the
+  necessary access auditing.
+
+  At  any  time,  with  the  present  architecture,  the  Answering
+  Service,  by  virtue  of  its  supervisory communications channel
+  status,  may write  directly on  any channel.   This mechanism is
+  used not only  during the login dialogue (to prompt  the user and
+  read responses,  for example) but also to  implement the operator
+  "warn" command, the messages  associated with the "bump" command,
+  and other  instances of "channel blasting",  such as notification
+  of other login instances.
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  111...222:::  PPPrrrooobbbllleeemmmsss wwwiiittthhh CCCuuurrrrrreeennnttt AAArrrccchhhiiittteeeccctttuuurrreee
+
+  While  the  current  architecture  suffices  for  FNP channels, a
+  certain   amount  of  overhead   is  incurred  for   STY  channel
+  processing,  where  the  I/O  from  the  TCP/IP network undergoes
+  multiple copying before it reaches the user process, involves the
+  cooperation   of   two   processes,   and   relies   upon  ring-0
+  intervention.  One  particular deficiency in  the use of  STYs to
+  handle TCP/IP connections  is the use of ring-0  table and buffer
+  space in order to accommodate  the connections.  Table and buffer
+  space is  already required for each TCP/IP  connection within the
+  TCP/IP subsystem, so in essence,  the ring-0 space is wasted.  On
+  the other  hand, the STY mechanism required  only minimal changes
+  to  the Answering Service  to support because  TCP/IP connections
+  appear to the Answering Service as normal MCS connections.
+
+  As previously  mentioned, the operation of  the Answering Service
+  is tied  to the CDT  for interactive users.   This table contains
+  entries for all  MCS channels known to Multics.   While this kind
+  of architecture is appropriate for  the static nature of physical
+  FNP  channels, it  is not  dynamic enough  to accommodate network
+  connections.  The  use of STY channels for  TCP/IP connections to
+  Multics makes up, to a degree,  for the static nature of the CDT,
+  however enough STY channels must be configured to accommodate the
+  maximum number of simultaneous TCP/IP connections expected.  Each
+  configured  STY   channel  requires  some  amount   of  dedicated
+  table/buffer  space in both  the ring-0 MCS  database and in  the
+  ring-4 CDT.
+
+  Perhaps  more significant a  problem than reduced  efficiency and
+  wasted space through use of STY  channels, is the workload on the
+  Initializer  process required  to  manage  all the  MCS channels.
+  Associated  with  each  MCS-defined  channel  is an Inter-Process
+  Communication  (IPC)  "event  channel."   Two  Answering  Service
+  modules (dialup_ for normal interactive channels, and ftp_dialup_
+  for  File Transfer  Protocol, or  FTP, TCP/IP  channels) are  the
+  event  handlers for  wakeups associated  with the  respective MCS
+  channels.  When an MCS channel dials up or hangs up, one of these
+  programs   is   invoked.    Each   wakeup   associated  with  the
+  interactions during  the login dialogue causes  the invocation of
+  these programs.
+
+  There  are many subsystems  within the Initializer  process which
+  are  event-driven and, as  such, the response  time of the  login
+  dialogue degrades  as the Initializer  is burdened with  more and
+  more  activities.  By  the same  token, the  performance of other
+  event-driven subsystems suffers as  the Answering Service handles
+  the login dialogue.
+
+  In supporting the MNA, and  in particular the Distributed Systems
+  Architecture (DSA), Multics will have  to handle an arbitrary and
+  dynamic  number of incoming  network connections.  Some  of these
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  connections will  request "login" service, others,  various other
+  services, including "file transfer"  service.  Rather than adding
+  to  the  burden  of  the  Initializer  process  by  using the STY
+  approach,  as  in  the  case  of  the  TCP/IP network support, an
+  alternative approach is desired.   Apart from the security-issues
+  associated  with access   to particular  communications channels,
+  there  is  no  inherent  reason  why  the  Initializer process is
+  required to  manage all communications channels.   Further, there
+  is  no reason  for the  Answering Service  to have  to manage the
+  login  dialogue.   It  is  only  required  to  perform the actual
+  Identification  and  Authentication  (I&amp;A)  and  to  provide  the
+  requested   services.    The   MNA   proposes   to   extract  the
+  communications   channel   management   and   preaccess  dialogue
+  functions from  the Answering Service and call  upon Login Server
+  processes to perform these  functions.  A protocol for requesting
+  I&amp;A and  services from the  Answering Service is  established and
+  documented in this MTB.
+
+  111...333:::  LLLooogggiiinnn SSSeeerrrvvveeerrrsss
+
+  The  Multics  Networking  Architecture  calls  for  Login  Server
+  processes  to  listen  for  requests  for  communications channel
+  access  to  Multics  over  specified  endpoints.   Endpoints  are
+  defined for various services, such  as "login" or "file transfer"
+  and  are  network-specific.   Inbound  requests-for-services  are
+  negotiated  by the  login server   via a  login dialogue  or some
+  agreed-upon protocol and then validated by the Answering Service.
+  Then,  in cooperation with  the Answering Service,  the requested
+  service   is   started.    This   service   may  involve  process
+  manipulation  (i.e. process  creation,   connection,  etc.),  may
+  result in "dialing" a process, or could involve the establishment
+  of  a  message  coordinator  terminal.   These  services  are all
+  described in the next section.
+
+  Once the  requested service is initiated, the  login server gives
+  control of the communications  channel to the appropriate process
+  and  awaits  notification  by  the  Answering  Service of process
+  termination or from the underlying  network software of a network
+  channel  disconnection (hangup).   In  the  case of  hangups, the
+  Answering Service is notified by the  login server so that it may
+  perform  the   necessary  cleanup  (usually  process   logout  or
+  disconnection).
+
+  The  login  server  processes  (there  may  be  several  handling
+  different  networks or   different services)  are semi-privileged
+  daemons.  They  require whatever access is  necessary to interact
+  with  the  underlying  network  software.   Further, they require
+  special  access  to  communicate   with  the  Answering  Service.
+  Through these daemons,  the burden of the login  dialogue and the
+  managing  of communications  channels over  the supported network
+  interfaces  is removed  from  the  Initializer process  while the
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  security-critical   services  of   User  Control   (I&amp;A,  process
+  manipulation, etc.)  remain centralized,  there, for auditing and
+  accountability  purposes.  The  rest  of  this MTB  describes the
+  changes  to  existing  Answering  Service  software,  and the new
+  software needed to support the login servers.
+
+  222:::  MMMNNNAAA AAANNNSSSWWWEEERRRIIINNNGGG SSSEEERRRVVVIIICCCEEE CCCHHHAAANNNGGGEEESSS
+
+  The MNA answering service  changes consist primarily of providing
+  an interface for interactions  between the login server processes
+  and the  answering service.  These interactions take  the form of
+  "login  server  requests"   and  "answering  service  responses."
+  Unfortunately for terminology's sake,  we have introduced several
+  misnomers  into the vocabulary,  since there are  instances where
+  the  answering service  must communicate  with the  login servers
+  independent of any "login  server request" and these interactions
+  are also referred  to as "responses".  This MTB  attempts to play
+  down this bad naming convention, although the include files which
+  describe  the data  structures involved  will undoubtedly perplex
+  the reader -- hence the warning.
+
+  In  addition to  a mechanism  for login  server/answering service
+  communication, the various software components which are involved
+  in  identification  and   authentication,  process  manipulation,
+  process  termination handling  etc. -- henceforth  referred to as
+  "user control software" -- are modified  or replaced so as to not
+  be inextricably wed to the  Channel Definition Table (CDT) and to
+  be  able to cognizant  of the existence  of login servers,  where
+  necessary.   Various  other  components  of  user  control are so
+  difficult  to  maintain  at  present,  that  they were completely
+  replaced by new modules which handle the MNA connections.
+
+  222...111:::  LLLooogggiiinnn SSSeeerrrvvveeerrr RRReeeqqquuueeessstttsss aaannnddd RRReeessspppooonnnssseeesss
+
+  A new event-driven subsystem,  the "login server request server,"
+  is  added  to  the  Answering  Service  to  process  login server
+  requests.  While the function of the new server parallels that of
+  the so-called  "AS request server", the  security-critical nature
+  of the login server communications  (such as the need to transmit
+  passwords to  the answering service)  and the desire  to minimize
+  contention  on the request  queue suggest the  use of a  separate
+  request queue and server.
+
+  The new  module ls_request_server_ implements the  driver for the
+  new   server.    Its   $init   entrypoint   is   called   by  the
+  login_request_server        command        and        establishes
+  &gt;sc1&gt;login_server_requests.ms as the  repository for requests and
+  establishes an event channel  for notifying the answering service
+  of requests  to process.  The  ACL on the  message segment should
+  only allow  messages to be  added by the  login server processes,
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  which  should be  registered on   the Daemon  project.  This  ACL
+  should be  considered highly sensitive, for any  process that can
+  submit login  server requests can cause new  and active processes
+  to  be manipulated.   The system_start_up.ec  (in part  3) should
+  give the login  server project "ao" access to  the request queue.
+  The  event channel  is published  in the  answer_table, requiring
+  that  login servers  be given  access to  this table.   The event
+  channel    is     a    "call    channel"    and     the    module
+  uc_ls_rq_server_wakeup_ is the handler  for any wakeups sent over
+  the channel.
+
+  Login servers  initiate requests by  allocating and filling  in a
+  structure and calling the new module send_ls_request_ to send the
+  request  to  the  Answering  Service  and  wait  for  a response.
+  send_ls_request_ determines  the event channel and  process_id of
+  the  Answering Service, as  well as the  location of the  request
+  message   segment  by   calling  login_server_info_$request_info.
+  send_ls_request_  then adds  a request  (message) to  the message
+  segment  and sends a  wakeup to the  answering service.  It  goes
+  blocked awaiting a response from the answering service.
+
+  The new answering service  routine uc_send_ls_response_ is called
+  by  various answering  service programs   to respond  to a  Login
+  Server request.  The response a combination of an IPC wakeup with
+  associated event  message; and an optional  User Message facility
+  data entry.  The IPC message  contains various flags and an error
+  code and indicates to the login server whether a User Message has
+  been sent.  These flags and error code are returned to the caller
+  of  send_ls_request_.   No  handling   of  the  User  Message  is
+  performed  by   send_ls_request_;  it  is  the   caller's  (login
+  server's)  responsibility to  extract the  message from  the User
+  Message database.
+
+  Responses  to the  Login Server  occur only  for user validation,
+  process  creation,  process  connection  or  process  termination
+  operations.   If  uc_send_ls_response_  receives  an  error  when
+  sending the response (wakeup to  the Login Server event channel),
+  it  assumes that  the Login  Server process  has been  destroyed.
+  Because none of these operations can complete without cooperation
+  of the Login  Server, it is best to disconnect  the terminal when
+  sending  the  response  fails.   Therefore,  uc_send_ls_response_
+  calls   the  force_disconnect    entrypoint  specified   for  the
+  connection  in  the  active  connection  list  to  tell  the  MNA
+  correspondent (eg DSA) to disconnect the terminal.
+
+  Similarly, if  the MNA correspondent  fails in sending  the login
+  server  a wakeup  (eg, when  the user  disconnects the terminal),
+  then the correspondent sends a disconnect request directly to the
+  Initializer  process to  cause proper  disconnection of  terminal
+  from the process.
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  The next section  describes the operation of each  of the defined
+  login server  requests.  MTB-752 provides  detailed documentation
+  of the data structures which embody the login server requests and
+  responses.  This MTB refrains  from duplicating this information.
+  The  user is referred  to MTB-752 for  the layout and  content of
+  these requests and responses.
+
+  2.1.1:  LOGIN SERVER REQUESTS
+
+  There are seven types of  login server requests currently defined
+  and declared in  the include file login_server_messages.incl.pl1.
+  They are the "validate," "process," "list," "dial," "disconnect,"
+  "logout," and "operator" requests.  Each  is described in its own
+  section.  Associated  with all login server  requests are version
+  numbers  and  request  types.   Additionally,  an  event  channel
+  provides  the Answering Service  with the means  to reply to  the
+  login server, and a handle  (manufactured by the login server) is
+  used by  both processes to  distinguish the connection  for which
+  the  requests and responses  apply.  The handle  is also used  by
+  both the Answering  Service and the Login Server  to identify the
+  User Message which may be optionally sent with IPC responses.
+
+  2.1.1.1:  Validate Request
+
+  The validate request is used  to identify and authenticate a user
+  request  for access  to the   system.  This  request is  used for
+  normal user logins which may result in process manipulation, dial
+  use, or  message coordinator use.  The type  of service, however,
+  is not specified in the  validate request itself, but is implicit
+  in  a request  which follows  the validate  request.  The  module
+  which implements the validate request is uc_ls_validate_request_.
+
+  Note that the distinction  between user validation (i.e. ensuring
+  the validity of  the supplied user id, project  id, password, AIM
+  authorization, etc.)  and process creation  is made very clear in
+  the  MNA answering  service --  in fact  these two  functions are
+  performed  via different  login server  requests and  are not  as
+  tightly coupled  as in the  normal answering service.   Thus, for
+  instance,  the  checking  of  the  value  of  the "-ring" control
+  argument on the login command line, which makes no sense for dial
+  or message coordinator logins does not occur through the validate
+  request, but occurs as a result of a "process" request, described
+  later.
+
+  For  every validate  request, the  Answering Service  allocates a
+  User Table  Entry (UTE).  Thus,  a change from  the MCS Answering
+  Service, dial and message  coordinator users have UTEs associated
+  with them.  UTEs are allocated in the answer_table, since all MNA
+  connections through  login servers are assumed  to be interactive
+  processes.  In fact, MNA connections may be created (from outside
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  Multics)  as a  result of  batch or  RJE use;  the MNA  Answering
+  Service does not handle these specially.
+
+  2.1.1.1.1:  Changes to the UTE
+
+  In  order to  accommodate MNA,  the UTE  was expanded  to include
+  several  more  variables.   In  addition,  the  UTE structure was
+  reorganized to more logically group elements.
+
+  The new  UTE variable "process_type" defines whether  the user is
+  interactive, absentee, or a  daemon user.  Many answering service
+  modules attempted to determine this using various heuristics, and
+  it  seemed simpler  to add  this  variable  to the  UTE, have  it
+  calculated only one time, and then used repeatedly.
+
+  Two   new  flags   were  inserted    in  a   former  pad   field:
+  "user_specified_immediate" flag indicates whether or not the user
+  specified  the  "-immediate"  control  argument  on  a pre-access
+  command  line (for  MCS, this  is stored  in the  CDT, which,  of
+  course,     does    not     exist    for     MNA    connections);
+  "user_specified_operator"  reflects  if  the  "-operator" control
+  argument was used, indicative of the fact that the user wished to
+  be logged in as an operator  and have his terminal converted to a
+  message coordinator terminal.
+
+  Several variables  describing the terminal connection  were added
+  to the  UTE.  The "terminal_type", "line_type"  and "tty_id_code"
+  are stored in  the UTE because they are used  by various parts of
+  the answering  service (for MCS connections,  they were available
+  in the CDT entry).  For DSA  connections, the line_type is set to
+  LINE_DSA, a constant added to line_types.incl.pl1.
+
+  Also, a  "network_connection_type" variable was  added.  Provided
+  by the login server, it  reflects what kind of network connection
+  is being used (eg, login or file transfer).  Its use is described
+  later on.
+
+  Finally, a set of variables  associated with the login server are
+  added to the  UTE.  These variables are in  the level-2 structure
+  login_server_info included below:
+
+         2 login_server_info,
+           3 our_handle bit (72) aligned,
+           3 his_handle bit (72) aligned,
+           3 termination_event_channel fixed bin (71),
+           3 response_event_channel fixed bin (71),
+           3 process_id bit (36) aligned,
+
+  "our_handle"  is  an  identifier  constructed  by  the  answering
+  service  and used by  the login server  which identifies the  UTE
+  associated  with  a  login   server  request.   UTE  handles  are
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  fabricated  by encoding the  UTE index, the  process type, and  a
+  unique  identifier (based on  the clock) into  a bit (72)  value.
+  The process type is required in order to determine the user table
+  in which to locate the UTE (answer_table, absentee_user_table, or
+  daemon_user_table).  Since MNA  involves only interactive logins,
+  all  handles created designate  a process type  of "interactive".
+  The unique identifier is required in order to handle the reuse of
+  UTEs  correctly.   The  new  entry asu_$setup_login_server_handle
+  manufactures   these  handles  given   a  pointer  to   the  UTE.
+  "his_handle" is an identifier constructed by the login server use
+  by the answering service to  uniquely identify a connection being
+  managed by the login  server.  "termination_event_channel" is the
+  event  channel over  which the  login server  is notified  when a
+  process   terminates.   "response_event_channel"  is   the  event
+  channel over which the login server  is notified of a response to
+  a login  server request.  "process_id"  is the process  id of the
+  login server managing a connection.
+
+  2.1.1.1.2:  Filling in the UTE
+
+  After a UTE  has been allocated, an event  channel is established
+  to handle AS events associated with this connection; it is stored
+  in    the   UTE.     The    handler    for   these    events   is
+  uc_proc_term_handler_  and is  described in  detail below  in the
+  "Process Termination Handler" section.
+
+  The  UTE is filled  in with the  relevant I&amp;A variables  from the
+  validate   request   structure.    The  "network_connection_type"
+  variable, supplied by  the login server process, may  take on the
+  values       declared       in       the       include       file
+  login_server_messages.incl.pl1.   There  are  currently  only two
+  values:  one indicating a normal user login, the other indicating
+  a  special  login  for  the  purposes  of  remote  file transfer.
+  Processes created  for the purposes of remote  file transfer bear
+  the  special  instance  tag  "f",  rather  than  "a"  in order to
+  distinguish them for access control purposes.  Thus, the value of
+  ute.tag is set to "f" or "a", as appropriate.
+
+  2.1.1.1.3:  Other Validation Information
+
+  In addition to  the partially filled in UTE,  a second structure,
+  uc_validate_info,  is used  as a  temporary repository  for other
+  variables  needed for  I&amp;A but   not present  in the  UTE.  These
+  variables  include flags  indicating whether  or not  to check  a
+  password for an anonymous login ("enter" versus "enterp" logins);
+  the access class range of the communications channel (provided by
+  the  login  server,  but  for  DSA always system_low:system_low);
+  whether  to  check  access  to  the  communications  channel (not
+  currently used for MNA logins, but available if MCS is changed to
+  use  MNA);  and  the  encrypted   password  used  for  I&amp;A.   The
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  uc_validate_info  structure  is   used  only  for  communications
+  between uc_ls_validate_request_ and the module which performs the
+  actual identification and authentication, uc_login_.  It contains
+  both input arguments to uc_login_ as well as output arguments and
+  is declared below:
+
+  /* Begin include file uc_validate_info.incl.pl1 */
+
+  dcl  uc_validate_info_ptr   ptr automatic;
+
+  dcl  1 uc_validate_info     structure aligned
+                              based (uc_validate_info_ptr),
+         2 input_info,
+           3 channel_info,
+             4 access_class_range (2) bit (72),
+           3 password         char (32) unaligned,
+           3 flags            aligned,
+             4 check_channel_access bit (1) unaligned,
+             4 check_anonymous_password bit (1) unaligned,
+             4 pad1           bit (36 - 2) unaligned,
+         2 output_info,
+           3 flags            aligned,
+             4 password_expired bit (1) unaligned,
+             4 password_unused_too_long bit (1) unaligned,
+             4 changed_password bit (1) unaligned,
+             4 changed_default_project bit (1) unaligned,
+             4 default_authorization_changed bit (1) unaligned,
+             4 pad2           bit (36 - 5) unaligned,
+           3 number_disconnected_processes fixed bin,
+           3 pad3             fixed bin,
+           3 password_interval fixed bin (71),
+           3 last_bad_pw_info,
+             4 time           fixed bin (71),
+             4 terminal_type  char (32) unaligned,
+             4 terminal_id    char (4) unaligned,
+             4 line_type      fixed bin,
+             4 number         fixed bin,
+             4 pad4           fixed bin,
+           3 last_login_info,
+             4 time           fixed bin (71),
+             4 terminal_type  char (32) unaligned,
+             4 terminal_id    char (4) unaligned,
+             4 line_type      fixed bin;
+
+  /* End include file uc_validate_info.incl.pl1 */
+
+  The   output   data   in   the   uc_validate_info   structure  is
+  self-explanatory.    One  important   point,  however,   requires
+  highlighting.  In the MCS answering service code, at any point in
+  the login  or logout process (or even  during process execution),
+  the  Initializer process could  display error or  status messages
+  directly  to the  user by  writing on  the user's  communications
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  channel.  In  the MNA environment, all messages  must be buffered
+  or stored in data structures (such as the output data, above) and
+  transmitted to  the login server process for  displaying over the
+  user's connection since the Initializer process does not have the
+  means to interface with the various network connections.
+
+  Once uc_validate_info,  as well as the relevant  I&amp;A variables in
+  the UTE, are filled  in, uc_ls_validate_request_ calls uc_login_,
+  which performs  the actual I&amp;A.   Its function is  similar to the
+  first  part of the  module lg_ctl_, used  for MCS, absentee,  and
+  daemon  logins, and  is  described  below.  uc_login_  returns an
+  error code, which, if zero, implies that the user has undergone a
+  successful   I&amp;A.   It   also  completes   the  output   data  in
+  uc_validate_info.   The error  code and  output info  is packaged
+  into a  login server response and  sent to the login  server.  If
+  the  error  code  is  non-zero,  the  UTE  is freed, otherwise it
+  remains  as the  primary data  structure used  to manipulate  the
+  process (or dial/mc service) associated with the user I&amp;A'ed.
+
+  2.1.1.1.4:  uc_login_
+
+  The  module which performs  all the work  of user validation  (as
+  opposed  to process  creation  validation)  is uc_login_.   It is
+  called   by    uc_ls_validate_request_   after   the    UTE   and
+  uc_validate_info  structures are filled  in.  This new  module is
+  coded in such  a way as to be able to  handle absentee and daemon
+  logins, as well as interactive logins  and is meant to be used as
+  a replacement for  the first part of the  I&amp;A functions performed
+  by the  current lg_ctl_ module.   Currently, however, it  is only
+  used by the login server, which in turn, is only used by DSA.  It
+  performs the  following functions, some of which  are optional or
+  dependent  on the process  type:  person id  validation, password
+  validation,  physical security  breach checking,  change argument
+  processing,   authorization   argument    parsing,   project   id
+  validation, daemon MCACS  checking, communications channel access
+  checking, and AIM authorization  validation.  If all these checks
+  are  made successfully,  the user  is considered  "logged in", an
+  audit  message is  entered into  the answering  service log,  the
+  "whotab"  is updated,  the  output  data of  the uc_validate_info
+  structure is completed, and other login instances of the user are
+  notified as  appropriate.  If any of the  validation checks fail,
+  the user is denied login, and  the error code parameter is set so
+  that the caller, uc_ls_validate_request_  can reject the validate
+  request, and an audit message indicating login denial is logged.
+
+  As  far  as  MNA  is  concerned,  each  logged-in  user has a UTE
+  regardless  of whether  there is  a process  associated with  the
+  user.  The uc_login_ module performs  the validation and the user
+  remains logged  in until the module uc_logout_  is called.  After
+  uc_logout_ is called, the UTE reflects a no-longer logged in user
+  and is  discarded.  uc_logout_ performs the  inverse operation of
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  uc_login_,  and  is  responsible  for  updating  the  whotab  and
+  auditing  a logout.   The  instances  and circumstances  in which
+  uc_logout_ is called are described later in this MTB.
+
+  Most of the login server  requests operate on a validated (logged
+  in)  UTE.   After  a  successful  validate  request the answering
+  service  provides a handle  (ute.login_server_info.our_handle) to
+  be used by the login  server in subsequent login server requests.
+  This handle  is used to locate  the UTE.  One request,  the "dial
+  request"  can be  sent to  the answering  service without  having
+  undergone validation.   This corresponds to  the use of  the dial
+  preaccess command without the  "-user" control argument.  In this
+  case, the handle provided in the  "dial" request is zero, and the
+  answering service recognizes this as  indicative of the fact that
+  no validation has been performed,  and treats the dial connection
+  as  having  not  been  identified  and  authenticated.  The other
+  requests, however, require already validated  UTEs in order to be
+  processed.
+
+  2.1.1.1.5:  Communications Channel Access Checking (or lack
+  thereof)
+
+  As mentioned  in a previous paragraph, the  MNA answering service
+  does  not  perform  discretionary  access  control  checking  for
+  communications channel.   The reason is  due to the  inability to
+  associate   communications   channel   names   with  identifiable
+  terminals,  systems,  hosts,  etc.    Under  DSA,  for  instance,
+  communication channel  names (i.e.  dsa.MUL1.0034) are  not known
+  prior to connection time, and  once connected, it is not possible
+  for  the  TCB  (answering  service,  in  this  case) to determine
+  conclusively   where  the   connection  originated   from.   This
+  inability to locate the origin of  the connection is a failing of
+  the  DSA architecture,  and cannot  be corrected  through Multics
+  software.  Therefore,  it is not practical to  attempt to perform
+  access control checks based on the communications channel.
+
+  2.1.1.2:  Process Request
+
+  During the course of a normal user login (as opposed to a dial or
+  message coordinator service request) a process may be manipulated
+  -- that is, a process may be created, destroyed, connected to, or
+  new_proc'ed.   Each of  these operations  may be  selected on the
+  login command  line or via preaccess requests  after a successful
+  login.  Each  results in the  login server's sending  a "process"
+  request to the answering service.   Each of these sub-requests is
+  described separately below.  All  process requests are handled by
+  the module  uc_ls_process_request_, which is simply  a dispatcher
+  to such modules as uc_ls_create_request_, uc_ls_destroy_request_,
+  etc., which actually perform the work.
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  2.1.1.2.1:  Create Sub-Request
+
+  "Create   process"   requests   are   handled   by   the   module
+  uc_ls_create_request_.   As   with  most  requests,   the  handle
+  provided by the login server in the request is used to locate the
+  UTE which corresponds to the connection in question.  The various
+  process   creation  variables   (described  in   MTB-752  in  the
+  description of the "create" request)  are copied into the UTE and
+  the  module  uc_create_process_check_  is  called  to perform the
+  validation  of   these  variables.   This  module   performs  the
+  remainder of  the checks which  are currently made  by lg_ctl_ in
+  the non-MNA answering service.  Thus, it is a fair statement that
+  in  the  MNA  answering   service,  validation  is  performed  by
+  uc_login_  and  uc_create_process_check_,   and  in  the  non-MNA
+  answering service, by lg_ctl_.  The MNA modules are coded in such
+  a way that they could replace  lg_ctl_ when (if) MCS is converted
+  to use the login servers.
+
+  If uc_create_process_check_ returns a  non-zero status code, then
+  the process creation is  denied (and uc_ls_create_request_ audits
+  the denial).   Otherwise, act_ctl_ is  called to open  the user's
+  account  and uc_create_process_ is  called to create  the process
+  (and audit  the process creation).   In any case,  a login server
+  response  is  constructed  providing  the  status  of  the create
+  request.   For successful process  creations, the process  id and
+  event channel used  to start the process running  are returned to
+  the  login  server.   Any  messages  which  the  various  modules
+  involved in process creation checking  may have wished to display
+  for  the  user  (such  as  act_ctl_  or  load_ctl_  warnings) are
+  accumulated     in    a     new    buffer     pointed    to    by
+  as_data_$ls_message_buffer_ptr.   These messages are  copied into
+  the  login server  create response   and forwarded  to the  login
+  server to be displayed over the user's connection.
+
+  The "login  server message buffer" is located  through the static
+  variable  as_data_$ls_message_buffer_ptr rather than  a parameter
+  for the sake  of convenience and because it obviated  the need to
+  change  the calling  sequence of  the modules  that required  it.
+  Although  considered  bad  practice  to  rely  on external static
+  variables, the  answering service software is  already plagued by
+  them and relies on them  heavily.  The AS convention for locating
+  tables and  global AS variables  is through the  user of external
+  static       variables,       hence,       the       use       of
+  as_data_$ls_message_buffer_ptr  has enough  precedent to  justify
+  its use.  This  global buffer does not cause  conflicts when more
+  than  one  process  is  attempting  to  log  in  because  of  the
+  non-blocking  nature  of  the  answering  service.   During login
+  server  request processing,  the  answering  service does  not go
+  blocked and the use of the message buffer does not persist across
+  login server request processing.
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  In the  non-MNA process creation  case, the answering  service is
+  charged with sending the process  its initial wakeup which causes
+  the process to leave its initial blocked state and begin running.
+  For synchronization purposes, since it  is the login server which
+  must set up various communications channel data structures before
+  the process  can attach its  I/O switches, the  answering service
+  merely  provides the  login server  with the  event channel  over
+  which  the  login  server  can   send  the  initial  wakeup  when
+  appropriate.
+
+  2.1.1.2.2:  uc_create_process_check_
+
+  The module uc_create_process_check_ is  tasked with checking with
+  accounting  and load  control, as  well as  with per-project  and
+  per-user limits to determine whether  a process can be created on
+  behalf of a user.  As stated previously, this program mirrors the
+  latter half of lg_ctl_, which performs the parallel functions for
+  MCS,  absentee,  and  daemon  logins.   In  summary, these checks
+  include:   checking  PDT  and  SAT  process  limits, checking for
+  multiple  logins  (and  warning  other  login instances), calling
+  act_ctl_  for accounting  validation, validating  the use  of the
+  "-process_overseer",  "-subsystem", "-ring",  and "-outer_module"
+  control  arguments,   setting  up  other   miscellaneous  process
+  creation variables, and calling upon  load control to ensure that
+  load  limits   are  not  exceeded.   If  all   these  checks  are
+  successful, the  value ute.uflags.proc_create_ok is set  to true,
+  indicating  to other  programs that   this UTE  is validated  for
+  process  creation.  If  any of   the limits  are exceeded  or any
+  checks are not passed, the login  server is apprised of the error
+  and the process creation is  denied.  Any messages accumulated in
+  the   process  of   authenticating  the   process  creation   are
+  accumulated in  a buffer (as described above).   Examples of such
+  messages are the "preemption" messages which appear during login.
+
+  2.1.1.2.3:  uc_create_process_
+
+  If uc_create_process_check_ determines  that the process creation
+  is allowed, uc_create_process_ is called by uc_ls_create_request_
+  to  actually create  the process.   This module  mirrors cpg_ for
+  non-MNA logins.   uc_create_process_ ensures that the  UTE is set
+  up for process  creation (by checking ute.uflags.proc_create_ok),
+  sets up  the Process Initialization Table  (PIT), initializes the
+  hardcore  process  creation  structure  create_info,  selects the
+  process   directory   logical    volume,   and   calls   hardcore
+  (hphcs_$create_proc)  to create  the process.   If successful, it
+  calls act_ctl_ to note the process creation.  Finally, the whotab
+  is  updated with the  various values that  were not available  at
+  login  time (for example  the number of  load units).  Any  error
+  which  occurs  during  the  execution  of  uc_create_process_  is
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  returned  to  uc_ls_create_request_  in  order  that  it  can  be
+  conveyed to the login server.
+
+  2.1.1.3:  Connect Request
+
+  The module uc_ls_connect_request_ is  invoked when the user, upon
+  login, wishes to connect his terminal to an existing disconnected
+  process  and issues  the  "connect"  request.  In  actuality, the
+  "destroy"  and "new_proc"  requests also  implicitly connect  the
+  user  to   the  disconnected  process  before   performing  their
+  designated      functions      and      a      common     module,
+  uc_setup_process_connect_      performs      the      connection.
+  uc_ls_connect_request_         begins          by         calling
+  uc_setup_process_connect_, described  in the next  paragraph.  If
+  this succeeds (error code equal to zero) then the login server is
+  sent a response indicating success  and the request processing is
+  complete.   Similarly, if  an error  occurs, the  login server is
+  informed of this via a response.
+
+  2.1.1.3.1:  uc_setup_process_connect_
+
+  uc_setup_process_connect_  is the  heart of  disconnected process
+  manipulation,  and,  as  mentioned  above,  is  invoked  for  the
+  "connect", "destroy", and "new_proc"  preaccess commands.  As for
+  most  login server requests,  the UTE is  located via the  handle
+  supplied    by   the    login   server.     Then,   the    module
+  uc_list_disconnected_procs_  is called  to  build  a list  of the
+  disconnected  processes belonging  to the  user.  If  the process
+  number supplied on the login or pre-access command is outside the
+  bounds of the number of  disconnected processes, an error code is
+  returned to the  caller.  If the process number  corresponds to a
+  disconnected process, then the  AIM authorizations of the current
+  connection  (as  determined  in  the  validate  request)  and the
+  disconnected process are compared and,  if not equal, the process
+  connection is denied (and audited).  Otherwise, various variables
+  are copied from the new  (active) UTE into the old (disconnected)
+  UTE  prior  to  discarding  the  new  UTE  and  switching  to the
+  disconnected  UTE.  The  login server  is apprised  of the handle
+  corresponding to the disconnected UTE in the login server process
+  response so  that future interactions with  the answering service
+  will identify the correct UTE  (the UTE identified in the connect
+  request is  discarded when a  process connects to  a disconnected
+  process).  The data copied from  the new (temporary) UTE includes
+  the  login  server's  handle,  the  response  event  channel, the
+  termination event  channel, and the login server's  process id --
+  in short the information which  links the current connection with
+  the login server handling that  connection (which may, of course,
+  be different from the one which handled it originally).  In fact,
+  there may  have been no  login server at  all if the  process was
+  originally  connected via   MCS.  Further,  the terminal-specific
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  information  about  the  current  connection  is  copied into the
+  disconnected UTE (name, type, id).
+
+  The  event  channel  associated  with  the  disconnected  UTE  is
+  re-declared with  the MNA process termination  handler, since the
+  terminal handler may have been  associated with the MCS answering
+  service  (if the  process originally  connected through  MCS).  A
+  process connect audit message is logged and the new UTE is freed.
+
+  Then, the disconnected process is  informed (via an update of the
+  terminal  information in  the  PIT)  of the  new terminal-related
+  variables through a call  to uc_set_pit_tty_info_ and the process
+  is  placed  in  the  "connected"  state,  and  the PDT and whotab
+  updated  to  reflect  this  state.   Finally,  the  login  server
+  response is manufactured, which includes the new handle to use to
+  manage this  connection, the process  id of the  process, and the
+  event  channel over  which the  process is  suspended.  The login
+  server will, after the appropriate setup, send a wakeup over this
+  event channel to get the process running again.
+
+  2.1.1.3.2:  uc_set_pit_tty_info_
+
+  This  module, uc_set_pit_tty_info_  is merely  a wrapper  for the
+  call     into     hardcore,     through     the     gate    entry
+  hphcs_$set_pit_tty_info,   which   updates   the   PIT   of   the
+  disconnected  process with   the new  terminal-related variables.
+  Among those  updated are the  terminal name, type,  id, and outer
+  module.
+
+  2.1.1.4:  Destroy Request
+
+  When the user issues the  "destroy" preaccess request, the module
+  uc_ls_destroy_request_  is  invoked   through  the  login  server
+  request  mechanism.   In  a  manner  analogous  to  the "connect"
+  request,  the  module   uc_setup_process_connect_  is  called  to
+  connect  the user's  connection to  the disconnected  process, as
+  described above.  After the connection is complete, the variables
+  ute.destroy_flag and  ute.logout_type are updated to  reflect the
+  desire  to  destroy  the  process  and  the  process  destruction
+  sequence  is  begun.   An  in-depth  discussion  of  the  process
+  destruction code  is described further  on in this  MTB.  For the
+  purposes of  this discussion, suffice  it to say,  that there are
+  two  means  of  destroying  a  disconnected  process:   normal or
+  immediate.  In the normal case, the  process is sent a "trm_" IPS
+  signal  and  the  answering  service  waits  for  it to terminate
+  gracefully before calling hardcore to really destroy the process.
+  In the  immediate case, the  IPS signal and  process response are
+  bypassed and  hardcore is called directly  to immediately destroy
+  the process.  The user specifies whether he wishes an "immediate"
+  process destruction via the  "-immediate" control argument on the
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  login  or  pre-access  command  line.   This  control argument is
+  conveyed to the answering service in the login server request and
+  acted upon by uc_ls_destroy_request_.
+
+  Unlike some  of the other  login server requests,  no response is
+  sent to  the login server at  the end of the  request processing.
+  The process destruction code,  which runs asynchronously with the
+  request processing is tasked with notifying the login server when
+  the  process destruction  is complete.   This is  described later
+  under "Process Termination Handler".
+
+  2.1.1.5:  New_Proc Request
+
+  The  pre-access  "new_proc"  request  is  handled  by  the module
+  uc_ls_new_proc_request_  which   parallels  the  action   of  the
+  "destroy"  request.  Again, the  module uc_setup_process_connect_
+  is  invoked in  order to   connect the  user to  the disconnected
+  process.     Then,    the    variables    ute.destroy_flag    and
+  ute.logout_type  are set to  indicate to the  process destruction
+  code  that  the  process  is  to  be  new_proc'ed and the process
+  destruction  sequence  begun.   Again,  the  "-immediate"  option
+  applies,  as described above.   In addition, this  request defers
+  the login  server notification as  in the case  for the "destroy"
+  request.
+
+  2.1.1.6:  List Request
+
+  The "list" request is used when the  user wishes to get a list of
+  the  disconnected processes he  has.  The module  which processes
+  this login server request  is uc_ls_list_request_.  It determines
+  the UTE of the validated user  based on the handle and then calls
+  uc_list_disconnected_procs_  to  build  a  list  of  disconnected
+  processes.   This list  is copied  into the  login server  "list"
+  response structure and sent to the login server.
+
+  2.1.1.6.1:  uc_list_disconnected_procs_
+
+  Uc_list_disconnected_procs_  is charged  with building  a list of
+  the  disconnected  processes  for  a  given  user.   It scans the
+  answer_table  for processes  whose person  and project  ids match
+  those of the  requesting user which are also  disconnected.  As a
+  cross-check, it  compares the number of processes  found with the
+  number  of   disconnected  processes  recorded  in   the  Project
+  Definition  Table Entry  (PDTE) for   the user.   Any errors  are
+  recorded in the  answering service log.  The number  found in the
+  PDTE is used  to determine the size of the  structure to allocate
+  --  if  it  is  smaller  than  the  number  actually found in the
+  answer_table, then this smaller  number of disconnected processes
+  is  returned to  the user.    Normally, these  numbers should  be
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  identical  and will  only differ   due to  bugs in  the answering
+  service.
+
+  2.1.1.7:  Disconnect Request
+
+  The  login server  "disconnect"  request  results when  the login
+  server is notified from the  underlying network software that the
+  connection  to Multics  has been  terminated (disconnected).  The
+  parallel   in  MCS   is   a   "hangup"  condition   which  arises
+  asynchronously.  When the login  server detects such a condition,
+  it notifies the answering  service through a "disconnect" request
+  so  that the  answering service   can log  out or  disconnect the
+  process.  A disconnect request can occur for a user even before a
+  process  is created  (as, for  instance, would  happen if  a user
+  logged  in  but   didn't  specify  what  was  to   be  done  with
+  disconnected processes, and while in  the middle of the so-called
+  "connect-loop" dialog, hung up his  terminal).  In this case, the
+  answering service must still log  out the UTE associated with the
+  connection.  If there is a  process associated with the UTE, then
+  it must be either logged  out or disconnected, depending upon the
+  setting of the administrative and user flags.
+
+  The "disconnect" request begins by finding the relevant validated
+  UTE based upon the login server  handle.  If the process does not
+  have  a  process  (ute.active   =  NOW_LOGGED_IN  as  opposed  to
+  NOW_HAS_PROCESS) then  uc_logout_ is called  to log out  the user
+  (and audit the logout).  The UTE is then freed and the disconnect
+  request is complete.  If the UTE has a process, then the "process
+  termination handler" is run by sending a "hangup" wakeup over the
+  event  channel specified  in ute.event.   This causes  the module
+  uc_proc_term_handler_  to be  run, whose  operation is  described
+  later.
+
+  2.1.1.8:  Logout Request
+
+  The  "logout" request is  a special request  invoked when a  user
+  issues the "logout" pre-access command, after already having been
+  logged  in,  but  before  having   specified  what  to  do  about
+  disconnected processes he might have.  Its operating is simple --
+  it calls uc_logout_  to log out the specified UTE  and then frees
+  the UTE.  This request is handled by uc_ls_logout_request_.
+
+  2.1.1.9:  Dial Request
+
+  The "dial" request  is invoked as a result of  issuing the "dial"
+  pre-access    command   and    is   handled    by   the   program
+  uc_ls_dial_request_.  This  request is different from  the others
+  in that it  can be sent to the answering  service with or without
+  prior  identification and authentication.   In the case  where no
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  I&amp;A has occurred, there is  no UTE associated with the connection
+  (this  being the  first time  the AS  has heard  about it).  This
+  situation is detected by the answering service by virtue of there
+  being a  handle equal to zero  in the request.  If  the handle is
+  non-zero,  the UTE  is found  in  the  same manner  as for  other
+  requests.  For zero handles, no  UTE is involved in the operation
+  of the  dial request.  The module uc_dial_  actually performs the
+  work of locating the process to  which the user wishes to solicit
+  dial service.  If it returns a  non-zero error code, and there is
+  a UTE active for the connection,  the UTE is logged out and freed
+  and  the login  server is  notified of  the dial  failure.  For a
+  successful dial, the  dial response is filled in and  sent to the
+  login server,  which displays the appropriate  information on the
+  user's terminal.
+
+  2.1.1.9.1:  uc_dial_
+
+  The module uc_dial_ is tasked  with locating the process to which
+  the  user's  dial  request  applies.   Its  parallel  in  the MCS
+  answering  service is  a portion  of dial_ctl_.   This program is
+  passed  the UTE  of the  dialing process  (if present),  the dial
+  qualifier,  target  person  id  and  project  id  (if  this is an
+  unregistered dial service), the user's connection name and access
+  class range.   The return arguments  are a pointer  to the target
+  process's UTE (if any) and an  error code.  The operation of this
+  module is identical with that  of dial_ctl_.  It searches through
+  all   UTEs   in    the   answer_table,   daemon_user_table,   and
+  absentee_user_table  looking for   processes which  are accepting
+  dials with the specified dial-id.   It also performs an AIM check
+  to  ensure  that  the  target  process  access authorization lies
+  within the  range of the  connection access class  of the dialing
+  user.   It  also  ensures  that  the  user's  login authorization
+  dominates  the authorization  of the  target process.  Successful
+  and failed dial attempts are  audited.  For successful dials, the
+  count of dialed terminals is incremented in the target UTE.
+
+  Under MNA, the  answering service does not provide  the wakeup to
+  the target process indicating to it that a user has dialed.  This
+  function  is performed  by the  login server.   The login  server
+  response  for   a  dial  request  provides   enough  information,
+  including  the event channel  name and process  id of the  target
+  process to allow it to send the notification.
+
+  2.1.1.10: Operator Request
+
+  The Operator request is sent to  the MNA answering service when a
+  user specifies "-operator" on  the login command line, indicating
+  that  he wishes to  become an operator  and to have  his terminal
+  converted  to  a  message  coordinator  terminal.   Use of "login
+  -operator" is functionally equivalent to issuing the "dial system
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  -user  Personid.Projectid"  preaccess  request.   Under  MCS, the
+  required  use  of  "-user"  to  provide  I&amp;A  was dictated by the
+  existence  of the  "check_acs:  slave_dial"  in the  CDTE of  the
+  channel over which the user  was attempting the dial.  Under MNA,
+  where it  is not possible  to know where  a user is  located (and
+  thus whether the  user is an operator in the  computer room), the
+  login  server  requires  I&amp;A  for  operator  access.  Rather than
+  require   the  "dial    system  -user   Personid.Projectid  -auth
+  Authorization" syntax, MNA allows a  normal login command line to
+  specify  the "-operator"  control  argument,  which has  the same
+  effect.   The MCS  answering service   is NOT  being upgraded  to
+  include  this  functionality,  although  it  would  not take much
+  effort.
+
+  The    "operator"   request    is   handled    by   the    module
+  uc_ls_operator_request_.  Although the login server enforces I&amp;A,
+  the  answering service is  equipped to handle  the case where  an
+  operator request  is sent to  the AS without  a prior validation.
+  In this case, the Person Id and Project Id of the user are set to
+  null  in the call  to the message  coordinator.  Since the  login
+  server does not allow this  situation, operators will always have
+  undergone I&amp;A and the message coordinator will be apprised of the
+  validated Person Id and Project Id.
+
+  The work of  the operator request is performed  by the subroutine
+  mc_commands_$mc_login,  which is  documented in  MTB-750.  Due to
+  the complexity of the message coordinator software, the answering
+  service  does  not  send  a  response  to  the  login  server  if
+  mc_commands_$mc_login   returns   a   zero   error   code.    The
+  notification  is performed  later (asynchronously).   However, if
+  the message  coordinator returns a non-zero error  code, then the
+  login server is notified of the failure of the operator request.
+
+  One additional  parameter may be  specified on the  login command
+  line for operator logins, namely  the name of the desired virtual
+  channel  to be associated  with the message  coordinator console.
+  Its  use is documented  in MTB-750 and  the name of  this virtual
+  channel  (provided  to  the  answering  service  in  the operator
+  request) is merely passed to  the message coordinator in the call
+  to mc_commands_$mc_login.
+
+  2.1.2:  LOGIN SERVER REQUEST PROCESSING
+
+  The mechanism used to handle login server responses deserves some
+  comment.  When  uc_ls_rq_server_wakeup_ receives a wakeup  from a
+  login server indicating  that there is a login  server request to
+  process, it examines the messages in the queue, checking them for
+  correct  headers and  lengths,  and  then processes  them.  After
+  processing them,  they are deleted from the  queue.  Processing a
+  message involves determining the request  type from the header of
+  the  request  and  invoking   the  corresponding  handler  (these
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  handlers were documented in the  previous section).  If any error
+  occurs  in  trying  to  locate  the  handler  or  in decoding the
+  request, then an IPC message is  sent to the login server with an
+  appropriate error code.  Once the handler has been located, it is
+  called with various arguments; they include a pointer to a global
+  request   server  structure   (declared  in   the  include   file
+  ls_request_server_info.incl.pl1), a pointer to  and length of the
+  request, a pointer  to a temporary segment used for  the reply, a
+  return  argument of  the length   of the  reply (initially  0), a
+  pointer  to the  ls_reply_message structure  used to  communicate
+  errors using  IPC (in the event  that no reply message  is used),
+  and  an  error  code.   If  the  length  of  the reply message is
+  non-zero  upon return from  the handler, a  User Message (UM)  is
+  sent to the login server containing a copy of the reply structure
+  (although the structure is not known by uc_ls_rq_server_wakeup_).
+  If  the special  flag ls_reply_message.do_not_reply  is set after
+  the  handler's return then  no IPC message  is sent to  the login
+  server, otherwise, one is sent including the error code and flags
+  in  the  ls_reply_message  structure.   This  versatile mechanism
+  allows  errors to be  communicated between the  answering service
+  and login server through a combination of an IPC message and a UM
+  message,  either of  which is   optional (although  there are  no
+  instances  where a UM  message is sent  without an IPC  message).
+  Some requests, as described above, defer sending a response until
+  some later time.
+
+  uc_ls_rq_server_wakeup_  sends  its  login  server  responses  by
+  directly calling the UM facility.  The asynchronous replies (sent
+  by uc_proc_term_handler_,  as described in the  next section) use
+  the module  uc_send_ls_response_ to send the UM.   This module is
+  merely a wrapper  for the call to the UM  facility and provide an
+  easier calling interface than the UM facility directly.
+
+  222...222:::  PPPrrroooccceeessssss TTTeeerrrmmmiiinnnaaatttiiiooonnn HHHaaannndddllleeerrr
+
+  Associated  with every  validated UTE  is an  event call  channel
+  whose handler  is tasked with handling  various events associated
+  with the  user to whom the  UTE belongs.  The handler  for MNA is
+  uc_proc_term_handler_;  for the   non-MNA answering  service, the
+  handlers  are  dialup_,  ftp_dialup_,  absentee_user_manager_ and
+  daemon_user_manager_ (for interactive,  ftp, absentee, and daemon
+  logins, respectively).  The kinds of  events which are handled by
+  uc_proc_term_handler_ include  requests from the user  process to
+  logout, new_proc, or handle a fatal process error; operator bump,
+  disconnect,   terminate,  and  detach   commands;  communications
+  channel   disconnection  notifications,   and  hardcore   process
+  termination reports.
+
+  The wakeups which are handled  by the process termination handler
+  may  arrive from  three sources:   the user  process in  the user
+  ring, any  user process in  ring zero, and  the answering service
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  itself (in ring 4).  Before  processing the wakeup, the answering
+  service must  ensure that if  it originated from  outside of ring
+  zero and was not sent by  the answering service, that it was sent
+  by the process to which the UTE associated with the event channel
+  belongs.  When  the event channel is  set up, the UTE  pointer is
+  used  as the  IPC data  pointer, such  that whenever  a wakeup is
+  received, uc_proc_term_handler_  can tell what UTE  is associated
+  with  the  wakeup.   The  IPC  event_call_info  data provides the
+  identity of the sending process allowing the answering service to
+  ensure that a malicious user  is not attempting to affect another
+  user's  process.  This  validation is  performed for  any wakeups
+  that  come in  over the   process termination  event channel  and
+  invalid wakeups are logged.
+
+  The  IPC event  message determines  the action  which the process
+  termination handler  should take.  These messages  are defined in
+  the tables as_data_$signal_types and as_data_$system_signal_types
+  -- the former defining the wakeups  which can be sent by the user
+  process and  the latter listing those  which can only be  sent by
+  hardcore or the answering service  (bump, for instance, cannot be
+  sent by  a user process).  Basically,  uc_proc_term_handler_ is a
+  big  transfer vector  which  decodes  the IPC  wakeups, validates
+  their origin,  and transfers (using  a computed goto)  to a label
+  indexed by the wakeup type.   There are several different classes
+  of wakeups, each described in more detail below:
+
+  2.2.1:  FATAL PROCESS ERROR WAKEUPS
+
+  When  a user process  gets a fatal  process error, the  user-ring
+  process termination code sends a  wakeup to the answering service
+  (over the  process termination event  channel left in  the PIT by
+  the answering service) indicating the type of fatal process error
+  (and  error code, if  applicable).  Fatal process  errors include
+  process initialization errors and are all handled by similar code
+  in uc_proc_term_handler_.  The basic function of the handlers for
+  all these  fatal process cases  is to record  an error code  in a
+  "fatal process  error response" to  be sent to  the login server,
+  destroy the  old process, create  a new process.   (Actually, the
+  situation  is  complicated  slightly  in  that  if  the answering
+  service detects  that the user is  in a fatal process  error loop
+  (by counting  the number of  fatal processes in  a site-specified
+  time  interval), it does  not create a  new process, but  instead
+  logs the  user out.  Further,  an "AS Request"  provides the user
+  with  the option  of specifying  whether a  new process  is to be
+  created upon a fatal process error,  or whether the user is to be
+  logged  out.)   Finally,  the  login  server  is  notified of the
+  process termination  and new process information.   The mechanism
+  for  destroying  processes  and  creating  new  ones is described
+  later.
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  2.2.2:  NEW_PROC WAKEUPS
+
+  When the user issues a "new_proc" or "new_proc -auth" command (or
+  the subroutine  equivalents), a wakeup  is sent to  the answering
+  service (over  the process termination event channel).   If a new
+  authorization is requested for the process, this authorization is
+  validated.   In  the  case  of   a  requested  change  of  access
+  authorization,  the trusted_path_login  flag is  checked first to
+  ensure  the site allows  changes in authorizations  without first
+  undergoing  I&amp;A again  (logging out  and logging  in).  After the
+  validations, if any,  the old process is destroyed and  a new one
+  created  (at the  desired  authorization).   The login  server is
+  notified  of  the  new  process  attributes  (process  id,  event
+  channels, authorization,  etc.)  when the new  process is created
+  so  that   it  can  update   its  connection  info,   display  an
+  authorization  banner,  and  start  the  process  executing (in a
+  similar manner to when a process is created initially).  This new
+  process information  is conveyed to the login  server through the
+  means of the "new_proc login server response".
+
+  2.2.3:  LOGOUT WAKEUPS
+
+  The  logout  command  causes  a  "logout"  wakeup  (with  various
+  options)  to  be  sent  to  the  answering  service.  If the user
+  specified the  "-hold" control argument to  the "logout" command,
+  the  answering  service   verifies  that  the  trusted_path_login
+  installation parameter  is disabled -- otherwise,  it ignores the
+  "-hold" request.  Then, the  process destruction code is branched
+  to (described later) and the login server notified of the logout.
+
+  2.2.4:  HANGUP WAKEUP
+
+  The "hangup" request is a  privileged request which can come from
+  two  sources:  the operator  "disconnect" command, and  the login
+  server's  "disconnect"  request.   In  either  case,  the  user's
+  save_on_disconnect flag  is checked and  if the process  is to be
+  saved  on disconnect,  then it   is disconnected  by setting  the
+  "disconnect"  flag in  the UTE,   and attempting  to suspend  the
+  process  (by sending  it a  sus_ signal).   If the  suspend works
+  correctly,  the  "suspended"  flag  is  set  in  the UTE.  If the
+  save_on_disconnect flag is off, a "logout" request is simulated.
+
+  2.2.5:  BUMP, SHUTDOWN, TERMINATE, DETACH WAKEUPS
+
+  The operator  "bump", "detach", "stop", and  "terminate" requests
+  cause the process termination cycle  to begin (see below) with an
+  appropriate error  code stored in the  login server's termination
+  response  structure.   The  bump   command  provides  some  grace
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  (implemented  through a timer  in the answering  service process)
+  before beginning the process termination cycle.
+
+  2.2.6:  UNBUMP WAKEUP
+
+  The operator unbump request disables  the grace time timer set by
+  a bump request.
+
+  2.2.7:  HANDLING OF DESTROY AND NEW_PROC PREACCESS REQUESTS
+
+  In prior  sections, the handling of the  "destroy" and "new_proc"
+  preaccess commands, and the  resulting login server requests, was
+  described.   The action  of these  requests, culminated  with the
+  calling of  dpg_ to destroy  the process.  Just  prior to calling
+  dpg_,   these   requests   set   the   value   of   the  variable
+  ute.destroy_flag  in order to  signal to the  process destruction
+  software  that after  destroying  the  process, the  login server
+  required  a   "process  response"  rather  than   a  "termination
+  response".    Two    new   process   termination    states,   the
+  "NEW_PROC_REQUEST"   and  "DESTROY_REQUEST"  are   recognized  by
+  uc_proc_term_handler_  when  the  process  is  destroyed  and the
+  appropriate code is branched to to notify the login server of the
+  completion of the request.
+
+  2.2.8:  OTHER WAKEUPS
+
+  There are  five wakeups not  yet described which  are involved in
+  the   process  termination   sequence  of   events.   These  are:
+  "trmsgnl",  "alarm",  "stopstop",   "termstop",  and  "cpulimit".
+  These are  described in more  detail in the  following section on
+  the process destruction cycle.
+
+  2.2.9:  THE PROCESS TERMINATION CYCLE
+
+  Perhaps the  most interesting and complicated aspect  of the user
+  control  segment of the  answering service surrounds  the process
+  termination code.  There are three ways in which this code can be
+  entered.  The first  is through a request from  the user (logout,
+  new_proc); the  second is forced by the  answering service (bump,
+  terminate,  shutdown,  etc.);  and   the  third  is  through  the
+  "destroy"  and  "new_proc"  login  server  requests, as described
+  above.  Each of these classes of terminations is described below.
+
+  2.2.9.1:  User-Initiated Process Terminations
+
+  When a  user process wishes  to terminate itself,  it first sends
+  the answering service an appropriate  wakeup indicating why it is
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  terminating    (logout,   new_proc,    fpe)   and    then   calls
+  hcs_$stop_process to actually cause  hardcore to stop running the
+  process.  The user wakeups were described above.  Upon receipt of
+  a  process  termination  request,  uc_proc_term_handler_  sets  a
+  variable  in  the  UTE,  ute.destroy_flag  to either WAIT_LOGOUT,
+  WAIT_LOGOUT_HOLD,    WAIT_NEW_PROC,   WAIT_DESTROY_REQUEST,    or
+  WAIT_NEW_PROC_REQUEST  in  order  for  the  answering  service to
+  remember what  to do after the process  is completely terminated.
+  It is important  to realize that the answering  service cannot go
+  blocked waiting for  a process to terminate, but  rather has very
+  well-defined places where it does go blocked and must be equipped
+  to handle all interactions  as asynchronously as possible.  Thus,
+  it  sets flags  for itself  in the  UTE and  when the next wakeup
+  comes in, it picks up where it left off and continues the process
+  termination    sequence.     Once    ute.destroy_flag    is   set
+  appropriately,  dpg_  is  called  to  destroy  the process.  dpg_
+  (after   various   house-cleaning    tasks,   including   process
+  destruction  auditing)  calls  hardcore  to  begin destroying the
+  process.   Hardcore  notifies  the  answering  service  (sometime
+  later) with a  "stopstop" wakeup to indicate that  the process is
+  indeed  stopped.  When  the "stopstop"  wakeup is  handled by the
+  answering service,  it calls hardcore again  to finish destroying
+  the process.  act_ctl_ is  called to indicate process destruction
+  and the  value of ute.destroy_flag is examined  to determine what
+  to  be done  next.  This  may involve  creating a  new process or
+  logging the user out.  In any  case, the login server is notified
+  through a  process termination response  or new proc  response of
+  the actions taken.
+
+  2.2.9.2:  System-Initiated Process Terminations
+
+  Operator commands, such as bump,  detach, terminate, etc.  take a
+  different  route through  the process  termination sequence since
+  these are not  initiated by the user process.  First  of all, the
+  user process is notified of  the impending termination by sending
+  it a "trm_" IPS signal.  This  allows the process to run "finish"
+  condition and "epilogue" handlers before being destroyed.  In the
+  normal case  (where the process  is not hung  up in some  way nor
+  have its  trm_ signal masked), the process's  trm_ signal handler
+  cleans  up the  process and  then sends  the answering  service a
+  "trmsgnl" wakeup.   This indicates to the  answering service that
+  it is ok to proceed with  the process termination -- and the same
+  sequence as described in  the previous section for user-initiated
+  process terminations occur.
+
+  In the event  that the user process cannot (or  will not) respond
+  to  the trm_ signal  correctly, the answering  service sets up  a
+  realtime and cpu  timer for the UTE.  If the  realtime timer runs
+  out, IPC sends an "alarm___"  wakeup over the process termination
+  event  channel.  If  the cpu   timer runs  out, hardcore  sends a
+  "cpulimit"  wakeup.   In  either   case,  the  answering  service
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  responds by  logging the fact  that the process  ignored the trm_
+  signal, and  goes ahead with  the process destruction  by calling
+  dpg_.  Both the "cpulimit" and  "alarm___" wakeups are handled in
+  uc_proc_term_handler_.
+
+  Finally,  there  is  one  more  case  of system-initiated process
+  terminations.  These involve  timed terminations, accomplished by
+  specifying grace time in the  bump request (or bump subroutines).
+  The  answering service uses  the UTE variable  "ute.preempted" to
+  record   state   of   the    timed   process   termination,   and
+  ute.destroy_flag  to  record  what   timed  operation  is  to  be
+  performed.  It  then sets a  realtime timer for  the process (the
+  wakeup  for which  will arrive   on the  event channel  for which
+  uc_proc_term_handler_  is  the  IPC  handler).   When this wakeup
+  ("alarm___") comes in, uc_proc_term_handler_ notices that a timed
+  event  is in  progress and   performs the  operation in  the same
+  manner as it would have had there not been a timer.
+
+  2.2.9.3:  Cleanup of Network Connections
+
+  When a process is destroyed, dpg_ is called.  One of the tasks of
+  dpg_  is  to  clean  up  process  resources  such as RCP devices,
+  logical  volumes,  and  dialed  connections.   Under  MNA, dialed
+  connections  may be  MNA connections,  rather than  MCS channels.
+  dpg_  calls  dial_ctl_$dial_broom  when  a  process terminates to
+  clean up dialed channels.   dial_ctl_$dial_broom is augmented for
+  MNA  to  call  uc_cleanup_network_dials_,  which  is charged with
+  cleaning  up  MNA  connections.   A  database  called  the Active
+  Connection List,  and documented in MTB-752, maintains  a list of
+  all  the active  connections.  uc_ls_cleanup_dials_  queries this
+  database  looking  for  connections  owned  by  the process being
+  destroyed and takes two actions:
+
+  o    it     calls    the      entrypoint    defined     in    the
+       force_accounting_update_field to cause network accounting to
+       be updated with the latest figures for the connection and
+
+  o    it  notifies the  login server   that the  process is  being
+       terminated.  This allows the  answering service to write the
+       appropriate message  on the dial user's  terminal indicating
+       that the target process has terminated.
+
+  The  dial_ctl_$dial_broom entry  is  also  called when  a process
+  wishes  to terminate  all dialed   channels.  In  this case,  the
+  reason for dial channel  terminations is not process destruction,
+  but deliberate  terminating by the process.   This distinction is
+  made    in    the    login     server    "response"    sent    by
+  uc_cleanup_network_dials_.
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  333:::  CCCHHHAAANNNGGGEEESSS TTTOOO MMMCCCSSS AAANNNSSSWWWEEERRRIIINNNGGG SSSEEERRRVVVIIICCCEEE MMMOOODDDUUULLLEEESSS
+
+  Several of the existing answering  service modules used to manage
+  MCS  interactive  users,  absentee  processes,  and  daemons were
+  modified  to  accommodate  the  MNA  changes.   These changes are
+  highlighted below.
+
+  333...111:::  UUUssseeerrr TTTaaabbbllleee CCChhhaaannngggeeesss
+
+  Section  2.1.1.1.1 discusses  elements  added  to the  user table
+  entry (UTE) in Answer Table,  Absentee User Table and Daemon User
+  Table to support MNA.  In addition,  all data elements in the UTE
+  structure were reordered to group data by logical function.
+
+  Data items common to the header of each user table were placed in
+  a  shared  substructure  declared  in  the new ut_header.incl.pl1
+  file.  This allows  entries in all three tables  to be allocated,
+  freed and reset by a new routine, the user_table_mgr_.
+
+  The   format_attributes_   subroutine   was   modified   to   use
+  USER_ATTRIBUTE_NAMES  declared  in  the  user_attributes.incl.pl1
+  structure,    eliminating    the     need    for    a    separate
+  attribute_names.incl.pl1 file.
+
+  dump_anstbl_, which displays the headers and entries in the three
+  user tables,  was modified to  display user table  header and UTE
+  items  in the  new order,  with interpretation  provided for most
+  items.
+
+  333...222:::  dddpppggg_
+
+  dpg_ is the module called to perform process destruction.  It has
+  two entrypoints, dpg_$dpg_ and  dpg_$finish.  The dpg_$dpg_ entry
+  was modified to  take an additional argument, the  reason for the
+  process destruction (logout, new_proc, etc.)  so that this reason
+  could be  passed to dial_ctl_$dial_broom  (used to clean  up dial
+  connections).   The MCS  answering service  modules each  used to
+  perform process cleanup prior to calling dpg_.  Since the process
+  cleanup code was common for all cases, it is now moved into dpg_.
+  The  call to dial_ctl_$dial_broom  required a reason  code, hence
+  the new parameter to dpg_.  Of  course, dpg_ was modified to call
+  dial_ctl_$dial_broom, lv_request_$cleanup_process (to  get rid of
+  logical  volume attachments),  and rcp_sys_$unassign_process  (to
+  clean up RCP attachments).
+
+  333...333:::  dddiiiaaalll_ccctttlll_
+
+  dial_ctl_ is  the module which  handles dial connections  for MCS
+  processes.  Its $dial_broom entry (which is called when a process
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  is  destroyed) has  been updated  to include  a call  to the  new
+  module  uc_cleanup_network_dials_, tasked   with cleaning  up MNA
+  connections other than the login channel.
+
+  dial_ctl_ was  also modified to expand aliases  in dial preaccess
+  requests.
+
+  333...444:::  dddaaaeeemmmooonnn_uuussseeerrr_mmmaaannnaaagggeeerrr_,,, aaabbbssseeennnttteeeeee_uuussseeerrr_mmmaaannnaaagggeeerrr_,,, ffftttppp_dddiiiaaallluuuppp_,,,
+  aaannnddd dddiiiaaallluuuppp_
+
+  daemon_user_manager_,  absentee_user_manager_,   and  ftp_dialup_
+  were modified for the new calling  sequence of dpg_ and to remove
+  the  calls to  dial_ctl_$dial_broom, lv_request_$cleanup_process,
+  and   rcp_sys_$unassign_process  (since   these  calls   are  now
+  performed by dpg_).
+
+  Additionally,  absentee_user_manager_ was   modified to  send the
+  wakeup to release  a suspended absentee.  This wakeup  used to be
+  sent  by asu_$release_suspended_process,   but since  this latter
+  module  was modified to  not send this  wakeup (since in  the MNA
+  case,  the wakeup is  sent by the  login server), the  callers of
+  asu_$release_suspended_process must send the wakeup themselves.
+
+  All  4 user  managers were  modified to  call user_table_mgr_  to
+  allocate, free and reset entries in their user table.
+
+  333...555:::  aaasss_aaacccccceeessssss_aaauuudddiiittt_,,, aaacccccceeessssss_ooopppeeerrraaatttiiiooonnnsss_,,, dddiiiaaalll_ccctttlll_ aaannnddd lllggg_ccctttlll_
+
+  as_access_audit_   is  the  module   which  is  supposed   to  be
+  responsible for generating all  answering service audit messages.
+  For MNA, two new entrypoints were  added to this code, $login and
+  $logout to perform the access auditing required when a process is
+  logged in  and logged out  respectively.  The information  in the
+  audit record is extracted from the UTE, passed as an argument.
+
+  For  MCS, lg_ctl_ was  changed to call  these new entrypoints  to
+  generate login/logout  auditing messages, rather  than generating
+  these messages directly.  For  MNA, uc_login_ and uc_logout_ call
+  the new entrypoints to perform the auditing.
+
+  Three new access operations  were added to the access_operations_
+  segment, to audit the dialin, dialout and dial_system operations.
+  as_access_audit_$channel was changed to use these new operations.
+  For MCS, dial_ctl_ was  modified to call as_access_audit_$channel
+  to   audit    these   operations.    For   MNA,    uc_dial_   and
+  mc_commands_$mc_login  call   as_access_audit_$channel  to  audit
+  these operations.
+
+  Finally,   the  format   of  all   audit  messages   produced  by
+  as_access_audit_ was standardized to start with an operation name
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  (eg, LOGIN,  CREATE, ATTACH, DIALIN, etc), followed  by DENIED if
+  the  operation  was  denied,  followed  by process identification
+  information  and any  additional information  associated with the
+  operation.
+
+  333...666:::  cccooonnnvvveeerrrttt_aaacccccceeessssss_ccclllaaassssss_
+
+  A  new $maximum  access class  range was  added to  determine the
+  maximum of a set of access classes.  Change lg_ctl_ and uc_login_
+  to  use the  new entrypoint  to determine  the upper  bound of  a
+  process authorization range from values  in the SAT, PNT and PDT.
+  See documentation for the new entrypoint in Appendix A.
+
+  333...777:::  UUUssseeerrr MMMeeessssssaaagggeee FFFaaaccciiillliiitttyyy
+
+  This facility allows the Initializer to send detailed information
+  to  a user  process (such  as communication  channel access class
+  information,  system warnings,  etc).  It   is also  used by  the
+  Login_Server for the same  purpose (to send communication channel
+  information to  the user process).  The facility  was modified to
+  correct several  errors in module calling sequences,  and to sort
+  messages by message  ID when the user_message_admin_$read_message
+  function is called.
+
+  333...888:::  lllooogggiiinnn_ssseeerrrvvveeerrr_ooovvveeerrrssseeeeeerrr_$$$ttteeesssttt
+
+  login_server_overseer_  is  written  as  a  process  overseer  to
+  control the Login Server  process.  However, its $test entrypoint
+  can  be invoked  as a  command to  establish a  test login server
+  environment.   This  can  interface  either  with  the  real user
+  control environment  running in the  Initializer, or with  a test
+  user control environment, to facilitate debugging of login server
+  software.
+
+  333...999:::  ttteeesssttt_sssyyysssttteeemmm_cccooonnntttrrrooolll,,, rrruuunnn_ttteeesssttt_aaasss
+
+  Two  commands were  added to   test the  system control  and user
+  control  environments in  a  normal  user process.   This greatly
+  simplifies debugging of changes to Answering Service.
+
+  An sc_stat_$test_mode  flag was added to indicate  execution in a
+  test environment.   test_system_control and run_test_as  set this
+  flag, attach  the Initializer's I/O switches to  the user's login
+  channel, and start up the environment.
+
+  test_system_control  invokes  the  full  ring  4  system  control
+  environment, using a user-specified system control directory.  At
+  ring  4 command  level, the  user can  then type  multics, go  or
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  startup   to  invoke   various  flavors   of  the   user  control
+  environment.
+
+  run_test_as does  not initialize the system  control environment;
+  it  just initializes the  standard user control  environment.  It
+  can be  used to quickly  enter the test  user control environment
+  without having to go through system control.
+
+  The current  implementation of both commands  only allows testing
+  of MNA user control.  This can  be done by using the login server
+  test environment to send process validation/creation/etc requests
+  to the test user control environment rather than to the real user
+  control environment.
+
+  No provision was made for  testing MCS user control, because this
+  would  require sharing  channels in  the CDT  with the  real user
+  control  software  running  in  the  Initializer  process.   This
+  sharing  capability was too  difficult to add  now, but could  be
+  added in the future if needed.
+
+  333...111000::: aaasss_iiinnniiittt_
+
+  as_init_  is  called  from   system  control  to  initialize  the
+  answering service.  This code was cleaned up substantially, so it
+  is  easier  to  follow.   It  was  also  modified  to support the
+  Answering Service test environment.
+
+  333...111111::: aaacccttt_ccctttlll_ aaannnddd llloooaaaddd_ccctttlll_
+
+  These two  modules, responsible for accounting  and load control,
+  respectively,  tied the existence  of a Channel  Definition Table
+  Entry  (CDTE) to  interactive processes.   Under MNA, interactive
+  processes  do not  have CDTEs.   Modifications to  these programs
+  were required in order to remove the dependency on CDTEs.  Fields
+  which were only  available in the CDTE (and not  in the UTE) were
+  added to the UTE.  Attempts to write on user's terminals directly
+  were  conditionalized based  on the   existence of  a CDTE.   For
+  CDTE-less connections,  error and warning  messages ("preemption"
+  and "account limit" messages, for example), messages are buffered
+  in a new "login server message buffer".  A pointer to this buffer
+  is  maintained in  the database   as_data_.  If  the size  of the
+  buffer  is too  small for  a new  message about  to be added, the
+  buffer is reallocated  and the new size stored  in as_data_.  The
+  login server request mechanism sends  the contents of this buffer
+  to the login server for display on the user's terminal.
+
+  When  act_ctl_  and  load_ctl_  were  modified  to  place warning
+  messages in the new message buffer when no CDTE was available, it
+  was  discovered that  daemon  process  logins caused  messages to
+  accumulate in  the buffer.  This  is because the  old code always
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  attempted  to write  on the  "terminal" of  daemon processes, but
+  since   none   existed,   nothing   happened.    With   the   new
+  modifications,  these message did  accumulate and would  be saved
+  around until the  next MNA login.  lg_ctl_ was  modified to clear
+  out the buffer after MCS,  daemon, and absentee logins.  In fact,
+  this change is not really required, because the MNA software also
+  clears this buffer out before every process creation attempt.
+
+  In     addition,    act_ctl_$dp      is    changed     to    call
+  hpriv_connection_list_$get_next_user.    It    then   calls   the
+  entrypoint defined in  the force_accounting_update_field to cause
+  network accounting to be updated  with the latest figures for the
+  session.
+
+  333...111222::: aaasss_dddaaatttaaa_
+
+  This database  of static variables used  throughout the answering
+  service  is updated for  MNA with a  pointer to the  login server
+  message buffer, and the current and maximum sizes of this buffer.
+  Additionally, the pointer to the login server request server data
+  structure is stored in as_data_.   Finally, the version number of
+  the  answering service  increases to  17.0 (from  16.1) with  the
+  changes for MNA.
+
+  333...111333::: aaasssuuu_
+
+  asu_   contains   quite   a   few   "answering  service  utility"
+  subroutines.   New  utilities  were  added  to provide subroutine
+  interfaces  for bumping,  terminating, disconnecting,  etc.  user
+  processes.    The  actual    implementation  of   these  commands
+  previously resided  in the admin_ procedure  which implements the
+  operator commands.   These commands all interfaced  directly with
+  the process  termination code by sending  the appropriate wakeups
+  over  the  process  termination   event  channel.   Because  this
+  interface is  really an internal answering  service interface, it
+  was decided  not to have  the commands themselves  interface with
+  the  process termination  software,  but  to call  subroutines to
+  perform the work.
+
+  Additionally, the asu_$asu_remove entrypoint was modified for the
+  new  calling sequence  of dpg_  and to  remove the  calls to  the
+  various  process resource  clean up  routines, as  described in a
+  previous section.
+
+  333...111444::: aaasss_ccchhheeeccckkk_cccooonnndddiiitttiiiooonnn_
+
+  This module decides how  to handle unexpected conditions detected
+  in  Answering   Service  routines.   It  was   modified  to  pass
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  command_error  and  command_question  signal  on  to  the default
+  handler.
+
+  333...111555::: mmmuuullltttiiicccsss_llliiibbbrrraaarrriiieeesss_
+
+  The standard library descriptor  for the Multics system libraries
+  was modified to include the DSA software added to &gt;sl3p&gt;dsa.
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  AAAPPPPPPEEENNNDDDIIIXXX AAA:::  SSSUUUBBBRRROOOUUUTTTIIINNNEEE DDDOOOCCCUUUMMMEEENNNTTTAAATTTIIIOOONNN
+
+  The   following  documentation   changes  go   into  the  Multics
+  Subroutines manual.
+
+
+  _____________________                       _____________________
+
+  convert_access_class_                       convert_access_class_
+  _____________________                       _____________________
+
+  NNNaaammmeee::: cccooonnnvvveeerrrttt_aaacccccceeessssss_ccclllaaassssss_
+
+  EEEnnntttrrryyy:::  cccooonnnvvveeerrrttt_aaacccccceeessssss_ccclllaaassssss_$$$mmmaaaxxxiiimmmuuummm
+
+  This  entry point  accepts an  array of  access attributes  and a
+  binary number  indicating how many  elements to process  from the
+  array.   It returns  an access  class whose  category set  is the
+  union of all  input category sets and whose  sensitivity level is
+  the maximum of all input  sensitivity levels.  The returned value
+  need not equal any of the  input values, nor be a proper superset
+  of all the input values.
+
+  USAGE
+
+  declare convert_access_class_$maximum entry
+       (dim(*) bit(72) aligned, fixed bin, bit(72) aligned);
+
+  call convert_access_class_$maximum (acc_att_array, n_elements,
+       maximum_acc_att);
+
+  ARGUMENTS
+
+  acc_att_array
+     are the input access attributes.  (Input)
+
+  n_elements
+     is the number of elements to be processed in the acc_att_array
+     argument.  (Input)
+
+  maximum_acc_att
+     is the resulting access class.  (Output)
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  AAAPPPPPPEEENNNDDDIIIXXX BBB:::  SSSYYYSSSTTTEEEMMM AAADDDMMMIIINNNIIISSSTTTRRRAAATTTIIIOOONNN PPPRRROOOCCCEEEDDDUUURRREEESSS
+
+  The   following   are   documentation   changes   to  the  System
+  Administration  Procedures (SAP)   manual, AK50-03A,  Section 25,
+  beginning on page 25-21.
+
+  IIIdddeeennntttiiifffiiicccaaatttiiiooonnn aaannnddd AAAuuuttthhheeennntttiiicccaaatttiiiooonnn (((III&amp;&amp;&amp;AAA)))
+
+       When a user  logs in to the system, the  user's person_id is
+  identified  (Identification); when  the password  is entered, the
+  system authenticates  (Authentication) that the user  is actually
+  the person_id entered.  I&amp;A messages perform three functions:
+
+  o    security auditing
+  o    a journal of all system logins and logouts
+  o    notification of user logins for operators
+
+  Note  that since the  answering service log  contains information
+  about  aborted login  attempts,  mistyped  user passwords  may be
+  identifiable in the log.  It  is important that you safeguard the
+  answering log from unauthorized access.
+
+  The format of I&amp;A messages  recorded in the answering service log
+  is:
+
+  LOGIN {DENIED}  &lt;user_id&gt;  &lt;process_type&gt;   &lt;channel_id&gt;
+                          {[&lt;absin_entry&gt;]} {(&lt;added_info&gt;)}
+  LOGOUT          &lt;user_id&gt;  &lt;process_type&gt;   &lt;channel_id&gt;
+                             {&lt;cost_info&gt;}   (&lt;added_info&gt;)
+
+  where:
+
+  &lt;user_id&gt;
+     is the  Person.Project of the authenticated user  at login, or
+     Person.Project.Tag of the user at logout.  An anonymous Person
+     identifier is preceded by an asterisk (*).
+
+  &lt;process_type&gt;
+     is one of the following types of authentication:
+
+        int    an interactive process.
+        Q n    an absentee process (where n is the background
+               queue number or FG for a foreground process).
+        dmn    a daemon process.
+        opr    a message coordinator operator login.
+
+  &lt;channel_id&gt;
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+     is  the  FNP  channel  name  for  an  interactive process, the
+     absentee  slot number  for  an  absentee process,  the message
+     coordinator  stream  for  a  daemon  process,  or  the message
+     coordinator console name for operator users.
+
+  &lt;absin_entry&gt;
+     is the  final entryname of  the absin file  associated with an
+     absentee login.
+
+  &lt;added_info&gt;
+     is a string giving circumstances for the login authentication,
+     or the logout.  For interactive, absentee and daemon processes
+     this  will be  a mnemonic  string generated  by the  software.
+     This  may be  the login  word used,  the disconnected  process
+     control argument  given to login,  the reason for  the logout,
+     etc.   Some  examples  are:   login,  enter,  enterp,  create,
+     connect, new_proc, logo, autologout, lhbr, bad_pers, bad_pass,
+     term,  etc.   For  operator  users  it  will  be  "sign_on" or
+     "sign_off".
+
+  &lt;cost_info&gt;
+     is the VCPU time (in minutes  and seconds) and dollar cost for
+     the session.
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  I&amp;A messages are routed to the operator console as well as the AS
+  log.  The following are sample I&amp;A audit messages recorded in the
+  answering service log.
+
+  LOGIN        RRitter.TSDC int c.h000.002 (create)
+  LOGIN        Wallman.Multics int b.h010.001 (connect loop)
+  LOGIN DENIED EMarch.BETA int c.h000.001 (bad_pass)
+  LOGIN        TR_Admin.TR Q FG abs2 [update_user_regs] (create)
+  LOGIN DENIED Network_Server.Daemon Q 4 abs2 (umxbg)
+  LOGOUT       Hirneisen.SysAdmin.a int c.h016.001   0:38 $1.05 (lobr)
+  LOGOUT       Volume_Dumper.Daemon.z dmn vcons  15:25 $18.77 (logo)
+
+       The interpreted binary data  for I&amp;A Audit messages consists
+  of  the standard  header  information  described earlier  in this
+  section.  LOGOUT messages have  no additional binary data.  LOGIN
+  messages   have  extra  binary   data  that  is   interpreted  by
+  print_sys_log as follows:
+
+       Process type = &lt;process_type&gt;,
+       Min ring = &lt;min_ring&gt;, Max ring = &lt;max_ring&gt;,
+       Attributes = &lt;process_attributes&gt;,
+       Audit flags = &lt;process_audit_flags&gt;,
+       Channel = &lt;channel_id&gt;,
+       Terminal type = &lt;term_type&gt;,
+       Answerback = &lt;answerback&gt;,
+       {Absentee input path = &lt;absin_path&gt;}
+
+  where:
+
+  &lt;process_type&gt;
+     may be interactive, absentee, daemon, or operator
+
+  &lt;min_ring&gt;
+     is the minimum ring number at  which the process is allowed to
+     be authenticated
+
+  &lt;max_ring&gt;
+     is the maximum ring number at  which the process is allowed to
+     be authenticated
+
+  &lt;process_attributes&gt;
+     are the attributes for the user  combined from the PNT and SAT
+     entries.  Only  those which are  "on" are listed.   A complete
+     list  can  be  found  in  the  description  of  the "new_user"
+     command.
+
+  &lt;process_audit_flags&gt;
+     are the per-process audit flags for the user combined from the
+     PNT and SAT entries.  A description  of the flags can be found
+     in the description of the "new_user" command.
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  &lt;channel_id&gt;
+     is the name of the  login communications channel, the abs user
+     slot  number, the message  coordinator stream, or  the message
+     coordinator console  channel name as appropriate  for the type
+     of process.
+
+  &lt;term_type&gt;
+     is the type of terminal
+
+  &lt;answerback&gt;
+     is the terminal's answerback
+
+  &lt;absin_path&gt;
+     is the pathname of the  absin file associated with an absentee
+     process.
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  PPPrrroooccceeessssss MMMaaannniiipppuuulllaaatttiiiooonnn
+
+       The  answering service  log records  events related  to user
+  process manipulation.   The format of process  manipulation audit
+  messages is:
+
+       &lt;key&gt; &lt;user_id&gt; &lt;channel_id&gt; &lt;process_id&gt; {&lt;reason&gt;}
+
+  where:
+
+  &lt;key&gt;
+     may  be  one  of:   CREATE,  DISCONNECT,  CONNECT, DESTROY, or
+     CONNECT DENIED.
+
+  &lt;user_id&gt;
+     is the Person.Project.Tag associated with the process
+
+  &lt;channel_id&gt;
+     is the communications channel name, the absentee slot name, or
+     the daemon  stream name as  appropriate for the  type of user.
+     Note  that there  are  no  process manipulations  for operator
+     users since there are just authenticated, not given a process.
+
+  &lt;process_id&gt;
+     is the octal process unique identifier.
+
+  &lt;reason&gt;
+     is a  mnemonic generated by  the system describing  the reason
+     for  the process  creation, destruction,  or disconnect.  Some
+     expamples are:  new_proc, login,  bump, destroy, logo, hangup,
+     hngp,  cpg, init,  ucs, term,  lhbr, logi,  etc.  For "CONNECT
+     DENIED" messages this field will be the communications channel
+     authorization  and  the   authorization  of  the  disconnected
+     process.
+
+       The interpreted  binary data for process  manipulation audit
+  messages contains only the header described in the first section.
+  There is no additional data specific to process manipulation.
+
+       The  following are  sample user  process manipulation  audit
+  messages recorded in the answering service log.
+
+  13:04:53  1123341  0 CREATE      Swenson.SysMaint.a a.h028 006600751323 (login)
+  13:18:11  1123365  0 DISCONNECT  EJSharpe.MULTICS.a a.h102 006300751314 (hangup)
+  13:24:00  1123383  0 DESTROY     IO.SysDaemon.z prta 005400021626 (logo)
+  13:34:33  1123406  0 CONNECT     EJSharpe.Multics.a a.h103 006000751314
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  CCCooommmmmmuuunnniiicccaaatttiiiooonnnsss CCChhhaaannnnnneeelll
+
+       The  answering  service   records  information  relating  to
+  communications  channels.  The  types of  communications channels
+  events that are recorded are:
+
+  o    dial-out requests
+  o    slave attachments
+  o    dial-in requests
+  o    test and diagnostic (T&amp;D) attachments
+
+  AUDIT MESSAGE FORMAT FOR COMMUNICATIONS CHANNEL ATTACHMENT
+
+       The   text  portion   of  audit   messages  associated  with
+  communications channel attachment are of the general form:
+
+  &lt;to_key&gt; {DENIED} {&lt;incoming_user_id&gt;} channel &lt;channel_id&gt;
+        to &lt;user_id&gt; &lt;process_id&gt; {&lt;service_info&gt;} {(&lt;reason&gt;)}
+  &lt;from_key&gt; {DENIED&gt; channel &lt;channel_id&gt;
+        from &lt;user_id&gt; &lt;process_id&gt; {&lt;service_info&gt;} {(&lt;reason&gt;)}
+
+  where:
+
+  &lt;to_key&gt;
+     may be one of:  ATTACH, DIALIN or DIAL SYSTEM.
+
+  &lt;from_key&gt;
+     may be one of:  DETACH or DIALOUT.
+
+  &lt;incoming_user_id&gt;
+     is the  Person.Project given in the -user  control argument of
+     the  dial  preaccess  command   for  DIALIN  and  DIAL  SYSTEM
+     operations.
+
+  &lt;channel_id&gt;
+     is the name of the communications channel.
+
+  &lt;user_id&gt;
+     is the  Person.Project.tag of the user  requesting the ATTACH,
+     DETACH or DIALOUT operation, or  of the target user process of
+     a  dial  preaccess  command  for   a  DIALIN  or  DIAL  SYSTEM
+     operation.
+
+  &lt;service_type&gt;
+     is the channel service type  (dial_out or slave) for an ATTACH
+     or DETACH operation, the  destination for a DIALOUT operation,
+     or the dial identifier for a DIAL IN operation.
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  &lt;added_info&gt;
+     is one  of the strings  listed in the  appendix which describe
+     additional circumstances about the event
+
+       The interpreted binary data for communications channel audit
+  messages  bears  the  standard  header  as  previously described.
+  Following this header is data formatted as follows:
+
+       Channel name = &lt;channel_id&gt;,
+       {Current access class = &lt;channel_auth&gt;,}
+       {Access Class Range = &lt;channel_auth_range&gt;,}
+       {Current service type = &lt;service_type&gt;,}
+       {Service type = &lt;service_type&gt;,}
+       {Terminal type = &lt;terminal_type&gt;,}
+       Userid = &lt;user_id&gt;
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  where:
+
+  &lt;channel_id&gt;
+     is the name of the communications channel.
+
+  &lt;channel_auth&gt;
+     is the authorization at which the channel will be used.
+
+  &lt;channel_auth_range&gt;
+     is the range of authorizations within which the channel may be
+     used.
+
+  &lt;service_type&gt;
+     is  the service type  of the channel  (login, ftp, mc,  slave,
+     dial, dialout, inactive, mpx, or t&amp;d).
+
+  &lt;terminal_type&gt;
+     is the type of the "terminal" on the channel
+
+  &lt;user_id&gt;
+     is  the Person.Project  of the  process which  has the channel
+     attached,  or  the  Person.Project  of  an  authenticated user
+     dialing into a process.
+
+       The  following   are  examples  of   communications  channel
+  attachment audit messages recorded in the answering service log:
+
+  DIALOUT        channel f.h024.d02 from GDixon.SysMaint.a 016200115221 Destination=*
+  ATTACH         channel f.h024.d02 to GDixon.SysMaint.a 016200115221 Service=dial_out
+  DETACH         channel f.h024.d02 from GDixon.SysMaint.a 016200115221 Service=dial_out (hangup)
+  DIALOUT        channel b.h022 from Lippard.Multics.a 016600115447 Destination=9 555-7316
+  DIALOUT DENIED channel b.h022 from Lippard.Multics.a 016600115447
+          (Unable to complete connection to external device. error in dialing out)
+  DETACH DENIED  channel acu.* from Lippard.Multics.a 016600115447 Service=terminate dial out
+          (Resource not known to the system. Channel acu.* does not exist.)
+  DIALIN         channel b.h004.001 to Network_Server.Daemon.z 005400114731 Dial ID=smtp
+  ATTACH         channel b.h004.001 to Network_Server.Daemon.z 005400114731 Service=dial_in
+  DETACH         channel b.h004.001 from Network_Server.Daemon.z 005400114731 Service=dial (hangup)
+
+
+  MNA Answering Service Changes                           MTB751-03
+
+  The  following   new  access  operations  should   be  added  (in
+  alphabetical order) to the Table B-1 in appendix B.
+
+   TEXT
+
+            OBJECT TYPE         OPERATION TYPE      ENTRY NAME
+
+  cancellation of absentee job
+            OTHER               MODIFY              abs_command_cancel
+
+  dial channel into Initializer message coordinator
+            SPECIAL             MODIFY              dial_system
+
+  dial channel into process
+            SPECIAL             MODIFY              dialin
+
+  dial out from process through channel
+            SPECIAL             MODIFY              dialout
+
+  installation of a system table
+            SPECIAL             MODIFY              install_table
+
+  invalid online MCA request
+            OTHER               READ                invalid_mca
+
+  lock of MCAs
+            OTHER               MODIFY_ACCESS       lock_mca
+
+  request of login of absentee job
+            OTHER               MODIFY              abs_command_login
+
+| terminating process
+|           SPECIAL             UNKNOWN             process_terminate
+|
+  unlock of MCA
+            OTHER               MODIFY_ACCESS       unlock_mca
+
+
+  MTB751-03                           MNA Answering Service Changes
+
+  AAAPPPPPPEEENNNDDDIIIXXX CCC:::  PPPRRRIIIVVVIIILLLEEEGGGEEEDDD IIINNNTTTEEERRRFFFAAACCCEEESSS MMMTTTBBB
+
+  The  following  commands  should   be  added  to  the  Privileged
+  Interfaces MTB.
+
+
+  ___________________________           ___________________________
+
+  login_server_overseer_$test           login_server_overseer_$test
+  ___________________________           ___________________________
+
+  NNNaaammmeee::: lllooogggiiinnn_ssseeerrrvvveeerrr_ooovvveeerrrssseeeeeerrr_$$$ttteeesssttt
+
+  SYNTAX AS A COMMAND
+
+  login_server_overseer_$test {test_sc1_dir {test_info_dir}} {-pb}
+
+  FUNCTION
+
+  This  command establishes  a test   version of  the login  server
+  environment  in the caller's  process.  In this  environment, the
+  standard  login  server  requests  are  available.   In addition,
+  normal Multics commands  can be issued by preceding  them with ..
+  to escape  from the login server ssu_  environment.  This feature
+  can be used to issue  cpm_call commands to manipulate the control
+  points listening on endpoints or managing connections.
+
+  ARGUMENTS
+
+  test_sc1_dir
+     pathname  of   the  directory  containing  test   versions  of
+     answering service  databases to be  used by the  login server.
+     Login server requests are sent to the login_server_requests.ms
+     queue in this directory.
+
+  test_info_dir
+     pathname  of the directory  containing the three  Login Server
+     subsystem  info  directories,   which  contain  info  segments
+     describing the subsystem  requests.  Three subdirectories must
+     reside in test_info_dir:
+        login_server_info
+        login_info
+        login_connect_info
+
+  -probe, -pb
+     when  control  points  report  an  error,  calls  probe  after
+     reporting the  error to allow a chance  for further debugging.
+     By default, execution continues within the control point after
+     the error is reported.
+
+  ACCESS REQUIRED
+
+  To    use   this   command,    access   is   required    to   the
+  network_accounting_gate_,     user_message_priv_    gate,     and
+  login_server_requests.ms queue.
+
+
+  ___________________________                           ___________
+
+  login_server_overseer_$test                           run_test_as
+  ___________________________                           ___________
+
+  NNNaaammmeee::: rrruuunnn_ttteeesssttt_aaasss
+
+  SYNTAX AS A COMMAND
+
+  run_test_as test_sc1_dir
+
+  FUNCTION
+
+  This command establishes a test version of the Initializer's user
+  control   environment   in   the   caller's   process.   In  this
+  environment,  the  standard  operator  requests  are available to
+  manipulate  user  processes  created  by  the  test  environment.
+  Process can be created  for Multics Networking Architecture (MNA)
+  interactive user, absentee users and daemon users.
+
+  ARGUMENTS
+
+  test_sc1_dir
+     is the pathname of the user directory to be used as the system
+     control  directory.  You must  specify a directory  other than
+     &gt;sc1 to  avoid interfering with the real  user control running
+     in the Initializer process.
+
+  ACCESS REQUIRED
+
+  This  command requires  access to  a variety  of privileged gates
+  needed  to  initialize  the   System  Control  and  User  Control
+  environments.     These   include    hpriv_connection_list_   and
+  network_accounting_gate_.
+
+  NOTES
+
+  The  pathname  of  a  test  &gt;sc1  directory  must  be given as an
+  argument to this command.  Do not use the real &gt;sc1 directory, or
+  you  will interfere  with operation  of the  real system  control
+  environment in the Initializer process.
+
+  The  test  &gt;sc1  directory  should  already  contain all segments
+  needed to  run the system control and  user control environments.
+  If segments are missing  or incorrectly formatted, error messages
+  will  result and the  environment initialization will  fail.  The
+  user control  environment is not highly robust,  so fatal process
+  errors (although  not common) may occur if  things are improperly
+  setup.
+
+
+  ___________                                   ___________________
+
+  run_test_as                                   test_system_control
+  ___________                                   ___________________
+
+  The  best  way  to  setup  the  directory  is  to  refer  to  the
+  acct_start_up.ec  to  see  what  needs  to  be  in  the test &gt;sc1
+  directory.   After  the  test  directory  is  built,  invoke this
+  command  and   fix  all  errors  which   result.   Another  (more
+  frustrating)  approach is  to invoke  this command  with an empty
+  directory and  fix the errors,  reinvoke and fix  the new errors,
+  etc.
+
+  WARNING:   The  system  control  environment  plays  with the I/O
+  switches.   Do not  expect it  to work  in anything  but a virgin
+  environment (no  auditing, no video).  And don't  be surprised if
+  your favorite commands (emacs) won't work once you've started the
+  test environment.  After exiting the test environment, a new_proc
+  is recommended to cleanse the user process.
+
+               ________________________________________
+
+  NNNaaammmeee::: ttteeesssttt_sssyyysssttteeemmm_cccooonnntttrrrooolll
+
+  SYNTAX AS A COMMAND
+
+  test_system_control test_sc1_dir
+
+  FUNCTION
+
+  This  command establishes  a test  version of  the system control
+  environment  in the  user's  process.   In this  environment, the
+  standard  operator requests are  available to start  user control
+  functions for the Multics Networking Architecture (MNA), absentee
+  processing,   the   message   coordinator   environment,   daemon
+  processes, etc.
+
+  ARGUMENTS
+
+  test_sc1_dir
+     is the pathname of the user directory to be used as the system
+     control  directory.  You must  specify a directory  other than
+     &gt;sc1 to avoid interfering with the real system control running
+     in the Initializer process.
+
+  ACCESS REQUIRED
+
+  This  command requires  access to  a variety  of privileged gates
+  needed  to  initialize  the   System  Control  and  User  Control
+  environments.     These   include    hpriv_connection_list_   and
+  network_accounting_gate_.
+
+
+  ___________________                           ___________________
+
+  test_system_control                           test_system_control
+  ___________________                           ___________________
+
+  NOTES
+
+  The  pathname  of  a  test  &gt;sc1  directory  must  be given as an
+  argument to this command.  Do not use the real &gt;sc1 directory, or
+  you  will interfere  with operation  of the  real system  control
+  environment in the Initializer process.
+
+  The  test  &gt;sc1  directory  should  already  contain all segments
+  needed to  run the system control and  user control environments.
+  If segments are missing  or incorrectly formatted, error messages
+  will  result and the  environment initialization will  fail.  The
+  system control environment is not highly robust, so fatal process
+  errors (although  not common) may occur if  things are improperly
+  setup.
+
+  The  best  way  to  setup  the  directory  is  to  refer  to  the
+  acct_start_up.ec  to  see  what  needs  to  be  in  the test &gt;sc1
+  directory.    After   the   test   directory   is  built,  invoke
+  test_system_control  and fix  all errors  which result.   Another
+  (more frustrating) approach is to invoke test_system_control with
+  an empty directory  and fix the errors, reinvoke and  fix the new
+  errors, etc.
+
+
+  ___________________                           ___________________
+
+  test_system_control                           test_system_control
+  ___________________                           ___________________
+
+  Minimum contents of a test &gt;sc1 subtree is shown below.
+
+  &gt;UDD&gt;DSA&gt;AS&gt;test_sc1
+    seg  admin.ec
+    seg  cdt
+    seg  sat
+    seg  sat.ht
+    seg  sat.install.acs
+    seg  ssu.ec
+    link mgt                &gt;sc1&gt;mgt
+    link installation_parms &gt;sc1&gt;installation_parms
+          rate_structure_0
+    link rtdt               &gt;sc1&gt;rtdt
+    link syserr_log         &gt;sc1&gt;syserr_log
+    msf  PNT.pnt
+     seg    0
+     seg    1
+    dir  as_logs
+     seg    admin_log
+     seg    log
+    dir  pdt
+     seg    SysAdmin.pdt
+     seg    SysMaint.pdt
+     seg    SysDaemon.pdt
+     seg    Operator.pdt
+     seg    Multics.pdt
+    dir  update
+          Empty
+
+  Other segments will  be created when starting up  the test system
+  control and user control environments and their subsystems.
+
+  WARNING:   The  system  control  environment  plays  with the I/O
+  switches.   Do not  expect it  to work  in anything  but a virgin
+  environment (no  auditing, no video).  And don't  be surprised if
+  your favorite commands (emacs) won't work once you've started the
+  test environment.  After exiting the test environment, a new_proc
+  is recommended to cleanse the user process.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

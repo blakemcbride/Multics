@@ -1,0 +1,817 @@
+Multics Technical Bulletin                                MTB-601
+DM: Hardcore Support
+
+
+
+To:       Distribution
+
+From:     John J. Bongiovanni
+
+Date:     06/27/84  (Original date unknown)
+
+Subject:  Data Management: Hardcore Support
+
+
+
+1 ABSTRACT
+
+This  document describes  the Multics  hardcore support necessary
+for the initial release of the Data Managment software (MR 10.2).
+The following items are discussed:
+
+   o  Force-Write Enhancements
+
+   o  I/O Synchronization
+
+For  each of  these items,  the motivation  is discussed briefly,
+followed  by  a  description   of  the  hardcore  implementation.
+User-ring interfaces are defined in detail.
+
+Send comments on this MTB by one of the following means:
+
+    By Multics Mail, on MIT or System M:
+       Bongiovanni.Multics
+
+    By Telephone:
+       HVN 261-9316 or (617)-492-9316
+
+
+
+
+
+
+
+
+
+
+
+_________________________________________________________________
+
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+
+
+                            Page 1. 
+
+
+
+
+
+
+
+
+
+
+                           CONTENTS
+
+
+                                                        Page
+
+                1 Abstract . . . . . . . . . . . . . .     1
+                2 Force-Write Enhancements . . . . . .     1
+                   2.1 Motivation  . . . . . . . . . .     1
+                   2.2 Hardcore Implementation . . . .     1
+                   2.3 User Interfaces . . . . . . . .     2
+                   hcs_  . . . . . . . . . . . . . . .     3
+                      $flush_consecutive_pages . . . .     3
+                   hcs_  . . . . . . . . . . . . . . .     5
+                      $flush_pages . . . . . . . . . .     5
+                   dm_hcs_ . . . . . . . . . . . . . .    11
+                      $set_journal_stamp . . . . . . .    11
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                              iii
+Multics Technical Bulletin                                MTB-601
+DM: Hardcore Support
+
+
+
+2 FORCE-WRITE ENHANCEMENTS
+
+
+2.1 Motivation
+
+The  Data  Management  recovery  strategy  can  be  viewed  as an
+implementation  of  Data  Management  transactions  across system
+failures.   A  transaction  is a  unit  of work  which  is either
+completed  in its  entirety or  is not done  at all  (i.e., it is
+atomic).   The  implementation   of  transactions  across  system
+failures requires explicit control of certain I/Os.  For example,
+recovery  after  a  system   failure  includes  backing  out  any
+transactions which were in progress at the time of the crash.  It
+is  important not  to back  out any  transactions which  had been
+completed prior to the crash.  The completion of a transaction is
+indicated by a "commit mark" in a journal, the latter implemented
+as  a Multics  multi-segment file.  Certain  system failure modes
+(e.g.,  crash  without ESD)  cause  pages which  happen to  be in
+memory  at  the crash  not  to be  written  to disk.   The latest
+(in-core) contents of these pages  are then lost irrevocably.  If
+a journal  page happened to  be in memory  at the time  of such a
+crash, the completion of transactions could be lost.
+
+To avoid this, Data Management  software flushes pages to disk at
+the  end of  a transaction.  There  is a facility  in Multics for
+doing  this (Force-Write),  but its  interface is  cumbersome for
+Data  Management  (it flushes  all modified  pages of  a supplied
+segment).   A  better  interface  will  be  implemented  for Data
+Management, and  the hardcore implementation  of Force-Write will
+be improved.
+
+
+2.2 Hardcore Implementation
+
+The interface (described below) allows specification of a segment
+and  a  list  of  consecutive pages  to  write.   It  also allows
+specification of a list of segments, each with a list of pages to
+write.   For  each segment  supplied,  the hardcore  module which
+handles  the request  validates access to  the segment (including
+ring brackets), and determines whether  it is active (locking the
+AST to do  so).  If it is not active,  then there are no modified
+pages in memory, and hence nothing  to be done.  If it is active,
+Page Control  is called with  the list of page  numbers to write.
+Any modified  pages on the  list are written, and  control is not
+returned to the invoker of  Page Control until all I/Os generated
+have been completed.
+
+A special  interface is used so  that the AST need  not be locked
+while Page  Control is examining PTWs  and generating write I/Os.
+Under this  interface, the segment  unique ID is  supplied, along
+
+
+                            Page 1. 
+MTB-601                                Multics Technical Bulletin
+                                            DM: Hardcore Support
+
+
+
+with other parameters (ASTE pointer, list of pages, etc.).  After
+determining that a page on the list is modified (by examining the
+PTW under the Page Table  Lock), Page Control checks the supplied
+unique  ID  against  the unique  ID  in  the ASTE.   If  they are
+different, it returns  to the caller.  (In almost  all cases, the
+segment is no longer active, all modified pages have been flushed
+to disk  before or during  the deactivation; cases  where this is
+not  true cannot  be handled by  Page Control).  If  they are the
+same, the segment is at  that instant active.  Further, it cannot
+be  deactivated  until all  modified pages  have been  flushed to
+disk.  To keep the number of Page Table Lockings to a minimum, as
+many I/Os  are generated at  a time as  possible (up to  the Page
+Control write limit).
+
+It  is  possible  for  the  ASTE of  a  segment  to  move without
+deactivating the segment.  Two  examples of this are boundsfaults
+and segment moving.  If this occurs, the protocol described above
+can fail,  since the unique  ID in the original  ASTE is changed,
+but the  segment was not  deactivated.  To protect  against this,
+the  unique ID  in the ASTE  is checked again  after Page Control
+returns.  If it is different,  the entire process is repeated for
+the segment  (determine whether it is  active, call Page Control,
+etc.).   It  is likely  to succeed  this time,  since consecutive
+boundsfaults  and  segment  moves  are rare  (and  the  number of
+repetitions of  each is bounded  by a small number).   It is also
+unlikely that  any given segment  will be deactivated  in a short
+interval of  time (viz., between unlocking  the AST after finding
+it active and the return  from Page Control).  So this additional
+check is unlikely to cause measurable overhead.
+
+Following  flushing of  all pages  to disk,  the File  Map in the
+VTOCE is updated if it has  changed.  It is necessary to lock the
+AST again  to make this determination,  after modified pages have
+been flushed  to disk (since  the process of  flushing may change
+the file map).
+
+
+2.3 User Interfaces
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                            Page 2.
+____                                                         ____
+
+hcs_                                                         hcs_
+____                                                         ____
+
+
+Name:  hcs_
+
+
+Entry:  hcs_$flush_consecutive_pages
+
+This  entry  causes  ranges  of  page  numbers  within  specified
+segments to be  updated to disk.  That is, any  page in the range
+is written to disk  if it is in memory and the  copy in memory is
+more recent than the copy on disk.   The File Map in the VTOCE is
+also updated, if it has changed since the last VTOCE update.  The
+subroutine does not return until all I/Os have completed.
+
+
+Usage
+
+    dcl hcs_$flush_consecutive_pages entry (ptr, fixed bin
+         (35));
+
+    call hcs_$flush_consecutive_pages (flush_consecp, code);
+
+where:
+
+flush_consecp (Input)
+  is a pointer to the structure flush_consec described in Notes.
+
+code (Output)
+  is a standard error code.
+
+
+Notes
+
+flush_consecp points to a structure in the following format:
+
+    dcl 1 flush_consec aligned based (flush_consecp),
+          2 n_segs fixed bin,
+          2 seg (0 refer (flush_consec.n_segs)),
+            3 segno fixed bin (15),
+            3 first_page fixed bin,
+            3 last_page fixed bin;
+
+
+where:
+
+n_segs
+  is the number of segments with pages to be flushed.
+
+seg
+  contains  one  element  for  each  segment  with  pages  to be
+  flushed.
+
+
+
+                            Page 3.
+____                                                         ____
+
+hcs_                                                         hcs_
+____                                                         ____
+
+
+segno
+  is the segment number.
+
+first_page
+  is the  first page to be  flushed (page number 0  is the first
+  page of the segment).
+
+n_pages
+  is  the   number  of  pages   to  be  flushed   (beginning  at
+  first_page).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                            Page 4.
+____                                                         ____
+
+hcs_                                                         hcs_
+____                                                         ____
+
+
+Name:  hcs_
+
+
+Entry:  hcs_$flush_pages
+
+This entry causes a list of pages within specified segments to be
+updated to disk.  That is, any  page specified is written to disk
+if it is in memory and the copy in memory is more recent than the
+copy on disk.   The File Map in the VTOCE  is also updated, if it
+has changed since the last VTOCE update.  The subroutine does not
+return until all I/Os have completed.
+
+
+Usage
+
+    dcl hcs_$flush_pages (ptr, fixed bin (35)); call
+         hcs_$flush_pages (flushp, code);
+
+where:
+
+flushp (Input)
+  is a pointer to the structure flush described in Notes, below.
+
+code (Output)
+  is a standard error code.
+
+
+Notes
+
+flushp points to a structure in the following format:
+
+    dcl  1 flush aligned based (flushp),
+           2 n_pages fixed bin,
+           2 seg_page (0 refer (flush.n_pages))
+             3 seg_no fixed bin (17) unaligned,
+             3 page_no fixed bin (17) unaligned;
+
+
+where:
+
+n_pages
+  is the total number of pages to be flushed.
+
+seg_page
+  contains one element for each page to be flushed.
+
+seg_no
+  is the segment number.
+
+page_no
+
+
+                            Page 5. 
+
+  is the page  number to be flushed (page number  0 is the first
+  page of the segment).
+Note:   For  efficiency,  the  elements  of  seg_page  should  be
+aggregated by segment number.
+
+
+2.4 Performance Considerations
+
+Obviously, calling this entry induces a real-time delay (to await
+I/O completion).   This is unavoidable.  It  is arguable that the
+effect of  this on system  performance is minimal,  since it does
+I/Os  earlier which  would be  done eventually.   However, it may
+generate  extra I/Os  (since there may  be two  flush writes, for
+example, before Page Control would have written the modified page
+to  disk of  its own  volition).  Also,  the burst  of writes can
+cause disk queueing anomalies.
+
+Another difficulty is that it requires two AST lockings per call,
+and  some  number  of  Page Table  lockings  (possibly  none, and
+possibly more than one).
+
+The following  information will be metered  into the SST:  number
+of  calls, total  clock time  for all  calls, number  of segments
+specified,  number of  pages requested  to be  flushed, number of
+pages actually flushed,  and number of times a  segment was found
+inactive on the call.
+
+
+3 I/O SYNCHRONIZATION
+
+
+3.1 Motivation
+
+As  above, the  problem is  recovery of  Data Management  after a
+crash  without  ESD.  Data  Management uses  a Before  Journal to
+record  pre-images  of  modified  data.   If  for  any  reason  a
+transaction cannot complete, it is  backed out by restoring these
+pre-images in reverse chronological  order.  (Locking deadlock is
+one  example of  why a transaction  might not  complete; a system
+crash is another).
+
+Following  a crash,  transactions which  were in  progress at the
+time of  the crash are  backed out.  If  ESD did not  succeed for
+this crash, pages of segments cannot be assumed to be valid (they
+may have been modified in memory at the time of the crash and not
+written to disk).  In particular,  pre-images in a Before Journal
+(which  is  implemented as  a  set of  segments)  for in-progress
+transactions may not be on disk.
+
+If  the  following conditions  hold, then  committed transactions
+remain committed after a  crash, and in-progress transactions can
+be backed out:
+
+      o  Modified  data base  pages are  flushed to  disk before
+
+
+                            Page 6. 
+
+         transaction commitment.
+
+      o  A data  base modification is updated  to disk after its
+         pre-image  has  been  updated  to disk  (to  the Before
+         Journal).
+
+The  Force-Write  Enhancements  discussed above  allow  the first
+condition to be satisfied.  I/O Synchronization allows the second
+to be satisfied.
+
+From the  perspective of Data Management,  I/O synchronization is
+accomplished  in the  following way.  Recovery  across crashes is
+meaningful  only  for protected  page files  (those which  can be
+modified only within a transaction).  These are identified to the
+system by specifying an attribute  for each segment which is part
+of  a protected  page file.  Each  page of a  protected page file
+contains a standard header, which  specifies a Before Journal and
+a  time stamp.   The time stamp  is (approximately)  the time the
+last modification was  made to that page.  There  is a time stamp
+associated  with  each  Before   Journal.   This  time  stamp  is
+maintained so that protected page file pages associated with this
+journal  and  with earlier  time  stamps may  be written  to disk
+safely.   That  is, all  pre-images  of pages  with  earlier time
+stamps are known to reside on  disk.  Page Control will not write
+a protected  page file page  to disk if  its time stamp  is later
+than the current time stamp for the associated Before Journal.
+
+
+3.2 Hardcore Implementation - Overview
+
+Segments of  a protected page  file are known  to Segment Control
+and Page  Control as synchronized files.   They are identified as
+such by a bit  in the ASTE and VTOCE.  This bit  is set and reset
+through   an  hcs_   interface  and  reported   to  user-ring  by
+hcs_$status_long.   It may  not be set  for a  segment unless all
+ring  brackets are  no larger than  the Data  Management ring (2,
+kept  as a  variable in the  hardcore).  The  ring-0 ring bracket
+primitives  enforce  this restriction  (i.e.,  they do  not allow
+setting ring  brackets for a  protected page file  to higher than
+the Data management ring).
+
+A  table is  maintained in  the hardcore  with an  entry for each
+active  Before Journal  on the  system.  Each  entry contains the
+associated time stamp, which is  initialized to the highest clock
+value  available on  Multics.  In this  way, modified  pages of a
+protected page file may be written to disk before Data Management
+is  initialized (for  example, during  a hierarchy  reload).  The
+time  stamp  may be  changed by  calling an  entry in  dm_hcs_ (a
+hardcore gate available only in rings 1 and 2).
+
+When  Page Control  examines a  page for  eviction, it determines
+whether the  segment owning the  page is a  synchronized segment.
+If so, it  compares the time stamp in the  page to the time stamp
+
+
+
+                            Page 7. 
+
+for the associated journal.  It will  skip the page if the former
+is higher than the latter (as it skips wired pages).
+
+To  prevent Data  Management performance problems  or errors from
+disabling Page Control, there is  a per-system limit on the total
+number of  pages belonging to synchronized  segments which may be
+held  in  memory at  any time.   If a  page fault  is taken  on a
+synchronized segment and the limit  is exceeded, the faulted page
+is   not  made   resident  in   memory.   Instead,   a  condition
+("sync_page_error") is signalled to user ring.  This condition is
+restartable,    and    its   signalling    resembles    that   of
+record_quota_overflow.
+
+Pages belonging  to synchronized segments have  subtle effects on
+Page Control and Segment Control, as currently implemented.  To a
+great extent, these effects resemble  those of wired pages.  This
+problem has  been ignored for  wired pages, since  segments which
+own   wired  pages   generally  are   entry-held  (implicitly  or
+explicitly).   This is  not the  case for  synchronized segments.
+Page Control and Segment Control  will be modified to handle both
+cases in the same way (this  is natural, since pages which belong
+to  synchronized segments  resemble wired  pages).  The following
+changes will be made:
+
+      o  In  selecting  a segment  to deactivate,  get_aste will
+         skip  segments   with  wired  pages   and  synchronized
+         segments with modified pages in memory.
+
+      o  pc$truncate will not truncate a  page which is wired or
+         a modified page of a synchronized segment.
+
+         pc$cleanup will  not evict a  page which is  wired or a
+         modified page of a synchronized segment.
+
+      o  pc$flush  will not  write a  page which  is wired  or a
+         modified page of a  synchronized segment, except during
+         system shutdown.  During shutdown,  wired pages will be
+         written  (and  the  wired   bit  turned  off).   During
+         shutdown, modified pages  of synchronized segments will
+         be  written  according  to   the  time  stamp  protocol
+         described above; any modified page which is not written
+         will be marked as unmodified.
+
+
+3.3 Hardcore Implementation - Detailed
+
+A wired unpaged supervisor  segment, dm_journal_seg, will contain
+a table with an entry for each Before Journal on the system.  The
+number  of  entries  in the  table  is a  constant  per bootload,
+specified on a PARM DMJ configuration card, with a default of 64.
+The table entry  for each journal contains the  latest time stamp
+supplied by  ring-2 Data Management  for the journal.   This time
+stamp is initialized to the maximum  clock value so that there is
+no effect on synchronized segments until Data Management has been
+
+
+                            Page 8. 
+
+initialized.  It  is changed only  by explicit calls  from ring-2
+Data Management.   dm_journal_seg has ring  brackets of 0,  2, 2.
+It can be read, but not modified by ring-2 Data Management.
+
+The  Page Control  clock algorithm is  used to select  a page for
+eviction  when  a  page  fault occurs.   This  algorithm  has two
+phases.   In  the  first  phase, a  suitable  page  is  found for
+eviction (not modified, not recently  used, not wired, etc.).  In
+the  second phase,  all pages  which were  examined in  the first
+phase are  examined again.  Any which  are modified, not recently
+used, and  not wired are  written to disk.   It is at  this point
+that I/O  synchronization is effected.  Before  writing the page,
+the following are done:
+
+      o  If it does not belong  to a synchronized segment, it is
+         written to disk.
+
+      o  If it belongs to  a synchronized segment, abs_seg1 (the
+         Page Control  unpaged abs_seg) is  constructed to frame
+         it.  The Before Journal  index associated with the page
+         (if any) is used to  index the table in dm_journal_seg.
+         If the  time stamp in  the page is later  than that for
+         the associated journal, it is not written to disk.  Its
+         Core Map  Entry (CME) is  threaded into a  list of held
+         pages for  the journal.  The  counts of held  pages for
+         the system and for this journal are increased by one.
+
+      o  If  it  belongs to  a synchronized  page, and  the time
+         stamp  in  the  page is  not  later than  that  for the
+         associatged journal, it is written to disk.  If its CME
+         is threaded to  a list of held pages  for a journal, it
+         is removed and  the count of held pages  for the system
+         and for this journal are decreased by one.
+
+The  mechanism  to  prevent  flooding  of  memory  with  pages of
+synchronized  segments   is  complex,  due   to  the  interaction
+necessary between Page Control  and ring-2 Data Management.  Page
+Control must  limit the number of  pages of synchronized segments
+which are held  in memory.  When too many  such pages become held
+in  memory, ring-2  Data Management  must take  corrective action
+(e.g.,  flushing  Before  Journals   to  disk  and  updating  the
+associated  time stamps).   Ring-2 Data  Management runs  only in
+certain processes, while the determination that a particular page
+must be held  for I/O synchronization is made  while processing a
+page  fault for  an arbitrary  process.  The  mechanism described
+below is based on the premise  that a synchronized segment can be
+accessed  only  by  Ring-2  Data  Management  software.  Further,
+direct  communication  between  Page   Control  and  Ring-2  Data
+Management is  possible only when satisfying  page faults for the
+latter.   So  the  detection  that  the  control  limit  has been
+exceeded  is done  when a page  fault is taken  on a synchronized
+segment.  Although  it would be desirable  for control limits (on
+number  of pages  held in memory)  to be  enforced separately for
+each Before Journal, this is  not possible due to the constraints
+
+
+                            Page 9. 
+
+of Page  Control/Ring-2 Data Management  Communication.  That is,
+it is not possible to  associate a faulted (unmodified) page with
+a Before Journal.  So the control limit must be per-system.
+
+Whenever a  page fault is  taken on a  synchronized segment, Page
+Control  determines  whether  the  per-system limit  on  pages of
+synchronized segments  held in memory  has been exceeded.   If it
+has not been exceeded, page  fault processing continues as normal
+(and  as described  above).  If  it has  been exceeded,  the page
+fault   is   not   satisfied.    Instead,   an   error  condition
+("page_synch_error")  is  signalled.   It is  expected  that this
+signal will be caught and handled by Ring-2 Data Management.  The
+latter will flush Before Journal, update journal time stamps, and
+restart the page fault.
+
+Normally, the  second phase of  the Page Control  clock algorithm
+detects  that   a  previously  held  page   is  no  longer  held,
+decrementing the per-system and per-journal counts of held pages.
+Unfortunately,  this  introduces an  arbitrary delay  between the
+signalling of  page_synch_error (and corrective  action by Ring-2
+Data  Management)  and the  detection  by Page  Control  that the
+control limits  are no longer  exceeded.  To avoid  this problem,
+Page Control checks  the control limits whenever it  is called to
+update  a journal  time stamp.  If  the per-system  limit on held
+pages  is exceeded  (or close to  being exceeded),  it walks this
+threaded list of  CMEs which are held for  the journal whose time
+stamp is being updated.  Any pages  which are no longer held (due
+to the  updated time stamp)  are unthreaded.  The  per-system and
+per-journal counts of held pages are updated appropriately.
+
+
+3.4 User Interfaces
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                           Page 10.
+_______                                                   _______
+
+dm_hcs_                                                   dm_hcs_
+_______                                                   _______
+
+
+Name:  dm_hcs_
+
+
+Entry:  dm_hcs_$set_journal_stamp
+
+This  entry  sets the  Page  Control time  stamp for  a specified
+Before Journal.
+
+
+Usage
+
+    dcl dm_hcs_$set_journal_stamp entry (fixed bin, fixed bin
+         (71), fixed bin (35));
+
+    call dm_hcs_$set_journal_stamp (journal_idx, time_stamp,
+         code);
+
+where:
+
+journal_idx (Input)
+  is the index  of the Before Journal whose time  stamp is to be
+  set.
+
+time_stamp (Input)
+  is the new value of the time stamp.
+
+code (Output)
+  is a standard error code.
+
+
+Notes
+
+No  protection against  simultaneous updates  of the  same Before
+Journal   is   provided   by   this   primitive.    Any  required
+synchronization must be done by the caller.
+
+dm_hcs_ is a hardcore gate accessible only in rings 1 and 2.
+
+
+3.5 Performance Considerations
+
+Holding pages in memory can  have a significant impact on overall
+system performance, since pages are  a system resource.  The site
+has  control over  this, by means  of the maximum  number of held
+pages.   If  this number  is  set too  high,  overall performance
+degradation  can  result  from  problems in  the  Data Management
+system.  If it  is set too low, Data  Management performance will
+degrade.    Metering  data   will  assist   developers  and  site
+administrators in setting this critical parameter.
+
+
+
+                           Page 11. 
+
+The following  information will be  metered:  number of  pages of
+synchronized segments examined; number  of pages skipped; average
+number of pages held, by journal; number of calls to set the time
+stamp, by journal; number of page faults on synchronized segments
+when the control limit was  exceeded; number of pages examined on
+calls to set  the time stamp; and number  of pages found not-held
+on calls to set the time stamp.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                           Page 12. 

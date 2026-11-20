@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Date/time system (3) Site tailoring.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+MULTICS TECHNICAL BULLETIN 618                             page 1
+
+To:       Distribution
+
+From:     James A Falksen, Gary Dixon
+
+Date:     March 14, 1983
+
+Subject:  Date/time system (3) Site tailoring
+
+ABSTRACT
+
+This  MTB  describes  time_table_.cds mentioned  in  MTB616, with
+emphasis on how a site would go about changing the time tables.
+
+Send comments on the MTB by one of the following means:
+     In forum meeting:
+        &gt;udd&gt;m&gt;jaf&gt;mtgs&gt;date_time
+     By Multics mail:
+        Falksenj.Multics at M
+        GDixon.Multics at MIT
+     By Telephone:
+        HVN 357-6618 or 602-862-6618
+
+________________________________________
+
+Multics Project  working documentation.  Not to  be reproduced or
+
+page 4-2                     MTB-618
+
+All  date/time related  constants reside in  time_table_, such as
+day names, month names, offset names, zone names and offsets, and
+"other"  words.  All  of these are  in several  languages, one of
+which  is  selected  as  the  site  default.   time_table_.cds is
+designed to allow a site to  alter the time tables without having
+to  get involved  too deeply  in how  the tables  are structured.
+Below  is a  sample of lines  from a cds  procedure.  Between the
+lines  are  comments on  what the  code is  doing and/or  what it
+means.
+
+  1   time_table_: proc;
+  2
+  3   dcl (the_language_count init (4),
+  4        the_zone_count     init (31),
+
+          First, are  two constants which define  the size of the
+          site's  tables.  They  must be adjusted  to reflect the
+          site's needs.
+
+  5        english            init (1),
+  6        french             init (2),
+  7        german             init (3),
+  8        spanish            init (4),
+
+          There must be a named  constant for each language which
+          is  in  the  table.    These  names  must  be  numbered
+          sequentially beginning  at 1.  The  language numbered 1
+          is the site default language.
+
+  9        Fill_From          init (1)
+ 10       )                   fixed bin int static options (constant);
+
+          Time zone  names are defined in  a 2-dimensional array,
+          with zone as one dimension  and languages as the second
+          dimension.  Elements  of the array are  zone names (the
+          name   of   a   zone   in   a   particular   language).
+          convert_date_to_binary_ requires that  the entire array
+          be filled (ie,  a zone name must be  specified for each
+          zone in  every language).  However,  sometimes the name
+          of a zone in a  particular language is not known.  This
+          problem  is  resolved by  placing  that zone's  name in
+          another language (usually English) into the empty array
+          element.  The  Fill_From constant indicates  which lan-
+          guage should be used to fill such empty array elements.
+          When chosing the Fill_From language, it is important to
+          note that a zone name  must be explicitly specified for
+          every zone in the Fill_From language.
+
+ 11
+ 12        begin;
+ 13
+
+                             MTB-618                     page 4-3
+
+          Then,  a  begin  block  is entered  which  contains the
+          declaration needed to generate the table.  It makes use
+          of the constants just defined.
+
+ 15        call setup ("STR1", "STR2", "STR3");
+
+          This initializes the whole  structure to indicate "emp-
+          ty" in every  field.  Then it saves STR1  as the system
+          default  date_time format,  STR2 as  the system default
+          date  format,  and  STR3  as  the  system  default time
+          format.  These formats are strings which are acceptable
+          to date_time_$format.
+
+ 16        call set_language (french, english, "anglais");
+
+          For  each  language  present,  its name  in  each other
+          language should  be present.  This call  to the routine
+          says:
+               In french, the word for english is "anglais".
+
+ 17        call set_month_name (english, Jan, "Jan", "January");
+
+          For each language present, the month names must be set.
+          This call to the routine says:
+               In english, the abbreviation and name for the
+               first month are "Jan" and "January".
+          There  are named  constants in  the procedure  for each
+          month:
+              Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
+
+ 18        call set_day_name (spanish, Mon, "lun", "lunes");
+
+          For each  language present, the day  names must be set.
+          This call to the routine says:
+               In  spanish,  the abbreviation  and  name for
+               Monday are "lun" and "lunes".
+          There  are named  constants in  the procedure  for each
+          day:
+                        Mon Tue Wed Thu Fri Sat Sun
+
+ 19        call set_offset (english, Hour, "hr","hours","hour");
+
+          For  each language  present, the  offset names  must be
+          set.  This call to the routine says:
+               In  english,  the  abbreviation,  plural, and
+               singular  for  hour are  "hr",  "hours", and,
+               "hour".
+          There  are named  constants in  the procedure  for each
+          unit:
+             Year Month Week Day Hour Minute Second Microsecond
+
+
+page 4-4                     MTB-618
+
+          For  each  language present,  several  additional words
+          must be defined.  This call to the routine says:
+               In german, the word for before is "vor".
+          There  are named  constants in the  procedure for these
+          words:
+                      Before On After Or Noon Midnight
+                        Now Today Yesterday Tomorrow
+
+ 21        call set_zone (english, "fwt",  "fwt",  -1,
+ 22                  French Winter Time");
+ 23        call set_zone (french,  "fwt",  "hfh",  -1,
+ 24                 "Heure Francais d'Hiver");
+ 25        call set_zone (english, "sast", "sast", -9.5,
+ 26                 "South Australia Standard Time");
+
+          For  each  other  language,  time  zones  may  also  be
+          defined.  These calls to the routine say:
+            1) In english,  the zone identified  as "fwt" is
+               to have  an offset of -1  hours, an abbrevia-
+               tion  of  "fwt", and  name of  "French Winter
+               Time".
+            2) In  french, the  zone named "fwt"  is to have
+               the abbreviation  "hfh", and the  name "Heure
+               Francais d'Hiver".   All settings of  a given
+               name must have the same offset.
+            3) The  third  example illustrates  that  a zone
+               abbreviation may have 4  characters in it and
+               that offsets are  not necessarily in integral
+               hours.
+          The second argument in this call is an internal id of a
+          zone.   It provides  a mechanism  to reference  a given
+          entry  in  each language.   The  fourth argument  is an
+          offset which represents the interval to be ADDED to GMT
+          to produce  a time in  the zone.  West  longitude needs
+          negative   amounts,   East  longitude   needs  positive
+          amounts.   Each zone  entry may be  referenced once per
+          language.  Each reference to  the zone must specify the
+          same offset or it is in error.
+
+ 27        call build;
+
+          This signals that all data has been filled in.
+
+ 28        return;
+ 29   /* all internal procedures here */
+ 30   end time_table_;
+
+After all the  data has been presented, the  build checks several
+things.   If  it finds  any  that it  doesn't  like, it  will not
+generate the table.   These are some of the  things it will check
+
+                             MTB-618                     page 4-5
+
+1) All tokens(1) must be unique within a language.
+
+2) There may not be any uninitialized fields.  If a zone field is
+   not  set  in some  language,  the value  from the  "fill from"
+   language will be copied in.  After  that, if any field has not
+   been set,  it is an  error.  This includes  the error detected
+   when a zone is not define in the Fill_From language.
+
+3) Two ambiguity checks will be done among all the words defined.
+   If a  string has one  meaning in one language  and a different
+   meaning  in another,  that token  will have  an ambiguity flag
+   associated with it.  If a string  is used for the same purpose
+   in  several  languages,  the  use of  it  will  be  flagged to
+   indicate  that  it alone  cannot  determine which  language is
+   being    handled.     These    flags    are    for    use   by
+   convert_date_to_binary_.
+
+A table, "internal" to time_table_, will  be built to aid CDTB in
+quickly  locating  a token  among all  these words.   The current
+intention is to  build a list which can  be binary searched.  The
+details of  this internal table  are not of importance  to a user
+and are subject to change as CDTB requires.
+
+________________________________________
+
+(1) Each  word  presented  for  inclusion in  the  time  table is
+
+page 4-6                     MTB-618
+
+This is a sample of a time_table_.cds to be released:
+
+/* ******************************************************
+   *                                                    *
+   *                                                    *
+   * Copyright (c) 1972 by Massachusetts Institute of   *
+   * Technology and Honeywell Information Systems, Inc. *
+   *                                                    *
+   *                                                    *
+   ****************************************************** */
+
+/**** format: ind3,ll80,initcol6,indattr,^inddcls,dclind4,idind16            */
+/**** format: struclvlind2,^ifthenstmt,^ifthendo,^ifthen,^indnoniterdo       */
+/**** format: ^inditerdo,^indnoniterend,^indthenelse,case,^indproc,^indend   */
+/**** format: ^delnl,^insnl,comcol41,^indcom,^indblkcom,linecom,^indcomtxt   */
+
+/*   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   */
+/*                                                                           */
+/* Name:  time_table_                                                        */
+/*                                                                           */
+/*     Table of values used in converting date/time character strings to or  */
+/*  from Multics standard clock values.  Use time_names_.incl.pl1 to         */
+/*  reference data values.                                                   */
+/*                                                                           */
+/*                                                                           */
+/* Entry:  time_table_$version                                               */
+/*                                                                           */
+/* Version number of the structures in the time_table_.                      */
+/*                                                                           */
+/*                                                                           */
+/* Entry:  time_table_$language_names                                        */
+/*                                                                           */
+/* Names of languages in which day names, month names and time zones can be  */
+/*  expressed.  Each language is present in each language.                   */
+/*                                                                           */
+/*                                                                           */
+/* Entry:  time_table_$zone_names                                            */
+/*                                                                           */
+/* Table of time zones in each of the languages.                             */
+/*                                                                           */
+/*                                                                           */
+/* Entry:  time_table_$month_names                                           */
+/*                                                                           */
+/* Table of month names in each of the languages.                            */
+/*                                                                           */
+/*                                                                           */
+/* Entry:  time_table_$day_names                                             */
+/*                                                                           */
+/* Table of day names in each of the languages.                              */
+/*                                                                           */
+/*                                                                           */
+/* Entry:  time_table_$zones (OBSOLETE)                                      */
+
+                             MTB-618                     page 4-7
+
+/*      This table contains the list of acceptable time zone character       */
+/*  strings which may be specified in a date/time string, and the offsets    */
+/*  which must be added to convert a clock value from the zone to Greenwich  */
+/*  Mean Time (GMT).  The offsets are in microseconds.                       */
+/*  Refer to time_zones_.incl.pl1 for a description of these strings.        */
+/*                                                                           */
+/* Note                                                                      */
+/*                                                                           */
+/*      A Multics standard clock value is a number of microseconds relative  */
+/*  to January 1, 1901 0000.0 GMT.                                           */
+/*                                                                           */
+/* Status                                                                    */
+/*                                                                           */
+/* 0) Created:      1976-10-05  Gary C. Dixon- from an ALM data segment.     */
+/* 1) Recreated:    1983-02-09  James A Falksen- expanded to include         */
+/*                                        language support, formatted to fit */
+/*                                        in MTB                             */
+/*                                                                           */
+/*   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   */
+%page;
+time_table_: proc;
+
+dcl  (the_language_count      init (4), /* how many languages in the table   */
+      the_zone_count          init (31),/* how many zones in the table       */
+
+      english                 init (1), /* site default language             */
+      french                  init (2),
+      german                  init (3),
+      spanish                 init (4),
+
+      Fill_From               init (1)  /* which language supplies defaults  */
+                                        /*  for unspecified zones.           */
+     )                        int static options(constant);
+
+   call setup
+      ("^yc/^my/^dm  ^Hd^99.9MH ^za ^da",         /* date_time format        */
+       "^yc/^my/^dm",                             /* date format             */
+       "^Hd:^MH");                                /* time format             */
+
+/* +-+ +-+ +-+ +-+ +-+ +-+ english language values +-+ +-+ +-+ +-+ +-+ +-+ */
+
+   call set_language (english, english, "english");
+   call set_language (english, french,  "anglais");
+   call set_language (english, german,  "englisch");
+   call set_language (english, spanish, "ingles");
+
+   call set_month_name (english, Jan, "Jan", "January");
+   call set_month_name (english, Feb, "Feb", "February");
+   call set_month_name (english, Mar, "Mar", "March");
+   call set_month_name (english, Apr, "Apr", "April");
+
+page 4-8                     MTB-618
+
+   call set_month_name (english, Jun, "Jun", "June");
+   call set_month_name (english, Jul, "Jul", "July");
+   call set_month_name (english, Aug, "Aug", "August");
+   call set_month_name (english, Sep, "Sep", "September");
+   call set_month_name (english, Oct, "Oct", "October");
+   call set_month_name (english, Nov, "Nov", "November");
+   call set_month_name (english, Dec, "Dec", "December");
+
+   call set_day_name (english, Mon, "Mon", "Monday");
+   call set_day_name (english, Tue, "Tue", "Tuesday");
+   call set_day_name (english, Wed, "Wed", "Wednesday");
+   call set_day_name (english, Thu, "Thu", "Thursday");
+   call set_day_name (english, Fri, "Fri", "Friday");
+   call set_day_name (english, Sat, "Sat", "Saturday");
+   call set_day_name (english, Sun, "Sun", "Sunday");
+
+   call set_offset (english, Year,        "yr",  "years", "year");
+   call set_offset (english, Month,       "mo",  "months", "month");
+   call set_offset (english, Week,        "wk",  "weeks", "week");
+   call set_offset (english, Day,         "da",  "days", "day");
+   call set_offset (english, Hour,        "hr",  "hours", "hour");
+   call set_offset (english, Minute,      "min", "minutes", "minute");
+   call set_offset (english, Second,      "sec", "seconds", "second");
+   call set_offset (english, Microsecond, "usec","microseconds",
+           "microsecond");
+
+   call set_word (english, Before, "before");
+   call set_word (english, On, "on");
+   call set_word (english, After, "after");
+   call set_word (english, Or, "or");
+   call set_word (english, Noon, "noon");
+   call set_word (english, Midnight, "midnight");
+   call set_word (english, Now, "now");
+   call set_word (english, Today, "today");
+   call set_word (english, Yesterday, "yesterday");
+   call set_word (english, Tomorrow, "tomorrow");
+
+   call set_zone (english,"z   ","z   ", 0   ,"Universal Time");
+   call set_zone (english,"ut  ","ut  ", 0   ,"Universal Time");
+   call set_zone (english,"gmt ","gmt ", 0   ,"Greenwich Mean Time");
+   call set_zone (english,"wat ","wat ", +1  ,"West Africa Time");
+   call set_zone (english,"at  ","at  ", +2  ,"Azores Time");
+   call set_zone (english,"gst ","gst ", +3  ,"Greenland  Standard Time");
+   call set_zone (english,"nst ","nst ", +3.5,"Newfoundland Standard Time");
+   call set_zone (english,"ast ","ast ", +4  ,"Atlantic Standard Time");
+   call set_zone (english,"adt ","adt ", +5  ,"Atlantic Daylight Time");
+   call set_zone (english,"est ","est ", +5  ,"Eastern Standard Time");
+   call set_zone (english,"edt ","edt ", +6  ,"Eastern Daylight Time");
+   call set_zone (english,"cst ","cst ", +6  ,"Central Standard Time");
+   call set_zone (english,"cdt ","cdt ", +7  ,"Central Daylight Time");
+   call set_zone (english,"mst ","mst ", +7  ,"Mountain Standard Time");
+   call set_zone (english,"mdt ","mdt ", +8  ,"Mountain Daylight Time");
+
+                             MTB-618                     page 4-9
+
+   call set_zone (english,"pdt ","pdt ", +9  ,"Pacific Daylight Time");
+   call set_zone (english,"yst ","yst ", +9  ,"Yukon Standard Time");
+   call set_zone (english,"ahst","ahst", +10 ,"Alaska-Hawaii Standard Time");
+/**** l set_zone (english,"bst ","bst ", -11 ,"Bering Standard Time");       */
+   call set_zone (english,"nt  ","nt  ", +11 ,"Nome Time");
+   call set_zone (english,"bst ","bst ", -1  ,"British Summer Time");
+   call set_zone (english,"swt ","swt ", -1  ,"Swedish Winter Time");
+   call set_zone (english,"sst ","sst ", -2  ,"Swedish Summer Time");
+   call set_zone (english,"cet ","cet ", -1  ,"Central European Time");
+   call set_zone (english,"fwt ","fwt ", -1  ,"French Winter Time");
+   call set_zone (english,"fst ","fst ", -2  ,"French Summer Time");
+   call set_zone (english,"met ","met ", -1  ,"Middle Europe Time");
+   call set_zone (english,"eet ","eet ", -2  ,"Eastern European Time");
+   call set_zone (english,"bt  ","bt  ", -3  ,"Baghdad Time");
+   call set_zone (english,"ist ","ist ", -5.5,"Indian Standard Time");
+/**** l set_zone (english,"sst ","sst ", -7  ,"South Sumatra Time");         */
+   call set_zone (english,"jt  ","jt  ", -7.5,"Java Time");
+   call set_zone (english,"cct ","cct ", -8  ,"China Coast Time");
+   call set_zone (english,"jst ","jst ", -9  ,"Japan Standard Time");
+   call set_zone (english,"sast","sast", -9.5,"South Australia Standard Time");
+   call set_zone (english,"nzt ","nzt ", -12 ,"New Zealand Time");
+
+/* +-+ +-+ +-+ +-+ +-+ +-+ french language values +-+ +-+ +-+ +-+ +-+ +-+ */
+
+   call set_language (french, english,"french");
+   call set_language (french, french,  "francais");
+   call set_language (french, german,  "franzosisch");
+   call set_language (french, spanish,"frances");
+
+   call set_month_name (french, Jan,"jan","janvier");
+   call set_month_name (french, Feb,"fev","f{vrier");
+   call set_month_name (french, Mar,"mar","mars");
+   call set_month_name (french, Apr,"avr","avril");
+   call set_month_name (french, May,"mai","mai");
+   call set_month_name (french, Jun,"jui","juin");
+   call set_month_name (french, Jul,"jul","julliet");
+   call set_month_name (french, Aug,"aou","ao|t");
+   call set_month_name (french, Sep,"sep","septembre");
+   call set_month_name (french, Oct,"oct","octobre");
+   call set_month_name (french, Nov,"nov","novembre");
+   call set_month_name (french, Dec,"dec","d}cembre");
+
+   call set_day_name (french, Mon,"lun","lundi");
+   call set_day_name (french, Tue,"mar","mardi");
+   call set_day_name (french, Wed,"mer","mercredi");
+   call set_day_name (french, Thu,"jeu","jeudi");
+   call set_day_name (french, Fri,"ven","vendredi");
+   call set_day_name (french, Sat,"sam","samedi");
+   call set_day_name (french, Sun,"dim","dimanche");
+
+   call set_offset (french, Year,        "?", "ann{es", "ann{e");
+
+page 4-10                    MTB-618
+
+   call set_offset (french, Week,        "?", "semaines", "semaine");
+   call set_offset (french, Day,         "?", "jours", "jour");
+   call set_offset (french, Hour,        "?", "heures", "heure");
+   call set_offset (french, Minute,      "?", "minutes", "minute");
+   call set_offset (french, Second,      "?", "secondes", "seconde");
+   call set_offset (french, Microsecond, "?", "microsecondes",
+           "microseconde");
+
+   call set_word (french, Before, "devant");
+   call set_word (french, On, "sur");
+   call set_word (french, After, "apr{s");
+   call set_word (french, Or, "ou");
+   call set_word (french, Noon, "midi");
+   call set_word (french, Midnight, "minuit");
+   call set_word (french, Now, "maintenant");
+   call set_word (french, Today, "aujourd'hui");
+   call set_word (french, Yesterday, "heir");
+   call set_word (french, Tomorrow, "demain");
+
+   call set_zone (french,"ut  ","tu  ", 0   ,"Temps Universal");
+   call set_zone (french,"fwt ","hfh ", -1  ,"Heure Francais d'Hiver");
+   call set_zone (french,"fst ","hfc ", -2  ,"Heure Francais d'Et{");
+
+/* +-+ +-+ +-+ +-+ +-+ +-+ german language values +-+ +-+ +-+ +-+ +-+ +-+ */
+
+   call set_language (german, english,"german");
+   call set_language (german, french,  "allemand");
+   call set_language (german, german,  "deutsch");
+   call set_language (german, spanish,"aleman");
+
+   call set_month_name (german, Jan,"Jan","Januar");
+   call set_month_name (german, Feb,"Feb","Februar");
+   call set_month_name (german, Mar,"Mrz","M{rz");
+   call set_month_name (german, Apr,"Apr","April");
+   call set_month_name (german, May,"Mai","Mai");
+   call set_month_name (german, Jun,"Jun","Juni");
+   call set_month_name (german, Jul,"Jul","Juli");
+   call set_month_name (german, Aug,"Aug","August");
+   call set_month_name (german, Sep,"Sep","September");
+   call set_month_name (german, Oct,"Okt","Oktober");
+   call set_month_name (german, Nov,"Nov","November");
+   call set_month_name (german, Dec,"Dez","Dezember");
+
+   call set_day_name (german, Mon,"Mon","Montag");
+   call set_day_name (german, Tue,"Dns","Dienstag");
+   call set_day_name (german, Wed,"Mit","Mittwoch");
+   call set_day_name (german, Thu,"Don","Donnerstag");
+   call set_day_name (german, Fri,"Fre","Freitag");
+   call set_day_name (german, Sat,"Sam","Samstag");
+
+                             MTB-618                    page 4-11
+
+   call set_offset (german, Year,        "?", "Jahren", "Jahre");
+   call set_offset (german, Month,       "?", "Monate", "Monat");
+   call set_offset (german, Week,        "?", "Wochen", "Woche");
+   call set_offset (german, Day,         "?", "Tagen", "Tag");
+   call set_offset (german, Hour,        "?", "Stunden", "Stunde");
+   call set_offset (german, Minute,      "?", "Minuten", "Minute");
+   call set_offset (german, Second,      "?", "Sekunden", "Sekunde");
+   call set_offset (german, Microsecond, "?", "Mikrosekunden",
+           "Mikrosekunde");
+
+   call set_word (german, Before, "vor");
+   call set_word (german, On, "an");
+   call set_word (german, After, "nach");
+   call set_word (german, Or, "oder");
+   call set_word (german, Noon, "Mittag");
+   call set_word (german, Midnight, "Mitternacht");
+   call set_word (german, Now, "Jetz");
+   call set_word (german, Today, "Heute");
+   call set_word (german, Yesterday, "Gestern");
+   call set_word (german, Tomorrow, "Morgen");
+
+/* +-+ +-+ +-+ +-+ +-+ +-+ spanish language values +-+ +-+ +-+ +-+ +-+ +-+ */
+
+   call set_language (spanish, english,"spanish");
+   call set_language (spanish, french,  "espagnol");
+   call set_language (spanish, german,  "spanisch");
+   call set_language (spanish, spanish,"espa|ol");
+
+   call set_month_name (spanish, Jan,"ene","enero");
+   call set_month_name (spanish, Feb,"feb","febrero");
+   call set_month_name (spanish, Mar,"mar","marzo");
+   call set_month_name (spanish, Apr,"abr","abril");
+   call set_month_name (spanish, May,"may","mayo");
+   call set_month_name (spanish, Jun,"jun","junio");
+   call set_month_name (spanish, Jul,"jul","julio");
+   call set_month_name (spanish, Aug,"ago","agosto");
+   call set_month_name (spanish, Sep,"sep","septiembre");
+   call set_month_name (spanish, Oct,"oct","octubre");
+   call set_month_name (spanish, Nov,"nov","noviembre");
+   call set_month_name (spanish, Dec,"dic","diciembre");
+
+   call set_day_name (spanish, Mon,"lun","Lunes");
+   call set_day_name (spanish, Tue,"mar","Martes");
+   call set_day_name (spanish, Wed,"mie","Mi{rcoles");
+   call set_day_name (spanish, Thu,"jue","Jueves");
+   call set_day_name (spanish, Fri,"vie","Viernes");
+   call set_day_name (spanish, Sat,"sab","Sabado");
+   call set_day_name (spanish, Sun,"dom","Domingo");
+
+   call set_offset (spanish, Year,        "?", "a}o", "a}o");
+
+page 4-12                    MTB-618
+
+   call set_offset (spanish, Week,        "?", "semana", "semana");
+   call set_offset (spanish, Day,         "?", "dia", "dia");
+   call set_offset (spanish, Hour,        "?", "hora", "hora");
+   call set_offset (spanish, Minute,      "?", "minuto", "minuto");
+   call set_offset (spanish, Second,      "?", "segundo", "segundo");
+   call set_offset (spanish, Microsecond, "?", "microsegundo",
+           "microsegundo");
+
+   call set_word (spanish, Before, "?");
+   call set_word (spanish, On, "?");
+   call set_word (spanish, After, "?");
+   call set_word (spanish, Or, "?");
+   call set_word (spanish, Noon, "mediodia");
+   call set_word (spanish, Midnight, "medionoche");
+   call set_word (spanish, Now, "?");
+   call set_word (spanish, Today, "hoy");
+   call set_word (spanish, Yesterday, "ayer");
+   call set_word (spanish, Tomorrow, "ma}ana");
+
+   call build;
+   return;
+
+setup_error:
+   call com_err_ (0, me, """call setup()"" must be done first.");
+exit:
+   return;
+
+/*****                   Internal Support Procedures                      ****/
+
+setup: proc (dt_format, d_format, t_format);
+
+dcl (dt_format,                         /* default format for date_time      */
+     d_format,                          /* default format for date           */
+     t_format                           /* default format for time           */
+    )               char (*) parm;      /*  (date_time_$format strings)      */
+
+   end setup;
+
+set_language: proc (lang, element, value);
+
+dcl lang            fixed bin,          /* which language to set             */
+    element         fixed bin,          /* which element to set              */
+    value           char (*);           /* value to put there                */
+      return;
+
+   end set_language;
+
+set_month_name: proc (lang, element, short, long);
+
+dcl lang            fixed bin,          /* which language to set             */
+    element         fixed bin,          /* which element to set              */
+
+                             MTB-618                    page 4-13
+
+      return;
+
+   end set_month_name;
+
+set_day_name: proc (lang, element, short, long);
+
+dcl lang            fixed bin,          /* which language to set             */
+    element         fixed bin,          /* which element to set              */
+    (short,long)    char (*);           /* values to put there               */
+
+      return;
+
+   end set_day_name;
+
+set_offset: proc (lang, element, short, plural, singular);
+
+dcl lang            fixed bin,          /* which language to set             */
+    element         fixed bin,          /* which element to set              */
+    (short, plural, singular)
+                    char (*);           /* values to put there               */
+      return;
+
+   end set_offset;
+
+set_word: proc (lang, element, value);
+
+dcl lang            fixed bin,          /* which language to set             */
+    element         fixed bin,          /* which element to set              */
+    value           char (*);           /* value to put there                */
+
+   end set_word;
+
+set_zone: proc (lang, id, brief, interval, long);
+
+dcl lang            fixed bin,          /* which language to set             */
+    id              char (*),           /* which element to set              */
+    (brief, long)   char (*),           /* values to put there               */
+    interval        fixed dec (12,8);   /* hour_value+GMT gives this zone    */
+
+        end set_zone;
+
+build: proc;
+
+   end build;
+
+dcl create_data_segment_
+                    entry (ptr, fixed bin(35));
+
+dcl microseconds_per_hour init (3600000000)
+                    fixed bin(71) int static options(constant);
+
+/* format: off */
+
+page 4-14                    MTB-618
+
+     Feb  init (2),           Tue       init (2),
+     Mar  init (3),           Wed       init (3),
+     Apr  init (4),           Thu       init (4),
+     May  init (5),           Fri       init (5),
+     Jun  init (6),           Sat       init (6),
+     Jul  init (7),           Sun       init (7),
+     Aug  init (8),
+     Sep  init (9),
+     Oct  init (10),
+     Nov  init (11),
+     Dec  init (12),               Before         init (1),
+                                   Or             init (2),
+     Year           init (1),      After          init (3),
+     Month          init (2),      On             init (4),
+     Week           init (3),      Noon           init (5),
+     Day            init (4),      Midnight       init (6),
+     Hour           init (5),      Now            init (7),
+     Minute         init (6),      Yesterday      init (8),
+     Second         init (7),      Today          init (9),
+     Microsecond    init (8),      Tomorrow       init (10)
+    )               fixed bin int static options (constant);
+/* format: on */
+%include cds_args;
+
+%include time_zones_;
+%include time_names_;%page;
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

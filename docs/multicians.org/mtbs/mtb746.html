@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Network accounting software.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  MULTICS TECHNICAL BULLETIN                              MTB746-03
+
+  To:       MTB Distribution
+
+  From:     Edward C. Brunelle
+
+  Date:     April 3, 1987
+
+  Subject:  Network accounting software
+
+                 -----------------------------------
+
+  This MTB describes new software  and Answering Service changes to
+  support  charging  processes  for  DSA  usage.   Central to these
+  changes  is  a  new  subroutine  network_accounting_  and a table
+  &gt;sc1&gt;network_accounting_table,  managed via vfile_,  that records
+  current process use of DSA channels.
+
+  This  revision  replaces  the  $charge_bytes  and $charge_packets
+  entrypoints with a general purpose $charge_channel_use entrypoint
+  which also has a different calling sequence.  It also deletes the
+  entrypoints $dump_table and $close_process_entries.  In addition,
+  it restructures the network accounting record.
+
+  There are  no change bars  in this revision  since it is  a major
+  rewrite.
+
+                 -----------------------------------
+
+  Comments should be sent to the author:
+
+  via Multics Forum:
+     &gt;udd&gt;DSA&gt;meetings&gt;dsaimp.forum
+  via Multics Mail:
+     Brunelle -at System-M
+
+  via Telephone:
+     (HVN) 862-3595, or (602) 862-3595
+
+  _________________________________________________________________
+
+  Multics project  internal documentation; not to  be reproduced or
+  distributed outside the Multics project without permission of the
+  Director of MDC.
+
+
+  MTB746-03                                      Network accounting
+
+                               CONTENTS
+
+                                                           Page
+
+     1:  Introduction  . . . . . . . . . . . . . . . . . . . . .   1
+     2:  Network accounting table  . . . . . . . . . . . . . . .   2
+     2.1:  Network Accounting Table record format  . . . . . . .   3
+     2.2:  Session Control access of NAT . . . . . . . . . . . .   5
+     2.3:  Answering Service access of NAT . . . . . . . . . . .   6
+     3:  Scenarios for NAT usage . . . . . . . . . . . . . . . .   7
+     3.1:  Definitions . . . . . . . . . . . . . . . . . . . . .   7
+     3.2:  Starting conditions . . . . . . . . . . . . . . . . .   7
+     3.3:  Scenario - Logging in . . . . . . . . . . . . . . . .   8
+     3.4:  Scenario - Process Termination  . . . . . . . . . . .  10
+     Appendix A:  Documentation  . . . . . . . . . . . . . . . .  13
+        network_accounting_  . . . . . . . . . . . . . . . . . .  14
+           network_accounting_$charge_channel_use  . . . . . . .  14
+           network_accounting_$clear_table . . . . . . . . . . .  16
+           network_accounting_$dump_table  . . . . . . . . . . .  17
+           network_accounting_$get_path  . . . . . . . . . . . .  19
+           network_accounting_$get_process_total . . . . . . . .  20
+           network_accounting_$read_and_reset_table  . . . . . .  21
+           network_accounting_$test  . . . . . . . . . . . . . .  22
+        network_accounting_gate_ . . . . . . . . . . . . . . . .  23
+        display_net_acct_table . . . . . . . . . . . . . . . . .  24
+
+
+  Network accounting                                      MTB746-03
+
+  1:  INTRODUCTION
+
+    Network  channels  are  managed  resources  that  cost money to
+  operate.  This  MTB describes how  processes will be  charged for
+  their use of network channels (specifically DSA channels):  bytes
+  sent, packets  sent, and connect  time.  Rates for  these charges
+  are handled the  same way as rates for tape  and disk device use.
+  The  charge per  thousand bytes,  per thousand  packets, and  per
+  connect hour are  stored as device rates for  each rate structure
+  in installation_parms.  The new  devices defined for this purpose
+  are dsa_kbyt, dsa_kpkt, and dsa_hour.
+
+    Use of DSA resources by  processes is recorded in a system-wide
+  Network Accounting Table (NAT) managed  in an inner ring by entry
+  points in  the subroutine network_accounting_ called  directly in
+  user  processes  by  inner  ring  Session  Control,  and  via the
+  network_accounting_gate_ by the Answering Service.  Specifically,
+  Session Control calls an entrypoint  to post usage figures to the
+  table  and the  Answering Service   calls other  entry points  to
+  charge processes for their accumulated usage.
+
+    This mechanism is for use only by non-MCS channels.  For Tymnet
+  and other ring 0 connections,  MCS already manages its own tables
+  that the Answering Service accesses via existing metering gates.
+
+
+  MTB746-03                                      Network accounting
+
+  2:  NETWORK ACCOUNTING TABLE
+
+    The  NAT  is  named  network_accounting_table  and  resides  by
+  default       in      the       directory      specified       by
+  sys_info$system_control_dir.  This  directory can be  changed for
+  test purposes by calling network_accounting_gate_$test.
+
+    The NAT is managed as a keyed vfile_ with fixed-length records.
+  Each record  corresponds to one  DSA connection.  The  key is the
+  process ID, session handle and network type.  There may be one or
+  more consecutive connections on a DSA session during the time the
+  session  is  in  existence.   It  is  expected  that  only active
+  processes will  occupy the table.  When Session  Control closes a
+  connection,  network_accounting_ will turn  on a flag  that marks
+  the NAT record for later deletion.
+
+    Each  process opens  the NAT  once and  keeps it  open for  the
+  duration of  the process.  The  NAT is opened  using the "-share"
+  and  "-stationary" options  of vfile_.   NAT records  are updated
+  using the following steps:
+
+  (1)  Do  a  "record_status"  control  order,  asking  to lock the
+       record.
+
+  (2)  Update the  record in place  using the record_ptr  from step
+       (1).  This works because the record is locked and the record
+       itself remains constant in size during it's existence.
+
+  (3)  Do a second "record_status", asking to unlock the record.
+
+  Each NAT record belongs to  only one process.  Therefore, at most
+  one  process will  be updating   the record  while the  Answering
+  Service  is  reading  it.   The  above  locking strategy prevents
+  contention between the owning process and the Answering Service.
+
+
+  Network accounting                                      MTB746-03
+
+  2.1:  Network Accounting Table record format
+
+  The    format    of    a    NAT    record    is    declared    in
+  network_account_record.incl.pl1.  It is defined as follows:
+
+   dcl 1 network_account_record aligned based,
+       2 version char (8),
+       2 key,
+         3 process_id bit (36) aligned,
+         3 session_handle fixed bin (35),
+         3 network_id fixed bin unaligned,
+       2 switches unaligned,
+         3 delete_switch bit (1) unaligned,
+         3 unassigned_switch bit (1) unaligned,
+         3 mbz bit (16) unaligned,
+       2 connected_time fixed bin (71),
+       2 update_time fixed bin (71),
+       2 byte_count fixed bin (35),
+       2 packet_count fixed bin (35).
+
+  Structure Elements
+
+  version
+     is the  version number of the  structure and should be  set to
+     NET_ACCT_RECORD_VERSION_1.
+
+  key
+     is an internal copy of the key which uniquely identifies a NAT
+     record.
+
+  key.process_id
+     identifies the process using the network connection.
+
+  key.session_handle
+     identifies the network session for this connection.
+
+  key.network_id
+     identifies  the  network  type   for  the  connection.   Valid
+     identifiers are found in  network_ids.incl.pl1.  For DSA, this
+     value would be DSA_NET.
+
+  delete_switch
+     if  "1"b, shows  the connection   is no  longer valid  and the
+     record  may be deleted  after the data  is extracted.  Set  to
+     "0"b when the record is created.
+
+
+  MTB746-03                                      Network accounting
+
+  unassigned_switch
+     identifies if  the owner of  the record still  has the channel
+     assigned to it.  It is initially set to "0"b.
+
+     It is used to determine which of the following two time fields
+     is  to be used  to determine the  cumulative connect time  for
+     charging.
+
+     If "0"b, shows the connection  is currently active and belongs
+     to the owner  of this record.  The update_time field  is to be
+     subtracted  from the  current  time  to determine  the connect
+     time.
+
+     If  "1"b,  shows  connection  currently  reassigned to another
+     user.   The  connected_time   field  contains  the  cumulative
+     microseconds to be  charged to the owner of  this record while
+     it  was still  assigned to  the owner.   The update_time field
+     shows the time the connection was reassigned.
+
+  connected_time
+     is the amount of connect time in microseconds to be charged to
+     the owner of the record when it was assigned to the owner.  It
+     is  initially  set  to  0.   It  only  has  meaning  when  the
+     unassigned_switch is set to "1"b.
+
+  update_time
+     is the file system clock value  for either the time the record
+     was  created  or  the  last  time  the  accounting update ran,
+     whichever   is  later.    It   only   has  meaning   when  the
+     unassigned_switch is set to "0"b.
+
+  byte_count
+     is the number  of bytes sent over the  connection since either
+     the record was created or the last time accounting update ran.
+
+  packet_count
+     is the number of packets sent over the connection since either
+     the record was created or the last time accounting update ran.
+
+
+  Network accounting                                      MTB746-03
+
+  2.2:  Session Control access of NAT
+
+    The  module  dsa_sc_sm_  in   bound_dsa_sc_  accesses  the  NAT
+  directly through  calls to network_accounting_$charge_channel_use
+  in order  to add usage  figures to the  sessions's byte_count and
+  packet_count for the current process using the session.
+
+  It will do this in four circumstances:
+
+  o    When the session is initially  created in order to start the
+       connect time clock running;
+
+  o    When  the  session's  usage  figures  for  packets  or bytes
+       processed  exceeds  predefined   limits;  These  limits  are
+       currently 100 packets and 4096 bytes.
+
+  o    When  requested to  by the  process owning  the session  via
+       calls  to the  login server  entries "assign_connection" and
+       "unassign_connection".
+
+  o    When the connection is terminated.
+
+
+  MTB746-03                                      Network accounting
+
+  2.3:  Answering Service access of NAT
+
+    The  Answering  Service  accesses  the  NAT  indirectly through
+  network_accounting_gate_.  It does this at three separate times:
+
+  o    When the  system is booted  via $clear_table entry  to start
+       with a clean NAT.
+
+  o    Every 15 minutes (or as often as specified by update_time in
+       installation_parms)  as   part  of  the   Accounting  Update
+       performed  by act_ctl_$update.  It  will access the  NAT via
+       the $read_and_reset_table entry.
+
+  o    When destroying a process, to get the last remaining network
+       charges  that  were  entered  in  the  NAT  since  the  last
+       Accounting   Update.   This   will  be   done  through   the
+       $get_process_total entry.
+
+    The job of  the Answering Service is to  read usage information
+  from  the NAT, calculate  dollar charges by  looking at the  rate
+  structure for the network devices, and post the dollar amounts to
+  the process' PDT entry.  It does  this using code similar to that
+  used   by   device_acct_$update   (another   program   called  by
+  act_ctl_$update) to post tape and disk charges.
+
+    The amount  of connect time that Answering  Service will charge
+  for a session is the time since the most recent of:
+
+       the first call to $charge_channel_use for that session.
+
+       the  latest  call   to  $read_and_reset_table  that  returns
+       information for that session.
+
+  Each  of these  operations updates  the NAT  record's update_time
+  field to the current clock time.
+
+
+  Network accounting                                      MTB746-03
+
+  3:  SCENARIOS FOR NAT USAGE
+
+  The  following scenarios  for a  typical DSA  session attempt  to
+  illustrate  when and  why network_accounting_  is called  and the
+  state  of  the  NAT  record  as  a  result  of  the  calls.  This
+  discussion will deal only with  a direct connection through a DSA
+  line,  creation of  a session  and creation  of one  or more user
+  processes on the session.
+
+  It is  assumed that the user  is familiar with MTB751  - "Multics
+  Networking Architecture  Answering Service Changes" and  MTB752 -
+  "Network Login Servers".
+
+  3.1:  Definitions
+
+  SC - Session control.
+
+  AS - Answering Service.  That code  which runs in the Initializer
+       process and  controls the Identification  and Authentication
+       (I&amp;A) of  users accessing the system.  It  also includes the
+       software which incorporates the accounting for system usage.
+
+  LS - Login Server.  The process which listens for requests for
+       communications  channel  access  to  Multics  over specified
+       Endpoints.  Endpoints are defined for various services, such
+       as "login" or "file transfer" and are network specific.  The
+       login server performs the initial dialogue with the user.
+
+  NA - Network  Accounting.  The  software which  runs in  both the
+       user and Initializer processes  to account for network usage
+       of the system.
+
+  3.2:  Starting conditions
+
+  Our starting state
+
+  o    SC  listening to  the DN8  waiting for  a session connection
+       request.
+
+  o    A LS blocked and "listening" on a particular SC endpoint, in
+       this  case   dsa.MUL1.LOGIN.   It  does  this   through  the
+       "start_login_service" command of the  login server.  Part of
+       data  passed to  SC when   the LS  started listening  is the
+       processid  of the  login server.   In addition,  it sets the
+       user processid to "0"b.
+
+  o    The  following  variables  are  of  significance.   They are
+       remembered by Session Control and their current contents are
+       passed to Network Accounting whenever $charge_channel_use is
+       called.
+
+
+  MTB746-03                                      Network accounting
+
+       a)   Owner_PID  - process  ID of  the login  server since it
+            "owns" the session
+
+       b)   User_PID -  process ID of  the user when  login occurs.
+            Prior to login of the user, this value will be "0"b.
+
+       c)   Session_ID  -  the  unique  ID  assigned  by  SC to the
+            session.
+
+       d)   Session_state  - what  is happening  to the  session at
+            this time.
+
+  3.3:  Scenario - Logging in
+
+  1)   DSA  receives  a  request  from  outside  to  connect to the
+       Multics system.
+
+       SC - sets  the session_id  to a  unique value  which will be
+            used to identify the session until it is destroyed.  It
+            sets session_state to  CREATE_SESSION, Owner_PID to the
+            LS process ID (since it  is running in the Login_Server
+            Daemon), and calls NA at the $charge_channel_use entry.
+            It will then return the Session_ID to the LS.
+
+       NA - will create  a NAT record  to capture the  beginning of
+            the session.  It will use the the session_id, Owner_PID
+            and network_id as the key  for the NAT record since the
+            session_state is CREATE_SESSION.   In addition, it will
+            set  update_time  to  the  current  time  and  set  the
+            unassigned_switch to "0"b and connected_time to zero.
+
+  2)   LS starts the login dialogue with the user.
+
+       SC - If enough dialogue occurs with  the user to cause SC to
+            exceed  it's  packet/byte   thresholds,  it  will  call
+            $charge_channel_use    with   session_state    set   to
+            UPDATE_CONNECTION.
+
+            If    the   session     terminates,   SC    will   call
+            $charge_channel_use    with     final    figures    and
+            session_state   equal  DESTROY_SESSION  to   show  this
+            session has terminated.
+
+       NA - If Network  Accounting was called due to  either of the
+            above circumstances, the NAT  record being updated will
+            be that  of the Owner_PID  since the User_PID  is still
+            "0"b.   If the   session_state is  DESTROY_SESSION, the
+            delete_switch will be turned on in the record.
+
+  3)   The user logs in.  This  occurs through LS having a dialogue
+       with the user and passing that information to AS for I&amp;A.
+
+
+  Network accounting                                      MTB746-03
+
+       LS - Just prior to turning the  session over to the user, LS
+            will call  SC through the  assign_connection entrypoint
+            passing  it the  processid for  the user  which will be
+            using the session from this point on.
+
+       SC - Will store  the new processid as User_PID  and will set
+            session_state to ASSIGN_CONNECTION.   It will then call
+            NA with the current byte and packet counts.
+
+       NA - The session_state being  ASSIGN_CONNECTION causes NA to
+            take two actions:
+
+            a)   "suspend" the  record for Owner_PID.  It  will set
+                 the  unassigned_switch to "1"b  and connected_time
+                 to current  time - update_time.  It  will then set
+                 update_time to the current  time.  It will add the
+                 byte and  packet count figures passed  in the call
+                 to those in the Owner_PID record.
+
+            b)   create a new record for the User_PID.  It will set
+                 update_time  to  the  current  time  and  set  the
+                 unassigned_switch  to "0"b  and connected_time  to
+                 zero.  In addition, the byte and packet counts for
+                 the new record will be set to zero.
+
+  4)   The user  is running and  the LS process  is blocked waiting
+       for the user to terminate the connection..
+
+       SC - will be  keeping track of  the packets and  bytes being
+            transmitted.   When  it  goes  over  internal threshold
+            values, SC will  set session_state to UPDATE_CONNECTION
+            and call NA.
+
+       NA - Since the  User_PID is non-zero, the  usage information
+            will be charged to the user connection.
+
+  5)   It is possible  that at any time during  the above sequence,
+       the Initializer may make an  accounting update to gather all
+       accounting   data  for  all   users  on  the   system.   The
+       Initializer  will  call   NA  at  the  $read_and_reset_table
+       entrypoint.   From the  data  returned,  it will  update all
+       network usage in the PDT entries of currently running users.
+
+
+  MTB746-03                                      Network accounting
+
+       NA - will  allocate  an  array  of  records  large enough to
+            contain  all of the  records in the  NAT.  To copy  the
+            data from the  NAT record to the array  record, NA will
+            use the following algorithm:
+
+              array.byte_count = record.byte_count
+              array.packet_count = record.packet_count
+
+              record.byte_count, record.packet = 0
+
+              if record.unassigned_switch = "0" then
+                array.connect_time = (clock () - record.update_time)
+                                             + record.connected_time
+                record.update_time = clock ()
+                record.connected_time = 0
+              else
+                array.connect_time = record.connected_time
+                record.connected_time = 0
+
+  3.4:  Scenario - Process Termination
+
+  Process  termination may  be any  one of  the following:  logout,
+  new_proc or fatal process error.
+
+  1)   The user types one of the process termination requests.
+
+       AS - The   Initializer  process  receives   the  termination
+            request  from  the  user.   The  Initializer  will call
+            dpg_$dpg_ to  start process destruction.  This  in turn
+            will   call   dial_ctl_$dial_broom   which   will  call
+            uc_cleanup_network_dials_ to get  information about any
+            connections  dialed to  the process.   It does  this by
+            calling hpriv_connection_list_$get_next_user to get all
+            connections dialed in to the process being destroyed.
+
+            For  each active  connection the  Initializer, it  will
+            call     the    entrypoint     referenced    in     the
+            force_accounting_update_entry of the connection list to
+            cause the current accounting data  to be flushed to the
+            NAT    for   that    connection.    In    addition,   a
+            "termination_response" message will also be sent to the
+            login server for the dialed  in connection to cause the
+            connection to removed by the login server.
+
+       SC - when called through  the force_accounting_update entry,
+            will  call NA  with the   current usage  figures and  a
+            SESSION_STATE  of  UPDATE_CONNECTION  for  each  dialed
+            connection.
+
+  2)   The  Initializer will then  complete the destruction  of the
+       current process and charge for  the network usage by calling
+
+
+  Network accounting                                      MTB746-03
+
+       act_ctl_$dp for the process.   act_ctl_$dp will in turn call
+       hpriv_connection_list_$get_next_user with the  process ID of
+       the       current      process       and      call       the
+       force_network_account_update entry so accounting is current.
+       act_ctl_$dp   then  calls   NA  at   the  $get_process_total
+       entrypoint and add the totals to the user's PDT entry.
+
+       NA - will go through the NAT accumulating network usage data
+            for all records matching the given process ID.  It will
+            return  an  array  of  structures  with  each structure
+            corresponding  to a  unique network_id.   It will  also
+            delete any records with the delete_switch on.
+
+  3)   The  Initializer sends  a "termination_response"  message to
+       the login server for the current process.
+
+       LS - will   call   SC    through   the   unassign_connection
+            entrypoint.
+
+       SC - will  call  $charge_channel_use  with  the  final usage
+            charges  for the  connection and  session_state set  to
+            UNASSIGN_CONNECTION.  When NA returns, SC will set it's
+            copy of User_PID  to "0"b.  Because of the  call to the
+            force_accounting_update_entry made in  steps 1 and/or 2
+            above, the byte and  packet count figures being charged
+            should be zeros.
+
+       NA - The  session_state being UNASSIGN_CONNECTION  causes NA
+            to take two actions:
+
+            a)   add byte and packet charges  to the record for the
+                 User_PID  and turn  the  delete  switch on  in the
+                 record.  In addition, compute the connected_time =
+                 clock  () -  update_time, update_time  = clock (),
+                 and set unassigned_switch to "1"b.
+
+            b)   "unsuspend" the record for Owner_PID.  It will set
+                 the unassigned_switch  to "0"b and  update_time to
+                 clock ().
+
+  4)   If  the  process  termination  is  of  the  type causing the
+       session to be  ended (logout, logout -bf or  a fatal process
+       error  which exceeds  the  fatal  process error  count), the
+       following actions will occur.
+
+       LS - call SC through  the $unassign_connection entrypoint to
+            tell  session   control  that  the  session   is  being
+            destroyed.  When SC returns, the login server will then
+            kill the control point for the session.
+
+
+  MTB746-03                                      Network accounting
+
+       SC - will call  $charge_channel_use using the  Owner_PID and
+            session_state  equal to   DESTROY_SESSION to  show that
+            session all over.
+
+       NA - will  update  the  record  for  Owner_PID  and turn the
+            delete_switch on for the  record.  In addition, compute
+            the   connected_time   =   clock   ()   -  update_time,
+            update_time  = clock  (), and  set unassigned_switch to
+            "1"b.
+
+  5)   If the process termination is a new_proc, LS will go blocked
+       awaiting  a  "new_proc"  response  from  the Initializer and
+       basically restart at  Step 3 of the login  scenario with the
+       new processid for the new process.
+
+  6)   if the process termination is a logout -hd, the login server
+       will basically restart at Step 2 of the login scenario.
+
+
+  Network accounting                                      MTB746-03
+
+  APPENDIX A:  DOCUMENTATION
+
+  The  following pages document  the entrypoints defined  to access
+  and process  entries in the  network accounting table.   They are
+  primarily for use by the Initializer process.
+
+
+  ___________________                           ___________________
+
+  network_accounting_                           network_accounting_
+  ___________________                           ___________________
+
+  Name:  network_accounting_
+
+  Entry points in the  inner ring module network_accounting_ manage
+  the Network Accounting Table (NAT) that records active processes'
+  usage of network connections.  This  table is a inner ring vfile_
+  named  network_accounting_table,  residing   by  default  in  the
+  directory specified by sys_info$system_control_dir.
+
+  Only one entrypoint (charge_channel_usage)  is meant to be called
+  directly.    All    other   entrypoints   are    called   through
+  network_accounting_gate_.
+
+  Entry:  network_accounting_$charge_channel_use
+
+  This  entry point,  intended to   be called  directly by  Session
+  Control  in the  inner ring,   increments the  bytes and  packets
+  fields of  the NAT record  for a specific  network connection and
+  user process combination.  Byte and packet counts recorded in the
+  NAT  are  eventually  posted  as  dollar  charges  to  the user's
+  account.
+
+  The NAT record for the connection will be created if none exists.
+  When the connection is  terminated, the record's delete_switch is
+  turned on causing  it to be deleted after it is  next read by the
+  Answering Service.
+
+  Usage
+
+  dcl network_accounting_$charge_channel_use entry (ptr,
+       fixed bin (35));
+
+  call network_accounting_$charge_channel_use
+       (network_channel_use_ptr, code);
+
+  Arguments
+
+  network_channel_use_ptr
+     points to the network_channel_use structure defining user and
+     usage info for the channel.  (Input)
+
+  code
+     is a standard system status code.  (Output)
+
+
+  ___________________                           ___________________
+
+  network_accounting_                           network_accounting_
+  ___________________                           ___________________
+
+  Notes
+
+  The following is the definition of the network_channel_use
+  structure which is passed to
+  network_accounting_$charge_channel_use.  It is defined in
+  network_channel_use.incl.pl1
+
+   dcl 1 network_channel_use aligned based,
+       2 version char!(8),
+       2 network_id fixed!bin,
+       2 session_handle fixed!bin!(35),
+       2 owner_pid bit!(36) aligned,
+       2 user_pid bit!(36) aligned,
+       2 session_state fixed bin,
+       2 packet_count fixed!bin!(17),
+       2 byte_count fixed!bin!(17);
+
+  Structure Elements
+
+  version
+     is the version of the structure.  Must be set to
+     CHANNEL_USE_INFO_VERSION_1.
+
+  network_id
+     is the identification of the network type of the session.
+     Valid identifiers are found in net_event_message.incl.pl1.
+     For DSA, this value would be DSA_NETWORK_TYPE.
+
+  session_handle
+     is the unique ID assigned to the current session by DSA
+     session control.
+
+  owner_pid
+     is the process ID of the owner of the channel (normally
+     Login_Server.Daemon).
+
+  user_pid
+     is the process ID of the user of the channel.  If there is no
+     current user for the channel, this will be set to "0"b;
+
+
+  ___________________                           ___________________
+
+  network_accounting_                           network_accounting_
+  ___________________                           ___________________
+
+  session_state
+     is the state of the current session.  Applicable values and
+     their meanings are
+
+        CREATE_SESSION (1) !!!!!- creating the session
+        ASSIGN_CONNECTION (2) !!- assigning the session to new user
+        UPDATE_CONNECTION (3) !!- update data to current user
+        UNASSIGN_CONNECTION (4) - unassigning the session from this
+                                  user
+        DESTROY_SESSION (5) !!!!- terminating the session
+
+  packet_count
+     is the number of packets to be added to those currently
+     charged to the session.
+
+  byte_count
+     is the number of bytes to be added to those currently charged
+     to the session.
+
+  Entry:  network_accounting_$clear_table
+
+  This  entry  point  initializes  the  NAT  for  a new bootload of
+  Multics.   It  deletes  all  NAT  entries  even  if  charges  are
+  outstanding.  It is used to clean  up any entries left by a crash
+  or software failure.  If the NAT doesn't exist, it will create it
+  in the  inner ring, set access  so all users can  write to it and
+  create a dummy record to initialize the file.
+
+  Usage
+
+  dcl network_accounting_$clear_table entry (char (*),
+       fixed bin (35));
+
+  call network_accounting_$clear_table (error_message, code);
+
+  Arguments
+
+  error_message
+     is text describing the error when the code argument is
+     nonzero.  A string of 128 characters should be sufficient to
+     contain any message which would be returned.  (Output)
+
+  code
+     is a standard system error status code.  (Output)
+
+
+  ___________________                           ___________________
+
+  network_accounting_                           network_accounting_
+  ___________________                           ___________________
+
+  Entry:  network_accounting_$dump_table
+
+  This  entry  point  returns  an  allocated  array  containing the
+  information in the NAT.  It is intended for administrative use.
+
+  Usage
+
+  dcl network_accounting_$dump_table entry (ptr, ptr, char (*),
+       fixed bin (35));
+
+  call network_accounting_$dump_table (area_ptr,
+       network_account_array_ptr, error_message, code);
+
+  Arguments
+
+  area_ptr
+     points to an area in which to allocate the array.  (Input)
+
+  network_account_array_ptr
+     points to the allocated structure network_account_array,
+     declared in the include file network_account_array.incl.pl1.
+     (Output)
+
+  error_message
+     is text describing the error when the code argument is
+     nonzero.  A string of 128 characters should be sufficient to
+     contain any message which would be returned.  (Output)
+
+  code
+     is a standard system status code.  (Output)
+
+  Notes
+
+  The following defines the array of structures returned to the
+  $dump_table and $read_and_reset_table entrypoints of
+  network_accounting_.
+
+   dcl 1 network_account_array aligned
+            based (network_account_array_ptr),
+       2 count fixed!bin,
+       2 record (network_account_array_bound refer
+                 (network_account_array.count))
+            aligned like network_account_data;
+
+
+  ___________________                           ___________________
+
+  network_accounting_                           network_accounting_
+  ___________________                           ___________________
+
+  Structure Elements
+
+  count
+     is the number of records in the array.
+
+  record
+     is a record containing the data found in the NAT for each
+     connection currently active.
+
+  The following defines the structure containing the data for each
+  connection returned by the $dump_table and $read_and_reset_table
+  entrypoints of network_accounting_.
+
+   dcl 1 network_account_data aligned
+            based (network_account_data_ptr),
+       2 version char!(8),
+       2 key,
+         3 process_id bit!(36) aligned,
+         3 session_handle fixed!bin!(35),
+         3 network_id fixed!bin unaligned,
+       2 switches unaligned,
+         3 delete_sw bit!(1) unaligned,
+         3 unassigned_sw bit!(1) unaligned,
+         3 mbz bit!(16) unaligned,
+       2 connect_time fixed!bin!(35),
+       2 byte_count fixed!bin!(35),
+       2 packet_count fixed!bin!(35);
+
+  Structure Elements
+
+  version
+     is the version of the structure.  Must be set to
+     NET_ACCT_DATA_VERSION_1.
+
+  key
+     uniquely identifies a NAT record.
+
+  key.process_id
+     identifies the process using the DSA connection.
+
+  key.session_handle
+     identifies the DSA session for this connection.
+
+
+  ___________________                           ___________________
+
+  network_accounting_                           network_accounting_
+  ___________________                           ___________________
+
+  key.network_id
+     identifies the network type for the connection.  Valid
+     identifiers are found in net_event_message.incl.pl1.  For DSA,
+     this value would be DSA_NETWORK_TYPE.
+
+  delete_sw
+     defines whether the record is for a connection which has been
+     completed and the record can be deleted.
+
+  unassigned_sw
+     defines whether the record is for a user which has assigned
+     the connection to another user.
+
+  connect_time
+     is the incremental number of chargable seconds which has
+     passed since the last time $read_and_reset_table was called.
+     This is the amount of connect time which would be charged to
+     the user if act_ctl_$update was called now.
+
+  byte_count
+     is the incremental number of bytes processed on the connection
+     since the last time $read_and_reset_table was called.  This is
+     the number of bytes which would be charged to the user if
+     act_ctl_$update was called now.
+
+  packet_count
+     is the incremental number of packets processed on the
+     connection since the last time $read_and_reset_table was
+     called.  This is the number of packets which would be charged
+     to the user if act_ctl_$update was called now.
+
+  Entry:  network_accounting_$get_path
+
+  This entry  point returns the current  (internal static) pathname
+  of the directory in which the NAT resides.  This directory can be
+  changed by  calling network_accounting_$test.  The  initial value
+  for the directory is sys_info$system_control_dir.
+
+  Usage
+
+  dcl network_accounting_$get_path entry returns (char (168));
+
+  directory_path = network_accounting_$get_path ();
+
+
+  ___________________                           ___________________
+
+  network_accounting_                           network_accounting_
+  ___________________                           ___________________
+
+  Arguments
+
+  directory_path
+     is the pathname of the NAT's parent directory.  (Output)
+
+  Entry:  network_accounting_$get_process_total
+
+  This  entry point  returns the  total bytes,  total packets,  and
+  connect time used by all  of a process' network connections since
+  the last  time $read_and_reset_table was  called.  It is  used by
+  Answering  Service to  get final   charges for  a process  before
+  destroying it.  Before returning, it will delete any records used
+  to generate the return data which have their delete switch on.
+
+  Usage
+
+  dcl network_accounting_$get_process_total entry (bit (36)
+       aligned, ptr, ptr, char (*), fixed bin (35));
+
+  call network_accounting_$get_process_total (process_id, area_ptr,
+       network_account_array_ptr, error_message, code);
+
+  Arguments
+
+  process_id
+     identifies the user process for which data will be returned.
+     (Input)
+
+  area_ptr
+     points to an area in which to allocate the array.  (Input)
+
+  network_account_array_ptr
+     points to the allocated structure network_account_array,
+     declared in the include file network_account_array.incl.pl1.
+     See the $dump_table entrypoint for the description of the
+     returned structure.  (Output)
+
+  error_message
+     is text describing the error when the code argument is
+     nonzero.  A string of 128 characters should be sufficient to
+     contain any message which would be returned.  (Output)
+
+
+  ___________________                           ___________________
+
+  network_accounting_                           network_accounting_
+  ___________________                           ___________________
+
+  code
+     is a standard system status code.  (Output)
+
+  Notes
+
+  All data in the NAT for the given process ID will be accumulated
+  with the array being made up of individual structures defined for
+  each network ID found.
+
+  Entry:  network_accounting_$read_and_reset_table
+
+  This  entry  point  returns  an  allocated  array  containing the
+  information  in the  NAT.  Before  returning, it  zeroes each NAT
+  record's  byte count  and packet  count and  sets the update_time
+  field to the current clock time  to begin a new period of connect
+  time.
+
+  Usage
+
+  dcl network_accounting_$read_and_reset_table entry (ptr, ptr,
+       char (*), fixed bin (35));
+
+  call network_accounting_$read_and_reset_table (area_ptr,
+       network_account_array_ptr, error_message, code);
+
+  Arguments
+
+  area_ptr
+     points to an area in which to allocate the array.  (Input)
+
+  network_account_array_ptr
+     points to the allocated structure network_account_array,
+     declared in the include file network_account_array.incl.pl1.
+     See the $dump_table entrypoint for the description of the
+     returned structure.  (Output)
+
+  error_message
+     is text describing the error when the code argument is
+     nonzero.  (Output)
+
+  code
+     is a standard system status code.  (Output)
+
+
+  ___________________                           ___________________
+
+  network_accounting_                           network_accounting_
+  ___________________                           ___________________
+
+  Entry:  network_accounting_$test
+
+  Called by test  versions of the Answering Service  and other test
+  programs,  this  entry  point  changes  (in  internal static) the
+  parent directory  of the NAT.  It  allows a test system  to use a
+  different     NAT.      The      NAT's     name     is     always
+  "network_accounting_table".
+
+  Usage
+
+  dcl network_accounting_$test entry (char (*));
+
+  call network_accounting_$test (directory_path);
+
+  Arguments
+
+  directory_path
+     is the pathname of the NAT's parent directory.  (Input)
+
+
+  ________________________                 ________________________
+
+  network_accounting_gate_                 network_accounting_gate_
+  ________________________                 ________________________
+
+  Name:  network_accounting_gate_
+
+  This   privileged   gate   allows   the   Answering  Service  and
+  administrators, running  in ring 4, to access  inner ring network
+  accounting information.
+
+  It   is  merely   a  transfer   vector  to   the  entrypoint   in
+  network_accounting_ with the same name.
+
+            Gate entry                    Target
+
+            read_and_reset_table          read_and_reset_table
+            dump_table                    dump_table
+            clear_table                   clear_table
+            get_process_total             get_process_total
+            test                          test
+            get_path                      get_path
+
+
+  ______________________                     ______________________
+
+  display_net_acct_table                     display_net_acct_table
+  ______________________                     ______________________
+
+  Name: display_net_acct_table
+
+  SYNTAX AS A COMMAND:
+
+     display_net_acct_table {-control_arg}
+
+  FUNCTION:  Prints  the information in the  Network Account Table.
+  Used by  DSA administrators to  check on the  behavior of network
+  accounting.
+
+  CONTROL ARGUMENTS:
+
+  -brief, -bf
+     prints brief information in tabular form.  (Default)
+
+  -long, -lg
+     prints  all items  of information,   one item  per line.   The
+     default is -brief.
+
+  EXAMPLES:
+
+  The following are two samples of the command's output:
+
+  ! display_net_acct_table
+    Displaying Network Account Table
+    Pathname:  &gt;system_control_dir&gt;network_accounting_table
+    Total number of entries = 8
+                     NETWORK               CONNECT
+        CHANNEL NAME  TYPE   BYTES  PACKETS  SECS  USER
+        dsa.MUL1.0001  2     4130        0   100  Nelson.SysLib
+        dsa.MUL1.0010  2        0      409    99  Nelson.SysLib
+     X  dsa.MUL1.0100  2        0        0   800  D006.DSAtest
+        dsa.MUL1.0014  2        0        0   800  D032.DSAtest
+     X  dsa.MUL1.0011  2     2270        0    10  Cribb.Multics
+      D dsa.MUL1.0247  2      620       85   800  Login_Server.Daemon
+        dsa.MUL1.0002  2     1550       21    27  Barker.Multics
+        dsa.MUL1.0997  2        0      368   247  Barker.AS_Test
+
+    display_net_acct_table -long
+    Dumping Network Account Table
+    Pathname:  &gt;system_control_dir&gt;network_accounting_table
+    Total number of entries = 8
+
+
+  ______________________                     ______________________
+
+  display_net_acct_table                     display_net_acct_table
+  ______________________                     ______________________
+
+    Process id: 131672024772
+      Connection handle: 65003782
+      Connection Name: dsa.MUL1.0247
+      Network type: DSA (2)
+      User: Login_Server.Daemon
+      Bytes since last zeroed: 620
+      Packets since last zeroed: 85
+      Connect secs since last zeroed: 800
+      Delete switch: off
+      Unassigned switch: on
+
+    Process id: 131647023436
+      Connection handle: 65003920
+      Connection Name: dsa.MUL1.0011
+      Network type: DSA (2)
+      User: Cribb.Multics
+      Bytes since last zeroed: 2270
+      Packets since last zeroed: 0
+      Connect secs since last zeroed: 10
+      Delete switch: on
+      Unassigned switch: off
+
+    ...
+
+  The X prefix  in the short listing denotes an  entry whose delete
+  switch is  on, ie.  one that  belongs to a session  that has been
+  closed.   This  entry  will  disappear  after  the  next time the
+  Answering Service reads and uses the information it contains.
+
+  The D prefix  in the short listing denotes an  entry in which the
+  connection has been reassigned to another user.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

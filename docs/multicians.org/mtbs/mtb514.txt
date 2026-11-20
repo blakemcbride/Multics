@@ -1,0 +1,987 @@
+Multics Technical Bulletin                                MTB-514
+DM:  Concurrency Overview
+
+
+
+To:       Distribution
+
+From:     Andr&eacute; Bensoussan
+
+Date:     05/18/81
+
+Subject:  Data Management: Concurrency Management - Overview
+
+
+
+1 ABSTRACT
+
+    Concurrency is desirable to  improve system response, but it
+should  not cause  programs to  malfunction or  to compromise the
+integrity of  the data base.  The  purpose of concurrency control
+is to regulate  concurrent access to the data base  in such a way
+that it guarantees the integrity of the data base.
+
+    This   memo   describes   the   protocol   that   concurrent
+transactions must  obey in order  to preserve the  consistency of
+the data base,  and how their behavior can be  stated in terms of
+locking conventions.
+
+    It does not provide an  algorithmic solution to the problem,
+but introduces  global conventions, guidelines  and techniques to
+be used by all components of  the data management in their common
+effort  to cause  concurrent transactions to  behave according to
+the required protocol.
+
+    The reader is  supposed to be familiar with  the concepts of
+layered  architecture, transaction  and recovery  as described in
+the following documents:
+
+    - Data Management: Architectural Overview          (MTB 508)
+    - Data Management: Transaction Management Overview (MTB 512)
+    - Data Management: Recovery Management Overview    (MTB 513)
+
+
+
+
+Comments should be sent to the author:
+
+
+_________________________________________________________________
+
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+
+                            Page i. 
+MTB-514                                Multics Technical Bulletin
+                                       DM:  Concurrency Overview
+
+
+
+via Multics Mail:
+  Bensoussan.Multics on System M.
+
+via US Mail:
+  Andr&eacute; Bensoussan
+  Honeywell Information Systems, inc.
+  4 Cambridge Center
+  Cambridge, Massachusetts 02142
+
+via telephone:
+  (HVN) 261-9334, or
+  (617) 492-9334
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                           Page ii. 
+
+
+
+
+
+
+
+
+
+
+                           CONTENTS
+
+
+                                                        Page
+
+                1 Abstract . . . . . . . . . . . . . .     i
+                2 Concurrency Control Requirements . .     1
+                   2.1 Serialization Property  . . . .     1
+                   2.2 Concurrent Access Protocol  . .     1
+                   2.3 Locking Conventions . . . . . .     1
+                3 User's Options . . . . . . . . . . .     2
+                4 Deadlock Detection . . . . . . . . .     3
+                5 Hierarchical Lock Granularity  . . .     3
+                   5.1 Lock Modes In Hierarchical
+                    Locking  . . . . . . . . . . . . .     4
+                   5.2 Lock Modes Compatibility  . . .     5
+                   5.3 Rules For Requesting
+                    Hierarchical Locks . . . . . . . .     5
+                6 Choosing Lockable Objects and their
+                 Hierarchy . . . . . . . . . . . . . .     6
+                   6.1 Physical Locking  . . . . . . .     7
+                   6.2 Logical Locking . . . . . . . .     7
+                   6.3 Architectural Locking . . . . .     8
+                      6.3.1 Simplicity of
+                       implementation  . . . . . . . .     9
+                      6.3.2 Variety of lockable
+                       objects . . . . . . . . . . . .     9
+                      6.3.3 Who is responsible for
+                       locking?  . . . . . . . . . . .    10
+                7 The Lock Management Facility . . . .    11
+                   7.1 The High Level Lock Manager . .    12
+                   7.2 The Lock Hierarchy Manager  . .    12
+                   7.3 The Lock Manager  . . . . . . .    13
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                              iii Multics Technical Bulletin                                MTB-514
+DM:  Concurrency Overview
+
+
+
+2 CONCURRENCY CONTROL REQUIREMENTS
+
+    If  transactions were  run one  at a  time, each transaction
+would see  the consistent state  left behind by  its predecessor.
+But  if several  transactions run concurrently,  with no control,
+their interferences may produce undesirable effects.
+
+    The  concurrency control  requirements that must  be met are
+expressed  in three  different forms:   First, a  global property
+that  the  system  must  exhibit  in  concurrent  access;  then a
+protocol  that  provides  the  system  with  this  property;  and
+finally, some locking conventions to implement this protocol.
+
+
+2.1 Serialization Property
+
+    A  generally  accepted criterion  to evaluate  a concurrency
+control protocol is that it satisfy the "serialization" property,
+which  can  be  stated  as follows:   "The  result  of concurrent
+transactions must  be equivalent to some  serial execution of the
+transactions".  A protocol that has this property guarantees that
+concurrency does not  cause any transaction to see  or produce an
+inconsistent state.
+
+
+2.2 Concurrent Access Protocol
+
+    It has been formally  proven that the serialization property
+is satisfied if all transactions behave according to the protocol
+described by the following rules:
+
+Rule 1: A  transaction shall  never modify  any data  modified by
+       another transaction still in progress.
+
+Rule 2: A  transaction  shall  never  read any  data  modified by
+       another transaction still in progress.
+
+Rule 3: A transaction shall never modify any data read by another
+       transaction still in progress.
+
+
+2.3 Locking Conventions
+
+    The concurrent  access protocol is  implemented using locks.
+A  lock is  a device  that can be  associated with  an object and
+granted to a transaction in order  to limit and control the level
+of  concurrent  access  to   that  object.   Since  the  protocol
+differentiates between writing and  reading data, write locks and
+read locks are implemented.
+
+
+
+                            Page 1. 
+MTB-514                                Multics Technical Bulletin
+                                       DM:  Concurrency Overview
+
+
+
+    A  "write" lock  for an  object can  be granted  to only one
+transaction at  a time.  It gives  this transaction permission to
+modify the  object, with the assurance  that no other transaction
+has been granted the same  permission on the object.  Write locks
+are also called "exclusive" locks or "X" locks.
+
+    A "read"  lock for an object  can be granted to  one or more
+transactions  at  the  same  time.  It  gives  these transactions
+permission to read  the object, with the assurance  that no other
+transaction has been granted the  write permission on the object.
+Read locks are also called "shared" locks or "S" locks.
+
+    Our  proposal   satisfies  the  serialization   property  by
+enforcing  the  three rules  of  the concurrent  access protocol,
+using the following locking conventions:
+
+Conv 1: Every transaction  must acquire a read  lock on an object
+       before reading  it and a  write lock on  an object before
+       modifying it.
+
+Conv 2: All locks  acquired by a  transaction will be  held until
+       the end  of the transaction  and will be  released by the
+       COMMIT or ABORT operation.  If  a transaction needs to be
+       rolled  back to  a checkpoint,  locks that  were acquired
+       prior  to the  checkpoint are held,  those acquired after
+       are released.
+
+
+3 USER'S OPTIONS
+
+   The standard locking protocol  is the protocol just described
+above;  i.e.,  the  protocol  that  satisfies  the  serialization
+property.  It guarantees that concurrency does not compromise the
+integrity  of  the data  base  and that  all  transactions obtain
+consistent results.
+
+    An option is available to turn off the locking protocol if a
+user does  not want to  have concurrent transactions  on his data
+base.  This option is an attribute of the data base and has to be
+set  by  the owner  or  the administrator  of  the data  base.  A
+command will be available to set this mode.
+
+    Another option is available at the level of the transaction.
+It  is  often  referred  to  as  the  "statistical"  mode.   When
+selecting  this  mode,  a  transaction  acknowledges  that  it is
+willing   to  read   uncommitted  modifications   made  by  other
+transactions,  without  having  to  wait  for  the  end  of these
+transactions.  When operating in this  mode, a transaction is not
+allowed to modify the data base.
+
+
+
+                            Page 2. 
+Multics Technical Bulletin                                MTB-514
+DM:  Concurrency Overview
+
+
+
+4 DEADLOCK DETECTION
+
+    In general, transactions  are not designed in such  a way as
+to prevent deadlocks from occurring.   They request locks as they
+need the  data and rely on  the system to detect  and resolve any
+deadlock situation.  Deadlocks must  therefore be detected by the
+system.
+
+    The  detection can  be done  by looking  for a  cycle in the
+graph of "who  is waiting for whom", each  time a transaction has
+to  wait.  One  may also  want to  chase the  graph only  after a
+transaction has  been waiting for  more that a  given time.  This
+method  would not  detect the deadlock  at the exact  time of its
+occurrence, but it would save  some processing time at each wait.
+Another  option  for  the  system   is  just  to  assume  that  a
+transaction  must be  in deadlock if  it has  been waiting longer
+than a predefined time.
+
+    When the  system detects a  deadlock, it selects  one of the
+transactions involved  in the deadlock  and rolls it  back to the
+nearest  checkpoint  which  eliminates the  conflict.   Since the
+transaction has logged all the  "before images" before making any
+modification, and  since the transaction has  kept all its locks,
+the  recovery  manager  can  rollback (undo)  the  transaction by
+simply restoring  the modified data  to its original  value.  The
+locking  protocol guarantees  that no other  transaction has been
+contaminated  by  the  modifications  made  by  the  rolled  back
+transaction, and therefore, rolling back a transaction will never
+cause a "cascade" of rollbacks on other transactions.
+
+
+5 HIERARCHICAL LOCK GRANULARITY
+
+    The lock granularity is represented  by the size of the data
+controlled by the lock, i.e., the size of the lockable units.  In
+theory,  the  lock granularity  could  vary from  one bit  to the
+entire data  base.  In practice,  the choice of  granularity is a
+compromise  between  the level  of concurrency  and the  level of
+overhead.   A  large  lockable  unit would  reduce  the  level of
+concurrency but it would decrease the number of calls to the lock
+procedure.  A  small size lockable  unit would have  the opposite
+effects.
+
+    It may be desirable to use a different lock granularity when
+accessing the same data in  different circumstances.  In order to
+be  able to  do so  in an  orderly fashion,  it is  convenient to
+define a set  of lockable units as being  a lockable unit itself.
+A common example one can use to illustrate this concept is a file
+and its records.  For some applications  one may want to lock the
+
+
+
+                            Page 3. 
+MTB-514                                Multics Technical Bulletin
+                                       DM:  Concurrency Overview
+
+
+
+entire file  in one operation, while  for some other applications
+one may want to lock individual records separately.
+
+
+5.1 Lock Modes In Hierarchical Locking
+
+    Hierachical locks have been  extensively studied by Jim Gray
+in  his  "Notes on  data  base Operating  Systems",  IBM research
+Report RJ 2188, IBM San  Jose Research Laboratory.  His model has
+been chosen for the implementation  of concurrency control in the
+Multics Data Management.
+
+    In addition to the conventional  read locks and write locks,
+hierarchical locking uses "intention"  locks, which indicate that
+finer locking is being performed at  some lower level of the lock
+hierarchy.  Intention locks apply  only to non-leaf objects.  The
+various types of locks that can be requested for an object are:
+
+    - X   : Exclusive (or write) lock
+    - S   : Shared (or read) lock
+    - IX  : Intention Exclusive lock
+    - IS  : Intention Shared lock
+    - SIX : Shared and Intention Exclusive lock.
+
+    What a user means when he requests each of these locks on an
+object  (and an  object includes  all its  descendants if  it has
+any), is as follows:
+
+X:  I want exclusive use of the object.
+    I  will  read  and  write  the  object  without  using finer
+    locking.
+    I do not tolerate other writers on that object.
+    I could tolerate other readers but they cannot tolerate me.
+
+S:  I want shared use of the object.
+    I will read the object without using finer locking.
+    I do not tolerate other writers on this object.
+    I do tolerate other readers on this object.
+
+IX: I intend to use X locks at a finer level.
+    I will read and write the object by using finer locking.
+    I do not tolerate writers who do not use finer locking.
+    I could tolerate any readers, but
+    Readers who do not use finer locking cannot tolerate me.
+
+IS: I intend to use S locks at a finer level.
+    I will read the object by using finer locking.
+    I do not tolerate writers who do not use finer locking.
+    I do tolerate any reader.
+
+
+
+                            Page 4. 
+Multics Technical Bulletin                                MTB-514
+DM:  Concurrency Overview
+
+
+
+SIX:I want shared used of the object and
+    I intend to use X locks at a finer level.
+    I will read the object without using finer locking.
+    I will write the object by using finer locking.
+    I do not tolerate any writer at all.
+    I could tolerate any readers, but
+    Readers who do not use finer locking cannot tolerate me.
+
+
+5.2 Lock Modes Compatibility
+
+         The  compatibility  between any  two  lock modes  on an
+    object is given in Figure 1, where:
+
+         - "OK" indicates compatibility
+         - "-"  indicates conflict.
+
+
+                              ________________________
+                             |    |    |    |    |    |
+                             | IS | IX | S  |SIX | X  |
+                             |    |    |    |    |    |
+                     --------|----|----|----|----|----|
+                    |   IS   | OK | OK | OK | OK | -  |
+                    |--------|----|----|----|----|----|
+                    |   IX   | OK | OK | -  | -  | -  |
+                    |--------|----|----|----|----|----|
+                    |   S    | OK | -  | OK | -  | -  |
+                    |--------|----|----|----|----|----|
+                    |  SIX   | OK | -  | -  | -  | -  |
+                    |--------|----|----|----|----|----|
+                    |   X    | -  | -  | -  | -  | -  |
+                    |________|____|____|____|____|____|
+
+
+                      Figure 1.  Compatibility Matrix.
+
+
+5.3 Rules For Requesting Hierarchical Locks
+
+         When  using  hierarchical locking,  transactions cannot
+    request  any  lock at  random  in the  hierarchy;  they must
+    request  locks  "from  root   to  leaf",  according  to  the
+    following rules:
+
+1.  Before requesting an  S or IS lock on  an object, all objects
+   which include the  requested object must be held  in IS or IX
+   mode by the requestor.
+
+2.  Before  requesting an  X, IX  or SIX  lock on  an object, all
+
+
+                            Page 5. 
+MTB-514                                Multics Technical Bulletin
+                                       DM:  Concurrency Overview
+
+
+
+   objects which include the requested object must be held in IX
+   or SIX mode by the requestor.
+
+    A  few examples  are given  lelow.  For  the purpose  of the
+examples, the following hypothetical hierarchy is assumed:
+
+         Data base  ===>  File  ===>  Record
+
+o To lock a record for read, a transaction would:
+
+      - lock the data base in IS mode
+      - lock the file      in IS mode
+      - lock the record    in  S mode.
+
+o To lock a record for write:
+
+      - lock the data base in IX mode
+      - lock the file      in IX mode
+      - lock the record    in  X mode.
+
+o To get exclusive access to a file:
+
+      - lock the data base in IX mode
+      - lock the file      in  X mode.
+
+o To get exclusive access to the data base:
+
+      - lock the data base in  X mode.
+
+o To read many records of a file and update a few:
+
+      - lock the data base in IX mode
+      - lock the file in SIX mode
+      - read any record without further locking
+      - lock a record in X mode before writing it.
+
+
+6 CHOOSING LOCKABLE OBJECTS AND THEIR HIERARCHY
+
+      The choice of lockable units is a difficult matter.  Three
+ different approaches are presented:
+
+- Physical  Locking,  where  lockable objects  are  defined after
+ entities related to physical storage.
+
+- Logical  Locking,  where  lockable  objects  are  defined after
+ entities manipulated by programs.
+
+- Architectural Locking, where lockable objects are defined after
+ entities related to the data management architecture.
+
+
+                            Page 6. 
+Multics Technical Bulletin                                MTB-514
+DM:  Concurrency Overview
+
+
+
+6.1 Physical Locking
+
+    Physical locking consists of locking the information that is
+read  from,  or  written to,  physical  storage as  a  single I/O
+operation.  In Multics, this unit of information is a page.
+
+    The advantage  of physical locking  is in the  simplicity of
+its  implementation.   In  our data  management  architecture, it
+would  be entirely  implemented in  the page  file manager.  Each
+call  to the  GET primitive  would cause  the page  (or pages) in
+which the requested data resides to be locked in read mode.  Each
+call  to the  PUT primitive  would cause  the page  (or pages) in
+which the data to be modified resides to be locked in write mode.
+Lockable  objects are  simply defined; they  are pages  of a page
+file.  The  decision to lock  an object is  made automatically by
+the page file manager.  The decision  to request a read lock or a
+write lock is made automatically by the GET or the PUT primitive.
+The lock identifiers are simple  to generate.  A simple hierarchy
+of locks can be defined by  associating a lock to an entire file,
+which would lock  all pages of the file, and  a lock to an entire
+data base, which would lock all files in the data base.
+
+         Data base  ===>  Page File  ===>  Page
+
+    The  disadvantage of  physical locking  comes from  the fact
+that locking is performed without knowing what the content of the
+page represents.  The information that  needs to be locked may be
+smaller than a page, in which case the rest of the page is locked
+for no reason;  or the information to be locked  is larger than a
+page,  in which  case several  locks are  required when  one lock
+would suffice.  In  addition, the hierarchy of locks  is not very
+flexible:   locking  an  entire  index,  for  example,  would  be
+impossible unless an entire file is used to contain the index.
+
+
+6.2 Logical Locking
+
+    Logical locking  consists of locking  objects that represent
+logical  entities,  regardless of  their  storage representation.
+Unlike  physical  locking,  logical  locking allows  for  a large
+variety  of  lockable  objects,  defined  by  the  programs  that
+manipulate  them.   For example,  MRDS  may choose  to  define as
+lockable  objects  a  relation, a  tuple,  a cursor,  a  model, a
+submodel.   The index  manager may  choose to  define as lockable
+objects an index, a hash table, an array of pointers, a list.
+
+    The advantages of logical  locking over physical locking are
+the  following:  First,  programs lock only  the information that
+needs  to  be locked  and not  more.  Second,  any object  can be
+locked in one single locking operation, regardless of its size or
+
+
+                            Page 7. 
+MTB-514                                Multics Technical Bulletin
+                                       DM:  Concurrency Overview
+
+
+
+its  storage representation.   Third, it offers  more freedom and
+flexibility  in  defining any  type  of lockable  object  and any
+hierarchy of locks  that may be useful.  For  example, instead of
+the
+
+    Data base  ===>    Page file   ===>   Page
+
+hierarchy  proposed for  physical locking,  logical locking could
+allow the following kind of hierarchy::
+
+                     / Relation    ===>   Tuple
+                     | Index       ===>   Node
+                     | Hash table  ===>   Bucket
+    Data base  ===>  < Array       ===>   Entry
+                     | List        ===>   Element
+                     | Table       ===>   Portion of Table
+                     \ etc.
+
+The list  of elementary lockable  objects can be  extended as the
+need for a  new entity arises, and a hierarchy  can be defined to
+be  able  to  globally  lock  a  collection  of  these elementary
+objects.
+
+    The disadvantage of logical locking  is in the difficulty of
+its implementation.   All modules of the  data management have to
+cooperate and enforce the locking  protocol on those objects they
+are responsible  for.  Each of  these modules has  to decide what
+its lockable objects are, when to lock them, in what mode to lock
+them, how to  assign unique lock identifiers to  them, and how to
+group them into  a larger lockable object.  In  addition, one has
+to show that the totality of the  data base is covered by the set
+of objects that have been  defined as lockable objects.  Finally,
+one has to show that the hierarchy has no cycle.
+
+
+6.3 Architectural Locking
+
+    What  is  referred  to  as  "architectural  locking"  is  an
+approach where  lockable objects and their  hierarchy are defined
+after  the  objects of  the  data management  architecture.  This
+approach seems  to be a good  compromise between physical locking
+and   logical   locking.   As   described  in   "Data  Management
+Architectural Overview" (MTB 508):
+
+    - An "external file" is made of one or more "page files"
+    - A "page file" is made of one or more "containers"
+    - A "container" is made of one or more "container elements."
+
+These  basic objects  are the lockable  objects and their  1 to n
+relationships provide the hierarchy of locks; that is:
+
+
+                            Page 8. 
+Multics Technical Bulletin                                MTB-514
+DM:  Concurrency Overview
+
+
+
+
+ Ext. File ===> Page File ===> Container ===> Container Element
+
+Architectural  locking  combines  the  main  advantages  of  both
+physical and logical locking:  It  is simple to implement, and it
+allows for a large variety of lockable objects.
+
+
+6.3.1 SIMPLICITY OF IMPLEMENTATION
+
+    Lockable objects and their  hierarchy are well defined.  The
+finest granularity  of lock corresponds  to the finest  object in
+the  architecture:   the  container  element.   Locking container
+elements  can  be  initiated  automatically by  the  GET  and PUT
+primitives of the container manager.   The hierarchy of locks can
+be  made known  to a  lock hierarchy  manager which  could detect
+cases  where  the  convention  to lock  from  "root  to  leaf" is
+violated; upon such detection,  this lock hierarchy manager could
+automatically  request  intention  locks that  are  missing, with
+appropriate mode, up to the root of the locking hierarchy.
+
+
+6.3.2 VARIETY OF LOCKABLE OBJECTS
+
+    A container element usually  contains a logical object, such
+as a tuple,  an index node, a header, a  hash table bucket; i.e.,
+an object that would probably be  defined as a lockable object in
+the logical locking approach.  This is the reason why the idea of
+locking  container  elements  is   attractive;  it  can  be  done
+automatically  by the  container manager  and, at  the same time,
+provide  the same  effect as  if the  locking responsibility were
+spread out  among all programs  that manage the  various types of
+logical  objects.   Although logical  locking provides  a greater
+flexibility in  defining lockable objects  (such as a  portion of
+the data stored in a container element), we feel that the variety
+of  logical objects  that can be  defined as  lockable objects in
+architectural  locking is  large enough to  satisfy all practical
+locking needs.
+
+    The next level  of lockable objects in the  hierarchy is the
+container.   Containers  also  hold  logical objects,  such  as a
+relation, an  index, a hash table,  a set of records  of the same
+type.   Locking  a container  locks  all its  container elements;
+since  container elements  of a container  hold the  same type of
+logical object, locking a container also locks a group of smaller
+logical objects.
+
+    The next level of lockable objects  is the page file.  It is
+likely  that  containers  created  in  the  same  page  file have
+something in  common; otherwise, they would  be in different page
+
+
+                            Page 9. 
+MTB-514                                Multics Technical Bulletin
+                                       DM:  Concurrency Overview
+
+
+
+files.   For  example, a  page file  may be  made of  a container
+holding all tuples of a relation, a container holding the primary
+index  for this  relation, and  several other  containers holding
+secondary indexes  for the relation.   A transaction that  has to
+create  and delete  many tuples  of the  relation and  update all
+indexes  accordingly  could  simply   lock  the  entire  file  in
+exclusive mode.
+
+    The  last level  of lockable  objects is  the external file,
+which corresponds to the entire data  base.  This lock is set for
+operations such as loading,  unloading, or restructuring the data
+base.  It is also used to  quiesce the data base, holding all new
+transactions in order to start a data base dump.
+
+
+6.3.3 WHO IS RESPONSIBLE FOR LOCKING?
+
+    Locking can  be entirely and automatically  initiated by the
+container  manager in  a way that  is transparent  to any program
+running in a  layer higher than the container  manager.  That is,
+the index  and record managers,  the data base  managers, and the
+application  programs need  not be concerned  with making locking
+decisions.  This automatic locking  locks container elements in X
+or S  mode, and therefore  any logical objects that  happen to be
+stored in them;  it also sets appropriate intention  locks on the
+parents (container, page file,  and external file), in accordance
+to the "root to leaf" locking protocol.
+
+    Automatic  locking  is  sufficient  to  properly synchronize
+concurrent  transactions.  However,  by lack  of intelligence, it
+operates only  at the finest granularity,  and cannot provide for
+the  optimization  expected  from  global  locking  of  an entire
+container, an entire page file, or an entire external file.  This
+optimization  is  supposed to  come from  programs that  have the
+required knowledge  to make an intelligent  decision and that run
+above  the  container  manager.   These  programs  may  be system
+programs such as the index manager or the data base manager; they
+may also be user programs.
+
+    The index manager, for example, may decide to lock an entire
+index  or hash  table to perform  a given  operation with minimum
+interference with other transactions; it issues a call to lock in
+X mode  the container in  which the index or  hash table resides.
+Subsequent references to nodes of  the index will no longer cause
+automatic locking of individual container elements containing the
+referenced nodes.
+
+    MRDS may  decide that the  most efficient way  to perform an
+operation is  to globally lock  in S mode  all tuples of  a given
+relation.  It issues a call to lock the relation in S mode.  This
+
+
+                           Page 10. 
+Multics Technical Bulletin                                MTB-514
+DM:  Concurrency Overview
+
+
+
+call will cause the container in which the relation resides to be
+locked  in  S  mode.   Subsequent  references  to  tuples  of the
+relation will not cause  locking of individual container elements
+in which tuples reside.
+
+    A user program, as well, may  decide that the best way to do
+its  job  is to  get exclusive  access to  a relation.   The user
+program calls a  procedure supplied by the lock  facility to lock
+the  relation   in  X  mode.   This   procedure  will  cause  the
+appropriate container to be locked in X mode, allowing subsequent
+accesses to any tuple of the  relation to be made without locking
+individual container elements.
+
+
+7 THE LOCK MANAGEMENT FACILITY
+
+    Architectural Locking is the most attractive approach and is
+more  likely  to  be  chosen  in  our  implementation.   However,
+regardless  of  the  approach  chosen,  the  the  lock management
+facility will present the following characteristics:
+
+o Different lock  granularity will be  provided; lockable objects
+ are  organized into  a hierarchy that  can be  represented by a
+ tree  structure  in which  each element  stands for  a lockable
+ object.
+
+o Locks  in X  or S  mode for  the smallest  lockable objects are
+ automatically  requested  by system  modules that  manage these
+ lockable  objects.   This  automatic  locking  is  sufficent to
+ properly  handle  concurrent  transactions  without  any user's
+ knowledge about locking.
+
+o Locks  in X  or S mode  for larger  lockable objects explicitly
+ requested by user programs, or by system programs.
+
+o Locks in intention mode  may be requested explicitly.  However,
+ the   protocol  to   lock  from   root  to   leaf  is  enforced
+ automatically:  Before locking an  object whose parents are not
+ already locked by the  current transaction, intention locks are
+ automatically requested for all parents that need them.
+
+o Deadlock detection is provided.
+
+The lock management facility is organized into three levels:
+
+ o The High Level Lock Manager
+ o       The Lock Hierarchy Manager
+ o       The Lock Manager
+
+
+
+
+                           Page 11. 
+MTB-514                                Multics Technical Bulletin
+                                       DM:  Concurrency Overview
+
+
+
+7.1 The High Level Lock Manager
+
+    This  level consists  of a  set of  locking procedures which
+allow  user programs,  data base manager  programs, index manager
+and record  manager programs to formulate  their locking requests
+in a way which is natural to them, using names that are available
+to them to reference their objects.
+
+Examples of these locking procedures are:
+
+    - Lock data base
+    - Lock file
+    - Lock relation
+    - Lock index
+
+The caller of these procedures must provide:
+
+    - The name of the object to be locked
+    - The mode (X, S, IX, IS, SIX)
+    - The maximum time he is willing to wait.
+
+These  procedures know  how to map  the objects  specified by the
+caller into  a particular lockable  object, and how  to determine
+the  position  of  that  lockable object  in  the  tree structure
+representing the  lock hierarchy.  Then  they call upon  the lock
+hierarchy manager.
+
+
+7.2 The Lock Hierarchy Manager
+
+    The Lock Hierarchy Manager (LHM) knows how to manipulate the
+tree structure  representing the lock hierarchy.   It is aware of
+the parent-child relationships in the  tree, but does not have to
+know what lockable  object each node of the  tree stands for.  It
+knows  all the  rules and  protocol associated  with hierarchical
+locking.  For  any lockable object  represented by a  node in the
+tree,  the LHM  can determine  the lock  identifier and  the lock
+state of all the parents, up to the root.
+
+Callers of the LHM are primarily the High Level Lock Manager, and
+in particular  those modules that are  responsible for requesting
+automatically  locks  for  the  smallest  lockable  objects.  The
+caller must provide:
+
+    - The position of the lockable object in the hierarchy.
+    - The mode (X, S, IX, IS, SIX).
+    - The maximum time he is willing to wait.
+
+The  LHM  validates the  request  against the  locks  the current
+transaction already holds on  the parents.  Four differents cases
+
+
+                           Page 12. 
+Multics Technical Bulletin                                MTB-514
+DM:  Concurrency Overview
+
+
+
+may occur:
+
+1.  The request is valid.  Example:  The X mode is requested, and
+   the  parent  is held  in  IX mode.   The  LHM calls  the Lock
+   Manager (described below), to perform the actual locking.
+
+2.  The request is redundant.  Example:  The X mode is requested,
+   and  the  parent is  already held  in X  mode.  The  LHM just
+   returns to the caller, possibly with some status code.
+
+3.  The  request is  valid, but  the transaction  did not acquire
+   intention locks on  some of the parents.  The  LHM causes the
+   transaction to acquire, from  root to leaf, missing intention
+   locks which are compatible with  the requested mode.  It does
+   so by calling  the Lock Manager, as many  times as necessary,
+   to perform the actual locking.
+
+4.  The request  is invalid.  Example:  The  X mode is requested,
+   and the parent is held in IS mode.  The LHM can simply return
+   an error code  or attempt to lock the  parent(s) in intention
+   modes that are compatible with the requested mode.
+
+
+7.3 The Lock Manager
+
+    The Lock Manager supports all X, S, IX, IS and SIX modes; it
+understands  the  compatibility between  them  as defined  by the
+compatibility matrix in Figure 1.  Its primary caller is the Lock
+Hierarchy Manager.  The caller must provide:
+
+    - The lock identifier of the object to be locked.
+    - The mode (X, S, IX, IS, SIX).
+    - The maximum time he is willing to wait.
+
+    The Lock  Manager associates no special  meaning to the lock
+identifier,  other than  that of  a key  to search  its tables in
+order  to find  out the  status of  the lock  associated with the
+particular identifier, that is:
+
+    - Who is holding the lock and in what mode.
+    - Who is waiting for the lock and in what mode.
+
+    It uses the mode specified by  the caller to determine if it
+is compatible with the various  modes currently held by all other
+transactions.   If  it is,  the lock  is granted;  otherwise, the
+transaction is put  in the waiting list for  the lock, until some
+subsequent  time,  after some  of  the transactions  have relased
+their locks.
+
+
+
+
+                           Page 13. 
+MTB-514                                Multics Technical Bulletin
+                                       DM:  Concurrency Overview
+
+
+
+    The maximum time specified by  the caller indicates how long
+he is willing  to wait for the lock.  After  this time is exceded
+the caller wants  the lock manager to return,  with a status code
+indicating whether or not the lock has been granted.  By giving a
+time equal to  zero, the caller can indicate he  does not want to
+wait  at  all;  by giving  a  very  large number  the  caller can
+indicate he is willing to wait  as long as necessary, or at least
+as long as the lock manager allows him to wait.
+
+    The lock manager is responsible for detecting deadlocks.  It
+will do so  using one of the three  techniques described earlier:
+by following the graph of "who  is waiting for whom", each time a
+transaction is  entered in a  waiting list; or  by following this
+graph periodically; or by simply deciding that a transaction must
+be in  deadlock if it  has been waiting longer  than a predefined
+time.   When the  deadlock is  detected, one  of the transactions
+involved  in  the  conflict  is caused  to  rollback,  as  far as
+necessary to eliminate the deadlock.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                           Page 14. 
+

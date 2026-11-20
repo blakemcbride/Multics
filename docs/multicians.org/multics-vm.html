@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>The Multics Virtual Memory: Concepts and Design</title>
+    <meta name="description" content="Classic 1972 technical paper describing the Multics operating system's virtual memory implementation.">
+    <meta name="keywords" content="Multics, operating system, timesharing, time sharing, computer utility, privacy, security, virtual memory, paging, segmentation, MIT, Project MAC, GE, Honeywell, Bell Laboratories, computer, software, mainframe">
+    <!-- not setting viewport, does not use redmenubar -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .var {font-style: italic;}
+ .centered {margin: auto;}
+</style>
+<style>
+ body {margin: 0px 0px; padding: 0px; text-align: center;} 
+ .outer {min-width: 200px; max-width: 800px; width: auto !important; width: 600px; margin: 0px auto; text-align: left; padding: 5px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <div class="h1holder"><h1>The Multics Virtual Memory: Concepts and Design</h1></div>
+<p class="author">
+  A. Bensoussan, C.T. Clingen<br>
+  Honeywell Information Systems, Inc.<br>
+  and<br>
+  R.C. Daley<br>
+  Massachusetts Institute of Technology</p>
+
+<h2>Abstract</h2>
+<p>As experience with use of on-line operating systems has grown, the need to share information among system users has become increasingly apparent. Many contemporary systems permit some degree of sharing. Usually, sharing is accomplished by allowing several users to share data via input and output of information stored in files kept in secondary storage. Through the use of segmentation, however, Multics provides direct hardware addressing by user and system programs of all information, independent of its physical storage location. Information is stored in segments each of which is potentially sharable and carries its own independent attributes of size and access privilege. </p>
+
+<p>Here, the design and implementation considerations of segmentation and sharing in Multics are first discussed under the assumption that all information resides in a large, segmented main memory. Since the size of main memory on contemporary systems is rather limited, it is then shown how the Multics software achieves the effect of a large segmented main memory through the use of the Honeywell 645 segmentation and paging hardware.</p>
+
+<p>Key Words and Phrases: operating system, Multics, virtual memory, segmentation, information sharing, paging, memory management, memory hierarchy</p>
+
+<p>CR Categories: 4.30, 4.31, 4.32</p>
+
+<h2>1. Introduction</h2>
+<p>In the past few years several well-known systems have implemented large virtual memories which permit the execution of programs exceeding the size of available core memory. These implementations have been achieved by demand paging in the Atlas computer [11], allowing a program to be divided physically into pages only some of which need reside in core storage at any one time, by segmentation in the B5000 computer [15], allowing a program to be divided logically into segments, only some of which need be in core, and by a combination of both segmentation and paging in the Honeywell 645 [3, 12] and the IBM 360/67 [2] for which only a few pages of a few segments need be available in core while a program is running. </p>
+
+<p>As experience has been gained with remote-access, multiprogrammed systems, however, it has become apparent that, in addition to being able to take advantage of the direct addressability of large amounts of information made possible by large virtual memories, many applications also require the rapid but controlled sharing of information stored on-line at the central facility. In Multics (<strong>Mult</strong>iplexed <strong>I</strong>nformation and <strong>C</strong>omputing <strong>S</strong>ervice) segmentation provides a generalized basis for the direct accessing and sharing of on line information by satisfying two design goals: (1) it must be possible for all on-line information stored in the system to be addressed directly by a processor and hence referenced directly by any computation; (2) it must be possible to control access, at each reference, to all on-line information in the system.</p>
+
+<p>The fundamental advantage of direct addressability is that information copying is no longer mandatory. Since all instructions and data items in the system are processor-addressable, duplication of procedures and data is unnecessary. This means, for example, that core images of programs need not be prepared by loading and binding together copies of procedures before execution; instead, the original procedures may be used directly in a computation. Also, partial copies of data files need not be read, via requests to an I/O system, into core buffers for subsequent use and then returned, by means of another I/O request, to their original locations; instead the central processor executing a computation can directly address just those required data items in the original version of the file. This kind of access to information promises a very attractive reduction in program complexity for the programmer.</p>
+
+<p>If all on-line information in the system may be addressed directly by any computation, it becomes imperative to be able to limit or control access to this information both for the self-protection of a computation from its own mishaps, and for the mutual protection of computations using the same system hardware facilities. Thus it becomes desirable to compartmentalize or package all information in a directly-addressable memory and to attach access attributes to these in formation packages describing the fashion in which each user may reference the contained data and procedures. Since all such information is processor addressable, the access attributes of the referencing user must be enforced upon each processor reference to any information package.</p>
+
+<p>Given the ability to directly address all on-line information in the system, thereby eliminating the need for copying data and procedures, and given the ability to control access to this information, controlled sharing among several computations then follows as a natural consequence.</p>
+
+<p>In Multics, segments are packages of information which are directly addressed and which are accessed in a controlled fashion. Associated with each segment is a set of access attributes for each user who may access the segment. These attributes are checked by hardware upon each segment reference by any user. Furthermore, all on-line information in a Multics installation can be directly referenced as segments while in other systems most on-line information is referenced as files.</p>
+
+<p>This paper discusses the properties of an "idealized" Multics memory comprised entirely of segments referenced by symbolic name, and describes the simulation of this idealized memory through the use of both specialized hardware and system software. The result of this simulation is referred to as the Multics virtual memory. Although the Multics virtual memory has been discussed elsewhere [3, 6, 7] at the conceptual level or in its earlier forms, the implementation presented here represents a mechanism resulting from several consecutive implementations leading to a effective realization of the design goals.</p>
+
+<h2>2. Segmentation</h2>
+<p>A basic motivation behind segmentation is the desire to permit information sharing in a more automatic and general manner than provided by non-segmented systems. Sharing must be accomplished without duplication of information and access to the shared information must be controlled not only in secondary memory but also in main memory. </p>
+
+<p>In most existing systems that provide for information sharing, the two requirements mentioned above are not met. For example, in the <a href="mgc.html#CTSS" title="glossary: Compatible Time Sharing System. This IBM 7094 time-sharing operating...">CTSS</a> system [5], information to be shared is contained in files. In order for several users to access the information recorded in a file, a copy of the desired information is placed in a buffer in each user's core image. This requires an explicit, programmer-controlled I/O request to the file system, at which time the file system checks whether the user has appropriate access to the file. During execution, the user program manipulates this copy and not the file. Any modification or updating is done or the copy and can be reflected in the original file only b an explicit I/O request to the file system, at which time the file system determines whether the user has the right to change the file.</p>
+
+<p>In nonsegmented systems, the use of core images makes it nearly impossible to control access to shared information in core. Each program in execution is assigned a logically contiguous, bounded portion of core memory or paged virtual memory. Even if the nontrivial problem of addressing the shared information in core were solved, access to this information could not be controlled without additional hardware assistance. Each core image consists of a succession of anonymous words that cannot be decomposed into the original elementary parts from which the core image was synthesized. These different parts are indistinguishable in the core image; they have lost their identity and thereby have lost all their attributes, such as length, access rights, and name. As a consequence, nonsegmented hardware is inadequate for controlled sharing in core memory. Although attempts to share information in core memory have been made with nonsegmented hardware, they have resulted in each instance being a special case which must be preplanned at the supervisory level. For example, if all users are to share a compiler in main memory, it is imperative that none of them be able to alter the part of main memory where the compiler resides. The hardware "privileged" mode used by the supervisor is often the only means of protecting shared information in main memory. In order to protect the shared compiler, it is made accessible only in this privileged mode. The compiler can no longer be regarded as a user procedure; it has to be accessed through a supervisor call like any other part of the supervisor, and must be coded to respect any conventions which may have been established for the supervisor.</p>
+
+<p>In segmented systems, hardware segmentation can be used to divide a core image into several parts, or segments [10]. Each segment is accessed by the hardware through a segment descriptor containing the segment's attributes. Among these attributes are access rights that the hardware interprets on each program reference to the segment for a specific user. The absolute core location of the beginning of a segment and its length are also attributes interpreted by the hardware at each reference, allowing the segment to be relocated any where in core and to grow and shrink independently of other segments. As a result of hardware checking of access rights, protection of a shared compiler, for example, becomes trivial since the compiler can reside in a segment with only the "execute" attribute, thus permitting users to execute the compiler but not to change it.</p>
+
+<p>In most segmented systems, a user program must first call the supervisor to associate a segment descriptor with a specific file before the program can directly access the information in the file. If the number of files the user program must reference exceeds the number of segment descriptors available to the user, the user program is forced to call the supervisor again to free segment descriptors currently in use so that they can be reused to access other information. Furthermore, if the number of segment descriptors is insufficient to provide simultaneous direct access to each distinct file required by this program, the user must then provide for some means of buffering this information. Buffering, of course, requires that information from more than one file be copied and coalesced with other distinctly different information having potentially different attributes. Once the information is copied and merged, the identity of the original information is lost, thus making it impossible for the information to be shared with other user programs. In addition, this form of user controlled segment descriptor allocation and buffering of information requires a significant amount of pre-planning by the user.</p>
+
+<p>In Multics, the number of segment descriptors available to each computation is sufficiently large to provide a segment descriptor for each file that the user program needs to reference in most applications. The availability of a large number of segment descriptors to each computation makes it practical for the Multics supervisor to associate segment descriptors with files upon first reference to the information by a user pro gram, relieving the user from the responsibility of allocating and deallocating segment descriptors. In addition, the relatively large number of segment descriptors eliminates the need for buffering, allowing the user program to operate directly on the original information rather than on a copy of the information. In this way, all information retains its identity and independent attributes of length and access privilege regardless of its physical location in main memory or on secondary storage. As a result, the Multics user no longer uses files; instead he references all information as segments, which are directly accessible to his programs.</p>
+
+<p>To Multics users, all memory appears to be composed of a large number of independent linear core memories, each associated with a descriptor. A user program can create a segment by issuing a call to the supervisor, giving, as arguments, the appropriate attributes such as symbolic segment name, name of each user allowed to access the segment with his respective access rights, etc. The supervisor then finds an unused descriptor where it stores the segment attributes. The segment having been created, the user program can now address any word of the corresponding linear memory by the pair (name, <span class="var">i</span>) where "name" is the symbolic name of the segment and <span class="var">"i"</span> is the word number in the linear memory. Furthermore, any other user can reference word number <span class="var">i</span> of this segment also by the pair (name, <span class="var">i</span>) but he can access it only according to the access rights he was given by the creator and which are recorded in the descriptor. Combinations of the "read," "write," "execute" and "append" access rights [6] are available in Multics.</p>
+
+<p>A simple representation of this memory, referred to as the Multics idealized memory, is shown in Figure 1.</p>
+
+<div class="centered" style="width: 391px;"><img src="mulimg/mvm01.gif" width="391" height="184" alt="" title=""><p class="caption">Figure 1. Multics idealized memory.</p></div>
+
+<h2>3. Paging</h2>
+<p>In a system in which the maximum size of any segment was very small compared to the size of the entire core memory, the "swapping" of complete segments into and out of core would be feasible. Even in such a system, if all segments did not have the same maximum size, or had the same maximum size but were allowed to grow from initially smaller sizes, there remains the difficult core management problem of providing space for segments of different sizes. Multics, however, provides for segments of sufficient maximum size so that only a few can be entirely core-resident at any one time. Also, these segments can grow from any initial size smaller than the maximum permissible size. </p>
+
+<p>By breaking segments into equal-size parts called pages and providing for the transportation of individual pages to and from core as demand dictates, the disadvantages of fragmentation are incurred, as explained by Denning [9]. However, several practical problems encountered in the implementation of a segmented virtual memory are solved.</p>
+
+<p>First, since pages are all of equal size, space allocation is immensely simplified. The problems of "compacting" information in core and on secondary storage, characteristic of systems dealing with variable-sized segments or pages, are thereby eliminated.</p>
+
+<p>Second, since only the referenced page of a segment need be in core at any one instant, segments need not be small compared to core memory.</p>
+
+<p>Third, "demand paging" permits advantage to be taken of any locality of reference peculiar to a program by transporting to core only those pages of segments which are currently needed. Any additional overhead associated with demand paging should of course be weighed against the alternative inefficiencies associated with dedicating core to entire segments which must be swapped into core but which may be only partly referenced.</p>
+
+<p>Finally, demand paging allows the user a greater degree of machine independence in that a large program designed to run well in a large core memory configuration will continue to run at reduced performance on smaller configurations.</p>
+
+<h2>4. The Multics Virtual Memory</h2>
+<p>Multics simulates the idealized memory, represented in Figure 1, using the segmentation and paging features of the 645 assisted by the appropriate software features. The result of the simulation is referred to as the "Multics Virtual Memory." The user can keep a large number of segments in this memory and reference them by symbolic name; upon first reference to a segment, the supervisor automatically transforms the symbolic name into the appropriate hardware address which is directly used by the processor for subsequent references. </p>
+
+<p>The remainder of this paper explains the addressing mechanism in the 645 and describes how the Multics supervisor simulates the Multics idealized memory.</p>
+
+<h2>5. The Honeywell 645 Processor</h2>
+<p>The features of the 645 processor which are of interest for the implementation of the Multics virtual memory are segmentation and paging. </p>
+
+<h3>5.1 Segmentation</h3>
+<p>Any address in the 645 processor consists of a pair of integers [<span class="var">s, i</span>]. <span class="var">"s"</span> is called the <span class="var">segment number</span>; <span class="var">"i"</span> the index within the segment. The range of <span class="var">"s"</span> and <span class="var">"i"</span> is 0 to 2**18- 1. Word [<span class="var">s, i</span>] is accessed through a hardware register which is the <span class="var">s</span>th word in a table called a <span class="var">descriptor segment</span> (DS). The descriptor segment is in core memory and its absolute address is recorded in a processor register called a <span class="var">descriptor base register</span> (DBR). Each word of the DS is called a <span class="var">segment descriptor word</span> (SDW); the <span class="var">s</span>th SDW will be referred to as SDW(s). See Figure 2. </p>
+
+<p>The DBR contains the values:</p>
+
+<ul>
+  <li>DBR * core which is the absolute core address of the DS.</li>
+
+  <li>DBR * L which is the length of the DS.</li>
+</ul>
+Segment descriptor word number <span class="var">"s"</span> contains the values: 
+
+<ul>
+  <li>SDW(s) * core which is the absolute core address of the segment s.</li>
+
+  <li>SDW(s) * L which is the length of the segment s.</li>
+
+  <li>SDW(s) * acc which describes the access rights for the segment.</li>
+
+  <li>SDW(s) * F which is the "missing segment" switch.</li>
+</ul>
+A simplified version of the algorithm used by the processor to access the word whose address is [<span class="var">s</span>, <span class="var">i</span>] follows (see Figure 2): 
+
+<ul>
+  <li>If DBR * L &lt; <span class="var">s</span>, generate a trap, or "fault" to the supervisor.</li>
+
+  <li>Access SDW(S) at absolute location DBR * core + <span class="var">s</span>.</li>
+
+  <li>If SDW(S) * F = ON, generate a <span class="var">missing segment fault</span>.</li>
+
+  <li>If SDW(S) L &lt; <span class="var">i</span>, generate a fault.</li>
+
+  <li>If SDW(S) * acc is incompatible with the requested operation, generate a fault.</li>
+
+  <li>Access the word whose absolute address is SDW(s) * core + <span class="var">i</span>.</li>
+</ul>
+
+<div class="centered" style="width: 425px;"><img src="mulimg/mvm02.gif" width="425" height="247" alt="" title=""><p class="caption">Figure 2. Hardware segmentation in the Honeywell 645.</p></div>
+
+<h3>5.2 Paging</h3>
+<p>The above description assumes that segments are not paged; in fact, paging is implemented in the 645 hardware. In the Multics implementation, all segments are paged and the page size is always 1,024 words. </p>
+
+<p>Element <span class="var">"i"</span> of a segment is the <span class="var">w</span>th word of the <span class="var">p</span>th page of the segment, <span class="var">"w"</span> and <span class="var">"p"</span> being defined by</p>
+
+<blockquote>
+  <span class="var">w</span> = <span class="var">i</span> mod 1,024 
+
+  <p><span class="var">p</span> = (<span class="var">i</span>-<span class="var">w</span>)/1,024</p>
+</blockquote>
+<p>Each segment is referenced by a processor through a page table (PT). The PT of a segment is an array of physically contiguous words in core memory. Each element of this array is called a <span class="var">page table word</span> (PTW). Page table word number <span class="var">p</span> contains: </p>
+
+<ul>
+  <li>PTW(<span class="var">p</span>) * core which is the absolute core address of page number <span class="var">p</span>.</li>
+
+  <li>PTW(<span class="var">p</span>) * F which is the "missing page" switch.</li>
+</ul>
+<p>The meaning of DBR * core and SDW(s) * core is now: </p>
+
+<ul>
+  <li>DBR * core = Absolute core address of the PT of the descriptor segment.</li>
+
+  <li>SDW(s) * core = Absolute core address of the PT of segment number <span class="var">s</span>.</li>
+</ul>
+<p>A simplified version of the algorithm used by the processor to access the word whose address is [<span class="var">s</span>, <span class="var">i</span>] is as follows (see Figure 3): </p>
+
+<ul>
+  <li>If DBR * L &lt; <span class="var">s</span>, generate a fault.</li>
+
+  <li>Split <span class="var">s</span> into the page number <span class="var">sp</span> and word number <span class="var">sw</span> .</li>
+
+  <li>
+    Access PTW(<span class="var">sp</span>) at absolute location 
+
+    <ul>
+      <li>DBR core + <span class="var">sp</span>.</li>
+    </ul>
+  </li>
+
+  <li>If PTW(<span class="var">sp</span>)*F = ON, generate a <em>missing page fault</em>.</li>
+
+  <li>
+    Access SDW(s) at absolute location 
+
+    <ul>
+      <li>PTW(<span class="var">sp</span>) * core + <span class="var">sw</span></li>
+    </ul>
+  </li>
+
+  <li>If SDW(s) * F = ON, generate a <em>missing segment fault</em>.</li>
+
+  <li>If SDW(S) * L &lt; <span class="var">i</span>, generate a fault.</li>
+
+  <li>If SDW(S) * acc is incompatible with the requested operation, generate a fault.</li>
+
+  <li>Split <span class="var">i</span> into the page number <span class="var">ip</span> and word number <span class="var">iw</span> .</li>
+
+  <li>
+    Access PTW(<span class="var">ip</span>) at absolute location 
+
+    <ul>
+      <li>SDW(s) * core + <span class="var">ip</span>.</li>
+    </ul>
+  </li>
+
+  <li>If PTW(<span class="var">ip</span>) * F = ON, generate a missing page fault.</li>
+
+  <li>
+    Access the word whose absolute location is 
+
+    <ul>
+      <li>PTW(ip) * core + <span class="var">iw</span>.</li>
+    </ul>
+  </li>
+</ul>
+<p>In order to reduce the number of processor references to core storage while performing this algorithm, each processor has a small, high-speed associative memory [12] automatically maintained so as to always contain the PTWs and SDWs most recently used by the processor. The associative memory significantly reduces the number of additional memory requests required during address preparations. </p>
+
+<div class="centered" style="width: 432px;"><img src="mulimg/mvm03.gif" width="432" height="258" alt="" title=""><p class="caption">Figure 3. Hardware segmentation and paging in the Honeywell 645.</p></div>
+
+<h2>6. Multics Processes and the Multics Supervisor</h2>
+<p>A process is generally understood as being a program in execution. A process is characterized by its state word defining, at any given instant, the history resulting from the execution of the program. It is also characterized by its <em>address space</em>. The address space of a process is the set of processor addresses that the process can use to reference information in memory. In Multics, any information that a process can reference by an address of the form (segment number, word number) is said to be in the address space of the process. There is a one-to-one correspondence between Multics processes and address spaces. Each process is provided with a private descriptor segment which maps segment numbers into core memory addresses and with a private table which maps symbolic segment names into segment numbers. This table is called the Known Segment Table (KST). </p>
+
+<p>The Multics supervisor could have been written so as not to use segment addressing of course; but organizing the supervisor into procedures and data segments permits one to use, in the supervisor, the same conventions that are used in user programs. For instance, the call-save-return conventions [7] made for user programs can be used by the supervisor; the standard way to manufacture pure procedures in a user program is also used extensively in the supervisor. A less visible advantage of segmentation of the supervisor is that some supervisory facilities provided for the management of user segments can also be applied to supervisor segments; for example, the demand paging facility designed to automatically load pages of user segments can also be used to load pages of supervisor segments. As a result, a large portion of the supervisor need not reside permanently in core.</p>
+
+<p>Unlike most supervisors, the Multics supervisor does not operate in a dedicated process or address space. Instead, the supervisor procedure and data segments are shared among all Multics processes. Whenever a new process is created, its descriptor segment is initialized with descriptors for all supervisor segments allowing the process to perform all of the basic supervisory functions for itself. The execution of the super visor in the address space of each process facilitates communication between user procedures and supervisor procedures. For example, the user can call a supervisor procedure as if he were calling a normal user procedure. Also, the sharing of the Multics supervisor facilitates simultaneous execution, by several processes, of supervisory functions, just as the sharing of user procedures facilitates the simultaneous execution of functions written by users.</p>
+
+<p>Since supervisor segments are in the address space of each process, they must be protected against unauthorized references by user programs. Multics provides the user with a ring protection mechanism [13] which segregates the segments in his address space into several sets with different access privileges. The Multics supervisor takes advantage of the existence of this mechanism and uses it, rather than some other special mechanism to protect itself.</p>
+
+<h2>7. Segment Attributes</h2>
+
+<h3>7.1 Directory Hierarchy</h3>
+<p>The name of a segment and its attributes are associated in a catalogue. Conceptually this catalogue consists of a table with one entry for each segment in the system. An <em>entry</em> contains the name of the segment and all its attributes: length, memory address, list of users allowed to use the segment with their respective access rights, date and time the segment was created, etc. </p>
+
+<p>In Multics, this catalogue is implemented as several segments, called directories, organized into a tree structure. A <em>segment name</em> is a list of subnames reflecting the position of the entry in the tree structure, with respect to the beginning, or root directory (ROOT) of the tree. By convention, subnames are separated by the character "&gt;". Each subname is called an <em>entryname</em> and the list of entrynames is called a <em>pathname</em>. An entryname is unique in a given directory and a pathname is unique in the entire directory hierarchy. Be cause of its property of uniquely identifying a segment in the directory hierarchy, the pathname has been chosen as the symbolic name by which the Multics user must reference a segment. There are two types of directory entries, branches and links. A <em>branch</em> is a directory entry which contains all attributes of a segment while a <em>link</em> is a directory entry which contains the pathname of another directory entry. A more detailed description of the directory hierarchy and of the use of links is given by Daley and Neumann [6].</p>
+
+<h3>7.2 Operations on Segment Attributes</h3>
+<p>Supervisor primitives perform all operations on segment attributes. There is a set of primitives available to the user which allow him, for example, to create a segment, delete a segment, change the entryname of a directory entry, change the access rights of a segment, list the segment attributes contained in a directory, etc. </p>
+
+<p>Creating a segment whose pathname is <span class="pathname">ROOT&nbsp;&gt;&nbsp;A&nbsp;&gt;&nbsp;B&nbsp;&gt;&nbsp;C</span> (see Figure 4) consists basically of the following steps:</p>
+
+<ul>
+  <li>Check that entryname C does not already exist in the directory <span class="pathname">ROOT&nbsp;&gt;&nbsp;A&nbsp;&gt;&nbsp;B</span>.</li>
+
+  <li>Allocate space for a new branch in directory <span class="pathname">ROOT&nbsp;&gt;&nbsp;A&nbsp;&gt;&nbsp;s</span>.</li>
+
+  <li>
+    Store in the branch the following items: 
+
+    <ul>
+      <li>The entry name C.</li>
+
+      <li>The segment length, initialized to zero.</li>
+
+      <li>The access list, given by the creator.</li>
+
+      <li>The segment map, consisting of an array of secondary memory addresses, one for each page of the segment. The maximum length of a segment in Multics being 64 pages, the segment map for any segment contains 64 entries. Since the segment length is still zero, each entry of the segment map is initialized with a "null" address, showing that no secondary memory has been assigned to any potential page of the segment.</li>
+
+      <li>The segment status "inactive," meaning that there is no page table for this segment. The segment status, which may be either "active" or "inactive" is indicated by the <em>active switch</em>.</li>
+    </ul>
+  </li>
+</ul>
+
+<div class="centered" style="width: 360px;"><img src="mulimg/mvm04.gif" width="360" height="414" alt="" title=""><p class="caption">Figure 4. Directory hierarchy.</p></div>
+
+<h2>8. Segment Accessing</h2>
+<p>Although the creation of a segment initializes its attributes, additional supervisor support is required to make the segment accessible to the processor when a user program references the segment by symbolic name. </p>
+
+<h3>8.1 Symbolic Addressing Conventions</h3>
+<p>The pathname is the only symbolic name by which a segment can be uniquely identified in the directory hierarchy. However, for user convenience, the system provides a facility whereby a user can reference a segment from his program using only the last entryname of the segment's pathname and supplying the rest of the pathname according to system conventions. This last entry name is called the <em>reference name</em>. </p>
+
+<p>When a process executes an instruction which attempts to access a segment by means of its reference name, the Multics dynamic linking facility [71 is automatically invoked. The dynamic linker determines the missing part of the pathname according to the above mentioned system conventions. These conventions are called <em>search rules</em> and may be regarded as a list of directories to be searched for an entryname matching the specified reference name. When this entryname is found in a directory, the directory pathname is prefixed to the reference name yielding the required pathname. The dynamic linker, using the "Make Known" module (Section 8.2), then obtains a segment number by which the referenced segment will be accessed. Finally it transforms the reference name into this segment number so that all subsequent executions of the instruction in this process access the segment directly by segment number. Further details are given by Daley and Dennis [7].</p>
+
+<h3>8.2 Making a Segment Known to a Process</h3>
+<p>Each time a segment is referenced in a process by its pathname, either explicitly or as the result of the evaluation of a reference name by the dynamic linking facility, the pathname must be translated into a segment number in order to permit the processor to address the segment for this process. This translation is done by the super visor using the KST associated with the process. The KST is an array organized such that entry number <span class="var">"s"</span>, KSTE(s), contains the pathname associated with segment number <span class="var">"s"</span>. See Figure 5. </p>
+
+<p>If the association (pathname, segment number) is found in the KST of the process, the segment is said to be <em>known</em> to the process and the segment number can be used to reference the segment.</p>
+
+<p>If the association (pathname, segment number) is not found in the KST, this is the first reference to the segment in the process and the segment must be made known. A segment is made known by assigning an unused segment number <span class="var">"s"</span> in the process and by recording the pathname in KSTE(s) to establish the pair (pathname, segment number) in the KST of the process. The directory hierarchy is also searched for this path name and a pointer to the corresponding branch is entered in KSTE(s) for later use (Section 8.3.).</p>
+
+<div class="centered" style="width: 432px;"><img src="mulimg/mvm05.gif" width="432" height="311" alt="" title=""><p class="caption">Figure 5. Basic tables used to implement the Multics virtual memory.</p></div>
+
+<p>The per-process association of pathname and segment number is used in the Multics system because it is impossible to assign a unique segment number to each segment. The reason is that the number of segments in the system will nearly always be larger than the number of segment numbers available in the processor.</p>
+
+<p>When a segment is made known to a process by segment number <span class="var">"s,"</span> its attributes are not placed in SDW(s) of the descriptor segment of that process. SDW(s) having been initialized with the missing segment switch ON, the first reference in this process to that segment by segment number <span class="var">"s"</span> will cause the processor to generate a trap. In Multics this trap is called a "missing segment fault" and transfers control to a supervisor module called the segment fault handler.</p>
+
+<h3>8.3 The Segment Fault Handler</h3>
+<p>When a missing segment fault occurs, control is passed to the segment fault handler to store the proper segment attributes in the appropriate SDW and set the missing segment switch OFF in the SDW. </p>
+
+<p>These attributes, as shown in Figure 3, consist of the page table address, the length of the segment, and the access rights of the user with respect to the segment. The information initially available to the supervisor upon occurrence of a missing segment fault is the segment number <span class="var">"s"</span>.</p>
+
+<p>The only place where the needed attributes can be found is in the branch of the segment. Using the segment number <span class="var">"s"</span>, the supervisor can locate the KST entry associated with the faulting segment; it can then find the required branch since a pointer to the branch has been stored in the KST entry when the segment was made known to this process (Section 8.2).</p>
+
+<p>Using the active switch (Figure 5) in the branch, the supervisor determines whether there is a page table for this segment. Recall that this switch was initialized in the branch at segment creation time. If there is no page table, one must be constructed. A portion of core memory is permanently reserved for page tables. All page tables are of the same length and the number of page tables is determined at system initialization.</p>
+
+<p>The supervisor divides page tables into two lists: the used list and the free list. Manufacturing a page table (PT) for a segment could consist only of selecting a PT from the free list, putting its absolute address in the branch and moving it from the free to the used list. If this were actually done, however, the servicing of each missing page fault would require access to a branch since the segment map containing secondary storage addresses is kept there (Figure 5). Since it is impractical for all directories to permanently reside in core, page fault handling could thereby require a secondary storage access in addition to the read request required to transport the page itself into core. Although this mechanism works, efficiency considerations have led to the "activation" convention between the segment fault handler and the page fault handler.</p>
+
+<p><strong>Activation</strong>. A portion of core memory is permanently reserved for recording attributes needed by the page fault handler, i.e. the segment map and the segment length. This portion of core is referred to as the <em>active segment table</em> (AST). There is only one AST in the system and it is shared by all processes. The AST contains one entry (ASTE) for each PT. A PT is always associated with an ASTE, the address of one implying the address of the other. They may be regarded as a single entity and will be referred to as the (PT, ASTE) of a segment. The used list and free list mentioned above are referred to as the (PT, ASTE) <em>free list</em> and the (PT, ASTE) <em>used list</em>.</p>
+
+<p>A segment which has a (PT, ASTE) is said to be <em>active</em>. Being active or not active is an attribute of the segment and is recorded in the branch using the active switch.</p>
+
+<p>When the active switch is ON, both the segment map and the segment length are no longer in the branch but are to be found in the segment's (PT, ASTE) whose address was recorded in the branch during "activation" of the segment.</p>
+
+<p>To <a href="activate.html" title="PL/I source of File system module activate.pl1">activate</a> a segment, the supervisor must:</p>
+
+<ul>
+  <li>Find a free (PT, ASTE). (Assume temporarily that at least one is available).</li>
+
+  <li>Move the segment map and the segment length from the branch into the ASTE,</li>
+
+  <li>Set the active switch ON in the branch.</li>
+
+  <li>Record the pointer to (PT, ASTE) in the branch.</li>
+</ul>
+<p>By pairing an ASTE with a PT in core, the segment fault handler has guaranteed that all segment attributes needed by the page fault handler are core-resident, permitting more efficient page fault servicing. </p>
+
+<p><strong>Connection</strong>. Once the segment is active, the corresponding SDW must be "connected" to the segment. To connect the SDW to the segment the supervisor must:</p>
+
+<ul>
+  <li>Get the absolute address of the PT, using the (PT, ASTE) pointer kept in the branch, and store it in SDW.</li>
+
+  <li>Get the segment length from the ASTE and store it in the SDW.</li>
+
+  <li>Get the access rights for the user from the branch and store them in the SDW.</li>
+
+  <li>Turn off the missing segment switch in the SDW.</li>
+</ul>
+<p>Having defined activation and connection, segment fault handling can now be summarized as: </p>
+
+<ul>
+  <li>Use the segment number s to access the KST entry.</li>
+
+  <li>Use the KST entry to locate the branch.</li>
+
+  <li>If the active switch in the branch is OFF, activate the segment.</li>
+
+  <li>Connect the SDW.</li>
+</ul>
+<p>Note that the active switch and the (PT, ASTE) pointer in the segment branch "automatically" guarantee segment sharing in core since all SDWs describing a given segment will point to the same PT. </p>
+
+<p>Once the segment and its SDW have been connected, the hardware can access the appropriate page table word. If the page is not in core, a missing page fault occurs, transferring control to the supervisor module called the page fault handler.</p>
+
+<h3>8.4 The Page Fault Handler</h3>
+<p>When a page fault occurs the page fault handler is given control with the PT address and the page number of the faulting page. The information needed to bring the page into core memory is the address of a free block of core memory into which the page can be moved and the address of the page in secondary memory. The term <em>page frame</em> is also used to denote a block of core memory which holds a page of information [9]. </p>
+
+<p>A free block of core must be found. This is done by using a data base called the <em>core map</em>. The core map is an array of elements called core map entries (CME). The <span class="var">n</span>th entry contains information about the <span class="var">n</span>th block of core (the size of all blocks is 1,024 words). The supervisor divides this core map into two lists; the <em>core map used list</em> and the <em>core map free list</em>.</p>
+
+<p>The job of the page fault handler consists of the following steps:</p>
+
+<ul>
+  <li>Find a free block of core and remove its core map entry from the free list. (Assume temporarily that the free list is not empty.)</li>
+
+  <li>Access the ASTE associated with the PT and find the address in secondary memory of the missing page.</li>
+
+  <li>If this address is a "null" address, initialize the block of core with zeros and update the segment length in the ASTE; this action is only taken the first time the page is referenced since the segment was created and provides for the automatic growing of segments. Other wise issue an I/O request to move the page from secondary memory into the free block of core and wait for completion of the request via a call to the "traffic controller" [14] which is responsible for processor multiplexing.</li>
+
+  <li>Store the core address in the PTW, remove the fault from the PTW, and place the core map entry in the used list.</li>
+</ul>
+
+<h3>8.5 Page Multiplexing</h3>
+<p>There are many more pages in virtual memory than there are blocks of core in the real memory; therefore, these blocks must be multiplexed among all pages. In the description of page fault handling it was assumed that a free block of core was always available. In order to insure that this is nearly always true, the page fault handler, upon removing a free block from the core map free list, examines the number of remaining free list entries; if this number is less than a preset minimum value, a page removal mechanism is invoked a sufficient number of times to ensure a nonempty core map free list in all but the most unusual cases. A nonempty core map free list eliminates waiting for page removal during the handling of a missing page fault. </p>
+
+<p>To get a free block of core, the page removal mechanism may have to move a page from core to secondary memory. This requires: (a) an algorithm to select a page to be removed; (b) the address of the PTW which holds the address of the selected page, in order to set a fault in it; and (c) a place to put the page in secondary memory.</p>
+
+<p>The selection algorithm is based upon page usage. It is a particularly easy-to-implement version [41 of the "least-recently-used" algorithm [1, 8]. The hardware provides valuable assistance by, each time a page is referenced, setting ON a bit, called the <em>used bit</em>, in the corresponding PTW. The selection algorithm will not be described in detail here. However, it should be noted that candidates for removal are those pages described in the core map used list; therefore, each core map entry which appears in the used list must contain a pointer to the associated PTW (Figure 5) in order to permit examination of the used bit. The action of storing the PTW pointer in the core map entry must be added to the list of actions taken by the page fault handler when a page is moved into core (Section 8.4.).</p>
+
+<p>Once the supervisor has selected the page to be removed, it takes the following steps:</p>
+
+<ul>
+  <li>Set the missing page switch ON in the PTW.</li>
+
+  <li>If no secondary memory has been assigned yet for this page, i.e. the segment map entry for this page holds a "null" address, assign a block of secondary memory and store its address in the segment map entry.</li>
+
+  <li>Issue an I/O request to move the page to secondary storage.</li>
+
+  <li>Upon completion of the I/O request, move the core map entry describing the freed block of core from the core map used list to the core map free list. This may be done in another process upon noticing the completion of the I/O request.</li>
+</ul>
+
+<h3>8.6 (PT, ASTE) Multiplexing</h3>
+<p>Core blocks can be multiplexed only among pages of active segments. The number of concurrently active segments is limited to the number of (PT, ASTE) pairs, which is, by far, smaller than the total number of segments in the virtual memory. Therefore (PT, ASTE) pairs must be multiplexed among all segments in the virtual memory. </p>
+
+<div class="centered" style="width: 360px;"><img src="mulimg/mvm06.gif" width="360" height="135" alt="" title=""><p class="caption">Figure 6. Supervisor functional modules and data bases.</p></div>
+
+<p>When segment activation was described, a (PT, ASTE) pair was assumed available for assignment. In fact, this is not always the case. Making one segment active may imply making another segment inactive, thereby disassociating this other segment from its (PT, ASTE). Since all processes sharing the same segment will have the address of the PT in an SDW, it is essential to invalidate this address in all SDWs containing it before removing the page table.</p>
+
+<p>This operation requires: (a) an algorithm to select a segment to be deactivated; (b) knowing all SDWs that contain the address of the page table of the selected segment, in order to invalidate this address; (c) moving the attributes contained in the ASTE back to the branch; and (d) changing the status of the segment from active to inactive in the branch.</p>
+
+<p>The selection algorithm for deactivation, like the selection algorithm for page removal, is based on usage. When the last page of a segment is removed from core, the segment becomes a candidate for deactivation. The algorithm selects for deactivation the segment which has had no pages in core for the longest period of time, i.e. the segment which has been least recently used. Since the number of (PT, ASTE) pairs substantially exceeds the number of pageable blocks of core, it is always possible to find an active segment with no pages in core.</p>
+
+<p>The ASTE must provide all the information needed for deactivating a segment. This means that during activation and connection, this information must be made available. During activation, a pointer to the branch must be placed in the ASTE; during connection, a pointer to the SDW must be placed in the ASTE. Since more than one SDW is connected to the same PT when the segment is shared by several processes, the super visor must maintain a list of pointers to all connected SDWs. This list is called a connection list. See Figure 5.</p>
+
+<p>After the selection algorithm chooses a (PT, ASTE) to be freed, the disassociation of the segment from its (PT, ASTE) is done in two steps: <em>disconnection</em> and <em>deactivation</em>.</p>
+
+<p>Disconnection consists of storing a segment fault in each SDW whose address appears in the connection list in the ASTE. Deactivation consists of moving the segment map and the segment length from the ASTE back to the branch, resetting the active switch in the branch, and putting the (PT, ASTE) in the free list.</p>
+
+<h2>9. Structure of the Supervisor</h2>
+<p>Up to now supervisor functions have been described, but not the supervisor structure. In this section, the different components of the supervisor are presented and the ability of portions of the supervisor to utilize the virtual memory is discussed. </p>
+
+<h3>9.l Functional Modules</h3>
+<p>Three functional modules can be identified in the supervisor described in Section 8; they are called <em>directory control</em> (DC), <em>segment control</em> (SC), and <em>page control</em> (PC). </p>
+
+<p>DC performs all operations on segment attributes; it also maps pathnames into segment numbers in the KST of the executing process. Data bases used by a process executing DC procedures are the directories and the KST of the process (Figure 6).</p>
+
+<p>SC performs segment fault handling. Data bases used by a process executing SC procedures are directories, the KST of the process, descriptor segments and (PT, ASTE) pairs.</p>
+
+<p>PC performs page fault handling. Data bases used by a process executing PC procedures are (PT, ASTE) pairs and the core map.</p>
+
+<h3>9.2 Use of PC in the Supervisor</h3>
+<p>One can observe that the page fault handler need not know if a missing page belongs to a user segment or to a supervisor segment; it only expects to find the in formation it requires in the (PT, ASTE) of the segment to which the missing page belongs. Therefore, if all segments used in SC and DC are always active, then their pages need not be in core since PC can load them when they are referenced. </p>
+
+<p>In order to make use of PC in the rest of the super visor the following (temporary) assumption must be made.</p>
+
+<h4>Assumption 1</h4>
+
+<p>(a) All segments used in PC are always in core and are connected to the descriptor segment of each process.</p>
+
+<p>(b) All segments used in SC and DC are always active and are connected to the descriptor segment of each process.</p>
+
+<h3>9.3 Use of SC in the Supervisor</h3>
+<p>Assumption I is satisfactory in the Multics implementation <em>except for directories</em>. </p>
+
+<p>The number of directory segments in the system may be very large and keeping them always active is not a realistic approach, since a large number of (PT, ASTE) pairs would have to be permanently assigned to them. It would be desirable to use SC to activate and connect directory segments only as needed.</p>
+
+<p>A necessary condition for handling a segment fault for segment <span class="var">x</span> in a process is that segment x be known to that process. Assuming that all directories are known to all processes, but not necessarily active, reference to a directory <span class="var">x</span> may cause a segment fault. When handling this fault, the segment fault handler must reference the parent directory of segment <span class="var">x</span>, where the branch for <span class="var">x</span> is located. This reference to the parent of <span class="var">x</span> could, in turn, cause a recursive invocation of the segment fault handler. These recursive invocations can propagate from directory to parent directory up to the root. If the root directory is always active and connected to each process, then the recursion is guaranteed to be finite and a segment fault for any directory can be handled.</p>
+
+<p>The first assumption can be replaced by the following more satisfactory assumption (again temporary).</p>
+
+<h4>Assumption 2</h4>
+
+<p>(a) All segments used in PC are always in core and are connected to the descriptor segment of each process.</p>
+
+<p>(b) All nondirectory segments used in SC and DC are always active and are connected to the descriptor segment of each process.</p>
+
+<p>(c) The root directory is always active and connected to each process.</p>
+
+<p>(d) All directories are always known to each process.</p>
+
+<h3>9.4 Use of the Make Known Facility in the Supervisor</h3>
+<p>However, it is unsatisfactory to keep all directories known to all processes because of the space that would be required in each KST. It would be more attractive if a directory could be made known to a process only when needed by the process. </p>
+
+<p>Making a segment <span class="var">x</span> known implies searching for its pathname in the KST. If not found, the parent of <span class="var">x</span> must first be made known and so on up to the root. If the root directory is always known to all processes, then any directory can be made known to a process by calling recursively the Make Known facility of the supervisor.</p>
+
+<p>Assumption 2 will now be replaced by the final assumption:</p>
+
+<h4>Final Assumption</h4>
+
+<p>(a) All segments used in PC are always in core and are connected to the descriptor segment of each process.</p>
+
+<p>(b) All nondirectory segments used in SC and DC are always active and are connected to the descriptor segment of each process.</p>
+
+<p>(c) The root directory is always active and connected to each process.</p>
+
+<p>(d) The root directory is always known to each process.</p>
+
+<p>Given the above assumption, supervisor segments, as well as user segments, can be stored in the virtual memory that the supervisor provides.</p>
+
+<h2>10. Summary</h2>
+<p>The most important points discussed in this paper are summarized below. They are grouped into two classes: the point of view of the user of the virtual memory, and the point of view of the supervisor itself. </p>
+
+<h3>User Point of View</h3>
+<p>The Multics virtual memory can contain a very large number of segments that are referenced by symbolic names. </p>
+
+<p>Segment attributes are stored in special segments called directories, which are organized into a tree structure; by a naming convention known to the user, the symbolic name of a segment must be the pathname of the segment in the directory tree structure.</p>
+
+<p>Any operation on directory segments must be done by calling the supervisor.</p>
+
+<p>Any operation on a nondirectory segment can be done directly in accordance with the access rights that the user has for the segment; any word of any segment which resides in the virtual memory can be referenced with a pair (pathname, <span class="var">i</span>) by the user.</p>
+
+<h3>Supervisor Point of View</h3>
+The supervisor must simulate a large segmented memory which is directly addressable by symbolic name and such that any access to the memory is submitted to access rights checking. 
+
+<p>The supervisor maintains a directory tree where it stores all segment attributes. It can retrieve the attributes of a segment, given the pathname of that segment.</p>
+
+<p>The supervisor itself is organized into segments and runs in the address space of each user process.</p>
+
+<p>Any segment, be it a directory or a nondirectory segment, is identified by its pathname but can be accessed only using a segment number. For each segment name the supervisor must assign a segment number by which the processor will address the segment in the process.</p>
+
+<p>The processor accesses a word of a segment through the appropriate SDW and PTW, subject to the access rights recorded in the SDW.</p>
+
+<p>A segment fault is generated by the processor when ever the page table address or access rights are missing in the SDW. The supervisor then, using the KST entry as a stepping stone, accesses the branch where it finds the needed information. If a PT is to be assigned, the supervisor may have to deactivate another segment.</p>
+
+<p>A page fault is generated by the processor whenever a PTW does not contain a core address. The supervisor then, using the ASTE associated with the PT, moves the missing page from secondary storage to core. This may require the removal of another page.</p>
+
+<h3>Acknowledgements</h3>
+<p>This paper would be incomplete without acknowledgment of the people who worked so hard to build the virtual memory supervisor portion of Multics. Special mention goes to G.F. Clancy, M.R. Thompson, and S.H. Webber who, under the design leadership of R.C. Daley, have been involved in a major portion of the design and implementation effort. They were aided in earlier designs and implementations by C.A. Cushing, S.M. Jones, G.B. Krekeler, N.I. Morris, P.G. Neumann, R.K. Rathbun, J.D. Van Hausen, M.R. Wagner, and L.D. Whitehead. Recent implementations have also benefited from the contributions of S.D. Dunten and M.C. Turnquist. Contributions in the form of analyses and discussions have been made by F.J. Corbat&#243;, E.L. Glaser, J.H. Saltzer, and V.A. Vyssotsky.</p>
+
+<p>Finally, our thanks go to P.A. Belmont, M.A. Meer, and D.L. Stone, who participated in studies leading to this formalized description of the Multics virtual memory.</p>
+
+
+<p>Received April 1970; revised July 1971</p>
+
+
+<h2>References</h2>
+
+<ol>
+  <li>Belady, L.A. A study of replacement algorithms for a virtual storage computer. <cite>IBM Systems J</cite>. 5, 2 (1966), 78 101. <br>
+    <br>
+  </li>
+
+  <li>Comfort, W.T. A computing system design for user service. Proc. AFIPS 1965 FJCC, Vol. 27, Pt. I, Spartan Books, New York, pp. 619-628. <br>
+    <br>
+  </li>
+
+  <li>Corbat&#243;, F.J., and Vyssotsky, V.A. <a href="fjcc1.html" title="Classic 1965 paper introducing Multics">Introduction and overview of the Multics system</a>. Proc. AFIPS 1965 FJCC, Vol. 27, Pt. 1. Spartan Books, New York, pp. 185-196. <br>
+    <br>
+  </li>
+
+  <li>Corbat&#243;, F.J. A paging experiment with the Multics system. Included in a Festschrift published in honor of Prof. P.M. Morse. MIT Press, Cambridge, Mass., 1969. <br>
+    <br>
+  </li>
+
+  <li>Crisman, P.A. ed. <cite>The Compatible Time-Sharing System: A Programmer's Guide</cite>, 2nd Ed., MIT Press, Cambridge, Mass., 1965. <br>
+    <br>
+  </li>
+
+  <li>Daley, R.C., and Neumann, P.G. <a href="fjcc4.html" title="Classic 1965 paper introducing Multics file system">A general-purpose file system for secondary storage.</a> Proc. AFIPS 1965 FJCC, Vol. 27, Pt. 1. Spartan Books, New York, pp. 213-229. <br>
+    <br>
+  </li>
+
+  <li>Daley, R.C., and Dennis, J.B. Virtual memory, processes, and sharing in Multics. <cite>Comm. ACM 11</cite>, 5 (May 1968), 306 312. <br>
+    <br>
+  </li>
+
+  <li>Denning, P.J. The working set model for program behavior. <cite>Comm. ACM 11</cite>, 5 (May 1968), 323-333. <br>
+    <br>
+  </li>
+
+  <li>Denning, P. J. Virtual memory. <cite>Computing Surveys 2,</cite> 3 (Sept. 1970), 153-189. <br>
+    <br>
+  </li>
+
+  <li>Dennis, J.B. Segmentation and the design of multiprogrammed computer systems. <cite>J.ACM 12</cite>, 4 (Oct. 1965), 589-602. <br>
+    <br>
+  </li>
+
+  <li>Fotheringham, J. Dynamic storage allocation in the Atlas computer, including an automatic use of a backing store. <cite>Comm. ACM 4</cite>, 10 (Oct. 1961), 435-436. <br>
+    <br>
+  </li>
+
+  <li>Glaser, E.L., Couleur, J.F., and Oliver, G.A. <a href="fjcc2.html" title="Classic 1965 paper introducing Multics">System design of a computer for time sharing applications.</a> Proc. AFIPS 1965, FJCC, Vol. 27, Pt. 1. Spartan Books, New York, pp. 197-202. <br>
+    <br>
+  </li>
+
+  <li>Graham, R.M. Protection in an information processing utility. <cite>Comm. ACM 11</cite>, 5 (May 1968), 365 369. <br>
+    <br>
+  </li>
+
+  <li>Saltzer, J. H. Traffic Control in a Multiplexed Computer System. Tech. Rep. No. MAC-TR-30 (Ph.D. Thesis), Project MAC, MIT, Cambridge, Mass., 1964. <br>
+    <br>
+  </li>
+
+  <li>The Descriptor--A definition of the B5000 Information Processing System. Burroughs Corp., Detroit, Mich., 1961.</li>
+</ol>
+
+<hr>
+<p><cite>Communications of the ACM, May 1972, Volume 15, Number 5, pp. 308-318</cite> </p>
+
+<p><span class="dochist">Minor revision of a paper presented at an ACM Symposium on Operating System Principles, Princeton University, October 20-22, 1969. Work reported herein was supported (in part) by Project MAC, an MIT research program sponsored by the Advanced Research Projects Agency, Department of Defense, under Office of Naval Research Contract Number Nonr-4102(1).</span></p>
+<hr>
+<p><span class="copyright">Copyright (c) 1972, Association for Computing Machinery, Inc. General permission to republish, but not for profit, all or part of this material is granted, provided that reference is made to this publication, to its date of issue, and to the fact that reprinting privileges were granted by permission of the Association for Computing Machinery.</span></p>
+
+        <div class="tail">
+          <div class="textnav">
+<div id="l2nav" class="textnav">Library links: <a href="papers.html" title="Classic papers about Multics available on the Web">Papers</a> | <a href="articles.html" title="Technical articles">Articles</a> | <a href="devdoc.html" title="Development document series">Dev Docs</a> | <a href="multics-source.html" title="Index to source code modules on this site">Source</a> | <a href="simulator.html" title="Multics Simulator">Simulator</a>
+
+</div>       <a href="multics.html">Home</a> | 
+       <a href="history.html">History</a> | 
+       <a href="multicians.html">People</a> | 
+       <a href="biblio.html">Library</a> | 
+       <a href="sites.html">Sites</a> |
+       <a href="about-multics.html">About</a>  | 
+         <a href="sitemap.html">Site Map</a> | 
+         <a href="changes.html">Changes</a>
+
+            </div> <!-- textnav -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

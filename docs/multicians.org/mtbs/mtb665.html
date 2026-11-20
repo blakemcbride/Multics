@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Implement a deadproc request for analyze_multics..">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+MULTICS TECHNICAL BULLETIN                                MTB-665
+
+To:       MTB Distribution
+
+To:       Distribution
+From:     Bonnie Braun
+
+Date:     05-18-84
+
+Subject:  Implement a deadproc request for analyze_multics.
+
+Comments can be directed to the author via:
+
+     Phone:  HVN 357-6638, 602-862-6638
+
+     Forum:  &gt;udd&gt;m&gt;blb&gt;mtgs&gt;azm    on System M.
+
+     Mail:   Braun.Multics on System M in Phoenix.
+
+ABSTRACT
+
+        Analyzing dead processes has  never been supported in the
+        past.  The tool ol_dump didn't support them.  One private
+        tool,  interpret_fdump  (ifd),  handled  them.   This was
+        dependent  on  the  grab_pdir  exec_com  to  extract  the
+        process    information.     This   MTB    describes   the
+        analyze_multics request  to interpret dead  processes and
+        proposes a tool copy_deadproc to be used to appropriately
+        set up a dead process directory.
+
+________________________________________
+
+Multics  Project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics Project.
+
+
+MTB-665                                              AZM deadproc
+
+I.  INTRODUCTION
+
+First, a little  background on how things currently  work.  For a
+process to be saved upon termination, the save_pdir attribute has
+to  be  on  for the  project/user.   Assuming this  is  true, the
+program dpg_ is invoked at  termination time, to save the process
+directory.  This  is done by renaming  the dead process directory
+from its  unique_chars name to  person.project.f.tty_name.  It is
+not moved to  another, more permanent directory, but  left in the
+&gt;process_dir_dir.
+
+II.  PROPOSAL
+
+For azm to deal with  dead processes, several assumptions will be
+made.  They are:
+
+1) The save_pdir attribute must be on.
+2) The dead  process directory is in a  permanent location.  This
+means it  must be moved  out of the &gt;pdd  so a system  crash or a
+re-boot won't effect it.
+
+3) The owner of a dead process does not automatically have access
+to his dead process directory.  This will be an option left up to
+the system administrator, or whoever is doing the copying.
+
+4)  Access  to other  dead  processes will  not  be automatically
+given.
+
+No  form  of  automatic  copying  of  dead  processes  to another
+directory will be implemented at this time.  Copying will be done
+by   a   person  with   system  privileges   such  as   a  system
+administrator.   The program  dpg_ will continue  to rename fatal
+processes  as it  currently does.  In  addition, it  will set sma
+access  for *.SysMaint.*  and *.SysAdmin.*.   Setting this access
+requires a change to dpg_.   A subroutine called copy_pdir_, will
+require system privileges to copy  the dead process directory.  A
+tool,  copy_deadproc,  will  interface to  the  subroutine.  This
+command is documented below.
+
+A directory  &gt;dumps&gt;save_pdirs will be  created.  The deadprocess
+directories will  be placed in  this directory.  The  name of the
+dead process directory  will be renamed from what  dpg_ named it,
+person.project.f.tty_name,  to  person.project.N,  where  N  is a
+numeric  number.   If  directories  already exist  with  the name
+person.project.N, these will be renamed to person.project.N+1 and
+the   most   recent   directory   will  always   have   the  name
+person.project.1.
+
+Access required:
+
+
+AZM deadproc                                              MTB-665
+
+The SysMaint and  SysAdmin projects will have sma  access on both
+directories                 &gt;dumps&gt;save_pdirs                 and
+&gt;dumps&gt;save_pdirs&gt;person.project.1.
+
+The user of  the dead process directory will  not be given access
+automatically.  This will be an  option for the administrator via
+the copy_deadproc tool.  The access for an owner, when requested,
+will be status on &gt;dumps&gt;save_pdirs and and status-modify for the
+owner's pdir.
+
+Site  Responsibility:   The  site  is  responsible  for  creating
+&gt;dumps&gt;save_pdirs at installation time.  Access on the save_pdirs
+directory will  be set to  sma for *.SysMaint  and *.SysAdmin and
+status  for  *.*.*.  This  information  will be  included  in the
+installation instructions for MR11.
+
+The dead process directory:
+
+The contents of the process  directory will contain everything in
+the user's  process directory at  the time of the  fatal error, a
+copy   of   its   stack_0   and  some   hardcore   segments  that
+analyze_multics   needs.   These   are  the   slt,  definitions_,
+name_table and a uid_hash_table.  These  data segments add on the
+average  of 173  pages to the  size of a  dead process directory.
+With the  inclusion of these data  segments, a deadproc directory
+uses quota in the range of 400-560 pages.
+
+These  data  segments are  required  for each  deadproc directory
+because  a  deadproc directory  can be  kept over  bootloads.  If
+there are dead process  directories from different bootloads, the
+data segments could be  different, thus, requiring each directory
+to have a copy of its own.
+
+Space for  deadprocs will be managed  dynamically bysiphoning off
+needed quota from &gt;dumps.
+
+Deletion of deadproc directories will  be handled like fdumps are
+currently  done on  System-M.  That is,  someone manually deletes
+them.  A future consideration is to have a cleanup_pdirs command,
+similar  to   the  clean_card_pool  command.   This   may  be  in
+conjuction with a delete_deadproc request within azm.  These will
+not be developed at this time.
+
+It  is  important to  remember that  for the  dead process  to be
+valid,  the  copying must  be done  during the  same boot  of the
+system as when the fatal error occured.
+
+III.  COPY_DEADPROC COMMAND
+
+Name:  copy_deadproc
+
+
+MTB-665                                              AZM deadproc
+
+Syntax:  copy_deadproc {deadproc_name} {-ctls_args}
+
+Function:   This  tool  sets  up  a  dead  process  directory  in
+preparation for use by analyze_multics.  It copies a dead process
+directory specified by deadproc_name into the directory under the
+&gt;dumps&gt;save_pdirs directory.  Several hardcore segments needed by
+analyze_multics are also copied into the directory.  Two segments
+are   created   by   the   copy_deadproc   tool,   pdir_info  and
+uid_hash_table.  These are used by analyze_multics when examining
+a  dead  process.   The  dead  process  directory  is  renamed to
+person.project.N  where N  is the number  1.  If person.project.1
+already exists,  it is remained to  person.project.N+1 before the
+copy of the new directory.  Access is set to sma for the SysMaint
+and SysAdmin projects.
+
+Arguments:
+
+deadproc_name
+   is the  name of the  dead process directory to  be copied.  If
+   deadproc_name is not an absolute pathname, the default path is
+   &gt;process_dir_dir&gt;deadproc_name.   The  names  of  dead process
+   directories   in   the  &gt;process_dir_dir   are  of   the  form
+   person.project.f.tty_name.
+
+Control Arguments:
+
+-delete, -dl
+   specifies that after the dead  process is copied, the original
+   one is to be deleted.
+-name deadproc_name, -nm deadproc_name
+   specifies the name of the process to be copied.
+-no_delete, -ndl
+   specifies  do  not  delete  the dead  process  directory after
+   copying is complete.  This is the default.
+-owner, -ow
+   specifies that access be set appropriately for the user of the
+   fatal process.  This is status  on &gt;dumps&gt;save_pdirs and sm on
+   the dead process directory.
+
+Notes:  The use of this  command requires access to hcs_, hphcs_,
+and the system_privilege_gate_.
+
+The amu_ Interface to copy_deadproc:
+
+The copy_deadproc  tool calls amu_$dp_create_uid_hash  to build a
+unique_id  hash  table  (called uid_hash_table)  for  segments in
+&gt;system_library_1.   Thus,  when   the  analyze_multics  deadproc
+request is invoked, address resolution can continue to take place
+dynamically without  distinguishing between what kind  of dump we
+are looking at.
+
+
+AZM deadproc                                              MTB-665
+
+This  entrypoint, amu_$dp_create_uid_hash,  is a  transfer vector
+for amu_deadproc_$create_uid_hash.   Like the rest  of amu_, this
+will be left undocumented for now.
+
+IV.  AZM INTERFACE
+
+To  accommodate  dead  process  analysis,  one  new  request  and
+modifications to  one existing request  are needed.  Many  of the
+azm  requests  used for  fdump analysis  are not  meaningful when
+analyzing a  dead process.  Such  requests will be  disabled when
+the deadproc  request is invoked.   This will be done  by using a
+different request table.
+Requests enabled for deadprocs are:
+     absolute_address,    add_request_table,    apply,   display,
+     display_absolute,  list_dumps,  page_trace,  quit,  replace,
+     sdw, select_dump,  search, name, number,  set, stack, value,
+     machine_conditions, history_regs
+
+Requests disabled for deadprocs are:
+     apte, associative_memory,  aste, configuration_deck, events,
+     scus,  select_process,   syserr_log,  traffic_control_queue,
+     verify_associative_memory, why
+
+New Azm Request:
+
+Name:  select_deadproc, sldp
+
+Syntax:  sldp {NAME}
+
+Function:  Selects and translates a  dead process.  Found via the
+dumps search list which defaults to &gt;dumps&gt;save_pdirs.
+
+Argument:
+
+NAME
+   Is the name of the process directory of interest.  This can be
+   a relative  or absolute pathname.  The  dead process directory
+   name   is  of   the  form   person.project.date_time  or  just
+   person.project.N where N is a numeric number, N=1 for the most
+   recently copied dead process.
+
+Notes:   When sldp  is invoked  with no  arguments, it  prints an
+identifying  message.  This  is identical to  how the select_dump
+request works.
+
+Modify Existing Request:
+
+Change  the  list_dumps request  to  know about  both  fdumps and
+deadprocs.
+
+Name:  list_dumps, lsd
+
+
+MTB-665                                              AZM deadproc
+
+Syntax:  lsd {PATH} {-ctl_args}
+
+Function:  Lists  dumps in the selected  dump directory.  If PATH
+is not given, all dumps in  the dump directories specified in the
+dumps search list are listed.
+
+Arguments:
+PATH
+   specifies PATH as the dump directory to list.
+
+Control Arguments:
+-deadproc, -dp
+   specifies list only dead process  directories.  If PATH is not
+   given, it checks all directories  in the dumps search list for
+   dead processes.
+-fdump, -fd
+   specifies list only  fdumps.  If PATH is not  given, it checks
+   all directories in the dumps search list.
+
+Notes:  If  no arguments are  given, the default is  to list only
+fdumps.
+
+Search List:
+
+Analyze_multics will  use the search_list_defaults_  mechanism to
+locate and  setup the dumps  search list, which  by default, will
+contain the directories &gt;dumps and &gt;dumps&gt;save_pdirs.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

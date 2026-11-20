@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Date/time system (1) Issues.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+MULTICS TECHNICAL BULLETIN 616                             page 1
+
+To:       Distribution
+
+From:     James A Falksen, Gary Dixon
+
+Date:     March 9, 1983
+
+Subject:  Date/time system (1) Issues
+
+ABSTRACT
+
+There is  a long history  of dissatisfaction with  some aspect or
+another of the  present abilities on Multics to  input and output
+date/time data.
+
+o    Some people  want formats which our  active functions do not
+     supply, such as "83-01-05".
+o    Others  want to  see dates  in their  own language,  such as
+     "Janvier 5, 1983".
+o    Still others wish to see things in their own time zone, such
+     as "01/05/83  1610.0 cet Wed".
+o    They    may    even    want    all    of    them   together:
+     "83-01-05  1612.6 cet mer".
+o    The  end of  the century is  fast approaching,  which is the
+     current  limit on  dates.  People  are starting  to run into
+     this as they specify retention dates.
+o    There has  long been a need  to have a date  format which is
+     readable by people and sortable as an ASCII string:
+     "1983-01-11__18:56:27.437731_gmt_Tue"
+o    Also  a need  has been  expressed for  the ability  for date
+     differences  to be  calculated and  the result  expressed as
+     offsets.
+o    Then to make things even worse, they want to turn around and
+     stuff these strings back into  Multics and have it recognize
+     them, i.e.  more flexibility in input formats.
+
+This MTB is the first in a  set of 3 MTBs which describe the work
+(past, present,  and future) involved  in bringing Multics  up to
+date in this area.  The other 2 are MTB617 and MTB618.
+
+Send comments on the MTB by one of the following means:
+     In forum meeting:
+        &gt;udd&gt;m&gt;jaf&gt;mtgs&gt;date_time
+     By Multics mail:
+        Falksenj.Multics at M
+        GDixon.Multics at MIT
+     By Telephone:
+        HVN 357-6618 or 602-862-6618
+
+________________________________________
+
+Multics Project  working documentation.  Not to  be reproduced or
+
+page 2                       MTB-616
+
+                             OUTLINE
+
+           Problem area                    Solution area(1)
+  _____________________________     _____________________________
+
+1. Introduction
+
+2. Outputting date/time data
+
+2.1. Alternate formats
+
+2.1.1. Site perspective           - Site settable standards
+
+2.1.2. User perspective
+
+2.1.2.1. Specify process default  - Process default table
+                                  - time_default -KEY value
+                                  - [time_default -KEY]
+                                  - time_default
+                                  - date_time_$set_date_time
+                                  - date_time_$set_date
+                                  - date_time_$set_time
+
+2.1.2.2. Select any value in an   - [clock control-string ...]
+   instance                       - date_time_$format
+
+2.2. Alternate languages
+
+2.2.1. Site perspective
+
+2.2.1.1. Wants "non-standard"     - time_table_|*_names
+   language
+
+2.2.1.2. Wants non-English        - "First" Language
+   default
+
+2.2.2. User perspective
+
+2.2.2.1. Specify process default  - Process default table
+                                  - time_default -language X
+                                  - [time_default -language]
+                                  - date_time_$set_lang
+
+2.2.2.2. Select any value in an   - [date_time_AF -language X]
+   instance                       - date_time_$format(...,
+                                    lang,...)
+
+2.3. Alternate time zones
+
+________________________________________
+
+
+                             MTB-616                       page 3
+
+           Problem area                    Solution area
+  _____________________________    _____________________________
+
+2.3.1. Site perspective
+
+2.3.1.1. Define own set of zone   - time_table_|zone_names
+   names and abbrevs
+
+2.3.1.2. Specify default          - BOS CLOK config parameter
+
+2.3.2. User perspective
+
+2.3.2.1. Specify process default  - Process default table
+                                  - time_default -zone X
+                                  - set_time_zone
+                                  - date_time_$set_zone
+
+2.3.2.2. Select any value in an   - [date_time_AF -zone X]
+   instance                       - date_time_$format(...,
+                                    zone,...)
+
+2.4. Sortable format              - [calendar_clock]
+                                  - date_time_$request_id_
+
+2.5. Time delta expressed as off- - [interval date1 date2]
+   sets                           - date_time_$from_clock_interval
+
+2.6. Obsoleted                    - decode_clock_value_
+
+3. Inputting date/time data
+
+3.1. Alternate formats            - date_time_$extract
+                                  - convert_date_to_binary_ (CDTB)
+
+3.2. Alternate languages          - convert_date_to_binary_
+
+3.3. Alternate time zones         - convert_date_to_binary_
+
+3.4. Sortable format              - convert_date_to_binary_
+
+3.5. Time delta expressed as off- - convert_date_to_binary_
+   sets
+
+3.6. Obsoleted                    - encode_clock_value_
+                                  - set_time_zone
+
+4. Dates outside the current cen- - Year limits become 1-9999
+   tury
+
+5. "Improper" use of date/time
+
+page 4                       MTB-616
+
+           Problem area                    Solution area
+  _____________________________    _____________________________
+
+5.1. mm/dd/yy is in info file     - convert them to yyyy-mm-dd
+   headers                        - help_
+
+5.2. Login banner                 - answering service
+
+5.3. Bootload Multics             - Operator communication
+
+5.4. substr from result of        - Ask for what is really wanted
+   date_time_                     - date_time_$format
+                                    ("date_time",...)
+                                  - date_time_$format ("date",...)
+                                  - date_time_$format ("time",...)
+
+5.5. Day-name and month-name      - Use the date/time system
+   tables outside the D/T system
+
+5.6. Conversion outside of the    - Use the date/time system
+   D/T system
+
+
+                             MTB-616                       page 5
+
+1. Introduction
+
+   There has  been a lot of  water under the bridge  and a lot of
+   air over  the table regarding this  subject since 1978.  Small
+   steps in this direction have been taken as resources permitted
+   (none).  This is  not a mere theoretical item,  a "wouldn't it
+   be  nice if..."   situation.  There  have been  SCP's and TR's
+   (nearly 30) relating directly to  this subject.  Let's look at
+   a few.
+
+SCP #6117
+Title:    Remove 20th century limitation on dates.
+
+       Dates  on  Multics are  artificially limited  to dates
+       within the  20th century.  For  most applications this
+       is OK.  However,  since we are within 20  years of the
+       next century,  and at least a  few of our applications
+       do 20 year projections, it would be nice to be able to
+       specify and  store dates in the  next century.  As far
+       as I can  tell the 72 bits a clock  value takes up has
+       more than enough space to add another century or two.
+
+SCP #6131
+Title:    Rationalization of date_time_ strings
+
+       To those  sites outside the United  States, the extent
+       to which the convoluted "mm/dd/yy" date string is used
+       throughout  Multics presents  confusion and annoyance.
+       The  problem  is  not  so  much  associated  with  the
+       "date_time_" subroutine, which  can always be replaced
+       by those  sites which find it  offensive, but with the
+       fact that  many system modules depend  on knowledge of
+       the  internal format  of the  string returned  by this
+       subroutine.    A   brief   list   would   include  the
+       "date_time"   active  functions,   "audit_*"  modules,
+       "general_ready", and parts of "forum".
+
+       This SCP suggests changes to system code and to system
+       standards, as follows:
+       1:  The  "date_time_" routine  should be  used only in
+           those  situations  where   the  entire  string  is
+           required; substrings should  not be extracted from
+           it, but may be extracted from "decimal_date_time_"
+           (or a  suitable substitute) whose  internal format
+           is standardized and not subject to dispute.
+
+       2:  New entry  points should be  added to "date_time_"
+           corresponding to available active function entries
+           in the  "date_time" command.  These  would include
+           "day_",     "month_",     "year_",    "day_name_",
+           "month_name_", etc.   Any program wishing  to know
+           the  month   could  use  either   a  substring  of
+
+page 6                       MTB-616
+
+       3:  All current violations of the above standard, (1),
+           should  be corrected  as soon as  practical in the
+           normal maintenance process.
+
+       4:  The "login"  process should be revised  to use the
+           non-ambiguous  "long_date"  format, as  it  is one
+           area where individual users have no opportunity to
+           replace  the  date  routines  with  others  in the
+           format (or  language) of their  choice.  A similar
+           change should  be instituted in  the date-stamp at
+           the  beginning  of  "help"  segments,  although  a
+           "yymmdd" format might be more appropriate here.
+
+SCP #6141
+Title:    Foreign entry points
+
+       French  language entry  points have been  added to two
+       general purpose programs, as follows:
+        - cv_$francs    is an adaptation  to cv_$mwvf to edit
+                        a  float  bin  number  in  the format
+                        "xxx.xxx.xxx,xx F"
+        - date_heure_   is an entry point in, and addname to,
+                        date_time_.   The  date and  time are
+                        edited in the following format:
+                   dd/mm/yy hh.mm.t zone Dayname
+                        where Dayname is in French.
+
+       In countries other than the  USA, we have to edit with
+       foreign money and other conventions of date and time.
+
+TR 7378 suggests that we will be moving into the 21st century
+       and had better think  about being viable there.  Added
+       info from AFDSC states that we are there already since
+       they have been trying  to specify downgrading dates 20
+       years in the future and are having trouble.
+
+   Let's examine these and related points in more detail.
+
+2. Outputting date/time data
+
+   Outputting of data  refers to converting a clock  value into a
+   character string.  This may be done within a procedure, or may
+   be asked for via a command/AF.   There are several areas to be
+   considered.
+
+2.1. Alternate formats
+
+     Multics supplies ways of getting dates in these formats:
+       "01/20/83  0906.2 mst Thu"
+       "January 20, 1983"
+       "09:06"
+       "01/20/83"
+
+                             MTB-616                       page 7
+
+     British and French interpret this form as dd/mm/yy.  We have
+     no  straightforward way  of getting  dates in  such forms as
+     83-01-20 (yy-mm-dd), 20JAN83 (ddmmmyy), or 83020 (yyddd).
+
+2.1.1. Site perspective
+
+       From  the  site's  point  of view,  the  default date/time
+       formats supplied by HIS may not be acceptable.
+
+     What can we do about it?
+
+       - Site settable standards
+         Build a system structure containing these elements:
+            time_table_|site_date_time
+            time_table_|site_date
+            time_table_|site_time
+         These    are    control    strings    for    use    with
+         date_time_$format.   The   site  may  change   these  in
+         time_table_.cds,  generate new  system time  tables, and
+         then generate a new hardcore tape.
+
+2.1.2. User perspective
+
+       The user  may wish to  have date/time info  displayed in a
+       format which differs from the site default.
+
+2.1.2.1. Specify process default
+
+         The user may  wish to have defaults set  for the life of
+         his process.
+
+       What can we do about it?
+
+         - Process default table
+           Build  a table  containing the default  values for the
+           current process.  These 3  fields will contain control
+           strings which specify in which  manner 3 key pieces of
+           date/time info will be formatted.
+             time_defaults_|date_time
+             time_defaults_|date
+             time_defaults_|time
+           These  elements  will be  initialized from  the system
+           defaults upon first reference.
+
+         - time_default -KEY value
+           This  command (tdft)  sets the  users default formats.
+           The KEY may be  either "date", "time", or "date_time".
+           If value is "system_KEY"  or "", the indicated process
+           default is reset to the system default.
+            For example:  time_default -time system_time
+
+         - [time_default -KEY]
+
+page 8                       MTB-616
+
+         - time_default
+           This  command displays  all the  time related defaults
+           when called with no arguments.
+
+         - date_time_$set_date_time
+
+         - date_time_$set_date
+
+         - date_time_$set_time
+           These entries set the process default values.
+
+2.1.2.2. Select any value in an instance
+
+         In a given instance, the user may need to have complete-
+         ly different format.
+
+       What can we do about it?
+
+         - [clock control-string ...]
+           This AF  returns date/time info  in a format  which is
+           determined  by an  ioa-like control-string  which con-
+           tains intermixed literal data and date/time selectors.
+           There are  also keywords which may  be used.  See next
+           item.
+
+         - date_time_$format
+           This is the subroutine  which does the formatting work
+           for the clock AF.  The control string may consist of a
+           keyword instead of a formatting specification.
+
+           A keyword  is recognized by the  fact that it contains
+           no date/time selectors.  These keywords are known:
+             date_time          date          time
+             system_date_time   system_date   system_time
+           The  first  3  request  that  the  time_default_ which
+           corresponds  to  them is  to  be used.   The  second 3
+           request that  the system default  which corresponds to
+           them  is  to be  used.   This support  is,  of course,
+           reflected out to the clock AF.
+             For example:  clock date_time
+           prints  the  current   date/time  in  the  per-process
+           default format.
+
+2.2. Alternate languages
+
+     Users and sites exist all  over the world.  Multics supplies
+     date/time info in English only.
+
+2.2.1. Site perspective
+
+       The site may  need to change this.  There  has been no way
+
+                             MTB-616                       page 9
+
+2.2.1.1. Wants "non-standard" language
+
+         A site may wish to add or delete languages from the ones
+         supplied by HIS.
+
+       What can we do about it?
+
+         - time_table_|*_names
+           Elements within this table  contain all day/week names
+           (long and  short), offset names, etc.   needed to deal
+           with  date/time info.   The site  may change  these in
+           time_table_.cds   and   generate   new   system   time
+           tables.(1)
+
+2.2.1.2. Wants non-English default
+
+         A site  may wish to  have the default  language on their
+         systems be different than that supplied by HIS.
+
+       What can we do about it?
+
+         - "First" Language
+           The  default  is controlled  by whichever  language is
+           first in the time_table_.  The site may change this in
+           time_table_.cds and  generate new system  time tables.
+           The  administrator  will  specify a  list  of language
+           names which  show the order which  should be used when
+           CDTB is looking up  keywords to solve an ambiguity.(2)
+           The first one on the list will be the site default.
+
+2.2.2. User perspective
+
+       The user may wish to have his date/time language different
+       from the site default.
+
+2.2.2.1. Specify process default
+
+         The user may  wish to have defaults set  for the life of
+         his process.
+
+       What can we do about it?
+
+         - Process default table
+           There  will be  a table containing  the default values
+           for the current process.
+________________________________________
+
+(1) The cds program  will have to examine all  the names given in
+    the  different languages  and set  an ambiguity  flag for any
+    words which are identical in ASCII but different in meaning.
+
+(2) The cds program  will order the elements of  the structure to
+
+page 10                      MTB-616
+
+             time_defaults_|language
+             time_defaults_|language_index
+           Upon first  reference, these will  be initialized from
+           the system defaults.
+
+         - time_default -language X
+           This command sets the  process default language.  If X
+           is "system_language",  or "", the default  is reset to
+           the system default.
+
+         - [time_default -language]
+           This AF returns the process default language.
+
+         - date_time_$set_lang
+           This subroutine sets the process default.
+
+2.2.2.2. Select any value in an instance
+
+         The  user  may  sometimes  need  to  have  the  language
+         different than the default.
+
+       What can we do about it?
+
+         - [date_time_AF -language X]
+           All  of  the  AFs  will include  a  control  arg which
+           specifies which language to use for that invocation.
+
+         - date_time_$format(..., lang,...)
+           This  subroutine (and  any others which  need it) will
+           have  an  argument which  specifies which  language to
+           use.  If the value is "", the process default is used.
+
+2.3. Alternate time zones
+
+     The time_table_ supplied by HIS  will contain many time zone
+     values around the world, mostly stated in English.  (This is
+     because  we  haven't  been  able  to  pry  information about
+     foreign language zone names out of anyone.)
+
+2.3.1. Site perspective
+
+       The site  may not wish  to use these as  supplied.  On one
+       side of the  world, BST is Bering Standard  Time, while on
+       the other side it is British Summer Time.
+
+2.3.1.1. Define own set of zone names and abbrevs
+
+         A  site  may wish  to  add, delete,  or change  the zone
+
+                             MTB-616                      page 11
+
+       What can we do about it?
+
+         - time_table_|zone_names
+           Elements within this table  contain the zone abbrevia-
+           tions, their offset values, and their long names.  The
+           site may change these  in time_table_.cds and generate
+           new system time tables.
+
+2.3.1.2. Specify default
+
+         The site needs to supply the offset and name under which
+         the system is running.
+
+       What can we do about it?
+
+         - BOS CLOK config parameter
+           This  contains  information which  the system  uses to
+           set:
+              sys_info|time_delta
+              sys_info|time_zone
+
+2.3.2. User perspective
+
+       The user may  be living in a different  time zone than the
+       system  which she  is using.  She  would then  like to see
+       dates in her time, not that of the system.
+
+2.3.2.1. Specify process default
+
+         The user may  wish to have defaults set  for the life of
+         her process.
+
+       What can we do about it?
+
+         - Process default table
+           There  will be  a table containing  the default values
+           for the current process.
+             time_defaults_|zone_delta   - offset from GMT
+             time_defaults_|zone_index   - index into time_zones_
+             time_defaults_|zone_short   - short (3-4 char) name
+             time_defaults_|zone_long    - long name
+           Elements  in  this  will  be  initialized  upon  first
+           reference from the system  defaults.  Given the index,
+           all  other  values  can be  accessed  from time_zones.
+           However, it is more efficient  to have a process local
+           copy to access (without subscripting).
+
+         - time_default -zone X
+           This command  sets the process default  zone.  If X is
+           "",  or  "system_zone", the  default  is reset  to the
+
+page 12                      MTB-616
+
+         - set_time_zone
+           This command (OBS) sets the process default zone.
+
+         - date_time_$set_zone
+           This subroutine sets the process default.
+
+2.3.2.2. Select any value in an instance
+
+         Sometimes,  the user  may need  to use  a zone differing
+         from the current default.
+
+       What can we do about it?
+
+         - [date_time_AF -zone X]
+           All  of  the  AFs  will include  a  control  arg which
+           specifies which zone to use for that invocation.
+
+         - date_time_$format(..., zone,...)
+           This  subroutine (and  any others which  need it) will
+           have  an argument  which specifies which  zone to use.
+           If the value is "", the process default is used.
+
+2.4. Sortable format
+
+     Usual date/time formats are not simple to sort.  Users often
+     wish to have  their info organized so that  it may easily be
+     sorted.
+
+   What can we do about it?
+
+     - [calendar_clock]
+       This AF returns date/time in this form:
+          1983-01-20__18:59:35.058435_gmt_Thu
+       This has all fields in decreasing  order of size so that a
+       simple compare  will determine ordering of  2 times.  This
+       form is also easily read by a person.
+
+     - date_time_$request_id_
+       This function  returns a char(19)  value which is  a clock
+       value, to the microsecond, less  the century.  This is the
+       form:
+          830127134350.507080
+       This is the format of request  ids as used by ear and eor.
+       It  is easy  to compare  for one  of them  being before or
+       after another.  This  value is yymmddHHMMSS.SSSSSS.  Thus,
+       a person can figure it out if they can think in GMT.
+
+2.5. Time delta expressed as offsets
+
+     People would  like to be able  to get a string  which is the
+
+                             MTB-616                      page 13
+
+   What can we do about it?
+
+     - [interval date1 date2]
+       This  AF  returns the  difference  between 2  date values,
+       relative to the first, in offset terms:
+         "-2 days -6 hours -4 seconds"
+       There  are control  args which  allow the  user to specify
+       that only certain units be  used in expressing the result.
+       The user  has control over what  happens to the fractional
+       part of the smallest unit to  be used:  1) display it with
+       a specified  picture, or 2)  discard it.  In  either case,
+       the user can specify in  what manner interval is to arrive
+       at the displayed value:   round, ceiling, or floor.  There
+       is   a  control   argument  which  selects   the  long  or
+       abbreviated forms  of the unit names  being output.  Units
+       which have  zero amounts may be  suppressed in the output.
+       And, of course, the language of output may be selected.
+
+       When no limit is given for units, this set is used:
+          years months days hours minutes seconds
+
+       CDTB will accept offsets in this format.
+
+     - date_time_$from_clock_interval
+       This is  the subroutine which does  all the dirty-work for
+       interval AF.
+
+2.6. Obsoleted
+
+   - decode_clock_value_
+     This is replaced by date_time_$from_clock.
+
+3. Inputting date/time data
+
+   Inputting of data refers to converting a character string into
+   a clock value.  This may be a value that was output by Multics
+   at some  time, or it may  be "raw" from a  user.  All the same
+   areas need to be considered as for outputting.
+
+3.1. Alternate formats
+
+     Multics  needs  some  way   to  recognize  more  formats  of
+     date/time than before.
+
+   What can we do about it?
+
+     - date_time_$extract
+       This  is the  inverse of  date_time_$format.  It retrieves
+       the  date info  from a string  by using  the format string
+       which created  it.  Some formats will  yield results which
+       cannot be  "unpacked", such as  concatenating year, month,
+
+page 14                      MTB-616
+
+       routine  should  be able  to  cover many  cases  which are
+       ambiguous to CDTB, such as dd/mm/yy.
+
+     - convert_date_to_binary_ (CDTB)
+       This will recognize  a few more formats than  in the past.
+       CDTB already recognizes  the {yy}yy-mm-dd format specified
+       by ISO.
+
+3.2. Alternate languages
+
+     The  variety of  languages which  are defined  on the system
+     have to be valid for date/time entry.
+
+   What can we do about it?
+
+     - convert_date_to_binary_
+       This  will be  extended to use  time_names_ when comparing
+       keywords.  If only 1 keyword is found and it is ambiguous,
+       it  has to  consider the  string untranslatable.   If more
+       than 1 keyword  is found in a string, they  must all be in
+       the same language.
+
+3.3. Alternate time zones
+
+     All of the  time zones which the system  knows about must be
+     acceptable on input.
+
+   What can we do about it?
+
+     - convert_date_to_binary_
+       This  is  extended  to   use  time_zones_  when  comparing
+       keywords.  It is  not intended that the long  form of time
+       zone  be recognizable.   The long  forms are  available so
+       that the user may ask of  the system "What does BST really
+       mean?"
+
+3.4. Sortable format
+
+     People would  think that the 2  forms mentioned under output
+     should be acceptable to feed back in.
+
+   What can we do about it?
+
+     - convert_date_to_binary_
+       This already accepts output of calendar_clock.  This is to
+       accept the output of  date_time_$request_id_.  It will not
+       accept a  subset of a  request id.  The user  must not get
+       the mistaken impression that  the string which follows -id
+       in a car  command is a request id.  If  it is less than 19
+       characters long,  it is merely a  string which MATCHES one
+
+                             MTB-616                      page 15
+
+3.5. Time delta expressed as offsets
+
+     The  output  of  the  interval  AF  should,  in  general, be
+     acceptable as input.
+
+   What can we do about it?
+
+     - convert_date_to_binary_
+       This procedure will use  time_names_ when comparing offset
+       names.
+
+3.6. Obsoleted
+
+   - encode_clock_value_
+     This is replaced by date_time_$to_clock
+
+   - set_time_zone
+     This is replaced by time_default -zone.
+
+4. Dates outside the current century
+
+   People are  already trying to use  dates outside this century.
+   There also is a controversy as  to whether 2000 is in the 20th
+   or  21st  century.  The  software doesn't  seem to  agree with
+   people.
+
+ What can we do about it?
+
+   - Year limits become 1-9999
+     The  conversion  algorithms  in  convert_date_to_binary_ and
+     date_time_$from_clock will be expanded.   In the process, it
+     won't  make much  difference what the  software thinks about
+     the year 2000 because it will just be handled.
+
+     This implies a point at  which the calendar change occurred.
+     The fact is ignored that  various countries converted to the
+     Gregorian calendar at different times.  The changeover point
+     is  from Julian  1582-10-05 to Gregorian  1582-10-15 at mid-
+     night GMT.
+
+5. "Improper" use of date/time data
+
+   There  are many  places around  the system  where knowledge of
+   format, language, and/or zone is  locked in.  We have to track
+   them down.
+
+5.1. mm/dd/yy is in info file headers
+
+     This  does  not mean  the same  thing to  all people  in the
+
+page 16                      MTB-616
+
+   What can we do about it?
+
+     - convert them to yyyy-mm-dd
+       This  format is  very unlikely  to be  confused as  to its
+       meaning.
+
+     - help_
+       Modify to find these dates  in the header and process them
+       thru date_time_$format ("date",...)  before printing.
+
+5.2. Login banner
+
+     This is  another place where language,  zone, and format are
+     involved.
+
+   What can we do about it?
+
+     - answering service
+       Tie  this in  with the  upgraded date/time  functions.  It
+       cannot,  obviously,  be  congizant  of a  user's  wish for
+       non-standard conversions.
+
+5.3. Bootload Multics
+
+   What can we do about it?
+
+     - Operator communication
+       This will be aided with by more flexible date/time I/O.
+
+5.4. substr from result of date_time_
+
+     This is a nasty one to find thruout the system.
+
+   What can we do about it?
+
+     - Ask for what is really wanted
+       Call the  routine which gives  the data needed  instead of
+       "knowing"  that the  4th and 5th  characters of date_time_
+       output is the day.
+
+     - date_time_$format ("date_time",...)
+
+     - date_time_$format ("date",...)
+
+     - date_time_$format ("time",...)
+       These  should  be  called  as  appropriate.   For example,
+       "print" shows  a date_time in its  header, this should use
+
+                             MTB-616                      page 17
+
+5.5. Day-name and month-name tables outside the D/T system
+
+     Various routines  have had arrays of  day and/or month names
+     which they  used to display  some date/time info.   When the
+     problem  of  language arose,  these  were not  in  very good
+     shape.
+
+   What can we do about it?
+
+     - Use the date/time system
+       Call  the routine  which gives  the data  needed and which
+       will use the proper language and time zone.
+
+5.6. Conversion outside of the D/T system
+
+     Some  routines  read  the  clock  and  then  do  conversions
+     themselves.   When  a  wider  range  of  dates  needs  to be
+     handled, they may be in trouble.
+
+   What can we do about it?
+
+     - Use the date/time system
+       Give the clock value to the system routine which does what
+       is needed.
+          date_time_$from_clock
+            breaks a  clock value down into  years, months, days,
+            hours, etc.
+          date_time_$from_clock_interval
+            breaks the  difference between two  clock values down
+            into seconds, minutes, hours, etc.
+          date_time_$to_clock
+            forms a  clock value from  a set of  valid year, day,
+            hour, etc.  values
+          date_time_$offset_to_clock
+            forms  a clock  value by  adding an  arbitrary set of
+            year,  month,  day,  etc.   values to  a  given clock
+            value.
+
+5.7. Not following site standard
+
+     This means  commands such as print  call date_time_, instead
+     of
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

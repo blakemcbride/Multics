@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-556</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-556: Data Management: Transaction Manager Design.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+  Multics Technical Bulletin                                MTB-556
+  DM: Transaction Manager Design
+
+  To:       Distribution
+
+  From:     Steve Herbst
+
+  Date:     09/06/84
+
+  Subject:  Data Management: Transaction Manager Design
+
+  1  ABSTRACT
+
+       This   paper  describes   the  internal   operation  of  the |
+  Transaction Manager and the Transaction Definition Table (TDT) it |
+  uses to  keep track of  the state of  each transaction.  Included |
+  are  brief  descriptions  of  the Transaction  Manager's  role in |
+  system   initialization,   process   initialization,   and  crash |
+  recovery.                                                         |
+
+  Comments should be sent to the author:
+
+  via Multics Mail:
+     Spratt.Multics on either MIT Multics or System M.
+
+  via US Mail:
+     Lindsey Spratt
+     Honeywell Information Systems, inc.
+     4 Cambridge Center
+     Cambridge, Massachusetts 02142
+
+  via telephone:
+     (HVN) 261-9321, or
+     (617) 492-9321
+
+  _________________________________________________________________
+
+  Multics  project  internal  working  documentation.   Not  to  be
+  reproduced or distributed outside the Multics project without the
+  consent of the author or the author's management.
+
+  Multics Technical Bulletin                                MTB-556
+
+                            CONTENTS
+
+                                                         Page
+
+            1 Abstract  . . . . . . . . . . . . . . . .     i
+            2 Introduction  . . . . . . . . . . . . . .     1
+            3 Transaction Definition Table  . . . . . .     1
+               3.1 TDT Header Structure . . . . . . . .     1
+                     The tm_tdt structure . . . . . . .     1
+               3.2 TDT Entry Structure  . . . . . . . .     2
+                     The tm_tdt_entry structure . . . .     2
+               3.3 Current Transaction Info . . . . . .     4
+               3.4 System Initialization  . . . . . . .     5
+               3.5 Recovery . . . . . . . . . . . . . .     5
+               3.6 Detailed Description of Operations .     5
+                  3.6.1 begin_txn . . . . . . . . . . .     6
+                  3.6.2 commit_txn  . . . . . . . . . .     6
+                  3.6.3 abort_txn . . . . . . . . . . .     7
+                  3.6.4 rollback_txn  . . . . . . . . .     8
+                  3.6.5 suspend_txn . . . . . . . . . .     8
+                  3.6.6 resume_txn  . . . . . . . . . .     8
+                  3.6.7 adjust_txn  . . . . . . . . . .     9
+                  3.6.8 adjust_tdt  . . . . . . . . . .     9
+                  3.6.9 adjust_process_id . . . . . . .     9
+                  3.6.10 per_system_init  . . . . . . .    10
+                  3.6.11 per_process_init . . . . . . .    10
+                  3.6.12 recover_after_crash  . . . . .    10
+
+  DM: Transaction Manager Design
+
+  2  INTRODUCTION
+
+       The purpose  of Data Management's Transaction  Manager is to |
+  maintain  the  consistency   of  transaction  operations  despite |
+  process  interruption  and  system  failure.   It  does  this  by |
+  following strict protocols in the order of its internal steps and |
+  by recording each  step it takes as a  unique transaction "state" |
+  in the  TDT entry corresponding  to the transaction.   Using this |
+  state, it can restart any interrupted operation.                  |
+
+       Beginning and  completing transactions involves  locking and |
+  unlocking Data Management tables,  writing journals, and flushing |
+  modified  pages of  data to disk.   These operations  are done by |
+  calls   to   the    other   managers:    before_journal_manager_, |
+  file_manager_,  and  lock_manager_.   For  descriptions  of these |
+  facilities, see:                                                  |
+
+     MTB-553:  File Manager Functional Specifications               |
+     MTB-557:  Lock Manager Functional Specifications               |
+     MTB-559:  Before Journal Manager Functional Specifications     |
+
+  3  TRANSACTION DEFINITION TABLE
+
+       The  Transaction  Definition  Table (TDT)  is  a system-wide
+  table containing runtime information  about transactions that are
+  currently in progress  or are in the process  of being committed,
+  rolled back, or aborted.  The  TDT is logically divided into four
+  parts, each managed exclusively by one of the Transaction, Before
+  Journal, File and Lock Managers.  Header information is contained
+  in the  part managed by  the Transaction Manager,  called tm_tdt.
+  This  table  also contains  information about  the state  of each
+  transaction in progress.
+
+  3.1  TDT HEADER STRUCTURE
+
+  The tm_tdt structure                                              |
+
+  The  portion  of the  TDT  maintained by  transaction_manager_ is |
+  declared  in  the  include  file  dm_tm_tdt.incl.pl1.   The table |
+  header is declared as follows:                                    |
+
+
+
+| dcl 1 tm_tdt                  aligned based (tm_tdt_ptr),
+|       2 version               char (8),
+|       2 lock                  fixed bin (71),
+|       2 last_uid              bit (27) aligned,
+|       2 flags,
+|         3 no_begins           bit (1) unaligned,
+|         3 mbz2                bit (35) unaligned,
+|       2 entry_count           fixed bin,
+|       2 entry (tdt_max_count  refer (tm_tdt.entry_count))
+|                               like tm_tdt_entry;
+
+| where:
+
+| version
+|    is the version of the structure, currently "TM-TDT 2".
+
+| lock
+|    can be used to lock the table.  It is not currently used.
+
+| last_uid
+|    is  a  bit  string  used  to  generate  the  next  transaction
+|    identifier.
+
+| no_begins
+|    is          turned          on          temporarily         by
+|    transaction_manager_$recover_after_crash  to  prevent  any new
+|    transactions from beginning while recovery is taking place.
+
+| entry_count
+|    is the total number of entry slots allocated.
+
+| entry
+|    is the array of TDT entries.
+
+  3.2  TDT ENTRY STRUCTURE
+
+| The tm_tdt_entry structure
+
+| The individual transaction entry is  declared in the include file
+| dm_tm_tdt.incl.pl1.
+
+
+
+  dcl 1 tm_tdt_entry            aligned based (tm_tdt_entry_ptr),   |
+        2 process_id            bit (36) unaligned,                 |
+        2 event_channel         fixed bin (71),                     |
+        2 transaction           aligned,                            |
+          3 txn_id              bit (36) aligned,                   |
+          3 date_time_created   fixed bin (71),                     |
+          3 mode                fixed bin (17) unaligned,           |
+          3 state               fixed bin (17) unaligned,           |
+          3 error_code          fixed bin (35),                     |
+          3 return_idx          fixed bin (17) unaligned,           |
+          3 flags,                                                  |
+            4 dead_process_sw   bit (1) unaligned,                  |
+            4 suspended_sw      bit (1) unaligned,                  |
+            4 error_sw          bit (1) unaligned,                  |
+            4 mbz1              bit (12) unaligned,                 |
+          3 post_commit_flags,                                      |
+            4 (fmgr,                                                |
+               bjmgr,                                               |
+               ajmgr)           bit (1) unaligned;                  |
+
+  where:                                                            |
+
+  process_id                                                        |
+     is the unique identifier of  the owner process.  This field is |
+     filled in by transaction_manager_$per_process_init and remains |
+     unchanged for the life of the process.                         |
+
+  event_channel                                                     |
+     is an event-call  channel used by the Daemon  to send messages |
+     to  the  owner  process.   This field  is  also  filled  in by |
+     transaction_manager_$per_process_init.                         |
+
+  txn_id                                                            |
+     is   the  unique   identifier  of  the   transaction,  set  by |
+     transaction_manager_$begin_txn.                                |
+
+  date_time_created                                                 |
+     is  the  time  that  transaction_manager_$begin_txn  began the |
+     transaction.                                                   |
+
+  mode                                                              |
+     is  the  mode passed  to  transaction_manager_$begin_txn.  The |
+     available   modes    are   listed   in    the   include   file |
+     dm_tm_modes.incl.pl1, and  include special modes  used to test |
+     and meter the system.                                          |
+
+  state                                                             |
+     is  the transaction's  state, used to  maintain consistency of |
+     operations  on  the  transaction.   The  available  states are |
+     listed in the include file dm_tm_states.incl.pl1.              |
+
+  error_code                                                        |
+
+
+
+|    if  error_sw (below)  is on,  this field  contains the nonzero
+|    error   code   returned   by   the  last   entry   point  that
+|    transaction_manager_ called.
+
+| return_idx
+|    currently unused, this field is  reserved for the index of the
+|    parent  transaction  when  transactions   are  allowed  to  be
+|    stacked.
+
+| dead_process_sw
+|    can be  turned on to  cause transaction_manager_$adjust_txn to
+|    adjust the transaction even though process_id corresponds to a
+|    live process.  It is not currently used.
+
+| suspended_sw
+|    is   ON  if   this  transaction  is   currently  suspended  by
+|    transaction_manager_$suspend_txn.
+
+| error_sw
+|    is ON  if a transaction_manager_ operation  received a nonzero
+|    error code  from one of  the entry points it  called.  If this
+|    switch is  ON, state is equal  to one of the  error states.  A
+|    transaction in error is eventually logged and aborted.
+
+| post_commit_flags
+|    are  flags  indicating  that  post-commit  operations  must be
+|    performed  after  a  commit  by calling  entry  points  in the
+|    appropriate   managers.    The  three   flags   correspond  to
+|    file_manager_,      before_journal_manager_,      and      the
+|    not-yet-implemented after_journal_manager_.
+*
+
+  3.3  CURRENT TRANSACTION INFO
+
+|      The  following  fields are  maintained  in the  data segment
+| dm_data_ for the use of all programs in the user process:
+
+| dm_data_$current_txn_id       bit (36) aligned;
+|      The unique identifier of the current transaction, or "0"b if
+|      there is no current transaction.
+| dm_data_$current_txn_index    fixed bin;
+|      The index of the current transaction's TDT entry.
+| dm_data_$suspended_txn_id     bit (36) aligned;
+|      This  is  "0"b  unless  transaction_manager_$suspend_txn has
+|      been called.
+| dm_data_$suspended_txn_index  fixed bin;
+| dm_data_$tm_tdt_ptr           ptr;
+|      A pointer to transaction_manager_'s TDT.
+| dm_data_$my_tdt_index         fixed bin;
+|      The  index   of  the  process'  TDT   entry,  in  which  its
+|      transaction (only one allowed)  is recorded.  A process uses
+|      the same TDT slot throughout its life.
+
+
+
+       User             programs             should            call |
+  transaction_manager_$get_current_txn_id  rather   than  refer  to |
+  dm_data_$current_txn_id  or dm_data_$current_txn_index,  since it |
+  takes  precautions  about   interrupted  transactions  and  other |
+  unusual situations and is guaranteed to be correct.  The dm_data_ |
+  values are widely used within transaction_manager_.               |
+
+  3.4  SYSTEM INITIALIZATION
+
+       The  TDT (per  bootload) is  created and  initialized by the |
+  Initializer   process  at   system  start-up,   via  a   call  to |
+  dm_initializer_.  Initialization of  the current transaction info |
+  (per process)  is triggered by  a first-reference trap  the first |
+  time a process references the data segment dm_data_.              |
+
+       These  mechanisms are  described in more  detail in MTB-592, |
+  "Data Management:  System Structure".                             |
+
+  3.5  RECOVERY
+
+       When  the system  is brought  up after  a crash,  one of the |
+  first   things  the   Daemon  does   is  call   the  entry  point |
+  transaction_manager_$recover_after_crash.    This   entry   point |
+  rebuilds  a  TDT  containing   all  the  unfinished  transactions |
+  reconstructed  from the  last bootload,  and aborts  all of them. |
+  Then  it zeroes  out the  TDT and  allows new  transactions to be |
+  begun.                                                            |
+
+       The  recovery  protocol  is  described  in  more  detail  in |
+  MTB-603, "Data Management:  Crash Recovery".                      |
+
+  3.6  DETAILED DESCRIPTION OF OPERATIONS
+
+       The Transaction Manager is concerned mainly with keeping the |
+  TDT  consistent   and  keeping  track   of  the  state   of  each |
+  transaction.  The rest of the work  is done by calls to the other |
+  managers.  Before each such call,  the transaction's state is set |
+  to a value that indicates the routine that is about to be called. |
+  (See  the  include  file  dm_tm_states.incl.pl1  and  the program |
+  tm_cleanup.)  If  the called routine returns  an error code, this |
+  code  is recorded  in the TDT  entry and  the state is  set to an |
+  error value.  A transaction that is in an error state can only be |
+  modified  by  special  error-logging   routines;  for  all  other |
+  purposes, it remains in an error state.                           |
+
+       Most  operations,  when  they   find  a  transaction  in  an |
+  intermediate state,  call the internal  utility tm_cleanup.  This |
+  routine uses the value of state  to decide which calls to make to |
+  complete the unfinished operation.  The contract of tm_cleanup is |
+  to  leave  the  transaction  either  aborted  (if  the unfinished |
+
+
+
+| operation was an abort) or  in the "in-progress" state.  The name
+| of    this   state    as   declared    in   the    include   file
+| dm_tm_states.incl.pl1 is TM_IN_PROGRESS_STATE.
+
+|      An  important  part of  each  protocol listed  below  is the
+| setting of the transaction's state  before and after each call to
+| another routine.  The action taken by tm_cleanup when cleaning up
+| an  unfinished  operation  is  to start  at  the  step  where the
+| original operation was interrupted and  proceed to the end of the
+| operation.
+
+  3.6.1  BEGIN_TXN
+
+       This  entry  point  is callable  by  users as  well  as Data
+  Management system routines.  It takes the following steps:
+
+| o    If the TDT's no_begins flag is on (running recovery), return
+|      the error code dm_error_$no_begins.
+
+| o    If    there    is     a    current    transaction,    return
+|      dm_error_$transaction_in_progress.
+
+| o    If    there    is    a    suspended    transaction,   return
+|      dm_error_$transaction_suspended.
+
+| o    Zero the transaction  info in the TDT entry  and fill in the
+|      current clock time.
+
+| o    Generate a new transaction id and put it into the entry.
+
+| o    Call before_journal_manager_$write_begin_mark.
+
+| o    Set    the    values    of    dm_data_$current_txn_id    and
+|      dm_data_$current_txn_index.
+
+| o    Set the transaction's state to "in-progress".
+*
+
+  3.6.2  COMMIT_TXN
+
+       This operation consists of the following steps:
+
+| o    If  there  is no  current  or suspended  transaction, return
+|      dm_error_$no_current_transaction.
+
+| o    If     the     transaction      is     suspended,     return
+|      dm_error_$transaction_suspended.
+
+| o    If the  state of the transaction  is not "in-progress", call
+|      tm_cleanup to complete any unfinished operation.
+
+| o    If    running   in    one   of   the    test   modes,   call
+
+
+
+       transaction_manager_$abort_txn and return.                   |
+
+  o    Call before_journal_manager_$flush_transaction  to flush the |
+       appropriate journals.                                        |
+
+  o    Call file_manager_$flush_modified_ci.                        |
+
+  o    Call before_journal_manager_$write_committed_mark.           |
+
+  o    Perform any necessary post-commit  operations by calling the |
+       appropriate managers' post_commit entry points.              |
+
+  o    Call lock_manager_$unlock_all  to release all  locks held by |
+       the transaction.                                             |
+
+  o    Zero dm_data_$current_txn_id and dm_data_$current_txn_index. |
+
+  o    Zero the transaction info in the TDT entry.                  |
+
+  3.6.3  ABORT_TXN
+
+       The following steps are involved:
+
+  o    If  there  is no  current  or suspended  transaction, return |
+       dm_error_$no_current_transaction.                            |
+
+  o    If  the transaction  is suspended,  abort is  still allowed. |
+       Temporarily resume the transaction.                          |
+
+  o    If  the  state  is  not  "in-progress",  call  tm_cleanup to |
+       complete any unfinished operation.                           |
+
+  o    Call before_journal_manager_$flush_transaction  to flush the |
+       appropriate journals.                                        |
+
+  o    Call  before_journal_manager_$rollback  to   roll  back  the |
+       transaction.                                                 |
+
+  o    Call file_manager_$flush_modified_ci.                        |
+
+  o    Call before_journal_manager_$write_aborted_mark.             |
+
+  o    Perform  any  necessary post-commit  actions by  calling the |
+       appropriate managers' post_commit entry points.              |
+
+  o    Call lock_manager_$unlock_all  to unlock all  locks held for |
+       this transaction.                                            |
+
+  o    Zero dm_data_$current_txn_id and dm_data_$current_txn_index. |
+
+  o    Zero the transaction info in the TDT entry.                  |
+
+
+
+| 3.6.4  ROLLBACK_TXN
+
+|      This  entry point  rolls a  transaction back  to a specified
+| checkpoint,  currently always  the beginning  of the transaction.
+| It takes the following steps:
+
+| o    If  there  is no  current  or suspended  transaction, return
+|      dm_error_$no_current_transaction.
+
+| o    If the transaction is  suspended, rollback is still allowed.
+|      Temporarily resume the transaction.
+
+| o    If  the   caller  does  not  own   the  transaction,  return
+|      dm_error_$not_own_transaction.
+
+| o    If  the  state  is  not  "in-progress",  call  tm_cleanup to
+|      complete any unfinished operation.
+
+| o    Call before_journal_manager_$flush_transaction  to flush the
+|      journals.
+
+| o    Call before_journal_manager_$rollback.
+
+| o    Call file_manager_$flush_modified_ci.
+
+| o    Call before_journal_manager_$write_rolled_back_mark.
+
+| o    Call  lock_manager_$unlock_to_checkpoint with  the specified
+|      checkpoint number.
+
+| o    Set the transaction's state to "in-progress".
+
+| 3.6.5  SUSPEND_TXN
+
+|      This   entry  point   suspends  the   current  (in-progress)
+| transaction,  preventing it  from being  used for  protected file
+| operations until transaction_manager_$resume_txn  is called.  The
+| following steps are involved:
+
+| o    If    there    is    no    current    transaction,    return
+|      dm_error_$no_current_transaction.
+
+| o    Copy  dm_data_$current_txn_id  to dm_data_$suspended_txn_id,
+|      dm_data_$current_txn_index to dm_data_$suspended_txn_index.
+
+| o    Set      dm_data_$current_txn_id       to      "0"b      and
+|      dm_data_$current_txn_index   to   0,   so   that  subsequent
+|      operations cannot reference the current transaction.
+
+| o    Turn on the transaction's suspended_sw in the TDT.
+
+
+
+  3.6.6  RESUME_TXN                                                 |
+
+       This     entry     point    reverts     the     effect    of |
+  transaction_manager_$suspend_txn,    restoring     the    current |
+  transaction.  The following steps are involved:                   |
+
+  o    If   there   is  a   current  transaction   defined,  return |
+       dm_error_$transaction_in_progress.                           |
+
+  o    If    there    is   no    suspended    transaction,   return |
+       dm_error_$no_suspended_transaction.                          |
+
+  o    Copy  dm_data_$suspended_txn_id  to dm_data_$current_txn_id, |
+       dm_data_$suspended_txn_index to dm_data_$current_txn_index.  |
+
+  o    Set      dm_data_$suspended_txn_id      to      "0"b     and |
+       dm_data_$suspended_txn_index to 0.                           |
+
+  o    Turn off the transaction's suspended_sw in the TDT.          |
+
+  3.6.7  ADJUST_TXN
+
+       This entry  point is run only  in the Data_Management.Daemon
+  process.  When a Data  Management program discovers a transaction
+  belonging to a  dead process, it sends a wakeup  to the Daemon to
+  adjust the transaction.  The following steps are involved:        |
+
+  o    If the  process that owns  the transaction is  still active, |
+       return dm_error_$transaction_in_progress.                    |
+
+  o    Call  tm_adopt  to begin  executing on  behalf of  the owner |
+       process.                                                     |
+
+  o    Unless the transaction  is in an error state  or an abort or |
+       commit mark may already have  been written, set the state of |
+       the transaction to force abortion.                           |
+
+  o    Call  tm_cleanup  to  perform  the  abort  or  complete  the |
+       unfinished commit.                                           |
+
+  o    Call tm_abandon to reverse the effect of tm_adopt.           |
+
+  3.6.8  ADJUST_TDT                                                 |
+
+       Called  only  in  the  Data_Management.Daemon  process, this |
+  routine  adjusts each  transaction in the  TDT that  belongs to a |
+  dead process.                                                     |
+
+
+
+| 3.6.9  ADJUST_PROCESS_ID
+
+|      Called  only  in  the  Data_Management.Daemon  process, this
+| routine adjusts  all transactions (currently  only one) belonging
+| to  a  specified dead  process.   It is  called when  the process
+| terminates and also  when there is contention for  a lock held by
+| the process.
+
+| 3.6.10  PER_SYSTEM_INIT
+
+|      This entry point, called in the Initializer process, creates
+| and initializes the TDT.
+
+| 3.6.11  PER_PROCESS_INIT
+
+|      This entry point, called by each user process the first time
+| it references dm_data_, obtains a  TDT entry for exclusive use by
+| the  process  and initializes  the values  of various  entries in
+| dm_data_.  The following steps are involved:
+
+| o    Calculate  a  pointer  to  the  TDT  previously  created  by
+|      transaction_manager_$per_system_init.
+
+| o    If  there are  any TDT  entries reserved  by inactive (dead)
+|      processes, send  a wakeup to  the Daemon causing  it to call
+|      transaction_manager_$adjust_tdt.
+
+| o    Reserve  the  first  available  TDT  entry  by  writing  the
+|      process'  unique  identifier into  it.   Store the  index in
+|      dm_data_$my_tdt_index.      Observing      the     temporary
+|      implementation restriction of one  transaction at a time per
+|      process, all  operations in this  process will use  the same
+|      reserved TDT entry.
+
+| o    Zero   dm_data_$current_txn_id,  dm_data_$current_txn_index,
+|      dm_data_$suspended_txn_id, dm_data_$suspended_txn_index.
+
+| 3.6.12  RECOVER_AFTER_CRASH
+
+|      This  entry point  is called in  the Daemon  process after a
+| crash to  complete all transactions that  were interrupted by the
+| crash.   It   is  passed  two  data   structures  containing  the
+| information   needed  to   reconstruct  the   transactions.   The
+| following steps are involved:
+
+| o    Build a TDT from information passed in the input structures.
+
+| o    Turn on  the TDT's no_begins  switch, temporarily preventing
+|      any new transactions from beginning.
+
+
+
+  o    Call before_journal_manager_$rebuild_after_crash  to rebuild |
+       the bjm's TDT.                                               |
+
+  o    Abort all transactions in the  rebuilt TDT, on behalf of the |
+       owner processes.                                             |
+
+  o    Turn off the TDT's no_begins switch.                         |
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

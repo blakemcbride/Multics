@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : FIPS Disk Support.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  MULTICS TECHNICAL BULLETIN                             MTB-731-01
+
+  To:       MTB Distribution
+
+  From:     Rich Fawcett
+
+  Date:     03/26/86
+
+  Subject:  FIPS Disk Support
+
+  This MTB describes the plans  for supporting the FIPS disk drives
+  on  the  Multics  File  System.   The  FIPS  disk are MSU3380 and
+  MSU3390,  these are  IBM  devices  3380D and  3380E respectively.
+  This plan will  allow support of any large disk  with the correct
+  format and  PSIA hardware interface.  The  two problems addressed
+  are:  disk size too large for  volume map, and the performance of
+  the hardware read-alter-rewrite (RAR).  These problems are solved
+  by dividing  the large disk into "subvolumes"  and eliminating 64
+  word IO to these drives.
+
+  This  is the  first revision,   and reflects  the results  of the |
+  proto-type  code testing.   Also  minor  problems were  found and |
+  corrected.  This revision has change bars to indicate the changes |
+  from the original MTB.                                            |
+
+  Comments on this  MTB should be placed in  the Disk_Support forum
+  on System M:
+
+      &gt;udd&gt;m&gt;mtgs&gt;Disk_Support (disks) or  directed by Multics mail
+  to:
+
+      System M:  Fawcett.Multics
+
+  or by phone to:
+
+      Rich Fawcett
+      HVN:  249-6777
+      DDD:  602-249-6777
+
+  _________________________________________________________________
+
+  Multics  Project  internal  working  documentation.   Not  to  be
+  reproduced or distributed outside the Multics Project.
+
+
+  MTB-731-01                                     FIPS Disk Support
+
+                               CONTENTS
+
+                                                           Page
+
+      Introduction  . . . . . . . . . . . . . . . . . . .   1
+         Problems . . . . . . . . . . . . . . . . . . . .   1
+         Solutions  . . . . . . . . . . . . . . . . . . .   2
+      Seek_512 Implementation . . . . . . . . . . . . . .   3
+|     Subvolume Implementation  . . . . . . . . . . . . .   4
+|        Naming convention  . . . . . . . . . . . . . . .   5
+         Configuration cards and device types . . . . . .   6
+      IOI and RCP . . . . . . . . . . . . . . . . . . . .   7
+      Volume Reloader and Rdisk_  . . . . . . . . . . . .   7
+      Prototype software results  . . . . . . . . . . . .   9
+      Detail software changes . . . . . . . . . . . . . .   10
+         New include file . . . . . . . . . . . . . . . .   10
+|        Include file changes . . . . . . . . . . . . . .   10
+|        Hardcore code changes  . . . . . . . . . . . . .   12
+|           bound_bce_dump_ . . . . . . . . . . . . . . .   12
+|           bound_bce_paged . . . . . . . . . . . . . . .   12
+            bound_bce_wired . . . . . . . . . . . . . . .   12
+            bound_bootload_0  . . . . . . . . . . . . . .   13
+|           bound_bce_probe_  . . . . . . . . . . . . . .   13
+|           bound_disk_util_1 . . . . . . . . . . . . . .   13
+|           bound_disk_util_2 . . . . . . . . . . . . . .   13
+|           bound_hc_backup . . . . . . . . . . . . . . .   14
+            bound_library_1_  . . . . . . . . . . . . . .   14
+            bound_mdxhdx_ . . . . . . . . . . . . . . . .   14
+            bound_multics_bce_  . . . . . . . . . . . . .   14
+            bound_page_control  . . . . . . . . . . . . .   15
+            bound_rcp_  . . . . . . . . . . . . . . . . .   15
+            bound_salvager  . . . . . . . . . . . . . . .   15
+            bound_scavenger . . . . . . . . . . . . . . .   15
+            bound_segment_control . . . . . . . . . . . .   16
+            bound_temp_1  . . . . . . . . . . . . . . . .   16
+            bound_temp_2  . . . . . . . . . . . . . . . .   17
+            bound_volume_rldr_ut_ . . . . . . . . . . . .   17
+            bound_volume_reloader_  . . . . . . . . . . .   17
+            bound_vtoc_man  . . . . . . . . . . . . . . .   18
+|        Tools code changes . . . . . . . . . . . . . . .   18
+            bound_admin_rtnes_  . . . . . . . . . . . . .   18
+            bound_hc_display_ . . . . . . . . . . . . . .   18
+            bound_io_tools_ . . . . . . . . . . . . . . .   18
+|           bound_meter_util_ . . . . . . . . . . . . . .   18
+
+
+  FIPS Disk Support                                      MTB-731-01
+
+                           CONTENTS (cont)
+
+                                                           Page
+
+            bound_metering_cmds_  . . . . . . . . . . . .   19      |
+            bound_priv_ss_  . . . . . . . . . . . . . . .   19
+
+
+  FIPS Disk Support                                      MTB-731-01
+
+  INTRODUCTION
+
+  When the dipper (IMU) support  effort started it was assumed that
+  it would be a  simple task to use a device number  0 for the FIPS
+  devices.  This turned  out to be true.  It was  also assumed that
+  the  3380A model drive  would be the  device to support  and some
+  time in the  distant future a 3390 model would  be announced.  It
+  was assumed that the size of the 3380A would not be a big problem
+  and it would  be some time before the 3390  was announced.  These
+  last two assumptions  turned out to be false.   IBM has announced
+  3380D and  3380E models.  The  size problem is  larger than first
+  considered.  Also, a performance problem was discovered.
+
+  First a view of the new disks.   One IBM 3380D cabinet is made up
+  of  two   physical  rotating  spindles,  each   spindle  has  two
+  independent actuator  arms.  Each arm  has its own  device number
+  and surface area.  The surface  area for recording is not shared.
+  For the rest of  this MTB a device will be referred  to as one of
+  the independent  arms.  Each cylinder  has 15 recording  heads or
+  tracks.  The  device can appear  to the software  to be formatted
+  with 64  word sectors or 512  word sectors.  Due to  the required
+  size of sector gaps the 64 word format has 50% less capacity than
+  the 512  word format, therefore the  64 word format is  not being
+  considered for Multics.   With the 512 word format  there are 255
+  sectors per cylinder (127 usable  records).  Each device (arm) of
+  a  3380  accesses  885  cylinders  (112395  usable records), Each
+  device  (arm) of  a 3390  accesses 1770  cylinders (224790 usable
+  records).
+
+  Problems
+
+  The current implementation of the  Multics disk modules treat all
+  devices  as having  a 64  word format.   As is  the case with the
+  MSU501  drive,  the  hardware  will  perform a read-alter-rewrite
+  (RAR) cycle to insert 64 or 192 words of a VTOC into the 512 word
+  sector.  The FIPS  channel performs the RAR for  IBM devices, for
+  MSU501s this is done by the controller.  The hardware will accept
+  two types of seek commands,  seek_64 and seek_512.  If the device
+  is  formatted  with  512  word  sectors  and  the seek command is
+  seek_64  the RAR  function is   done when  needed (less  than 512
+  words).  This  will be the case  with every VTOC write.   The RAR
+  cycle reads  the 512 word sector  into a buffer, inserts  the new
+  data and  rewrites the sector back  to the disk.  This  of course
+  cannot be done on one revolution  of the spindle, it will take at
+  least two.  If the VTOC spans two sectors, as does the third VTOC
+  in  a  record,  this  must  be  done  twice  and  could go over 4
+  revolutions.   The RAR  function is  not needed  for page writes.
+  The channel  time measured by  disk_meters for this  cycle on the
+  IBM  drives is  much greater   than for  the MSU501  drives.  The
+  longer channel time for  read-alter-rewrites (RAR) of VTOCS alone
+  is not a major problem, however this has an undesirable effect on
+
+
+  MTB-731-01                                     FIPS Disk Support
+
+  the paging IO.  While the channel  is busy with the RAR all other
+  IO is  held up, this increases  the channel time for  page reads,
+  and decreases total system performance.
+
+  The second  problem is that  the storage system  defines the free
+  and used records  of a disk volume by use of  the volume map, one
+  bit per  record.  The volume map  is 3 pages -  64 words in size,
+  only 32 bits of each word are used.  Each bit defines a record as
+  being  used or free,  96256 paging records  can be defined.   The
+  file  map array elements  that define the  record numbers on  the
+  disk volume  for a segment are  18 bits in length,  with the high
+  order bit indicating a null page address.  These two entities are
+  too small  to define a 3380E  and the volume map  will not define
+  the entire 3380D.
+
+  Solutions
+
+  The solution to the performance problem will be to replace the 64
+  word  IO with  512 word  IO, thus  eliminating the  need for  the
+  hardware read-alter-rewrite.   To implement the 512  word IO only
+  one 192  word VTOC will be  stored per one 512  word sector.  The
+  seek command for  these devices is seek_512 and the  DCW tally is
+  192.   This requires making  the disk dim  and vtoc manager  more
+  device dependent.  It  also requires software read-alter-rewrites
+  when less than all of the VTOC is to be written.
+
+  The  volume map  and file  map size  problem can  be resolved  by
+  increasing  the  size  of  the  data  bases  used.   That  is, by
+  rewriting  the  entire  file  system  to  understand these larger
+  sizes.  It then  is a matter of converting labels  on 451s, 500s,
+  and 501s at  each site and reloading the data.   If a larger disk
+  needs to  be supported, we  can do it  all again.  This  is not a
+  small task, and would take many man years to implement.
+
+  This same problem could be  solved by using the hardware function
+  that  divides the  3380D arm   into two  devices.  The  device is
+  divided such that the first half  of the cylinders are for device
+  0 and the next  half is for device 32.  If the  seek is issued to
+  device 32 the channel adds to the seek address.  However there is
+  no upper bound protection for seeks  to device 0.  There would be
+  no hope for seek optimization or user security.  The 3380E may be
+  divided into  four devices but as  yet this support has  not been
+  defined.
+
+  The  most reasonable  solution is  to have  the Multics  software
+  divide  this  large  disk  into  subvolumes.   The  disk  will be
+  subdivided  into smaller  parts called  physical subvolumes, each
+  subvolume  would have a  label and VTOC  area and logically  look
+  much like the physical volume.  In the past a physical volume has
+  defined an entire physical  device.  With this implementation the
+  old definition is device dependent.  If  the device is a 451 then
+
+
+  FIPS Disk Support                                      MTB-731-01
+
+  the physical  volume defines the entire physical  device.  If the
+  device is  subdivided then a physical volume  defines a subvolume
+  of the  physical device.  The subvolumes would  be interleaved by
+  cylinder.  The  subvolume logical addresses are  converted to the
+  real device  addresses and placed  in the queue  per device.  The
+  seek optimization for a device would work the same as for the 451
+  drives with no need to keep track of a "buddy" device as with the
+  501 drives.
+
+  This implementation will  not take many man years.   It should be
+  viewed  as a better  choice than changing  the world, and  may be
+  expanded  in the  future.  Prototype  software that  includes the
+  seek_512 and subvolumes has been tested.
+
+  SEEK_512 IMPLEMENTATION
+
+  There  are two basic  considerations to use  512 word IO  for the
+  3380 drives.  The first is the seek command used by disk_control,
+  dctl  and rdisk_.  The  second is the  conversions of record  and
+  sector offset to a real device seek address, and the calculations
+  of VTOC and  page record numbers.  The disk_dim  uses a hardcoded
+  16  (sixteen sectors  per record)   to convert  devadd to  sector
+  number.  This changes  to look at the device type,  and use 16 or
+  2.
+
+  The  programs that  calculate VTOC  IO record  and sector numbers
+  will   change.   The   512  word    IO  will   not  do   hardware
+  read-alter-rewrites.  Therefore  on this type of  device a sector
+  will  contain only one  VTOCE, starting at  the beginning of  the
+  sector for 192 valid words.  The  DCW tally of 192 will take care
+  of the extra words, both reading and writing.  These calculations
+  are currently made by referencing  two constants in the disk_pack
+  include file, SECTORS_PER_VTOCE and VTOCES_PER_RECORD.  These two
+  constants change to array constants  indexed by device type.  The
+  elements  of these  arrays contain   the correct  value for  that
+  device.   There are  a few  programs that  use hardcoded numbers.
+  For      these     programs       a     new      include     file
+  fs_dev_types_sector.incl.pl1 has  been created.  There  are other
+  programs that  use hardcoded numbers and  also uses fs_dev_types,
+  therefore the new include file  is included in fs_dev_types as an
+  include statement.
+
+  There are times when the  Multics storage system writes less than
+  all  three parts  of a  VTOCE.  This  will cause  a software  RAR
+  controlled  by  vtoc_man.   This   involves  a  small  change  in
+  philosophy  as well  as the   calculation of  the correct  record
+  number and sector offset.  Vtoc_man must look for a write of less
+  than a complete  VTOCE to a FIPS device.  When  this condition is
+  true a check is  made to see if the VTOCE is  in the vtoc buffer,
+  if not  it is read.   The parts to  be written are  copied to the
+  VTOCE in  the buffer and then  the VTOC is written.   This RAR is
+
+
+  MTB-731-01                                     FIPS Disk Support
+
+| metered by vtoc_buffer_meters.
+
+| SUBVOLUME IMPLEMENTATION
+
+  The   disk  is  logically   subdivided  into  smaller   parts  or
+  subvolumes.   Each  subvolume  has  a  label  and  VTOC  area and
+  logically  look  much  like  a  physical  volume.   The  physical
+  subdivision  of the  device will  a fixed  number of  interleaved
+  cylinders,  as opposed  to dividing   the device  into groups  of
+  contiguous cylinders.  The term interleaved cylinders implies:
+
+     o 3380D  will be  divided into  two subvolumes,  A and B.
+       The A subvolume  will use cylinders 0, 2, 4,  6, and so
+       on.  While the B subvolume  will use cylinders 1, 3, 5,
+       7, and so on.
+
+     o 3380E will be divided into  three subvolumes, A, B, and
+       C.  The A subvolume will use  cylinders 0, 3, 6, 9, and
+       so  on.  B will  be 1, 4,  7,...  and C  will be 2,  5,
+       8,...
+
+  The number of  cylinders per subvolume will be  determined by the
+  device type.
+
+  This will cause the seek distance  of a non-full drive to be less
+  than they would  be for the contiguous cylinder  concept.  On the
+  3380D the last  cylinder will not be usable,  wasting 127 records
+  or .11% of  the total.  The entire 3380E will  be usable.  If the
+  3380D was  divided into thirds it  would all be usable,  but each
+  subvolume  would be  smaller that  a 451.   Such small subvolumes
+  would  not be   large enough  for use  as an   RPV drive  and are
+  therefore not considered.
+
+  The  system treats these  subvolumes in much  the same way  as it
+  treats a physical volume.  A  subvolume is a physical volume that
+  resides on a device that has been subdivided.  The primary change
+  is to  the PVTE.  When  the PVTE is  built by init_pvt  for these
+  subdivided devices, there will be a PVTE made for each subvolume.
+  The  PVTE will  contain the  primary device  index (pdi),  a flag
+  indicating  that this defines  a device divided  into subvolumes,
+  this  subvolume's  number,  the  number  of  subvolumes  for this
+  device,  and a record_factor  to be used  in the conversion  from
+  logical seek address to real seek address.  If the PVTE defines a
+  device that is not divided  into subvolumes the subvolume flag is
+  reset, the number of subvolumes is zero and only one PVTE will be
+  generated.
+
+  At the  point that disk_init  gets invoked for  this device, only
+  the PVTE  for the first subvolume  will be passed.  This  will be
+  the  PVTX stored in  disk_data.  This allows  other parts of  the
+  system  to convert   a path  name to  a PVTX   and a  VTOCX.  The
+
+
+  FIPS Disk Support                                      MTB-731-01
+
+  difference is  when the disk dim  is called the PVTX  will be for
+  the  subvolume, and  the device   address is  a relative  address
+  rather than  a real one.  It  is the job of  dctl to convert this
+  relative device address to a real device sector address using the
+  data in the PVTE.  The algorithm, stated in pl1 expressions, is:
+
+      record_offset = mod (devadd, pvte.records_per_cyl);
+      devadd = ((devadd - record_offset) * pvte.num_of_svs) +
+                pvte.record_factor + record_offset;
+
+  This  is done  with 7  alm instructions  in dctl.   With the real
+  devadd (record  number), the real  seek address is  calculated as
+  before.  Using the  real device number and seek  address the seek
+  optimization,  device  metering,  and  io-queuing  are unchanged.
+  This will not degrade the system any more than if all the bit map
+  changes were made and the same  amount of data were stored on one
+  very large physical device.                                       |
+
+  The device is metered as one entity, however disk_meters displays |
+  the volume info for each of  the physical volumes that are on the |
+  device.   No meters  are reported   or kept  on each  subvolume's |
+  activity.                                                         |
+
+  Naming convention                                                 |
+
+  Until these changes, a physical  volume could be related directly
+  to a physical device even though they are two different entities.
+  The subvolume implementation allows  multiple physical volumes on
+  one physical device.  There is no restriction that these physical
+  volumes be for  the same logical volume, or related  in any other
+  way.  When physical disk space  is assigned for a logical entity,
+  physical volumes or partitions, the correct subvolume of the disk
+  must be indicated.  This is  done by appending the subvolume name
+  to the disk drive name.  For 3380D the valid subvolume names are:
+  a and b; for 3380Es they are:  a, b and c.
+
+      subsys_name||_||device_number{subvol_name}
+
+  Examples:
+
+      The  second subvolume  of 3380D  device number  3 in disk
+      subsystem a is dska_03b.
+
+      The  third subvolume  of 3380E  device number  00 in disk
+      subsystem b is dskb_00c.
+
+  For  devices supported  before these  changes, or  future devices
+  that are not divided into subvolumes, the subvol_name must not be
+  given.  Programs that parse the  device number and subsystem also
+  check for the  need of a subvolume name and  the validity of that
+  name.  Most of  these programs are part of  the volume management
+
+
+  MTB-731-01                                     FIPS Disk Support
+
+  subsystem.  There are  declarations in fs_dev_types.incl.pl1 that
+  define  the number  of subvolumes  per device  type (number_of_sv
+  array), and the valid names for subvolumes, (valid_sv_name array,
+  valid_sv_string).  The device type can be found in the disk_table
+  (dte) or in physical_volume_table_entry (pvte), the full name can
+  be found in the dte.
+
+  The init_vol command looks like this
+
+      init_vol pub04 dska_03a
+
+  The add_volume command looks like this
+
+      add_volume pub04 dska_03a
+
+  Configuration cards and device types
+
+  The  two  IBM  drive  models  are  3380D  and  3380E.  Before IBM
+  announced the 3380E it was rumored that the model would be called
+  a 3390.  The model field on the disk peripheral card is a numeric
+  field as it  is on the tape peripheral card.   Many programs look
+  at  these cards  in the   same way.   The alpha  character causes
+  problems,  so the  3380D model  number is  3380 and  the 3380E is
+  3390.  These  match the Honeywell designation of  MSU3380 and MSU
+  3390.  Then it follows that device  type names are d338 and d339.
+  These device types are compatible with d451 and d501.
+
+  The peripheral cards are:
+
+      prph dska a 20.  4 3380.  8.
+      prph dskb a 16.  4 3390.  8.
+
+  Now that some device numbers may  have an alpha character in them
+  the definition of the drive number on the part and root cards has
+  changed from numeric to string.  This has an impact on the config
+  deck and is an incompatible change.
+
+  Example:
+
+      part dump dskb 3c
+      part log dskc 1
+      root dska 0a dskb 3c dskc 1
+
+  In  the  above  example  disk  subsystem  "a"  has  3380D drives,
+  subsystem "b" has 3380E drives and subsystem "c" has 451 drives.
+
+  This implementation of subvolumes also impacts BCE.  The response
+  to find_rpv_substem_ at boot time is:
+
+|     [cold | rpv] a16 ipc [3380 | 3390] 0{a b c}
+
+
+  FIPS Disk Support                                      MTB-731-01
+
+  A new module, disk_name_pvtx, can  be used by hardcore modules to |
+  parse  the disk_name  and obtain  the PVT  index for  this device |
+  name.                                                             |
+
+  IOI AND RCP
+
+  The user  IO interface to these  FIPS devices will be  similar to
+  the MSU501 device,  and will still have the  similar problem that
+  is  encountered with the  MSU501.  The problem  on MSU501 is  the
+  device that the  user requests has a "buddy"  device.  This buddy
+  device usage must  also be set for IO, if not  the file system IO
+  will conflict with the user IO.  With the IBM devices there is no
+  hardware  protection  of  subvolumes  boundaries.   When  a  user
+  requests an  IBM drive RCP will  attach the entire device  to the
+  user as is done with any  other disk device.  This requires there
+  be no mounted physical volumes  on the requested device.  RCP and
+  IOI  data bases  will only  know about  the device  as a complete
+  entity.
+
+  The  exception to  this rule  is device  authentication.  If  the
+  device  is divided  into subvolumes  it may  contain up  to three
+  physical volumes.  There is no  restriction that all the physical
+  volumes be part of the same  logical volume.  They may have never
+  been  registered nor  initialized by  the init_vol  command.  The
+  authentication requirements  of the subvolume labels  on a device
+  may not  be the same.  The  procedure rcp_disk_ must try  to read
+  all the labels on the device.   The number of labels can be found
+  by device type.   The authentication of the device  must be based
+  on what  type of labels were  found.  That is, if  any one of the
+  labels read  indicated a system  storage pack then  "ss" would be
+  the required  authentication code.  There  will be a  priority to
+  the  authentication,  SS  first,   Unregistered  next,  then  IO,
+  followed  by  Unreadable.   This  priority  is  enforced  by  the
+  procedure rcp_disk_.
+
+  Other  alternatives  were  considered  unacceptable.   One is IOI
+  checking  the users  DCW list  to verify  that the  addresses are
+  correct  and then  make the  logical conversion.   The difficulty
+  lies  in chasing  the transfer  DCWS and  in the  user ability to
+  modify the  list after the IO  is started.  This still  would not
+  eliminate the  conflict with the file system  IO.  Another method
+  would be to rewrite IOI to interface with the disk dims to do the
+  IO.  This would be a major  undertaking, increase the size of the
+  ring_0 code, and would place  major restrictions on what the user
+  may do.  The end result would be less than cost effective for the
+  amount of user IO done to disk.
+
+
+  MTB-731-01                                     FIPS Disk Support
+
+  VOLUME RELOADER AND RDISK_
+
+  Volume  reloading is  probably the  largest use  of "user  IO" to
+  disk.  The same types of IO are done as for the file system, page
+  and VTOC  reads and writes.   The volume reloader  data bases are
+  related to physical volumes.  The device interface module used is
+  rdisk_.  The module rdisk_ attaches the entire device by calls to
+  RCP  and  issues  IO  through  IOI.   With  the  introduction  of
+  subvolumes, a physical volume no longer defines an entire device,
+  but  rather  a  portion  of  the  device.   This new relationship
+  between physical  volumes and devices require  address conversion
+  best performed by  rdisk_.  The change for the  seek command will
+  also be placed in rdisk_.
+
+  The   volume   reloader   uses   the   undocumented   opening  of
+  stream_input_output.   Volume  reloader   calculates  the  sector
+  address and then converts to  character position for the position
+  call,  the  volume  reloader  must  know  that  the  device to be
+  reloaded is an  IBM device.  The calculations must  be made based
+  on  the values  defined by   the include  files fs_dev_types  and
+  disk_pack.  This will allow the 512 word seeks to work correctly.
+
+  With more devices having  non-removable media, the desired device
+  must be  assigned before the  physical volume is  reloaded.  With
+  the addition  of subvolumes, the correct portion  of the assigned
+  device  must be  indicated.  There  is an  undocumented option in
+  rdisk_  that  allows  the  selection  of  a  device.  This is the
+  -device attachment argument, the format is:  -device device_name.
+  The device_name may include the subvolume, which will trigger the
+  subvolume  address  conversion  function  within  rdisk_.  If the
+  subvolume  name  is  not  given  then  the  entire  device can be
+  accessed.   In either  case the  entire device  will be attached.
+  The -device attachment argument will be documented.
+
+  The volume reloader can reload more that one physical volume at a
+  time.  In the  case where two of the physical  volumes are on the
+  same device, rdisk_ will keep track of the devices and subvolumes
+  attached.   Rdisk_ will  maintain a  perprocess table  of devices
+  attached.  This table will contain the device name and IO control
+  block pointer for the attachment.   Rdisk_ will attach the device
+  via RCP, if the device is not  found in the table, and detach via
+  RCP when it  is the only device found.   This multiple attachment
+  will only  be allowed for  subvolumes.  It will  be considered an
+  error  if the  device is  attached without  a subvolume  name and
+  another is requested with a subvolume name.
+
+  These changes make the volume reloader more device dependent than
+  it has previously  been.  This requires not only  the "pvname" be
+  specified  by the  user but  also the  device name  that is to be
+  reloaded.   This will  change the  user interface  to the  volume
+  reloader.  A new argument to volume reloader will be added.  This
+
+
+  FIPS Disk Support                                      MTB-731-01
+
+  will be  -pvname_device (-pvdv) whose  parameters will be  a list
+  ordered pairs, first the pvname and then the device name.
+
+  Example:
+      -pvdv pub01 dska_17c pub02 dskb_00a
+
+  As with  most other changes  there is always  another design that
+  may work.   Because the Volume  Reloader only issues  file system
+  type IO, a ring_0 interface to the disk dim could be built.  This
+  would  require  the  expansion  of  ring_0,  another  wired space
+  manager, additional gates to verify, and more.  This expansion of
+  ring_0 makes this alternative undesirable.
+
+  PROTOTYPE SOFTWARE RESULTS
+
+  The prototype software  was written for the 512  word seek change
+  first.  The base software was the dipper modified MR11 code using
+  the 3380s without subvolumes at  85% capacity.  This software was
+  debugged  and tested  on system  MD running  an all  root system.
+  Tests were  run using a subset  of MHAT to load  the system and a
+  modified disk_meters to measure the  impact of the change.  These
+  tests  showed  a  decrease  in  the  average  page read and write
+  channel time  of about 15% from  test runs using 64  word IO.  It
+  was observed that the average  channel time for the hardware VTOC
+  read-alter-rewrite was 5% longer than the sum of the average VTOC
+  write and VTOC read with the  new software.  However it does cost
+  in cpu time to do the one extra IO.
+
+  The  second step  was to  change the  512 word  IO system  to use
+  subvolumes.  Tests were run on  an all root system.  These tested
+  verified that the scavenger, sweep_pv  and salvager all worked as
+  well as the MHAT subset.
+
+  The  next step was  to build a  three logical volume  system that
+  included  451 drives.  The  3380s contained two  logical volumes.
+  The root  logical volume was placed  on all the B  subvolumes and
+  the A subvolumes  made up the logical volume IBM1.   The four 451
+  drives made  up the DSU logical volume.   Master directories were
+  created  on  each  one  of  the  logical  volumes.   These  three
+  directories  were at  the project  level, and  were identical  in
+  content (a subset of MHAT).  The  MHAT tests were run to show the
+  functionality of the subvolume concept.
+
+  Comprehensive tests  were run to  compare the performance  of the |
+  "dipper software" to the subvolume software.  The dipper software |
+  issues  64 word  IO and  does  not  divide the  IBM devices  into |
+  subvolumes.  The standard measurement scripts  were run on an all |
+  root MSU3380 system with and without subvolumes.  These test were |
+  run on the same physical  devices.  While there was no difference |
+  in  elapsed  time  the  disk  meters  showed  the  difference  in |
+  performance.                                                      |
+
+
+  MTB-731-01                                     FIPS Disk Support
+
+| The average seek  distance for the subvolume set  was 30% greater
+| than  the non-subvolume  set.  However  the channel  time for the
+| subvolume set was  4% less than the non-subvolume  set.  This set
+| of scripts favored the non-subvolume set, due to a low percentage
+| of vtoc writes, less that 3%.
+
+| The functions of the salvager, scavenger, and sweep_pv where also
+| tested  and showed  that they  performed correctly.   During this
+| test it was noticed that init_scavenger data made calculations on
+| the  largest device  size in  fs_dev_types.  This  was changed to
+| look at the pvt to find the largest configured device.
+
+| The IOI and RCP functions were  tested by using the volume dumper
+| and  volume reloader.   This showed  that rcp_disk_  was a better
+| place  to enforce  the authentication   of a  device rather  than
+| rcp_authenticate_device_.
+
+  DETAIL SOFTWARE CHANGES
+
+  Multics  Design Document changes  and functional testing  will be
+  planned in the future.
+
+  New include file
+
+  fs_dev_types_sector
+     Add  the per  device array   constants for  the new  sector
+     related data.   This will be  used by programs  that do not
+     use disk_pack.incl.pl1 and fs_dev_types.
+
+| Include file changes
+
+  config_deck_cards
+     This changes the -drive field  from OCTAL to STRING for the
+     root and part cards.  This  will allow the subvolume on the
+     end of the device name.
+
+  config_part_card
+     Changes the drive field to char (4) from fixed bin.
+
+  config_root_card
+     Changes the drive field to char (4) from fixed bin.
+
+  disk_pack
+     Change     the      constants     SECTORS_PER_VTOCE     and
+     VTOCES_PER_RECORD to device dependent array constants.
+
+
+  FIPS Disk Support                                      MTB-731-01
+
+  disk_table
+     Add to the dte the same things as the pvte (See pvte below)
+     except for the record  information.  The drive_name will be
+     8 characters long for a drive that has subvolumes.
+
+  fs_dev_types
+   o Add the values for the  3380D (device_type 8) and the 3380E
+     (device_type 9) to the current arrays.
+   o Add    new    arrays    rec_per_sv,    number_of_sv,    and
+     valid_sv_array.
+   o Include fs_dev_types_sector.
+
+  fs_vol_label
+     Add  data to  the label  indicating that  this volume  is a
+     subvolume  and which  subvolume it  is, as  well as  of the
+     number of subvolumes on this device.  This information will
+     be used mainly for displaying the label.
+
+  get_vol_list                                                      |
+     Add  the subvolume  information for  the physical  volumes.    |
+     This info is displayed by disk_meters.                         |
+
+  pvte
+   o Add  is_sv, a  bit to   indicate that  this pvte  defines a
+     subvolume of a device.
+   o Add sv_num, indicating what  subvolume this.  The value may
+     be 0 or 1 for a 3380D, and 0 to 2 for a 3380E.
+   o Add number_of_sv, the number  of subvolumes for the device.
+     If the  device is a 3380D it  will be 2 and for  a 3380E it
+     will be 3.
+   o Add  record_per_cyl, used in  the conversion of  logical to
+     real device addresses.
+   o Add  record_factor, a  factor used  to convert  the logical
+     record  number for  this  subvolume  to real  device record
+     number and is calculated by rec_per_cyl * sv_num.
+   o Add  sv_name,  the  alpha   character  for  this  subvolume
+     appended to the device name for use in error messages.
+
+  vtoc_buffer
+
+
+  MTB-731-01                                     FIPS Disk Support
+
+|    Add the meter for the read-alter-rewrite.
+
+| Hardcore code changes
+
+| error_table_
+|    Add :
+|       auth_incorrect "Incorrect authentication code."
+|       auth_unknown "Unknown authentication code."
+|       subvol_needed "Subvolume needed for this type device."
+|       subvol_invalid "Subvolume is invalid for this device."
+
+| BOUND_BCE_DUMP_
+
+| bce_create_sstnt
+|    Change to  use the pvte  device type for  indexing into the
+|    VTOCES_PER_RECORD array for  calculation of vtoc_record_num
+|    and vtoc_offset.
+
+| bce_dump
+|    Changes      to      support       the      calling      of
+|    find_partition$given_drive.
+
+| BOUND_BCE_PAGED
+
+  bce_appending_simulation
+     Change   to  check   the  record   number  for   subvolumes
+|    (rec_per_sv) instead of device (rec_per_dev).
+
+| bce_display_disk_label
+|    Change  to  display  the  label  correctly  for drives with
+|    subvolumes.  Also call disk_name_pvtx to find the pvtx from
+|    the disk name.
+
+| bce_test_disk_.pl1
+|    Change  to  find  the  pvtx  for  the  disk name by calling
+|    disk_name_pvtx
+
+  BOUND_BCE_WIRED
+
+  bootload_disk_io
+     Change to use the  new include file fs_dev_types_sector and
+     the pvte device type to calculate the number of sectors.
+
+
+  FIPS Disk Support                                      MTB-731-01
+
+  BOUND_BOOTLOAD_0
+
+  bootload_info (sys_boot_info)
+     Change to indicate that the RPV  is on a subvolume and what
+     subvolume it is on.                                            |
+
+  BOUND_BCE_PROBE_                                                  |
+
+  bce_probe                                                         |
+     Change  to  find  the  pvtx  for  the  disk name by calling    |
+     disk_name_pvtx.                                                |
+
+  BOUND_DISK_UTIL_1                                                 |
+
+  bound_disk_util_.bind                                             |
+     Add disk_name_pvtx                                             |
+
+  disk_name_pvtx                                                    |
+     This  is a new  routine that will  parse the disk  name and    |
+     return the pvtx index.  It  knows about subvolumes and will    |
+     return the new error codes.                                    |
+
+  find_partition
+     Change  to  uses  the  new  part  card.   The  entry  point
+     given_drive changes the drive number  from a fixed bin to a
+     char   (4),  allowing    subvolume  support.    Also  calls    |
+     disk_name_pvtx to find the pvtx for the disk name.             |
+
+  BOUND_DISK_UTIL_2                                                 |
+
+  accept_fs_disk
+     Change to  print the correct device name  with subvolume in
+     messages.                                                      |
+
+  demount_pv                                                        |
+     Changed to display the subvolume name.                         |
+
+
+  MTB-731-01                                     FIPS Disk Support
+
+| BOUND_HC_BACKUP
+
+| hc_dmpr_primitives
+|    Change  to  read  the  correct  number  of  vtocs per page,
+|    depending on the device type.
+
+  BOUND_LIBRARY_1_
+
+  cv_config_card_
+     Change to special case the  conversion of the root and part
+     cards for the new format.
+
+  fill_vol_extents_
+     The  calculations of  the number  of pages  and vtoces will
+     change to use  the per device values.  A  new argument must
+     be  added to  the  entry  fill_vol_extents_ for  the device
+     type.
+
+  init_vol_header_
+     Change to  add the device  type argument used  in vtoc_size
+     calculations.
+
+  BOUND_MDXHDX_
+
+  disk_table_
+     This  program  will  need   minor  changes  to  handle  the
+     subvolume entries correctly.
+
+  disk_rebuild_caller, init_disk_pack_
+     Change    the    calling     of    fill_vol_extents_    and
+     init_vol_header_ to  include the device type  obtained from
+     the disk_table or pvte.  This program will correctly set up
+     the new label.
+
+  mdx
+     Change to fill in the new information into the dte from the
+     pvte.
+
+  BOUND_MULTICS_BCE_
+
+  display_disk_label_
+     Change  to  display  the  label  correctly  for drives with
+     subvolumes.
+
+
+  FIPS Disk Support                                      MTB-731-01
+
+  BOUND_PAGE_CONTROL
+
+  dctl, disk_control
+     These programs use the record number and sector offset into
+     the record.  The record number passed to them is considered
+     a  subvolume  record  number  or  logical  devadd.  This is
+     converted  to  a  real  devadd  or  record  number  by  the
+     algorithm.  The  sector address is calculated  depending on
+     the seek type found in the channel table of disk_seg.
+
+  page_error
+     Change to  print the subvolume  name along with  the device
+     number.
+
+  BOUND_RCP_
+
+  rcp_authenticate_device_
+     Changed to check that  the correct authentication was given
+     for  the  disk  device.   If  not  the  new  error codes of
+     auth_incorrect or auth_unknown may be returned.
+
+  rcp_disk_
+     Change the seek command to be based on the device type.  If
+     the device has subvolumes, all the labels must be read.
+
+  BOUND_SALVAGER
+
+  disk_rebuild
+     Change  to  use  the  pvte  device  type  to index into the
+     VTOCES_PER_RECORD array to calculate n_vtoce.
+
+  salvage_pv
+     Change to display the subvolume name.
+
+  vm_vio
+     Change use the the device type from the pvte to index to to
+     the  new arrays  in fs_dev_types  to calculate  the correct
+     vtoc address.
+
+  BOUND_SCAVENGER
+
+  scavenger
+     Change to print the device  name including the subvolume if
+     required.
+
+
+  MTB-731-01                                     FIPS Disk Support
+
+  BOUND_SEGMENT_CONTROL
+
+  activate, alm_syserr_caller
+     Changes  in  the  module  are  to  print  the  device  name
+     including the subvolume if required.
+
+  BOUND_TEMP_1
+
+  create_rpv_partition
+     Change need to use the pvte to find the device type for the
+     calculations for VTOCES_PER_RECORD.
+
+  disk_init
+     Change to set chantab.scdcw.command  in disk_seg to seek_64
+     or  seek_512,  depending  on  the  device  type the channel
+     supports.  This is extracted from fs_dev_types seek_command
+     (device_type).
+
+  find_rpv_subsystem
+     Change to handle an RPV on a subvolume.
+
+  get_io_segs
+     Change  to use  the disk  device type  when setting  up the
+     various  hardcore data  base segment  sizes for  subvolumes
+     support.
+
+  init_early_config
+     Change to support the new style root and part cards.
+
+  init_empty_root
+     Change    the    calling     of    fill_vol_extents_    and
+     init_vol_header_ to pass the the device type taken from the
+     pvte.
+
+  init_partitions
+     Change  to use  the new  format of  the part  card for  the
+     support of subvolumes.
+
+  init_pvt
+     Change to fill  in the new values for  subvolume support in
+     the  pvte.   If  the  pvte  is  for  a device that contains
+     subvolumes, page$init is call only for the primary pvte.
+
+  init_root_vols
+     Change to support root physical volumes on subvolumes.
+
+  init_toehold
+     seek_512 depending on  the RPV device type.  If  the RPV is
+     on  a device divided  into subvolumes the  correct cylinder
+
+
+  FIPS Disk Support                                      MTB-731-01
+
+     addresses  for the RPV  are calculated.  This  is extracted
+     from fs_dev_types seek_command (device_type).
+
+  BOUND_TEMP_2
+
+  accept_rpv
+     Changes to print the device name including the subvolume if
+     required.
+
+  init_scavenger_data
+     Change  to  calculate  the   number  of  records  based  on
+     rec_per_sv instead of rec_per_dev.   This also changes form
+     the max size in fs_dev_types to the max size for the device
+     configured.
+
+  BOUND_VOLUME_RLDR_UT_
+
+  rdisk_
+     Change to  issue 512_word seeks  to 3380 nad  3390 devices,
+     and allow multiple attachments for subvolumes.
+
+  BOUND_VOLUME_RELOADER_
+
+  reloader
+     Change to uses the sector values in fs_dev_types_sector.
+
+  rldr_arg_reader_
+     Change to parse the  new argument -pvname_device, and place
+     the information in rldr_data_.
+
+  rldr_output_
+     Change to use the new  values in fs_dev_types and disk_pack
+     to calculate the sector addresses.
+
+  rldr_vtoc_header_
+     Change to use the new  values in fs_dev_types and disk_pack
+     to calculate the sector addresses.
+
+  rldr_label_
+     Change to use the new  values in fs_dev_types and disk_pack
+     to calculate the sector addresses.
+
+  rldr_volume_map_
+     Change to use the new  values in fs_dev_types and disk_pack
+     to calculate the sector addresses.
+
+
+  MTB-731-01                                     FIPS Disk Support
+
+  BOUND_VTOC_MAN
+
+  vtoc_man
+     Change involves a small philosophical difference as well as
+     the  calculation of  the correct  record number  and sector
+     offset.  A  software RAR must  be performed when  writing a
+     partial vtocs to a 3380 or 3390 device.  When this is found
+     a check should be made to see  if the vtoce is in a buffer,
+     if not then it must be  read.  The parts to be written will
+|    be copied to the vtoce in the buffer and written.
+
+| Tools code changes
+
+  BOUND_ADMIN_RTNES_
+
+  authenticate_device
+     Change   to   handle   the   two   new   error  codes  from
+     rcp_authenticate_device_.
+
+  BOUND_HC_DISPLAY_
+
+  display_disk_label
+     Change  to  display  the  label  correctly  for drives with
+     subvolumes.
+
+  BOUND_IO_TOOLS_
+
+  exercise_disk
+|    Change to issue 512 word seeks for subvolume devices.
+
+| BOUND_METER_UTIL_
+
+| get_vol_list_
+|    Change to obtain the  subvolume information from disk_table
+|    for display by disk_meters.
+
+
+  FIPS Disk Support                                      MTB-731-01
+
+  BOUND_METERING_CMDS_                                              |
+
+  disk_meters                                                       |
+     Change  to  display  the  volume  information  for  all the    |
+     physical   volumes  on   devices  that   are  divided  into    |
+     subvolumes.                                                    |
+
+  vtoc_buffer_meters
+     Change to print the software read-alter-rewrite meter.
+
+  BOUND_PRIV_SS_
+
+  record_to_vtocx
+     Change  to  use  the  new  values  in  fs_dev_types for the
+     sectors per record instead of the value 16.
+
+  vtocx_to_record
+     Change to  use the new  values in fs_dev_types  and the new
+     arrays in disk_pack.incl.pl1.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

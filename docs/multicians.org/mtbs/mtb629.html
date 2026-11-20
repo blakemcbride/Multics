@@ -1,0 +1,1562 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-629</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-629: A new argument processing technique for commands and requests..">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                            MTB-629
+Processing Arguments.
+
+To:       Distribution
+
+From:     Lindsey Leroy Spratt
+
+Date:     07/21/83
+
+Subject:  A new argument processing technique for commands and requests.
+
+1 ABSTRACT
+
+     Process_arguments_ provides  a method for  centralizing user
+interaction  with  respect to  arguments, application  of default
+arguments,   and  basic   argument  "parsing",   validation,  and
+command-line  completion.  A  major goal  of this  proposal is to
+enhance  the  existing command  environment while  minimizing the
+effect on the implementation of existing commands.
+
+     This  MTB presents  a system  for (pre-)processing arguments
+for commands and subsystem requests.  The central utility of this
+system  is  the  process_arguments_ subroutine.   The  command or
+request   calls   process_arguments_.    Process_arguments_  uses
+argument  processing  control information,  default  arguments if
+defined, an  argument list if  present, and interaction  with the
+user if  appropriate, to generate  its output.  The  output is an
+array of instances of options which is guaranteed to conform with
+the argument processing control information's syntax constraints.
+The  command or  request extracts  option values  from the output
+"result" array, applying the  information as appropriate to carry
+out its task.
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+MTB-629                            Multics Technical Bulletin
+                                            Processing Arguments.
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Spratt.Multics on either MIT Multics or System M.
+
+via US Mail:
+   Lindsey Spratt
+   Honeywell Information Systems, inc.
+   575 Tech Square
+   Cambridge, Massachusetts 02139
+
+via telephone:
+   (HVN) 261-9321, or
+   (617) 492-9321
+
+
+
+                            CONTENTS
+
+                                                         Page
+
+                 1 Abstract . . . . . . . . . . . . . .     i
+                 2 Introduction . . . . . . . . . . . .     1
+                 3 The sources of arguments to be
+                  processed.  . . . . . . . . . . . . .     2
+                    3.1 The argument list.  . . . . . .     2
+                    3.2 Interaction with the user.  . .     2
+                    3.3 Default arguments.  . . . . . .     3
+                 4 The processed arguments, the output
+                  of process_arguments_.  . . . . . . .     3
+                    4.1 The basic model for the meaning
+                     of arguments.  . . . . . . . . . .     3
+                       4.1.1 Options  . . . . . . . . .     4
+                       4.1.2 Arguments  . . . . . . . .     4
+                          4.1.2.1 Grouping  . . . . . .     4
+                          4.1.2.2 Names . . . . . . . .     4
+                    4.2 Instances . . . . . . . . . . .     5
+                       4.2.1 Groups . . . . . . . . . .     5
+                       4.2.2 Options  . . . . . . . . .     5
+                          4.2.2.1 Explicit  . . . . . .     5
+                          4.2.2.2 Implicit  . . . . . .     5
+                    4.3 The result print_vector_array.      5
+                       4.3.1 Example result
+                        print_vector_array. . . . . . .     5
+                          4.3.1.1 Example 1 . . . . . .     6
+                          4.3.1.2 Example 2 . . . . . .     6
+                          4.3.1.3 Example 3 . . . . . .     6
+                       4.3.2 Dimensions present in each
+                        print_vector of the result
+                        print_vector_array. . . . . . .     6
+                       4.3.3 Dimensions whose presence
+                        depends on the argument syntax.     7
+                 5 Controlling process_arguments_.  . .     7
+                    5.1 An example control
+                     print_vector_array.  . . . . . . .     7
+                    5.2 The definition of the syntax of
+                     arguments. . . . . . . . . . . . .     8
+                       5.2.1 Initial implied option.  .     8
+                       5.2.2 Required options.  . . . .     8
+                       5.2.3 Multiply-named options.  .     9
+                       5.2.4 The next implied option. .     9
+                       5.2.5 The initial argument.  . .     9
+
+
+
+                         CONTENTS (cont)
+
+                                                         Page
+
+                       5.2.6 Argument groups. . . . . .     9
+                       5.2.7 Required arguments.  . . .     9
+                    5.3 Explanations  . . . . . . . . .    10
+                    5.4 Sources of the argument
+                     processing control information.  .    10
+                       5.4.1 Caller-provided. . . . . .    10
+                       5.4.2 From a search list of
+                        databases.  . . . . . . . . . .    10
+                 cvapd  . . . . . . . . . . . . . . . .    11
+                    process_arguments_  . . . . . . . .    15
+                       $argument_array  . . . . . . . .    16
+                       $argument_list . . . . . . . . .    18
+                       $argument_string . . . . . . . .    20
+                       $cv_result_to_linear_form  . . .    22
+                       $get_default_linear_form . . . .    23
+                       $get_definition  . . . . . . . .    24
+                       $get_option_value  . . . . . . .    25
+                       The option_value_list structure.    26
+                       $get_reference_name  . . . . . .    27
+                    vector_util_  . . . . . . . . . . .    28
+                       The print_vector_array
+                        structure.  . . . . . . . . . .    28
+                       The print_vector structure.  . .    29
+
+Multics Technical Bulletin                            MTB-629
+Processing Arguments.
+
+2 INTRODUCTION
+
+     The process_arguments_  proposal addresses several  needs of
+the  Multics  command  environment.   These needs  fall  into two
+categories:  better services for the users of commands; and, easy
+development of the command environment for developers.
+
+     The  better services  provided by  process_arguments_ are of
+two  groups:   adaptable  modes  of  interaction  with  the user,
+according  to  the   user's  needs;  and,  hierarchically-defined
+defaults  for  each  command  and subsystem  request,  edited and
+reviewed in an easily comprehended fasion.
+
+     The basic  mode of interaction is  to use arguments provided
+on  a command  line, stopping  with the  first error encountered.
+The first  level of refinement  for getting information  from the
+user is for process_arguments_ to  be prepared to prompt the user
+for any required  data which was not given  in the argument list.
+The second level of refinement is to provide a menu of all of the
+defined options,  with defaults.  The user  chooses any number of
+options from the menu, providing data for the options selected as
+appropriate.   Process_arguments_ can  also be used  by the video
+system's line editor to "complete" the user's input line.
+
+     In each of these modes of interaction it is possible for the
+user to  get explanations of  what an option means,  or what data
+the option uses, at any point  in the process of interacting with
+process_arguments_.
+
+     The  arguments  as strung  together  on a  command  line are
+called the linear form of  input.  Settable defaults for commands
+and subsystem requests are implmented by linear forms which are a
+preface to the arguments provided  by the user for any invocation
+of  the  command  or  request  in  question.   The  arguments are
+processed as though the user had typed in the default linear form
+before the  arguments she actually provided.   This definition of
+defaults  has  the  advantage  of  being  both  simple  and  very
+expressive (although  not amenable to all  approaches which might
+be  taken  to using  defaults, by  any means).   The hierarchical
+definition of defaults allows for a system to define defaults for
+everyone,  which can  be selectively overridden  by projects (for
+instance),  which,  in  turn,  can  be  overridden  by  the user.
+Various   other  hierarchies   can  be   defined  by  appropriate
+manipulation of a search list.
+
+    The development of the  command environment with the features
+mentioned above is made possible by having all initial processing
+of arguments done by a single routine, process_arguments_.  It is
+the  only  program  needed  to  understand  the  techniques  for:
+prompting, using menus (for argument input), finding and applying
+
+
+MTB-629                            Multics Technical Bulletin
+                                            Processing Arguments.
+
+argument   defaults,   providing   specific   explanations  about
+arguments  and  their  meanings,  and  implementing  the argument
+syntax  (including  some  argument  validation).   This  makes it
+possible to have extensive interface capabilities for command and
+subsystem  requests with  little development  effort expended per
+command or request.
+
+3 THE SOURCES OF ARGUMENTS TO BE PROCESSED.
+
+     There  are  three  ways  a  user  can  provide  arguments to
+process_arguments_, on a command or  request line, in response to
+a  request  for input  by process_arguments_  (which is  either a
+prompt or a menu), and by defining default arguments.
+
+3.1 The argument list.
+
+     The pointer to the argument list specified on the command or
+request line is gotten by the caller of process_arguments_ (since
+it  is   the  caller's  argument  list,   in  general,  which  is
+interesting).    Further,   the   caller   of  process_arguments_
+identifies  which  arguments  in  the  argument  list  are  to be
+processed by process_arguments_.
+
+     This  approach  to using  argument  lists makes  it  easy to
+implement  a  command  for  setting  default  arguments  for  all
+commands and  requests.  The command, set_defaults,  takes as its
+argument a  command line consisting  of one command  name and the
+arguments it is to assume by default (for instance, "set_defaults
+list  -no_header  -records").   The  set_defaults  command  calls
+process_arguments_ with  the user-provided command  name ("list")
+and  has   process_arguments_  start  processing   at  the  first
+"default" argument ("-no_header").  Set_defaults takes the result
+array  from process_arguments_  and stores  it in  a database for
+future reference by process_arguments_.
+
+     The  input linear  form can be  passed to process_arguments_
+not  only in  the form  of a  standard Multics  argument list (as
+described  above),  but also  as  an array  of  varying character
+strings  (the   form  in  which  iox_$attach   passes  an  attach
+description)  or  as a  single character  string (exactly  as the
+input linear form would appear in a command line).
+
+3.2 Interaction with the user.
+
+     The interaction with the user  is of three kinds, prompting,
+menus  of  options,  and  command-line  completion.   The command
+completion  interaction is  invoked by  the video  system's input
+
+
+Multics Technical Bulletin                            MTB-629
+Processing Arguments.
+
+line editor to help the user build a command line.  The prompting
+which  is done  by default  is for  required arguments  which are
+absent  in  the default  arguments  and the  argument  list.  The
+control  information  for  a  command or  request  may explicitly
+identify options for which process_arguments_ is to prompt.
+
+3.3 Default arguments.
+
+     There are two kinds of default arguments:
+
+1 - a list  of arguments to processed  before processing any user
+    input (a "default linear form"); and,
+2 - values  to  be provided  to  options which  must  have values
+    associated  with  them,  but   none  were  specified  in  the
+    invocation of the command.
+
+The default list of arguments  is found by searching databases in
+a search list of  databases (named "process_arguments" and "pa").
+If  more  than  one  database  has  defaults,  the  defaults  are
+concatenated  together  to  make  a  single  default  linear form
+string.   The default  linear form from  a database  lower in the
+search  list goes  further to the  left in  this combined default
+linear form,  to take advantage  of the fact that  when there are
+conflicting  options  the  option  further  to  the  right  takes
+precedence.  Hence,  the options in  a default linear  form found
+"higher" in the search list  takes precedence over the options in
+one found "lower" in the search list.
+
+     The default  values for options  (as opposed to  the default
+linear  form  specification  of  options and  option  values) are
+provided in the control definition of the command.  These default
+values can be applied when doing command-line completion.
+
+4 THE PROCESSED ARGUMENTS, THE OUTPUT OF PROCESS_ARGUMENTS_.
+
+     The primary output of process_arguments_ is a data structure
+which contains all of the input arguments (from any or all of the
+sources  mentioned above)  in a  canonical form.   This canonical
+form  is  a print_vector_array,  containing  print_vectors.  Each
+print_vector identifies an "option", present either explicitly or
+implicitly in  the input arguments,  and a single  instance of an
+argument "group" for that option.
+
+4.1 The basic model for the meaning of arguments.
+
+     The  basic model  for command  or request  arguments has two
+pieces, the "option" and the "argument group".
+
+
+MTB-629                            Multics Technical Bulletin
+                                            Processing Arguments.
+
+4.1.1 OPTIONS
+
+     Options  are identified  in an  argument list  by an "option
+reference name", a character string starting with a "-" (hyphen).
+Any  number of  option reference names  can be defined  to name a
+particular option, but an option reference name must name exactly
+one   option.    In   Example  1   below,   -source_pathname  and
+-target_pathname are option names for two different options.
+
+4.1.2 ARGUMENTS
+
+     Arguments  are  of  two  types, option  reference  names and
+option  values.  Option  reference names only  appear in argument
+lists  and are  used only  to identify  an option.   Option value
+arguments are values associated with  an option.  An option value
+is associated with exactly one group, which in turn is associated
+with exactly one option.  Any  instance of an argument which does
+not start with a "-" (hyphen), is an instance of an option value.
+For the  instance of the argument  to be valid, there  must be an
+instance  of  an option  with  which it  can be  associated.  The
+option instance may be either explicit or implicit.  In Example 1
+below,  the  arguments "foo"  and  "bar" are  option  values with
+implicit    option    instances     of    -source_pathname    and
+-target_pathname, respectively.
+
+4.1.2.1 Grouping
+
+     An option  may be defined  to have any  number of arguments.
+In  the  case where  an  option is  defined  to take  exactly one
+argument instance, this argument instance is given a type and the
+extent of  the "argument group"  for the option  is one argument.
+If  an option  takes several argument  instances, but  all of the
+same type,  then it, too,  has an "argument  group" consisting of
+one argument,  with the difference that  several instances of the
+argument group may  occur within one instance of  the option.  An
+option which  takes argument instances which  must occur in pairs
+has  two arguments  in its  argument group.   In this  fashion an
+argument group may define triplets of arguments, quadruplets, or,
+generally, n-tuplets.  In Example 1  below, there is one instance
+of the -source_pathname option and one instance of its "pathname"
+option value, which has a value of "foo".
+
+4.1.2.2 Names
+
+     Each  option value  has a  name which  is unique  within its
+argument group.
+
+
+Multics Technical Bulletin                            MTB-629
+Processing Arguments.
+
+4.2 Instances
+
+     The type of an option value  is fully identified by the name
+of the option with which its argument group is associated and the
+name of the argument within  its argument group.  The instance of
+an option  value is a value  of the type specified  by the option
+value.
+
+4.2.1 GROUPS
+
+     An instance  of an argument  group consists of  no more than
+one instance of each of the arguments of the group.
+
+4.2.2 OPTIONS
+
+     An instance of  an option consists of the  option name and a
+number  of  instances  of  argument  groups  consistent  with the
+definition of the option.
+
+4.2.2.1 Explicit
+
+     An  instance  of  an  option which  is  named  by  an option
+reference name in an argument list is an "explicit" instance.
+
+4.2.2.2 Implicit
+
+     An option which is syntactically determined to be present in
+an argument list (in order to  interpret an argument group) is an
+"implicit" instance.
+
+4.3 The result print_vector_array.
+
+     The   result   is  a   print_vector_array  as   declared  in
+print_vector_array.incl.pl1.   Vector  arrays (and  data vectors)
+are  discussed   in  MTB-541,  "Toward  a   unification  of  data
+manipulation on Multics."  The  documentation of them is included
+at the end of this MTB.
+
+4.3.1 EXAMPLE RESULT PRINT_VECTOR_ARRAY.
+
+     Following is a display of the print_vector_array returned by
+process_arguments_ for  the example command  lines provided.  The
+definition used for the copy command  is only for the purposes of
+the example.
+
+
+MTB-629                            Multics Technical Bulletin
+                                            Processing Arguments.
+
+4.3.1.1 Example 1
+
+Command line: copy foo bar
+
+Result array:
+
+ command name order    option name   option instance pathname
+ copy         1     -source_pathname 1               foo
+              2     -target_pathname 1               bar
+
+4.3.1.2 Example 2
+
+Command line: copy foo1 bar1 foo2 bar2
+
+Result array:
+
+ command name order    option name   option instance pathname
+ copy         1     -source_pathname 1               foo1
+              2     -target_pathname 1               bar1
+              3     -source_pathname 2               foo2
+              4     -target_pathname 2               bar2
+
+4.3.1.3 Example 3
+
+Command line: copy foo bar -names
+
+Result array:
+
+ command name order    option name   option instance pathname
+ copy         1     -source_pathname 1               foo
+              2     -target_pathname 1               bar
+              3     -names           1               --------
+(1)
+
+4.3.2 DIMENSIONS PRESENT IN EACH PRINT_VECTOR OF THE RESULT
+PRINT_VECTOR_ARRAY.
+
+     There are  four dimensions present in  every print_vector of
+the result  print_vector_array, "order", "command  name", "option
+instance",  and  "option  name".   The order  number  is  used to
+preserve the  input ordering of the  arguments.  The command name
+identifies the command for which the argument was processed.  The
+_________________________________________________________________
+
+(1) The  line  of  hyphens  for  the  pathname  dimension  of the
+    print_vector  for  the  -names   option  indicates  that  the
+    pathname dimension is not present in the print_vector.
+
+
+Multics Technical Bulletin                            MTB-629
+Processing Arguments.
+
+option name identifies the option  with which the print_vector is
+associated.
+
+4.3.3 DIMENSIONS WHOSE PRESENCE DEPENDS ON THE ARGUMENT SYNTAX.
+
+     An argument group instance is presented in a print_vector by
+having a dimension  for each member of the  group, with the value
+of  the  dimension  being  the value  of  that  argument  in that
+instance of the argument group.
+
+5 CONTROLLING PROCESS_ARGUMENTS_.
+
+     The    information    to    control    the    behavior    of
+process_arguments_  is  placed  in   a  print_vector_array  of  a
+particular  format.   The  control  print_vector_array  contains,
+among  other things,  information specifying  the argument syntax
+for a command, explanations about the syntax (for printing at the
+request  of  a  user),  and  prompt  strings  (to  be  used  when
+prompting).
+
+5.1 An example control print_vector_array.
+
+     The  source  language  for  the  control  information  for a
+simplified  copy command  is displayed below.   The definition of
+the  source language  is provided in  a later  section.  The same
+information is  displayed in a format  which maintains an obvious
+correlation to print_vectors later in the MTB.
+
+Program_name:  copy;
+Initial implied option:  source_pathname;
+
+Option:  source_pathname;
+         First argument:  pathname;
+         Next implied option:  target_pathname;
+         Presence:  required;
+         Option name:  -source_pathname, -scpn;
+         Unexclude: source_pathname; /* Options exclude themselves
+                                        by default. */
+
+    Argument:  pathname;
+         Next argument:  NONE;
+         Explanation:  "This is the pathname of a file to be copied.";
+         Presence:  required;
+         Validate: "exists file &amp;1";
+
+
+MTB-629                            Multics Technical Bulletin
+                                            Processing Arguments.
+
+Option:  target_pathname;
+         First argument:  pathname;
+         Next implied option:  source_pathname;
+         Option name:  -target_pathname, -tgtpn;
+         Unexclude: target_pathname;
+
+    Argument:  pathname;
+         Next argument:  NONE;
+         Explanation:  "This is the pathname of the new file into which the
+         source file is copied.";
+         Presence:  required;
+
+Option:  names;
+         Explanation:  "Indicates all of the entry names on the source file are
+         to be added to the target file.";
+         Option name:  -names, -nm, -name;
+         Antonym: -no_names, -nnm, -no_name;
+
+    Argument:  flag;
+         Default_value: true;
+         Antonym_value: false;
+
+End;
+
+5.2 The definition of the syntax of arguments.
+
+     There are  several aspects of command  argument syntax which
+can be specified in the control information.
+
+5.2.1 INITIAL IMPLIED OPTION.
+
+     The initial  implied option is used  when the first argument
+in an argument list is not  an option reference name (i.e., it is
+an option  value).  The initial  implied option is  the option to
+which  it  belongs.  For  the copy  command, the  initial implied
+option is -source_pathname.  If the  user types "copy foo", "foo"
+is   an   option   value   which   implicitly   belongs   to  the
+-source_pathname option.
+
+5.2.2 REQUIRED OPTIONS.
+
+     Any number of  instances of an option may  be required.  The
+"presence" value present in the example control information above
+indicates  the  number of  required  instances.  In  the example,
+there must  be (at least) one  occurrence of the -source_pathname
+option.
+
+
+Multics Technical Bulletin                            MTB-629
+Processing Arguments.
+
+5.2.3 MULTIPLY-NAMED OPTIONS.
+
+     An  option  may have  any number  of option  reference names
+(i.e.,   reference   names)   associated   with   it.    For  the
+-target_pathname   option,    it   has   the    reference   names
+-target_pathname and -tgtpn.  For the -names option there are the
+option reference names -names, -name, and -nm.
+
+5.2.4 THE NEXT IMPLIED OPTION.
+
+     When  an  option definition  is  being used  (in  parsing an
+argument  list) because  it was determined  to be  implied by the
+syntax,  the  next option  which  will be  used, when  the syntax
+indicates an implied option, is determined by the current implied
+option's  specification  of a  next implied  option.  Intervening
+uses of explicit options do not affect the choice of option under
+"implication".  For the example copy  command, after picking up a
+source_pathname,  the next  "unaccompanied" option  value will be
+assumed to belong to an implicit instance of the -target_pathname
+option, even if an instance of  the -name option should happen to
+intervene.  For  the two command  lines "copy foo  bar" and "copy
+foo -names bar", bar would be interpreted identically in both, as
+an instance  of the option value  for an implied -target_pathname
+option.
+
+5.2.5 THE INITIAL ARGUMENT.
+
+     The  first   option  value  for  an   option  is  explicitly
+identified in the control information  for that option.  If there
+is no argument  group for an option, then  no initial argument is
+specified.   For the  example copy  command, the -source_pathname
+option has an initial option value named "pathname".
+
+5.2.6 ARGUMENT GROUPS.
+
+     Argument   groups   are  specified   by   chaining  argument
+specifications  together.  The  "next argument"  may identify any
+other  option   value  of  the  option   (including  one  already
+identified), or it  may indicate that there is  no next argument.
+By  specifying  an already  chained  argument, one  establishes a
+loop.  The  argument group will  be cycled through  until another
+option is explicitly supplied (when parsing an argument list).
+
+
+MTB-629                            Multics Technical Bulletin
+                                            Processing Arguments.
+
+5.2.7 REQUIRED ARGUMENTS.
+
+     The  number of  required instances  of an  option value, per
+instance of the associated option, is indicated by the "presence"
+value.   For  the  example  copy  command,  one  instance  of the
+pathname   argument  is   required  for  each   instance  of  the
+-source_pathname option.
+
+5.3 Explanations
+
+     Explanations can be associated  with both options and option
+values.  These explanations are available on demand from the user
+by entering a "?"  (question mark) at appropriate times.
+
+     For  the   example  copy  command,  "copy   ?"   prints  the
+explanation  of  the  command  (including,  perhaps,  a  list  of
+options),  and  the explanation  of  the initial  implied option;
+"copy &lt;option  name&gt; ?"  prints explanation  for the named option
+and the explanation of the  initial argument for that option, or,
+if  there is  no initial argument,  the explanation  for the next
+implied  option; "copy  &lt;option name&gt;  &lt;argument&gt; ?"   prints the
+explanation for  the next argument, if  one is defined, otherwise
+the next implied option is explained.
+
+5.4 Sources of the argument processing control information.
+
+     The  control  print_vector_array  can  be  provided  to  the
+process_arguments_ subroutine in two ways.
+
+5.4.1 CALLER-PROVIDED.
+
+     The caller of process_arguments_ may  provide a pointer to a
+print_vector_array which contains the control information.
+
+5.4.2 FROM A SEARCH LIST OF DATABASES.
+
+     If  no  control  information  is  provided  by  the  caller,
+process_arguments_  will  search  through  the  process_arguments
+search  list  of databases  for  a print_vector_array  of control
+information for the command.
+
+_____                                                       _____
+
+cvapd                                                       cvapd
+_____                                                       _____
+
+Name:  cvapd
+
+SYNTAX AS A COMMAND:
+
+   cvapd {-source} path {{-target} path} {-control_arg}
+
+FUNCTION:  This command takes a source segment and translates the
+information specified  by that source into  a print vector array.
+The  resulting  print  vector  array  is  stored  into  a  vector
+database.  The vector database resides in a file specified by the
+user.  The  information in the  source file must  be specified in
+the language whose grammar is described below.
+
+The  source segment  contains information  about the  syntax of a
+specific command.   The print_vector_array that is  the result of
+using  cvapd   on  a  source   segment  is  later   used  by  the
+process_arguments_  subroutine   to  process  the   command  line
+arguments of that command.
+
+CONTROL ARGUMENTS:
+
+-source path
+   is the pathname (relative or  absolute) of the source segment.
+   The source segment name must  have the "cvapd" suffix although
+   the suffix need not be specified in the command line.
+
+-target path
+   is  the pathname  of the  vector database  where the resultant
+   print vector  array is stored.   The target segment  name must
+   have the "vd" suffix although the suffix need not be specified
+   in the command line.
+
+-replace, -rp
+   causes  the new  command syntax  definition (specified  in the
+   source file)  to replace the definition  already in the target
+   vector database.   If the command definition  does not already
+   exist  in the  target database,  the new  definition is simply
+   added.
+
+NOTES:
+
+If the target path is not specified, then print vector array will
+be stored in  a segment in the user's  working directory.  If the
+target segment does not exist, it will be created.  If it must be
+
+_____                                                       _____
+
+cvapd                                                       cvapd
+_____                                                       _____
+
+created, it will be given the name of the source segment with the
+"cvapd" suffix replaced by "vd".   It will also be initialized as
+a vector data base.  If the target segment exists it must already
+be a vector database.
+
+LANGUAGE DEFINITION
+
+The cvapd source language is specified by the following grammar.
+
+   /~********** Overall language structure **********~/
+
+      &lt;source&gt; := &lt;initial definition&gt;
+                  {&lt;option definition list&gt;}
+                  &lt;end statement&gt;
+
+      &lt;initial definition&gt; := &lt;program name statement&gt;
+                              {&lt;initial statement list&gt;}
+
+      &lt;initial statement list&gt; := {&lt;explanation statement&gt;}
+                                  {&lt;default linear form statement&gt;}
+                                  {&lt;initial implied option statement&gt;}
+
+      &lt;option definition list&gt; := &lt;option definition&gt;
+                                  {&lt;option definition list&gt;}
+
+      &lt;option definition&gt; := &lt;option statement&gt;
+                             {&lt;per option statement list&gt;}
+                             {&lt;argument definition list&gt;}
+
+      &lt;per option statement list&gt; := {&lt;option reference name statement&gt;}
+                                     {&lt;linked option statement&gt;}
+                                     {&lt;first argument statement&gt;}
+                                     {&lt;antonym reference name statement&gt;}
+                                     {&lt;explanation statement&gt;}
+                                     {&lt;exclude statement&gt;}
+                                     {&lt;unexclude statement&gt;}
+                                     {&lt;presence statement&gt;}
+                                     {&lt;next implied option statement&gt;}
+
+      &lt;argument definition list&gt; := &lt;argument definition&gt;
+                                    {&lt;argument definition list&gt;}
+
+      &lt;argument definition&gt; := &lt;argument statement&gt;
+                              {&lt;per argument statement list&gt;}
+
+      &lt;per argument statement list&gt; := {&lt;validate statement&gt;}
+                                       {&lt;default value statement&gt;}
+                                       {&lt;antonym value statement&gt;}
+
+_____                                                       _____
+
+cvapd                                                       cvapd
+_____                                                       _____
+
+                                       {&lt;presence statement&gt;}
+                                       {&lt;next argument statement&gt;}
+                                       {&lt;explanation statement&gt;}
+
+   /~********** Statements **********~/
+
+      &lt;program name statement&gt; := Program_name: &lt;program name&gt;;
+
+      &lt;option statement&gt; := Option: &lt;option name&gt;;
+
+      &lt;linked option statement&gt; := Linked_option: &lt;option name&gt;;
+
+      &lt;initial implied option statement&gt;
+                                  := Initial_implied_option: &lt;option name&gt;;
+
+      &lt;next implied option statement&gt; := Next_implied_option: &lt;option name&gt;;
+
+      &lt;exclude statement&gt; := Exclude: &lt;option name list&gt;;
+
+      &lt;unexclude statement&gt; := Unexclude: &lt;option name list&gt;;
+
+      &lt;antonym reference name statement&gt;
+                                  := Antonym: &lt;option reference name list&gt;;
+
+      &lt;option reference name statement&gt;
+                                  := Option_name: &lt;option reference name list&gt;;
+
+      &lt;argument statement&gt; := Argument: &lt;argument name&gt;;
+
+      &lt;first argument statement&gt; := First_argument: &lt;argument name&gt;;
+
+      &lt;next argument statement&gt; := Next_argument: &lt;argument name&gt;;
+
+      &lt;default linear form statement&gt; := Default_linear_form: &lt;linear form&gt;; |
+                                         Default_linear_form: &lt;active string&gt;;
+
+      &lt;explanation statement&gt; := Explanation: &lt;string&gt;;
+
+      &lt;validate statement&gt; := Validate: &lt;active string&gt;;
+
+      &lt;default value statement&gt; := Default_value: &lt;active string&gt;;
+
+      &lt;antonym value statement&gt; := Antonym_value: &lt;active string&gt;;
+
+      &lt;presence statement&gt; := Presence: &lt;presence value&gt;;
+
+   /~********** Substatement structures **********~/
+
+_____                                                       _____
+
+cvapd                                                       cvapd
+_____                                                       _____
+
+      &lt;program name&gt; := &lt;identifier&gt;
+
+      &lt;linear form&gt; := &lt;string&gt;
+
+                       This is used to form a string of default arguments
+                       to be used by the program being described.
+
+      &lt;option name&gt; := &lt;identifier&gt;
+
+      &lt;option name list&gt; := &lt;option name&gt;
+                            {, &lt;option name list&gt;}
+
+      &lt;option reference name&gt; := &lt;identifier&gt;
+
+      &lt;option reference name list&gt; := &lt;option reference name&gt;
+                                      {, &lt;option reference name list&gt;}
+
+      &lt;argument name&gt; := &lt;identifier&gt;
+
+      &lt;active string&gt; := &lt;string&gt;
+
+                         This can be a Multics active function.
+                         If it is, it should be a legal active function.
+
+      &lt;presence value&gt; := &lt;integer&gt; |
+                          required |
+                          literal_required |
+                          optional
+
+NOTES:
+
+Whitespace,   quotes,   ",",    ";",   ":",   comment-open,   and
+comment-close  characters are  special.  Also,  the source  to be
+translated is free format.
+
+__________________                             __________________
+
+process_arguments_                             process_arguments_
+__________________                             __________________
+
+Name:  process_arguments_
+
+     This  module provides  several services  relating to getting
+input  for a  command or  subsystem request.   Primarily, it gets
+input according  to a argument_processing_definition  and formats
+this input into a "result print_vector_array", to which a pointer
+is provided to the caller.
+
+__________________                             __________________
+
+process_arguments_                             process_arguments_
+__________________                             __________________
+
+Entry:  process_arguments_$argument_array
+
+          This  entry  processes  the  arguments  in  a character
+varying  array  (as  produced   by  iox_$attach,  for  instance),
+producing a result print_vector_array.
+
+Usage
+
+     dcl process_arguments_$argument_array entry (char (*), fixed
+          bin, (*) char (*) varying, ptr, ptr, ptr, fixed bin
+          (35));
+
+     call process_arguments_$argument_array (command_name,
+          arg_processing_mode, arg_array, definition_pva_ptr,
+          area_ptr, result_pva_ptr, code);
+
+where:
+
+       command_name                 (Input)
+            is  the  name  of  the command  on  whose  behalf the
+            arguments are being processed.
+
+       arg_processing_mode          (Input)
+            is  the  mode  in  which  the  arguments  are  to  be
+            processed.   The modes  are declared  as constants in
+            pa_proc_constants.incl.pl1.   The  caller  can choose
+            between:
+               DEFAULT_PROC_MODE  - process_arguments_  selects a
+                 processing mode depending  on the user's process
+                 state.
+               PROMPT_PROC_MODE - prompt the user for information
+                 needed but not present in the provided input.
+               MENU_PROC_MODE  -  use a  menu  to get  the user's
+                 selection  of  options and  arguments  for those
+                 options.
+            (This argument is currently ignored.)
+
+       arg_array                    (Input)
+            is an array of arguments to be processed.
+
+       definition_pva_ptr           (Input)
+            is a pointer  to a definition_print_vector_array.  If
+            this  pointer  is  null,  then  the process_arguments
+            search list  is used to  locate a definition  for the
+            specified command.
+
+       area_ptr                     (Input)
+            is a pointer to an area in which the result_pva is to
+
+__________________                             __________________
+
+process_arguments_                             process_arguments_
+__________________                             __________________
+
+            be allocated.  This area must be a freeing area.
+
+       result_pva_ptr               (Output)
+            is a pointer to  the result print_vector_array, which
+            is the final product of the argument processing.
+
+       code                         (Output)
+            is a standard system error code.
+
+__________________                             __________________
+
+process_arguments_                             process_arguments_
+__________________                             __________________
+
+Entry:  process_arguments_$argument_list
+
+          This entry processes the  arguments in an argument_list
+(as produced by the  command_processor_, for instance), producing
+a result print_vector_array.
+
+Usage
+
+     dcl process_arguments_$argument_list entry (char (*), fixed
+          bin, ptr, fixed bin, ptr, ptr, ptr, fixed bin (35));
+
+     call process_arguments_$argument_list (command_name,
+          arg_processing_mode, arg_list_ptr, first_arg_idx,
+          definition_pva_ptr, area_ptr, result_pva_ptr, code);
+
+where:
+
+       command_name                 (Input)
+            is  the  name  of  the command  on  whose  behalf the
+            arguments are being processed.
+
+       arg_processing_mode          (Input)
+            is  the  mode  in  which  the  arguments  are  to  be
+            processed.   The modes  are declared  as constants in
+            pa_proc_constants.incl.pl1.   The  caller  can choose
+            between:
+               DEFAULT_PROC_MODE  - process_arguments_  selects a
+                 processing mode depending  on the user's process
+                 state.
+               PROMPT_PROC_MODE - prompt the user for information
+                 needed but not present in the provided input.
+               MENU_PROC_MODE  -  use a  menu  to get  the user's
+                 selection  of  options and  arguments  for those
+                 options.
+            (This argument is currently ignored.)
+
+       arg_list_ptr                 (Input)
+            is  a pointer  to a  standard argument_list structure
+            (with descriptors), as declared in arg_list.incl.pl1.
+            cu_$arg_list_ptr  can be  used to get  the pointer to
+            the arg_list of a command.
+
+       first_arg_idx                (Input)
+            is  the index  into the  arg_list of  the argument at
+            which   processing  is   to  begin.    All  arguments
+            preceeding     first_arg_idx    are     ignored    by
+            process_arguments_.
+
+__________________                             __________________
+
+process_arguments_                             process_arguments_
+__________________                             __________________
+
+       definition_pva_ptr           (Input)
+            is a pointer  to a definition_print_vector_array.  If
+            this  pointer  is  null,  then  the process_arguments
+            search list  is used to  locate a definition  for the
+            specified command.
+
+       area_ptr                     (Input)
+            is a pointer to an area in which the result_pva is to
+            be allocated.  This area must be a freeing area.
+
+       result_pva_ptr               (Output)
+            is a pointer to  the result print_vector_array, which
+            is the final product of the argument processing.
+
+       code                         (Output)
+            is a standard system error code.
+
+__________________                             __________________
+
+process_arguments_                             process_arguments_
+__________________                             __________________
+
+Entry:  process_arguments_$argument_string
+
+          This  entry  processes  the  arguments  in  a character
+varying string (separated by spaces  or tabs), producing a result
+print_vector_array.
+
+Usage
+
+     dcl process_arguments_$argument_string entry (char (*),
+          fixed bin, char (*) varying, ptr, ptr, ptr, fixed bin
+          (35));
+
+     call process_arguments_$argument_string (command_name,
+          arg_processing_mode, arg_string, definition_pva_ptr,
+          area_ptr, result_pva_ptr, code);
+
+where:
+
+       command_name                 (Input)
+            is  the  name  of  the command  on  whose  behalf the
+            arguments are being processed.
+
+       arg_processing_mode          (Input)
+            is  the  mode  in  which  the  arguments  are  to  be
+            processed.   The modes  are declared  as constants in
+            pa_proc_constants.incl.pl1.   The  caller  can choose
+            between:
+               DEFAULT_PROC_MODE  - process_arguments_  selects a
+                 processing mode depending  on the user's process
+                 state.
+               PROMPT_PROC_MODE - prompt the user for information
+                 needed but not present in the provided input.
+               MENU_PROC_MODE  -  use a  menu  to get  the user's
+                 selection  of  options and  arguments  for those
+                 options.
+            (This argument is currently ignored.)
+
+       arg_string                   (Input)
+            is a string containing the arguments to be processed,
+            separated by whitespace (blanks or tab characters).
+
+       definition_pva_ptr           (Input)
+            is a pointer  to a definition_print_vector_array.  If
+            this  pointer  is  null,  then  the process_arguments
+            search list  is used to  locate a definition  for the
+            specified command.
+
+       area_ptr                     (Input)
+
+__________________                             __________________
+
+process_arguments_                             process_arguments_
+__________________                             __________________
+
+            is a pointer to an area in which the result_pva is to
+            be allocated.  This area must be a freeing area.
+
+       result_pva_ptr               (Output)
+            is a pointer to  the result print_vector_array, which
+            is the final product of the argument processing.
+
+       code                         (Output)
+            is a standard system error code.
+
+__________________                             __________________
+
+process_arguments_                             process_arguments_
+__________________                             __________________
+
+Entry:  process_arguments_$cv_result_to_linear_form
+
+     This  entry  converts a  result pva  to a  character string.
+Passing  this  character  string  to  the  $argument_string entry
+produces the  same result pva  as that from which  the string was
+converted.
+
+Usage
+
+     dcl process_arguments_$cv_result_to_linear_form entry (ptr,
+          ptr, char (*) varying, fixed bin (35));
+
+     call process_arguments_$cv_result_to_linear_form
+          (definition_pva_ptr, result_pva_ptr, linear_form,
+          code);
+
+where:
+
+       definition_pva_ptr           (Input)
+            is a pointer to a definition print_vector_array to be
+            used    in    converting   the    associated   result
+            print_vector_array.   If null,  then a  definition is
+            found  using the  databases in  the process_arguments
+            search list.
+
+       result_pva_ptr               (Input)
+            is a  pointer to the result  print_vector_array to be
+            converted.
+
+       linear_form                  (Output)
+            is a character string of the options and their values
+            (separated by spaces and requoted where appropriate).
+            The order  of the options  and values is  the same as
+            that in  the result print_vector_array.   This string
+            can be  passed to the $argument_string  entry and the
+            same result print_vector_array produced.
+
+       code                         (Output)
+            is a standard system error code.
+
+__________________                             __________________
+
+process_arguments_                             process_arguments_
+__________________                             __________________
+
+Entry:  process_arguments_$get_default_linear_form
+
+          This  entry  finds  the   default  linear  form  for  a
+specified command via the process_arguments search list.
+
+Usage
+
+     dcl process_arguments_$get_default_linear_form entry
+          (char(*) varying, char (*) varying, fixed bin (35));
+
+     call process_arguments_$get_default_linear_form
+          (command_name, default_linear_form, code);
+
+where:
+
+       command_name                 (Input)
+            is  the  name of  the command  for which  the default
+            linear form is desired.
+
+       default_linear_form          (Output)
+            is the default_linear_form for  the command.  This is
+            a  composite  of   all  of  the  default_linear_forms
+            recorded for the command in the search list.
+
+       code                         (Output)
+            is a standard system error code.
+
+__________________                             __________________
+
+process_arguments_                             process_arguments_
+__________________                             __________________
+
+Entry:  process_arguments_$get_definition
+
+          This entry  finds argument processing  definition for a
+specified command via the process_arguments search list.
+
+Usage
+
+     dcl process_arguments_$get_definition entry (char (*)
+          varying, ptr, ptr, fixed bin (35));
+
+     call process_arguments_$get_definition (command_name,
+          area_ptr, definition_ptr, code);
+
+where:
+
+       command_name                 (Input)
+            is  the  name of  the command  for which  an argument
+            processing definition is desired.
+
+       area_ptr                     (Input)
+            is  a pointer  to an  area in  which to  allocate the
+            argument processing definition.
+
+       definition_ptr               (Output)
+            is  a pointer  to the  argument processing definition
+            for the command.
+
+       code                         (Output)
+            is a standard system error code.
+
+__________________                             __________________
+
+process_arguments_                             process_arguments_
+__________________                             __________________
+
+Entry:  process_arguments_$get_option_value
+
+          This entry extracts the  values of arguments of options
+as   present   in   a  result   print_vector_array   produced  by
+process_arguments_.
+
+Usage
+
+     dcl process_arguments_$get_option_value entry options
+          (variable);
+
+     call process_arguments_$get_option_value
+          (result_print_vector_array_ptr, area_ptr, found_option,
+          option_name_1, option_variable_1 ..., option_name_N,
+          option_variable_N);
+
+where:
+
+       result_print_vector_array_ptr (Input)
+            is a pointer to  a result print_vector_array produced
+            by process_arguments_.
+
+       area_ptr                     (Input)
+            is a  pointer to the  area in which this  entry is to
+            allocate its output information (when appropriate).
+
+       found_option                 (Output)
+            is a bit  (*) variable where substr(found_option,I,1)
+            = "1"b  if a value was  found for option_name_I, "0"b
+            if  option_name_I  was  not mentioned  in  the result
+            print_vector_array.   The length  (found_option) must
+            be greater than or equal to the number of options for
+            which values are requested.
+
+       option_name_I                (Input)
+            is the name  of an option for which a  value is to be
+            retrieved.
+
+       option_variable_I            (Output)
+            is   the   variable   into   which   the   value  for
+            option_name_I  is  to be  placed.  This  variable can
+            have one of the following data types:
+              char (N) {varying} [aligned | unaligned]
+              fixed bin (35) [aligned | unaligned]
+                 if  the  option value  can't  be converted  to a
+                 fixed binary number, a sub_err_ is signaled.
+              bit (1) [aligned | unaligned]
+                 where "true", "yes", "on", and "1" yield a value
+
+__________________                             __________________
+
+process_arguments_                             process_arguments_
+__________________                             __________________
+
+                 of "1"b, and "false", "no", "off", and "0" yield
+                 a  value  of  "0"b.   Any other  value  causes a
+                 sub_err_ to be signaled.
+              pointer [aligned | unaligned]
+                 the  value returned  for variables  of this data
+                 type  is  a  pointer  to  the  option_value_list
+                 structure (see  below).  This data  type is used
+                 when an option may have more than one value, and
+                 all of the values are to be returned.
+
+The option_value_list structure.
+
+     Multiple   values   for   an   option   are   returned   (by
+$get_option_value)  in the  option_value_list structure, declared
+in pa_option_value_list.incl.pl1 as follows:
+
+     dcl     1 option_value_list    based (option_value_list_ptr) aligned,
+               2 version            char (8),
+               2 number_of_values   fixed bin (35),
+               2 pad                bit (36),
+               2 value              (ovl_number_of_values refer (option_value_list.number_of_values)),
+                 3 ptr              ptr,
+                 3 vector_idx       fixed bin (35),
+                 3 pad              bit (36);
+
+where:
+
+       version
+            is   the   version   of   the   structure,  currently
+            OPTION_VALUE_LIST_VERSION_1  (a constant  declared in
+            the same include file).
+
+       number_of_values
+            is the number of values listed by the structure.
+
+       pad
+            must be "0"b.
+
+       value.ptr
+            is a pointer to a  varying character string value (in
+            a result print_vector_array).
+
+       value.vector_idx
+            is the  index of the print_vector  in which the value
+            is located.
+
+       value.pad
+            must be "0"b.
+
+__________________                             __________________
+
+process_arguments_                             process_arguments_
+__________________                             __________________
+
+Entry:  process_arguments_$get_reference_name
+
+          This  entry  returns  the  primary  name  by  which the
+specified  option can  be referenced  in a  linear form.   If the
+option is one which sets a flag based on whether it is referenced
+by its  "positive" name or  its "negative" name,  then this entry
+returns  the  primary  "positive"   and  the  primary  "negative"
+reference names.
+
+Usage
+
+     dcl process_arguments_$get_reference_name entry (ptr, char
+          (*) varying, char (*) varying, char (*) varying);
+
+     call process_arguments_$get_reference_name
+          (definition_pva_ptr, option_name,
+          positive_reference_name, negative_reference_name);
+
+where:
+
+       definition_pva_ptr           (Input)
+            is  a  pointer  to  a  standard  argument  processing
+            definition.
+
+       option_name                  (Input)
+            is the name of an option for which the reference name
+            is desired.
+
+       positive_reference_name      (Output)
+            is  the  primary  reference  name  for  the specified
+            option.   If  the  option has  positive  and negative
+            reference  names, then  this is  the primary positive
+            reference name.
+
+       negative_reference_name      (Output)
+            is  the  primary  negative  reference  name.   If the
+            option does not have  a negative reference name, this
+            parameter gets a null value.
+
+____________                                         ____________
+
+vector_util_                                         vector_util_
+____________                                         ____________
+
+Name:  vector_util_
+
+     vector_util_  manipulates   vectors.   A  vector   may  have
+multiple  dimensions and  has no  fewer than  one dimension.  The
+dimensions may be of different data types.
+
+The print_vector_array structure.
+
+     Following   is   the    print_vector_array   structure   (in
+vu_print_vector_array.incl.pl1):
+
+dcl 1 print_vector_array            based (print_vector_array_ptr)
+                                    aligned,
+    2 version                       fixed bin (35),
+    2 number_of_dimensions          fixed bin (17),
+    2 maximum_dimension_name_length fixed bin (17),
+    2 number_of_vectors             fixed bin (17),
+    2 number_of_vector_slots        fixed bin (17),
+    2 dimension_table               (pva_number_of_dimensions
+                                    refer (print_vector_array
+                                    .number_of_dimensions))
+      3 name                        char (
+                                    pva_maximum_dimension_name_length
+                                    refer (print_vector_array
+                                    .maximum_dimension_name_length))
+                                    varying,
+      3 descriptor_ptr              ptr,
+      3 cv_to_print                 entry (ptr, fixed bin(17), fixed bin(17),
+                                    ptr, ptr, fixed bin(35)),
+      3 cv_to_typed                 entry (ptr, fixed bin(17), fixed bin(17),
+                                    ptr, ptr, fixed bin(35)),
+      3 maximum_value_length        fixed bin (17),
+    2 vector_slot                   (pva_number_of_vector_slots
+                                    refer (printed_vector_array
+                                    .number_of_vector_slots))
+                                    pointer;
+
+where:
+
+       number_of_dimensions
+            is the number of dimensions in the dimension table.
+
+       maximum_dimension_name_length
+            is the maximum length of  any of the dimensions named
+            in the dimension table.
+
+       number_of_vectors
+            is the number of vector  slots actually used to point
+
+____________                                         ____________
+
+vector_util_                                         vector_util_
+____________                                         ____________
+
+            at vectors.
+
+       number_of_vector_slots
+            is the number of vector slots allocated.
+
+       dimension_table.name
+            is the name of the dimension.
+
+       dimension_table.descriptor_ptr
+            is   a   pointer  to   standard  Multics   data  type
+            descriptor.
+
+       dimension_table.cv_to_print
+            is an entry for converting  from typed format data to
+            print format.
+
+       dimension_table.cv_to_typed
+            is an entry for converting  from print format data to
+            typed.
+
+       dimension_table.maximum_value_length
+            is the  maximum length attained by  any value in this
+            dimension among all of the vectors in the array.
+
+       vector_slot
+            is a pointer to a print_vector structure.
+
+The print_vector structure.
+
+     The following is the print_vector structure:
+
+dcl 1 print_vector                  based (print_vector_ptr)
+                                    aligned,
+    2 number_of_dimensions          fixed bin (17),
+    2 maximum_value_length          fixed bin (35),
+    2 dimension                     (pv_number_of_dimensions
+                                    refer (print_vector
+                                    .number_of_dimensions)),
+      3 identifier                  fixed bin (17),
+      3 value                       char (pv_maximum_value_length
+                                    refer (print_vector
+                                    .maximum_value_length))
+                                    varying;
+
+where:
+
+       number_of_dimensions
+            is the number of dimensions present in the vector.
+
+
+
+       maximum_value_length
+            is the actual length of  the longest value for all of
+            the dimensions in the vector.
+
+       dimension.identifier
+            is  the   index  into  the   dimension_table  of  the
+            print_vector_array   for   the  definition   of  this
+            dimension.
+
+       dimension.value
+            is the  character string representation  of the value
+            of this dimension for the vector.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

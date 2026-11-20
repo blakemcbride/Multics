@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-563</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-563: Data Management: Ordering of Disk I/Os.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-563
+DM: Ordering of Disk I/Os
+
+To:       Distribution
+
+From:     John J. Bongiovanni
+
+Date:     12/03/81
+
+Subject:  Data Management: Ordering of Disk I/Os
+
+1 INTRODUCTION
+
+     The  Multics Data  Management Architecture  will provide for
+integrity of data  across system crashes, even in  the case where
+Emergency  Shutdown (ESD)  does not  succeed.  The  mechanism for
+this  protection is  a set  of journals  which record  before and
+after  images  of modified  data  (reference MTB-xxx  for  a full
+discussion of  this capability).  In order  for this mechanism to
+function  correctly, the  sequence of  I/Os to  the various files
+involved must be controlled, as  the system could crash during an
+update  of a  data base.   In the  initial implementation  of the
+Multics   Data  Management   Architecture,  all   files  will  be
+implemented  as  Multics segments,  and hence  the I/Os  to these
+files  will be  done by  Page Control.   Page Control  at present
+provides  no  general  mechanism  for sequencing  I/Os;  at best,
+update protocols  using the force_write capability  could be used
+to  this  effect (at  some  expense in  efficiency).   This paper
+describes a  design approach for  explicit sequencing of  I/Os by
+Page Control.   A brief description of  the functionality desired
+is presented  first.  Next, the design  is outlined in sufficient
+detail to allow an estimate  of its efficiency.  Some alternative
+design  approaches  are  discussed,  followed  by  implementation
+considerations.
+
+Send comments on this MTB by one of the following means:
+
+     By Multics Mail, on MIT or System M:
+        Bongiovanni.Multics
+
+     By Telephone:
+        HVN 261-9314 or (617)-492-9314
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+
+                            CONTENTS
+
+                                                         Page
+
+                 1 Introduction . . . . . . . . . . . .     i
+                 2 Functionality  . . . . . . . . . . .     1
+                 3 Design . . . . . . . . . . . . . . .     2
+                    3.1 Overview  . . . . . . . . . . .     2
+                    3.2 Call-Side Services  . . . . . .     2
+                    3.3 Claim . . . . . . . . . . . . .     3
+                    3.4 Done  . . . . . . . . . . . . .     3
+                    3.5 Find_Core . . . . . . . . . . .     4
+                 4 Alternative Design Approaches  . . .     4
+                 5 Implementation Considerations  . . .     5
+
+Multics Technical Bulletin                                MTB-563
+DM: Ordering of Disk I/Os
+
+2 FUNCTIONALITY
+
+     Without loss of generality, there  are two files of interest
+(each may  be considered a  Multics segment):  a data  base and a
+Before Image  Journal.  Prior to  modifying any data  in the data
+base,  the previous  values of the  data must be  recorded in the
+Before Image  Journal.  To guarantee recovery  across any type of
+system  or  process  failure,   it  is  necessary  (although  not
+sufficient) that no  modification to the data base  be written to
+the  data  base   file  on  disk  until  the   pre-image  of  the
+modification  has been  written successfully to  the before image
+journal on disk.
+
+     Since the  files of interest  are Multics segments,  data in
+the files is written as  pages.  The functionality to be provided
+by Page Control to user-ring programs is to link any two pages to
+which the user has effective write access, such that Page Control
+will not write  the second page to disk until  the first page has
+been  written to  disk successfully.   With this  capability, the
+following sequence  will guarantee that a  modification to a data
+base  is  not written  to  disk before  the  corresponding before
+journal image:
+
+   o Build pre-image into in Before Image Journal
+
+   o Call Page  Control to link  data base pages  to Before Image
+     Journal page
+
+   o Modify data base pages
+
+Note that the writing of pages to disk remains non-deterministic,
+in the sense that pages are still written to disk by page control
+based  on  the  demand  for  real  memory  pages  in  the system.
+Although the ordering of some  of these writes is controlled, the
+writes occur at random times.
+
+     It is possible that before images for a given data base page
+may reside in  several Before Image Journal pages,  and this case
+must be handled correctly.  The sequence of events is as follows:
+
+   o Build  pre-image  of  data  base page  A  into  Before Image
+     Journal page 1
+
+   o Call Page Control  to link data base page  A to Before Image
+     Journal page 1
+
+   o Modify data base page A
+
+   o Build  pre-image  of  data  base page  A  into  Before Image
+     Journal page 2
+
+
+MTB-563                                Multics Technical Bulletin
+                                        DM: Ordering of Disk I/Os
+
+   o Call Page Control  to link data base page  A to Before Image
+     Journal page 2
+
+   o Modify data base page A
+
+     The   difficulty   with   this    case   arises   from   the
+non-determinism  of writing  pages to disk.   At the  time of the
+second call  to Page Control  above, Before Image  Journal page 1
+may not have been written to disk (in fact, the write I/O may not
+have  been  queued).   In  this circumstance,  Page  Control must
+ensure that  data base page A  is not written to  disk until both
+Before  Image  Journal pages  (1  and 2)  have been  written.  No
+additional  information is  required by  Page Control,  since the
+case is easily detected (at the second call to Page Control, data
+base page A would be linked to a different page).
+
+3 DESIGN
+
+3.1 Overview
+
+     There  is a  Core Map Entry  (CME) for  each physical memory
+page on a system.  Linked lists  of CME's may be formed such that
+no page in  a list (other than the head)  will be written to disk
+until the head of the list  has been written to disk successfully
+(i.e., without  errors).  Intuitively, the head  of a linked list
+represents  a  Before  Image  Journal  page,  and  the  remaining
+elements  of  the linked  list  represent data  base  pages whose
+pre-images are  in the Before  Image Journal page at  the head of
+the  list.   CME's  are  linked  into  list  at  the  request  of
+user-ring.  When  a write I/O  for a page  at the head  of a list
+completes  successfully,  the  associated list  is  unlinked.  In
+general,  pages are  written to disk  by the  normal Page Control
+mechanisms, except that the writing of certain pages is skipped.
+
+3.2 Call-Side Services
+
+     There   is   one  call-side   service   provided--viz.,  the
+capability to  link page A to  page B so that page  A will not be
+written  to disk  until page  B has  been written  to disk.  This
+capability is implemented as follows:
+
+   o Validate that  the process has  write access to  both page A
+     and  page  B  at  the  current  validation  level.   If this
+     validation fails, return an error code.
+
+   o Touch page A.
+
+
+Multics Technical Bulletin                                MTB-563
+DM: Ordering of Disk I/Os
+
+   o Lock  the  Page Table  Lock.  If  page A  is not  in memory,
+     unlock the  Page Table Lock,  and repeat the  previous step.
+     This  is  non-deterministic, but  eventually the  Page Table
+     Lock will be held with page  A in memory.  In practice, page
+     A  will already  be in  memory when  touched in  ring-0 (the
+     previous  step),   due  to  the   protocol  described  above
+     ("Functionality").
+
+   o If page A  is at the head of a  linked list of CME's, unlock
+     the Page Table Lock, and return an error code.
+
+   o If  page B  is not in  memory and modified,  unlock the Page
+     Table Lock and return.
+
+   o If there  is a write I/O  in progress to page  B, unlock the
+     Page Table  Lock, wait for  the I/O to  complete, and repeat
+     the previous steps.
+
+   o If there  is a write I/O  in progress to page  A, unlock the
+     Page Table  Lock, wait for  the I/O to  complete, and repeat
+     the previous steps.
+
+   o If page A is a member of  a linked list of CME's, initiate a
+     write I/O to the page at the head of that linked list (if an
+     I/O is not in progress already), unlock the Page Table Lock,
+     wait for the I/O to complete, and repeat the previous steps.
+     An I/O  should not be initiated  if the page at  the head of
+     the  linked  list  is  page  B  (that  is,  there  have been
+     successive calls to link a data base page to the same Before
+     Image Journal page).
+
+   o Link page  A to page B  as the second element  of the linked
+     list whose head is page B.
+
+   o Unlock the Page Table Lock and return.
+
+3.3 Claim
+
+     Claim is  the service of Page  Control which writes modified
+pages to disk (it is called during page fault processing).  Claim
+must be  changed to skip pages  which belong to a  linked list of
+CME's and are not at the head of the list.
+
+3.4 Done
+
+     Done is the service of Page  Control which is called to post
+an interrupt for  a page I/O.  Done must  be changed to recognize
+
+
+MTB-563                                Multics Technical Bulletin
+                                        DM: Ordering of Disk I/Os
+
+the completion  of a write I/O  to a page which is  the head of a
+linked list of CME's.  When this happens, the list is unlinked.
+
+3.5 Find_Core
+
+     Find_Core  is the  service of  Page Control  which selects a
+page to  evict from memory  when a page  fault occurs and  a page
+must be read from disk to satisfy the page fault.  Find_Core must
+be changed not to evict a page which is a member of a linked list
+of CME's.
+
+4 ALTERNATIVE DESIGN APPROACHES
+
+     If it is frequently the case  that pre-images of a data base
+page  are  recorded in  several Before  Image Journal  pages, the
+approach   outlined  above   could  cause   unacceptable  delays.
+Consider the following example:
+
+   o A pre-image for data base page A is recorded in Before Image
+     Journal page 1.
+
+   o Page Control is called to link page A to page 1.
+
+   o A pre-image for data base page A is recorded in Before Image
+     Journal page 2.
+
+   o Page Control is called to link page A to page 2.
+
+If, at this point, page 1 has not been written to disk, the write
+I/O  will  be  requested,  and  the  process  will  wait  for the
+completion of the I/O.  The delay will be approximately the queue
+time plus the device time for  the I/O, which is dependent on the
+system load.  This  delay can be reduced by  the following means,
+some of which are modifications to the design presented above.
+
+   o When Page Control links page A  to page B, it could initiate
+     the  write I/O  for page B  at that point.   Since there are
+     (presumably)  many data  base pages associated  with a given
+     Before  Image  Journal  page, this  approach  would generate
+     extraneous I/Os.
+
+   o When the Before Image Journal  overflows a page, the journal
+     manager could  force-write the page.  This  would reduce the
+     delay without generating extraneous I/Os.
+
+   o A  linked list  could represent  a strict  ordering of I/Os.
+     That is, if a linked list of CME's contained pages A, B, and
+     C;  page  B  would not  be  written  until page  A  had been
+
+
+Multics Technical Bulletin                                MTB-563
+DM: Ordering of Disk I/Os
+
+     written, and  page C would  not be written until  page B had
+     been written.   In the example above,  the linked list would
+     consist first of (page 1, page A), and then of (page 1, page
+     2,  page A).   This approach would  reduce I/O simultaneity,
+     probably reducing efficiency.
+
+   o A  more complex  linked list  structure could  be developed,
+     under which a given page could be the head of one list and a
+     member of  another list.  In the  example above, there would
+     be two linked lists, one consisting of (page 1, page 2), and
+     the other consisting of (page  2, page A).  The problem with
+     this  approach  is  that  it would  require  the  CME  to be
+     expanded to contain the additional link information.
+
+5 IMPLEMENTATION CONSIDERATIONS
+
+     The necessity  to wire the  ring-0 stack before  locking the
+Page   Table  Lock   could  introduce   substantial  delays.   An
+alternative  implementation  is  to  switch  to  the  PRDS before
+locking the Page  Table Lock.  This would require  a more complex
+implementation, since  none of the  waits involved could  be done
+using the PRDS as a stack.   The additional complexity may not be
+significant,  as none  of the waits  could be done  with the Page
+Table Lock held.
+
+     The sofware which manages the Before Image Journal must take
+care to  modify pages in the  Before Image Journal in  such a way
+that  a crash  at any  time leaves  the page  image on  disk in a
+consistent state.  Since I/O is asynchronous to the processing of
+this software, modifications to  Before Image Journal pages could
+occur  while  a previously  requested write  I/O is  in progress.
+Careful  programming  can  eliminate   adverse  effects  of  this
+asynchrony.
+
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

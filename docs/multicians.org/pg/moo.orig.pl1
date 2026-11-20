@@ -1,0 +1,435 @@
+/* Created and modified by J. M. Grochow, MIT Information Processing Services */
+
+/* The game of _m_o_o is a fairly simple game played according theto the following algorithm:
+   1. The computer selects four random digits (0 to 9).
+   2. The player attempts to guess these digits, in order.
+   3. The computer gives the player information as to the correctness of his guess.
+   a. For every digit guessed in order, a "Bull" is scored.
+   b. For every digit guessed out of order, a "Cow" is scored.
+   4. The player continues making guesses until four Bulls are scored indicating that
+   he has guessed all four digits correctly.
+
+   A short example should help:
+   The computer picks 1 2 3 4.
+   Player: 5 6 7 8. Score: nothing.
+   Player: 1 1 1 1. Score: 1 Bull, 3 Cows.
+   Player: 2 3 4 1. Score: 4 Cows.
+   Player: 1 2 4 3. Score: 2 Bulls, 2 Cows.
+   Player: 1 2 3 4. Score: 4 Bulls. The game is over.
+
+
+   To play moo, type the following command:
+
+   moo
+
+   To play moo without having your score recorded on the ladder, type:
+
+   moo -d
+
+   To cause the ladder to be recomputed, type:
+
+   moorank
+
+   To see the ladder:
+
+   mooprint
+
+   To see a particular entry in the ladder, e.g. Jones' entry:
+
+   mooprint Jones
+
+    */
+
+/*  DECLARATIONS */
+foo: procedure;
+
+          dcl clock_ external entry returns(fixed bin(71));
+          dcl person char(22) aligned;                      /* for storing person's name */
+          dcl project char(9) aligned;                      /* for benefit of user_info_ */
+          dcl account char(32) aligned;                     /* ditto */
+          dcl (b,c) fixed bin(35);                          /* bull and cow counters */
+          dcl alpha char(26) aligned int static init("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+          dcl (s1, s2) char(4) aligned;                     /* output strings */
+          dcl x(4) fixed bin(35);                           /* player's four digit input */
+          dcl count fixed bin(35) int static;               /* number of tries */
+          dcl array(4) fixed bin(35);                       /* storage for random digits */
+          dcl arrayf(20) float binary(27);                  /* for generating random numbers */
+          dcl arrayff(20) based(arrayp) fixed bin(35);      /* overlay */
+          dcl printsw fixed bin(35) int static init(0);     /* switch to indicate print program */
+          dcl arrayp ptr;                                   /* pointer to generated array */
+          dcl timea(0: 1) based(lp1) fixed bin(35);         /* overlay for 71 bit number */
+          dcl (i, j, k) fixed bin(35);                      /* do loop indices */
+          dcl (bf, cf) float;                               /* comparison temporaries */
+          dcl flag fixed bin(35);                           /* flag for ask_ */
+          dcl avg float;                                    /* for printing the ladder */
+          dcl time fixed bin(71);                           /* for keeping the time */
+          dcl arg based(ap) char(al);                       /* argument */
+          dcl args char(20) aligned;                        /* argument storage */
+          dcl ap ptr, al fixed bin(35);
+
+          dcl (random_$uniform_seq, random_$set_seed, condition_) ext entry;
+          dcl (listen_$unclaimed_signal, ios_$abort) external entry;
+          dcl (ioa_$nnl, ioa_, cu_$arg_ptr, get_group_id_, com_err_) ext entry;
+          dcl (hcs_$initiate, hcs_$terminate_noname, term_$refname) ext entry;
+          dcl (ask_$ask_clr, ask_$ask_, ask_$ask_prompt, ask_$ask_int) ext entry;
+          dcl moo$mooquit external entry;
+          dcl (ask_$ask_cint, user_info_) ext entry;
+
+          dcl 1 l based(ladder) aligned,                    /* ladder declaration */
+          2 max fixed bin(35),
+          2 num fixed bin(35),
+          2 games fixed bin(35),
+          2 lowavg float,
+          2 lowscore fixed bin(35),
+          2 lsperson char(20) aligned,
+          2 message char(24) aligned,
+          2 e(1000) char(48);
+          dcl 1 e based(lp) aligned,                        /* entry declaration */
+          2 person char(24) aligned,                        /* name */
+          2 space fixed bin(35),
+          2 totaltime fixed bin(35),
+          2 ngames fixed bin(35),
+          2 totscore fixed bin(35),
+          2 avg float,
+          2 rank fixed bin(35);
+          dcl (ladder, lp, lp1) ptr internal static init(null);
+
+/*  */
+
+/* set up a special "quit" handler so that "moo" can take appropriate action */
+
+          printsw = 0;                                      /* for benefit of quit handler */
+          call hcs_$terminate_name("term_",i);
+          call term_$refname("condition_",i);
+          call condition_("quit", moo$mooquit);             /* field all quits */
+          count = 0;
+
+          call term_$refname("ask_",i);
+/*        cu_ and ioa_ are in bound_command_loop_ and can't be terminated. */
+/*        clock_ is in bound_sss_wired_ and can't be terminated. */
+
+/* see if an argument is typed (-d or -x) */
+
+          call cu_$arg_ptr(1, ap, al, flag);
+          if flag ^= 0 then do;
+               call ioa_("For instructions, type ""print >udd>sa>g>moo.instr""");
+               call ioa_("To see the ladder, type ""moo$mooprint""");
+               call ioa_("To avoid these comments in the future, type ""moo -x""^/");
+          end;
+          else if arg = "-d" then do;
+               ladder = null;
+               call ioa_("Demonstration: no ladder update.^/");
+               go to noladder;
+          end;
+
+/* now initiate the ladder and find the person's entry or get his name */
+
+          call hcs_$initiate(">udd>m>pg>p", substr(alpha,6,1)||substr(alpha,15,1)||substr(alpha,15,1), "", 0, 1, ladder
+ i);
+noladder: 
+          call term_$refname("user_info_", i);
+          call user_info_(person, project, account);
+          if (index(alpha, substr(person, 1, 1)) = 0) then do;
+getname:       call ask_$ask_("Please type your name: ", person);
+               if person = "q" then go to returnt;
+               if person = "quit" then go to returnt;
+               if substr(person, 1, 3) = "Moo" then go to getname;
+          end;
+
+          if ladder ^= null then do;
+               if ladder->l.lowavg = 0 then ladder->l.lowavg = 1.0e2;
+               if ladder->l.lowscore = 0 then ladder->l.lowscore = 100;
+               do i = 1 to ladder->l.num;
+                    lp = addr(ladder->l.e(i));
+                    if person = lp->e.person then go to top;
+               end;
+               i, ladder->l.num = ladder->l.num + 1;
+               lp = addr(ladder->l.e(i));
+               lp->e.person = person;
+               lp->e.rank = 0;
+          end;
+
+/* get the time and get the four random numbers */
+
+
+top:      
+          time = clock_;
+          call term_$refname("random_$set_seed", i);
+          call term_$refname("random_$uniform_seq", i);
+          call random_$set_seed(addr(time)->timea(1));
+          call random_$uniform_seq(arrayf, 20);
+          arrayp = addr(arrayf);
+          do i = 1 to 4;
+               flag = 1;
+               array(i) = mod(arrayff(21-i), 10);
+gen:           do j = 1 to i-1;
+                    if array(i) = array(j) then do;
+                         if flag = 17 then go to top;
+                         array(i) = mod(arrayff(flag), 10);
+                         flag = flag + 1;
+                         go to gen;
+                    end;
+               end;
+          end;
+
+/* do some initialization */
+
+          count = 0;
+
+          call ask_$ask_clr;
+
+/* do the basic loop for each move - get the numbers, check them, and find bulls and cows */
+
+beginrun: s1, s2 = " ";
+
+          call ask_$ask_prompt("Type number: ");
+
+          do i = 1 to 4;                                    /* now get each of the four numbers guessed and store */
+               call ask_$ask_cint(x(i), flag);
+               if flag = -1 then do;                        /* an alpha character was typed instead of numeric */
+                    if ladder = null then return;           /* demonstration mode: return */
+                    if count = 0 then go to returnt;        /* if first guess then return with no penalty */
+                    call ioa_("It is antisocial to try to leave a game which is not going well. Please continue.");
+                    go to continue;                         /* he is not permitted to quit in the middle */
+               end;
+             if flag = 0 then if i ^= 5 then call ask_$ask_int("Type ommitted ^d digits: ", x(i), 5-i);
+               if x(i) > 9 then do;
+continue:           call ioa_("All numbers must be between 0 and 9. Retype this move.");
+                    go to beginrun;
+               end;
+          end;
+
+/* now determine score on this move */
+
+          count = count+1;
+          b, c = 1;
+
+/* record bulls and cows */
+
+          do i = 1 to 4;
+          if array(i) = x(i) then do; substr(s1, b, 1) = "B"; b = b+1; end;
+               do j = 1 to 4;
+               if j ^= i then if array(j) = x(i) then do; substr(s2, c, 1) = "C"; c = c+1; end;
+               end;
+          end;
+
+/* now print his score for this guess */
+
+          call ioa_("^a,^a", s1, s2);
+
+/* if all four bulls are found, then do the appropriate ladder updating */
+
+          if b = 5 then do;
+               time = clock_ - time;                        /* compute time for this game */
+               if ladder ^= null then do;
+                    lp->e.ngames = lp->e.ngames +1;
+                    ladder->l.games = ladder->l.games + 1;
+                    if mod(ladder->l.games, 1000) = 0 then
+                    call ioa_("^RCongratulations: you have just played the ^dth game of moo.^B", ladder->l.games);
+                    lp->e.totscore = lp->e.totscore + count;
+                    lp->e.avg = (lp->e.totscore + 0.0e0) / lp->e.ngames;
+                    lp->e.totaltime = lp->e.totaltime + divide(time, 1000000, 35, 0);
+                    if lp->e.avg < ladder->l.lowavg then do;
+                         if lp->e.ngames >= 10 then ladder->l.lowavg = lp->e.avg;
+                    end;
+                    if count < ladder->l.lowscore then do;
+                         ladder->l.lowscore = count;
+                         ladder->l.lsperson = person;
+                    end;
+               end;
+               call ioa_("^d attempts, ^d seconds.^/", count, (divide(time, 1000000, 35, 0)));
+               go to top;
+          end;
+
+/* go and initiate another game */
+
+          go to beginrun;
+
+/* terminate ladder before returning */
+
+returnt:  if ladder ^= null then call hcs_$terminate_noname(ladder, flag);
+          return;
+
+/*  */
+
+/* entry point to print the ladder or your entry in it */
+
+mooprint: entry;
+
+/* field all quits */
+
+          printsw = 1;
+          call condition_("quit", moo$mooquit);             /* field all quits */
+
+          on zerodivide;
+
+/* initiate the ladder and see if there are any arguments */
+
+          call hcs_$initiate(">udd>m>pg>p", substr(alpha,6,1)||substr(alpha,15,1)||substr(alpha,15,1), "", 0, 1, ladder
+ i);
+          if ladder = null then do;
+               call com_err_(i, "mooprint", "");
+               go to returnt;
+          end;
+
+          call cu_$arg_ptr(1, ap, al, c);
+          if c = 0 then do;
+               args = arg;
+               if args = "nosort" then c = 1;
+               else go to sortblock;
+          end;
+
+/* print the header */
+
+          call ioa_("^/^a", ladder->l.message);
+
+          call ioa_("Number of people: ^d^-^-Number of games: ^d", ladder->l.num, ladder->l.games);
+          call ioa_("Lowest sustained avg.: ^5.2f^-^-Lowest single time score: ^d (by ^a)^/",
+          ladder->l.lowavg, ladder->l.lowscore, ladder->l.lsperson);
+          call ioa_("Rank   Avg.  Avg.T  Games  Score  Name");
+
+          go to sortblock;
+
+/*  */
+
+/* entry point to do ranking */
+
+moorank:  entry;
+
+/* field all quits */
+
+          printsw = -1;
+          call condition_("quit", moo$mooquit);             /* field all quits */
+
+/* initiate the ladder */
+
+          call hcs_$initiate(">udd>m>pg>p", substr(alpha,6,1)||substr(alpha,15,1)||substr(alpha,15,1), "", 0, 1, ladder
+ j);
+          if ladder = null then do;
+               call com_err_(j, "moorank", "");
+               go to returnt;
+          end;
+
+/* a special block to do the sorting - allocates an array to help */
+
+sortblock: begin; dcl nums(3000) fixed bin(35);
+
+               do i = 1 to ladder->l.num;
+                    nums(i) = i;
+               end;
+
+/* check if this is print with no sorting necessary */
+
+               if printsw = 1 then if c = 1 then go to print1;
+
+/* routine to perform interchange sort using the array nums to store array indices */
+
+
+sortl:         j = 0;
+               do i = 1 to ladder->l.num-1;
+                    lp = addr(ladder->l.e(nums(i))); lp1 = addr(ladder->l.e(nums(i+1)));
+                    if printsw = 1 then do;
+
+                         if lp->e.rank = 0 then bf = 3000;
+                         else bf = lp->e.rank;
+                         if lp1->e.rank = 0 then cf = 3000;
+                         else cf = lp1->e.rank;
+                    end;
+                    else do;
+                         bf = lp->e.avg;
+                         cf = lp1->e.avg;
+                    end;
+                    if bf > cf then do;
+                         k = nums(i);
+                         nums(i) = nums(i+1);
+                         nums(i+1) = k;
+                         j = 1;
+                    end;
+               end;
+               if j ^= 0 then go to sortl;
+
+/* if this is the print program, then print out the ladder */
+
+print1:        if printsw = 1 then do;
+                    do i = 1 to ladder->l.num;
+                         lp = addr(ladder->l.e(nums(i)));
+                         if c = 0 then if args ^= lp->e.person then go to prendl;
+                         flag = divide(lp->e.totaltime, lp->e.ngames, 35, 0);
+                         call ioa_(" ^3d  ^5.2f  ^5d   ^4d  ^5d  ^a",
+                         lp->e.rank, lp->e.avg, flag, lp->e.ngames, lp->e.totscore, lp->e.person);
+                         if c = 0 then go to returnt;
+prendl:             end;
+                    call ioa_("");
+                    go to returnt;
+               end;
+
+/* if this is the rank program, then put in the new ranking */
+
+               avg = 1.0e2;                                 /* set it high */
+               flag = 0;                                    /* to account for those with 0 average */
+               do i = 1 to ladder->l.num;
+                    lp = addr(ladder->l.e(nums(i)));
+                    if (lp->e.avg = 0.0e0) | (lp->e.ngames < 5) then do;
+                         lp->e.rank = 0;
+                         flag = flag + 1;
+                         go to endloop;
+                    end;
+                    if lp->e.ngames > 10 then if lp->e.avg < avg then avg = lp->e.avg;
+                    lp->e.rank = i - flag;
+                    do j = i to 1 by -1;
+                         lp1 = addr(ladder->l.e(nums(j)));
+                         if lp->e.avg = lp1->e.avg then lp->e.rank = lp1->e.rank;
+                         if lp->e.avg > lp1->e.avg then go to endloop;
+                    end;
+endloop:       end;
+
+               ladder->l.lowavg = avg;                      /* adjust the low average */
+               go to returnt;
+
+          end;
+
+/*  */
+
+/* entry point to handle console quits so as not to give the user any unfair advantages */
+
+mooquit:  entry;
+
+          call ios_$abort("user_i/o", ""b, time);           /* reset console quit condition */
+          call ioa_$nnl("^RMOOQUIT^B");
+
+/* if quit while in print or rank then simply terminate the ladder */
+
+          if printsw ^= 0 then go to mooqret1;
+
+/* if the "try" count is zero then simply inform the user of the proper way to terminate play */
+
+          if count = 0 then do;
+               call ioa_(": Normal exit is by typing ""q"" instead of your first move.");
+               go to mooqret;
+          end;
+
+/* if the ladder way not initiated then simply unwind the stack */
+
+          if ladder = null then do;
+mooqret1:      call ioa_("");
+               go to mooqret;
+          end;
+
+/* otherwise, add 10 to his score and tell him that he isn't playing fair */
+
+          else do;
+               call ioa_(": Ten points have been added to your total score.");
+               lp->e.totscore = lp->e.totscore + 10;
+               on zerodivide;
+               lp->e.avg = (lp->e.totscore + 0.0e0) / lp->e.ngames;
+               call ioa_("Your new average is ^5.2f", lp->e.avg);
+          end;
+
+/* terminate the ladder and unwind the stack */
+
+mooqret:  if ladder ^= null then call hcs_$terminate_noname(ladder, flag);
+          call listen_$unclaimed_signal;                    /* revert stack */
+
+          return;                                           /* never executed */
+
+end foo;

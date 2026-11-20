@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-711</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-711: Object Multi-Segment Files.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-711
+Object MSFs.
+
+To:       Distribution
+
+From:     Dean Elhard
+
+Date:     4 April 1986
+
+Subject:  Object Multi-Segment Files
+
+1.  Abstract
+
+This MTB addresses the problem of creating packages which are too
+large to  fit into a single  object segment but which  have large
+amounts  of call  traffic between  code modules.   It proposes  a
+method of creating a multi-segment executable object (Object MSF) |
+which  can be  treated as  a single  entity for  the purposes  of |
+execution, and file system operations.  Object MSFs would resolve |
+inter-component  links without  use  of  the dynamic  linker, and |
+would   allow  the   elimination  of   external  definitions  and
+entrypoints which should remain internal interfaces.
+
+Revision 1:
+     Modified external  entry mechanism to enter  via component 0
+     transfer vector; introduced deferred initialization type
+
+Revision 2:
+     Modified external entry mechanism to have the dynamic linker
+     indirect  through  partially  snapped  links  to  get actual
+     target  of  definition  to  remedy  problems  with non-entry
+     definitions.
+
+Revision 3:                                                       |
+     Modified to change names and address issues raised by MCRB.  |
+
+Changes are marked with change bars.
+
+_________________________________________________________________
+
+Multics project internal documentation.   Not to be reproduced or
+distributed outside the Multics project.
+
+
+MTB-711                                Multics Technical Bulletin
+                                                     Object MSFs.
+
+Comments should be sent to the author:
+
+     via Multics mail to:
+        Elhard -at System-M
+
+     via posted mail to:
+        Dean Elhard
+        Advanced Computing Technology Centre
+        Foothills Professional Building
+        1620 29th St., N.W.
+        Calgary Alberta Canada T2N-4L7
+
+     via telephone to:
+        (403)-284-6400
+        (403)-284-6427 (Elhard)
+
+     via forum on System-M to:
+        &gt;udd&gt;m&gt;Elhard&gt;mtgs&gt;Very_Large_Objects (vlo)
+
+
+Multics Technical Bulletin                                MTB-711
+Object MSFs.
+
+                        TABLE OF CONTENTS
+
+Section    Page  Subject
+=======    ====  =======
+
+1          i     Abstract
+2          1     Preface
+3          1     Introduction
+3.1        1     . . Goal
+3.2        1     . . References For This Document
+4          2     Object Multi-Segment File Implementation
+4.1        2     . . Problems
+4.2        2     . . General Implementation
+4.3        4     . . MSF map
+4.4        5     . . Inter-Component Links
+4.5        7     . . Indirect Definitions
+5          9     Prelink First Reference Trap
+6          10    External Variable Initialization
+6.1        10    . . Deferred Initialization
+6.2        11    . . External Initialization Example
+7          12    Dynamic Linker Changes
+8          13    User Ring Support
+9          21    Object MSF Call Example
+
+
+Multics Technical Bulletin                                MTB-711
+Object MSFs.
+
+2.  Preface
+
+The analysis of C language development, and experience with other |
+third  party  software  not  developed  specifically for Multics,
+indicates  a  need  for  much  of  this  software  to  run  in an
+environment where  the entire package can be  pre-linked in bound
+segments independent of the size of the package.                  |
+
+3.  Introduction                                                  |
+
+3.1.  Goal                                                        |
+
+My objective is  to allow large packages, in  which the resulting |
+object code will not fit into  a single segment, to be treated as
+a single  entity by the file  system commands and by  the dynamic
+linker.   Thesed object  MSFs will  permit software  developed on |
+other  machines,  which  expect  all  references  to  be resolved
+statically  but which  are too  large  to  be bound  in a  single
+segment, to be ported more easily.
+
+3.2.  References For This Document
+
+1) Multics Programmers Reference Manual (10.2 AG91-04)
+   (hereafter referred to as MPRM)
+
+
+MTB-711                                Multics Technical Bulletin
+                                                     Object MSFs.
+
+4.  Object Multi-Segment File Implementation                      |
+
+The objective  when implementing object  MSFs is to  minimize the |
+amount of  change to existing software and  data structures while
+adding the functionality necessary.
+
+4.1.  Problems
+
+The basic problem  in object MSF implementation is  how to spread |
+object code among  a number of segments in such a  way that it is |
+as transparent  as possible to the user.   Transparent means that |
+it should be possible to do the following operations:
+
+     - invoke the  object MSF from command  level without special |
+       syntax.
+     - call subroutines within an  object MSF using normal syntax |
+       and  without  any  changes  required  to  the  links  (and
+       therefore compilers).
+     - use standard tools on the  object MSF or components of the |
+       MSF to report object information (such as print_link_info, |
+       etc.)
+     - call   out  from  an   object  MSF  without   any  special |
+       consideration.
+
+There are other problems inherent in any design that requires the
+code  for  an  object  to  be  split  into  discrete  parts.   In
+particular,  we must  find a  means of  specifying and  resolving
+"internal"  references to  the text,  static, linkage,  or symbol
+sections of  another component, and we must  insure that external
+variable references (via *system  links) are initialized properly
+regardless   of    which   component   declared    the   variable
+initialization and which component first references the variable.
+
+4.2.  General Implementation
+
+The  general  implementation  consists  of  a  Multi-Segment File
+containing  slightly modified  standard object  segments.  (For a
+desription  of a  standard object  segment, see  the MPRM.)  This
+allows the object MSF to be moved, copied or deleted with minimal |
+changes to existing software.  The linker will resolve the object |
+MSF as a link target in the same manner as is currently done, via |
+the names on the object segment or MSF.                           |
+
+
+Multics Technical Bulletin                                MTB-711
+Object MSFs.
+
+There are two types of components in an object MSF:               |
+
+Component 0
+     Component 0  is nothing more  than a transfer  vector to the
+     actual  entrypoints in  the other  components.  The transfer
+     vectors are done via definitions with the indirect flag set,
+     and  partially  snapped  links.   Component  0 contains only
+     partially  snapped links,  definitions, an  msf_map, and the |
+     msf_prelink_ first reference trap.                           |
+Executable Components
+     These  are basically  standard object  segments except  that
+     they contain an msf_map, and  partially snapped links to the |
+     other executable components.
+
+
+MTB-711                                Multics Technical Bulletin
+                                                     Object MSFs.
+
+4.3.  MSF map                                                     |
+
+To identify an object MSF and  its extent (in terms of the number |
+of  components), a  new structure  has been  created and inserted
+into the definition section of  an object MSF component.  This is |
+the msf_map.  To  locate the msf_map, a previously  unused 18 bit |
+field  in the  definition header   has been  used to  specify the
+offset of the  map from the base of the  definition section.  The
+msf_map has the following form:                                   |
+
+  dcl 01 msf_map              aligned based,                      |
+       02 version             char (8),
+       02 component_count     fixed bin,
+       02 my_component        fixed bin,
+
+version
+     Is the version of the structure and must be "msfmp1.0".      |
+
+component_count
+     Is the number of components in the object MSF.               |
+
+my_component
+     Is  the number of  the current component  in the range  0 to
+     component_count-1.
+
+
+Multics Technical Bulletin                                MTB-711
+Object MSFs.
+
+4.4.  Inter-Component Links
+
+Resolution  of  references  internal  to  the  MSF,  but  between |
+components, is done by the creation of partially snapped links in
+the linkage  section of the calling component.   These links take
+advantage of knowledge of the target.  A normal unsnapped link is
+an ITS pointer with a fault_tag_2 modifier, and other fields used
+to contain linkage information.  A partially snapped link is also
+based on an  ITS pointer but has a fault_tag_3  modifier in place |
+of the ITS modifier.
+
+  dcl 01 partial_link         based aligned,                      |
+       02 type                fixed bin (3) unsigned unaligned,
+       02 component           fixed bin (15) unsigned unaligned,
+       02 mbz1                bit (12) unaligned,
+       02 tag                 bit (6) unaligned,
+
+       02 offset              fixed bin (18) unsigned unaligned,
+       02 mbz2                bit (3) unaligned,
+       02 bit_offset          fixed bin (6) unsigned unaligned,
+       02 mbz3                bit (3) unaligned,
+       02 mod                 bit (6) unaligned;
+
+type
+     This field is used to encode the target section of the link.
+     The values used  are the same as those used  in a definition
+     to indicate the target section.
+
+       - Text section     = 0
+       - Linkage section  = 1
+       - Symbol section   = 2
+       - Static section   = 4
+
+component
+     Is  used to store  the number of  the target segment  in the
+     range 0 to component_count-1.  At execution time, this value
+     will be replaced depending on  the target section as encoded
+     in type.
+
+       Text section    - the component field  will be replaced by
+                         the   segment  number   of  the   target
+                         segment.
+       Linkage section - the component field  will be replaced by
+                         the   segment  number  of   the  segment
+                         containing the copied linkage section.
+
+
+MTB-711                                Multics Technical Bulletin
+                                                     Object MSFs.
+
+       Symbol section  - the component field  will be replaced by
+                         the   segment  number   of  the   target
+                         segment.
+       Static section  - the component field  will be replaced by
+                         the   segment  number  of   the  segment
+                         containing the copied static section.
+
+mbz1
+     Is unused and must be ""b.
+
+tag
+     Is set  to fault_tag_3 initially ("47"b3)  to distinguish it
+     from a normal  unsnapped link or a snapped link  with an ITS
+     modifier ("43"b3).  This is to  insure that if the link does
+     not get snapped somehow, a  reference through it will fault.
+     When the link is snapped, this  field will be replaced by an
+     ITS  modifier.  Note  that this   link is  not snapped  as a
+     result of  a hardware reference,  except as a  by-product of
+     snapping a link to a previously unreferenced object MSF.  In |
+     this case, one partial link is snapped by the dynamic linker |
+     to  determine the target  of the indirect  definition.  This
+     must  be done  by the  dynamic linker  since we  must finish
+     snapping the link  faulted on prior to the  execution of the
+     first-reference traps which normally  would snap the partial
+     links.
+
+offset
+     This field  is the offset  within the section  identified by
+     type to the target of the  partial link.  It is analogous to
+     the thing_relp value in  the corresponding definition in the
+     target segment.
+
+mbz2
+     Is unused and must be ""b.
+
+bit_offset
+     Is the bit  offset of the target of the  link.  Since a link
+     target may not be on other  than a word boundary, this field
+     must be 0.
+
+mbz3
+     Is unused and must be ""b.
+
+modifier
+     Is the modifier of the link.
+
+
+Multics Technical Bulletin                                MTB-711
+Object MSFs.
+
+4.5.  Indirect Definitions
+
+When handling snapping of links to an object MSF, it is desirable |
+to  restrict the definition  search to component  0.  It is  also |
+desirable to have the link snap  directly to the final target (in |
+whatever component)  so that references to  non-entry targets can |
+be referenced correctly.   In order to do this,  a new definition |
+flag will be  defined.  The indirect flag will  indicate that the |
+target of the definition is  a partially snapped link pointing to
+the actual  target of the definition in  another component.  When
+the dynamic linker is snapping the  link, it will check to see if
+the definition has the indirect  bit set, chase the partial link,
+and  snap it  if necessary.    Snapping the  partial link  by the
+dynamic linker will only be required  on the first reference to a
+given  segment.   This  is  because  the  link  snapping  must be
+completed  prior to  the execution  of the  first reference  trap
+which will snap the rest of the partial links.
+
+  dcl 01 definition           aligned based (def_ptr),
+       02 forward_relp        fixed bin (18) unsigned unaligned,
+       02 backward_relp       fixed bin (18) unsigned unaligned,
+       02 thing_relp          fixed bin (18) unsigned unaligned,
+       02 flags               unaligned,
+        03 new                bit (1),
+        03 ignore             bit (1),
+        03 entry              bit (1),
+        03 retain             bit (1),
+        03 argcount           bit (1),
+        03 descriptors        bit (1),
+        03 indirect           bit (1),
+        03 unused             bit (8);
+       02 class               fixed bin (3) unsigned unaligned,
+       02 name_relp           fixed bin (18) unsigned unaligned,
+       02 segname_relp        fixed bin (18) unsigned unaligned;
+
+forward_relp
+     is a thread (relative to the base of the definition section)
+     to  the  next  definition.   The  thread  terminates when it
+     points to a  word that is 0.  This thread  provides a single
+     sequential list of all the definitions within the definition
+     section.
+
+backward_relp
+     is a thread (relative to the base of the definition section)
+     to the preceeding definition.
+
+
+MTB-711                                Multics Technical Bulletin
+                                                     Object MSFs.
+
+thing_relp
+     is  the offset  of the   target of  the symbolic  definition |
+     within  the   section  designated  by  the   class  variable |
+     (described below).                                           |
+
+flags
+     contains   binary   indicators   that   provide   additional
+     information about this definition:
+
+     new
+     "1"b      definition section has new format
+     "0"b      definition section has old format
+
+     ignore
+     "1"b      definition does  not represent an  external symbol
+               and is therefor ignored by the Multics linker
+     "0"b      definition represents an external symbol
+
+     entry
+     "1"b      definition of an entry point (a variable reference
+               through a transfer of control instruction)
+     "0"b      definition  of an  external symbol  that does  not
+               represent a standard entry point
+
+     retain
+     "1"b      definition must be retained  in the object segment
+               (by the binder)
+     "0"b      definition can be deleted  from the object segment
+               (by the binder)
+
+     argcount (obsolete)
+     "1"b      definition  includes  a   count  of  the  argument
+               descriptors
+     "0"b      no  argument descriptor information  is associated
+               with the definition
+
+     descriptors (obsolete)
+     "1"b      definition   includes   an   array   of   argument
+               descriptors
+     "0"b      no valid descriptors exist in the definition
+
+     indirect
+     "1"b      definition refers to a  partial link to the actual
+               target of the symbolic definition which resides in
+               another MSF component                              |
+     "0"b      definition refers  directly to the target  of this
+               symbolic definition
+
+     unused
+               is reserved for future use and must be "0"b
+
+
+Multics Technical Bulletin                                MTB-711
+Object MSFs.
+
+class
+     this  field contains  a code  indicating the  section of the
+     object segment to which thing_relp is relative.  Codes are:
+     0   text section
+     1   linkage section
+     2   symbol section
+     3   this symbol is a segment name
+     4   static section
+
+name_relp
+     is  an  offset  (relative  to  the  base  of  the definition
+     section)   to  an   aligned  acc   string  representing  the
+     definition's symbolic name.
+
+segname_relp
+     is  an  offset  (relative  to  the  base  of  the definition
+     section) to the first  class-3 definition of this definition
+     block.
+
+5.  Prelink First Reference Trap
+
+The presnapping of links is  accomplished using a first reference
+trap  to the procedure  msf_prelink_.  This first  reference trap |
+exists  only in component  0.  Since all  calls into the  MSF are |
+done  through the  component 0  transfer vector,  the trap should
+always be properly executed.   The msf_prelink_ trap performs the |
+following functions:
+
+     - initiates all of the components.
+     - gets pointers  to the linkage  and static sections  of the
+       components, combining the linkage sections if necessary.
+     - scans  the linkage  section of  each component,  beginning
+       with component 0, looking for links with a fault_tag_3 tag
+       indicating a partially snapped internal link.  These links
+       are then resolved as indicated above.
+     - gets  the first  reference trap  blocks from  each of  the
+       other components  and executes the firstref  traps for all
+       of the components except  component 0.  (since component 0
+       was the segment actually found  by the search, we have the
+       dynamic linker run the component  0 traps, even though the
+       eventual  target  of  the  link  is  in another component.
+       Since component 0 is an  synthetic construct, and does not
+       contain  and code or  data, this should  be the only  trap
+       procedure for component 0.)  Before each trap procedure is
+       called, a  check is made to  see if the trap  procedure is
+       msf_prelink_.   If  so,  the  trap  is  ignored  since the |
+       running  of msf_prelink_  once will  initialize the entire |
+       MSF.                                                       |
+
+
+MTB-711                                Multics Technical Bulletin
+                                                     Object MSFs.
+
+Once  the msf_prelink_  trap has  run, all  inter-component links |
+will  be properly snapped.   This increases the  startup overhead |
+when  calling into  an object  MSF for  the first  time, but will |
+probably result  in faster overall execution.  All  the links are |
+snapped without taking any faults and the majority of the work is
+done when the links are created, rather than at execution time.
+
+6.  External Variable Initialization
+
+A problem associated with this  implementation of object MSFs, is |
+external  variable  initialization.   The  init_info  for *system
+links can be  very large, and we don't know  which component will
+generate  the  first  reference  to  the  variable,  and  do  the
+initialization.  The mechanisms currently  in place would require
+a copy of the init_info in each component so that the variable is
+initialized correctly in any case.  This results in an incredible
+waste of space.   In order to avoid this problem,  we propose the
+creation  of  a  new  type  of  init_info  which  will  allow the
+elimination of the duplicate init_info.
+
+6.1.  Deferred Initialization
+
+When an object MSF is created, all references to a given external |
+variable will  be examined and a single  init_info created.  This |
+init_info  will  be  placed  in  one  of  the  components and all
+references within  that component will be  properly resolved.  In
+each  of the  other components  referencing the  same variable, a
+link is generated with an init_info of type INIT_DEFERRED.
+
+The structure  for a deferred init_info (shown  below) contains a
+standard header, and two relpointers  that are used to locate the
+actual init_info.  The target_relp value is an offset relative to
+the  base of  the linkage   section to  a partially  snapped link
+(which should by  now be an ITS pointer) pointing  to the base of
+the  linkage  section  of  the  component  containing  the actual
+init_info.  The  link_relp value is the offset  within the target
+linkage  section   of  the  link  which   references  the  actual
+init_info.  From this information  the dynamic linker can extract
+the definition section and original linkage section of the target
+segment, and then get a pointer to the real init_info.
+
+  dcl 01 link_init_deferred   aligned based (link_init_ptr),
+       02 header              aligned,
+        03 n_words            fixed bin (35),
+        03 type               fixed bin,
+       02 target_relp         fixed bin (18) unsigned unaligned,
+       02 link_relp           fixed bin (18) unsigned unaligned;
+
+
+Multics Technical Bulletin                                MTB-711
+Object MSFs.
+
+n_words
+     is the length of the variable to be allocated in words.
+
+type
+     is the initialization  type.  For a deferred_initialization,
+     this value will be 6.
+
+target_relp
+     is the offset (relative to  the base of the linkage section)
+     of a partial  link which, when resolved, points  to the base
+     of  the  linkage  section  of  the  component containing the
+     actual init_info.
+
+link_relp
+     is the offset (relative to the base of the target components
+     linkage  section) of  the link  which references  the actual
+     init_info being used.
+
+6.2.  External Initialization Example
+
+When  a deferred_init  *system  link  is referenced,  the dynamic
+linker   (link_snap)   is   invoked.    Link_snap   extracts  the
+initialization  info to  pass to  set_ext_variable_.  Noting that
+the  type  of  initialization  is  deferred,  link_snap  uses the
+target_relp value in the init_info  to find a pointer (actually a
+partially snapped  link, which will  be snapped by  this time) to
+the base of the linkage  section for the component containing the
+actual init_info.
+
+After  validating   that  the  definition   and  original_linkage
+pointers  in the  linkage_header are  valid, the  link_relp value
+will then be applied to the  original linkage section to find the
+unsnapped link which  refers to the real init_info.   The link is
+then  decoded  to  extract  the  expression  word,  type_pair and
+init_info  in turn.   The  init_info  pointer extracted  from the
+original faulting link is then replaced  by a pointer to the real
+init info.   The subroutine set_ext_variable_$for_linker  is then
+called  to  return  the  variable  node  and  the  link  snapping
+continues as if the init_info were stored in the original object.
+
+
+MTB-711                                Multics Technical Bulletin
+                                                     Object MSFs.
+
+7.  Dynamic Linker Changes
+
+The dynamic linker requires modification for four reasons:
+
+     1) Non-segment branches are currently ignored when searching
+        for a name.
+     2) Calls out of an MSF must use another level of indirection |
+        up   the   storage    heirarchy   when   evaluating   the |
+        "referencing_dir" search rule.  The referencing directory
+        for an object MSF should  be the directory containing the |
+        MSF rather than the MSF directory itself.                 |
+     3) The  indirection  to  the  link  containing the init_info
+        required by deferred initialization must be added.
+     4) The evaluation  of indirect definitions and  the possible
+        snapping of a partial linkmust be added.
+
+The first  two problems are  solved by modifying  fs_search.  The |
+calling  sequence of  fs_search will  be changed  to add  another |
+parameter,  which will  identify  the  referencing segment  as an |
+object MSF component.  When  evaluating the referencing_dir rule, |
+this parameter will be checked.  If  the caller is an object MSF, |
+another  level of  indirection is  used to  search the containing
+directory.  Also, when an attempt  to initiate the name fails and |
+returns the error code  error_table_$dirseg, which indicates that |
+the named  object exists but is  a directory branch, we  check to |
+see if  the branch is an  MSF.  If it is,  we attempt to initiate
+component  0 and return  a pointer to  it.  The refname  given is
+added to component 0 of the MSF.  If the directory is not an MSF, |
+it is ignored.
+
+The third  problem is solved  by changing link_snap  to check the
+init_info  prior to  calling set_ext_variable_$for_linker  and to
+get the new init_info if the type is deferred.
+
+The fourth problem is solved by changing fs_search and link_snap.
+The  changes  to  fs_search  involve  adding  a  new  entrypoint,
+fs_search$same_directory  which  will  be  used  by  link_snap to
+initiate   the   target   component    of   the   partial   link.
+fs_search_$same_directory will  utilize the same mechanism  as it |
+currently used  to evaluate the referencing_dir  search rule, and |
+will  search ONLY  that directory.   If found,  the named segment |
+will be  initiated with a null  refname.  The syntax for  the new
+subroutine is:
+
+ dcl fs_search$same_directory (ptr, char(*), ptr, fixed bin(35));
+ call fs_search$same_directory (ref_ptr, refname, seg_ptr, code);
+
+
+Multics Technical Bulletin                                MTB-711
+Object MSFs.
+
+The definition searching algorithm  of link_snap will be modified
+to  check  the  indirect  flag  in  the  definition  and, if set,
+validate that  the definition refers to the  linkage section.  If
+the  target of the  definition is already  snapped (by the  first
+reference trap),  that pointer is  returned as the  target of the
+definition.  If it  is not snapped, the dynamic  linker will call
+fs_search$same_directory  to  initiate  the  target,  combine its
+linkage section, snap the partial link, and then return the value
+of the  now-snapped link as  the target of  the definition.  Note
+that this operation performs two linkage_section allocations, but
+first_reference  traps are  only run  on behalf  of component  0.
+This is because the msf_prelink_  trap is responsible for running |
+any traps in the other components.
+
+8.  User Ring Support
+
+In addition  to the support procedures required  for execution of
+an object MSF  such as msf_prelink_, a number of  other user ring |
+procedures  will have  to be   modified in  order to  give proper
+support for object MSFs.                                          |
+
+fs_standard_object_
+     The procedure fs_standard_object_ will have to be changed to
+     permit the setting of  execute permission on a Multi-Segment
+     File.
+
+list, ls
+     The list  command should be  changed to properly  report the
+     acl mode on Multi-Segment Files.
+
+where, wh
+     The  where  command  will  have  to  be  modified  to handle
+     location of  MSF components in  the cases where  it searches
+     for the target manually rather than calling hcs_$make_ptr.
+
+print_link_info, pli
+     The  print_link_info command  should be  modified to  detect
+     that  the  object  specified  is  an  MSF  and  perform  the |
+     equivalent  of  what  is  currently  done  on  each  of  the
+     components.
+
+date_compiled, dtc
+     The  date_compiled command should  be modified to  detect an |
+     MSF and check all of the components.                         |
+
+
+MTB-711                                Multics Technical Bulletin
+                                                     Object MSFs.
+
+cv_entry_, cv_ptr_
+     The  cv_entry_  and  cv_ptr_  subroutines  will  have  to be
+     modified to initiate the proper  segment when called with an
+     absolute  or relative  pathname to  an object  MSF.  This is |
+     because  component  0  should  be  initiated  with the given |
+     refname in that case.
+
+find_command_
+     The  find_command_ subroutine  will have  to be  modified to
+     check if the target is an MSF when called with a relative or |
+     absolute  pathname and initiate  component 0 with  the given
+     refname.
+
+term_
+     The term_ subroutines will have  to be modified to terminate
+     and uncombine the linkage sections  for all components of an |
+     object MSF.                                                  |
+
+set_fortran_common, sfc
+     The  set_fortran_common command will  have to be  changed to
+     look  in all the  components of an  object MSF for  external |
+     variable links.
+
+dprint, dp
+     The  dprint  command  will  have  to  be  modified to detect
+     whether an  MSF being dprinted  is an object  MSF and reject |
+     the  request  as  is   currently  done  for  single  segment |
+     binaries.
+
+enter_output_request, eor
+     The enter_output_request command will have to be modified in
+     the same manner as the dprint command.
+
+create_data_segment_                                              |
+     The   create_data_segment_  subroutine   currently  produces |
+     object  segments  with  malformed  definition  lists causing |
+     object segments created by cds to appear to have an msf_map. |
+     This problem occurs because the  previously MBZ field in the |
+     definition  header that  is now   being used  to locate  the |
+     msf_map is  in the same position as  the backward_relp value |
+     in  a  definition.   create_data_segment_  is  threading the |
+     header into the backward list instead of terminating it from |
+     the first definiiton.                                        |
+                                                                  |
+exists                                                            |
+     The  exists  command  will  have  to  be  modified  to allow |
+     selection of object MSFs and object files.                   |
+
+
+Multics Technical Bulletin                                MTB-711
+Object MSFs.
+
+object_segments, osegs                                            |
+     This  command should be  modified (and possibly  renamed) to |
+     detect object segments and/or MSFs.                          |
+In  order to  facilitate the  changes to  existing software, some
+other new subroutines  will be created to deal  with object files |
+in a  consistent manner.  These  subroutines will form  a library
+that can be used to deal  with objects in a manner less dependent
+on knowledge of the object segment format by the caller.
+
+
+MTB-711                                Multics Technical Bulletin
+                                                     Object MSFs.
+
+Syntax:
+
+dcl object_lib_$initiate entry (char(*), char(*), char(*),
+          bit (1), ptr, fixed bin (24), bit (1), fixed bin (35)); |
+call object_lib_$initiate (dirname, entryname, refname,
+          validate_sw, seg_ptr, bit_count, msf_sw, code);         |
+
+Function:
+
+Initiates  the  executable  binary   specified,  with  the  given
+refname,  terminating the  refname  as  required and  returning a
+pointer  and bit  count.  The   target is  optionally checked  to |
+insure that it is actually an object segment or MSF, and that its |
+status as an object MSF is consistent.                            |
+
+Arguments:
+
+dirname
+     is  the  directory  name  of  the  object  to  be initiated.
+     (Input)
+entryname
+     is the entry name of the object to be initiated.  (Input)
+refname
+     is the reference name to be  placed on the object when it is
+     initiated.  If  the object is  an object MSF,  the reference |
+     name will be placed on component 0.  (Input)                 |
+validate_sw                                                       |
+     is a switch  to select whether of not the  target segment or |
+     MSF is  checked to see if  it is a valid  executable binary. |
+     (Input)                                                      |
+seg_ptr
+     is a pointer to the object.  If the object is an object MSF, |
+     a pointer to component 0 will be returned.  (Output)         |
+bit_count                                                         |
+     is the bit_count  of the segment pointed to  by seg_ptr.  If |
+     the target  is an MSF, it  is the bit count  of component 0. |
+     (Output)                                                     |
+msf_sw                                                            |
+     is  a flag  indicating whether  the object  specified is  an |
+     object MSF.  (Output)                                        |
+code
+     is a standard status code.
+
+
+Multics Technical Bulletin                                MTB-711
+Object MSFs.
+
+Syntax:
+
+dcl object_lib_$init_no_clear entry (char(*), char(*), char(*),
+          bit (1), ptr, fixed bin (24), bit (1), fixed bin (35)); |
+call object_lib_$init_no_clear (dirname, entryname, refname,
+          validate_sw, seg_ptr, bit_count, msf_sw, code);         |
+
+Function:
+
+Initiates  the  executable  binary   specified,  with  the  given
+refname,  terminating the  refname  as  required and  returning a
+pointer.   If the  refname is  already in  use, term_$no_clear is
+called  rather  than  term_$single_refname.   This  entrypoint is
+intended for  use only by  find_command_ since it  will not clear
+find_command_'s  associative  memory   of  entrypoints  which  is
+assumed to  be managed manually by find_command_.   The target is
+optionally  checked  to  insure  that  it  is  actually an object |
+segment  or  MSF,  and  that  its  status  as  an  object  MSF is |
+consistent.                                                       |
+
+Arguments:
+
+dirname
+     is  the  directory  name  of  the  object  to  be initiated.
+     (Input)
+entryname
+     is the entry name of the object to be initiated.  (Input)
+refname
+     is the reference name to be  placed on the object when it is
+     initiated.  If  the object is  an object MSF,  the reference |
+     name will be placed on component 0.  (Input)                 |
+validate_sw                                                       |
+     is a switch  to select whether of not the  target segment or |
+     MSF is  checked to see if  it is a valid  executable binary. |
+     (Input)                                                      |
+seg_ptr
+     is a pointer to the object.  If the object is an object MSF, |
+     a pointer to component 0 will be returned.  (Output)         |
+bit_count                                                         |
+     is the bit  count of the segment pointed to  by seg_ptr.  If |
+     the target  is an MSF, it  is the bit count  of component 0. |
+     (Output)                                                     |
+msf_sw                                                            |
+     is a flag indicating whether  the object specified is a MSF. |
+     (Output)
+code
+     is a standard status code.
+
+
+MTB-711                                Multics Technical Bulletin
+                                                     Object MSFs.
+
+Syntax:                                                           |
+                                                                  |
+dcl object_lib_$get_component_info entry (ptr, ptr, char(8),      |
+          char(*), ptr, fixed bin(35));                           |
+call object_lib_$get_component_info (segp, areap, version_reqd,   |
+          oi_type, infop, code);                                  |
+                                                                  |
+Function:                                                         |
+                                                                  |
+Returns  structural and  identifying information  about an object |
+segment or  MSF.  Varying amounts of information  may be returned |
+depending on the value of the oi_type parameter.                  |
+                                                                  |
+Arguments:                                                        |
+                                                                  |
+segp                                                              |
+     is a pointer  to the segment to be examined.   This may be a |
+     single segment or a component of  an object MSF.  If it is a |
+     component of  an object MSF  (determined by the  presence or |
+     absence of  an msf_map in  the object) info  is returned for |
+     all of the components.  (Input)                              |
+areap                                                             |
+     is a pointer to an area  in which the output structure is to |
+     be allocated.  If this pointer is null, the system_free_area |
+     is used.  (Input)                                            |
+version_reqd                                                      |
+     is the  version of the output  structure desired.  Currently |
+     only  one  version  is  supported.   This  value  should  be |
+     component_info_version_1             (declared            in |
+     object_lib_defs.incl.pl1) (Input)                            |
+oi_type                                                           |
+     is  the type  of object  info desired  by the  caller.  Four |
+     values are supported:                                        |
+     "none"    No object info is filled into the structure.  Only |
+               the  segment  pointers,  bit_count,  and terminate |
+               flag is set.                                       |
+     "brief"   Object  info is  filled in  for each  component by |
+               calling object_info_$brief for each component.     |
+     "display" Object  info is  filled in  for each  component by |
+               calling object_info_$display for each component.   |
+     "long"    Object  info is  filled in  for each  component by |
+               calling object_info_$long for each component.      |
+infop                                                             |
+     is  a pointer  to  a  component_info structure  allocated by |
+     object_lib_$get_component_info.  (Output)                    |
+code                                                              |
+     is a standard status code.  (Output)                         |
+                                                                  |
+Notes:                                                            |
+
+
+Multics Technical Bulletin                                MTB-711
+Object MSFs.
+
+The   component  info   structure  returned   has  the  following |
+definition (declared in object_lib_defs.incl.pl1):                |
+                                                                  |
+  dcl 01 component_info       aligned based (comp_infop),         |
+       02 version             char (8),                           |
+       02 flags               aligned,                            |
+        03 msf                bit (1) unaligned,                  |
+        03 mbz                bit (35) unaligned,                 |
+       02 max                 fixed bin,                          |
+       02 comp                (0:max_component                    |
+                              refer (component_info.max)),        |
+        03 segp               ptr,                                |
+        03 bc                 fixed bin (24),                     |
+        03 flags              aligned,                            |
+         04 terminate         bit (1) unaligned,                  |
+         04 mbz               bit (35) unaligned,                 |
+        03 info               like object_info;                   |
+                                                                  |
+where:                                                            |
+                                                                  |
+version                                                           |
+     is  the version  number of  the structure.   It is currently |
+     "cinfo 1.0".    The   named    constant   for   this   value |
+     component_info_version_1        is        declared        in |
+     object_lib_defs.incl.pl1                                     |
+msf                                                               |
+     is  a flag  indicating that   the object  in question  is an |
+     object MSF.                                                  |
+max                                                               |
+     is the number of the largest component in the file.          |
+comp                                                              |
+     contains the per-component information.                      |
+segp                                                              |
+     is a pointer to the N'th component of the file.              |
+bc                                                                |
+     is the bit_count of the N'th component of the file.          |
+terminate                                                         |
+     is  a flag  indicating that  the N'th  component was unknown |
+     before object_lib_$get_component_info was  called and should |
+     therefor be terminated by the caller.                        |
+info                                                              |
+     is  identical  to  the  structure  object_info  (declared in |
+     object_info.incl.pl1)  for a  description of  the fields  in |
+     this section see object_info_.                               |
+
+
+MTB-711                                Multics Technical Bulletin
+                                                     Object MSFs.
+
+Syntax:
+
+dcl object_lib_$get_def_target entry (ptr, fixed bin(24), char(*),
+          char(*), bit(1), ptr, fixed bin(35));
+call object_lib_$get_def_target (segp, bc, segname, offsetname,
+          live_sw, targetp, code);
+
+Function:
+
+Searches the segment specified by  segp for a definition matching
+segname and offsetname and returns a pointer to the target of the
+definition.  If the segment specified is component 0 of an object |
+MSF, the target  pointer return points to the  eventual target of |
+the definition  (in some component  other than component  0).  If
+live_sw is "1"b, and the definition found refers to the static or
+linkage section, the  targetp value returned will be  in the live
+copy of  the linkage or  static section, respectively.   If it is
+"0"b, the value returned will point to the template in the object
+segment.
+
+Arguments:
+
+segp
+     is a pointer to the segment to search.  (Input)
+bc
+     is the bit_count of the segment to search.  (Input)
+segname
+     is the segname to search for.  (Input)
+offsetname
+     is the name of the definition to search for.  (Input)
+live_sw
+     specified whether definitions which  reference the static or
+     linkage  section  of  the  object  should  return  a pointer
+     relative to the  live copy pointed to by the  LOT/ISOT or to
+     the  static template  stored in  the object  segment itself.
+     (Input)
+targetp
+     is  a pointer  to the   eventual target  of the  definition.
+     (Output)
+code
+     is a standard status code.  (Output)
+
+
+Multics Technical Bulletin                                MTB-711
+Object MSFs.
+
+9.  Object MSF Call Example                                       |
+
+The following  is a step-by-step example of  the process involved
+in snapping a link to an object MSF.                              |
+
+1)  The calling procedure references an unsnapped type 4 link and
+    takes a fault.  link_snap$link_fault is invoked via the fault
+    handling mechanism.
+
+2)  Link_snap determines  the type of  link and gets  the segname
+    and entryname ACC strings from the definition section.
+
+3)  Link_snap calls fs_search to locate the target segment of the
+    link.
+
+4)  Fs_search  applies each  search  rule  looking for  the given
+    segname.  If the initiated_segments rule  is used to find the
+    name, the refname  will be on component 0 of  the object MSF, |
+    which is the proper pointer to be returned to link_snap.
+    If the  referencing_dir rule is being  evaluated, the calling
+    procedure is  checked to see if  it is an object  MSF.  If it |
+    is,   another  level   of  indirection   is  introduced  when
+    determining  the  directory  to  be  used  as the referencing
+    directory.
+    If a directory  is being searched, and the  call to initiate_
+    returns the  error code error_table_$dirseg,  which indicates |
+    that  a branch  with that   name exists  but is  a directory,
+    fs_search calls  status_$mins to see  if the directory  has a
+    non-zero  bit count  (ie.  if  it is  an MSF).   If not,  the
+    directory is  ignored.  If it is  an MSF, component 0  of the |
+    MSF is  initiated with the  given refname and  the pointer to |
+    component 0 is returned.
+
+5)  Pointers are derived to the linkage, static, text, and symbol
+    sections  of the  target,  combining  the linkage  and static
+    sections if  necessary.  If a  first reference trap  block is
+    present when the linkage section is  copied, a flag is set in
+    the linkage header indicating that the traps must be run.
+
+6)  Link_snap calls get_defptr_ to find the definition.
+
+7)  The  indirect bit  is checked  to  see  if the  target is  in
+    another component.  If it is, the target of the definition is
+    checked to see if it an ITS  pointer.  If it is, the value is
+    used  as  the  target  of  the  definition.   If  it  is not,
+    fs_search$same_directory  is called  to initiate  the target,
+    pointers  are  derived  to  the  target  sections  by calling
+    link_man$other_linkage, and the link  is resolved by applying
+    the offset to the appropriate section pointer.
+
+
+MTB-711                                Multics Technical Bulletin
+                                                     Object MSFs.
+
+8)  A pointer to the link  target is calculated, and written into
+    the link.
+
+9)  The machine conditions are adjusted  so that the fault can be
+    restarted without taking another linkage fault.
+
+10) Link_snap calls  trap_caller_caller_ to create a  stack frame
+    on   the   user   ring    stack,   simulating   a   call   to
+    link_trap_caller_,    which    will    actually    call   the
+    first_reference traps, in the user ring.
+
+11) Trap_caller_caller_  calls  signaller$for_linker  to transfer
+    control back  to the user  ring to run  link_trap_caller_ and
+    handle cleanup of the ring 0 environment.
+
+12) Link_trap_caller_  runs  the  first  reference  traps  in the
+    target segment.  In the case of an object MSF, the first trap |
+    will  be a  call to   msf_prelink_ passing  a type  1 *link|0 |
+    reference as a parameter.
+
+13) msf_prelink_  locates  the  msf_map  in  the  object segment, |
+    determines  the   number  of  components,  and   the  current
+    component number, and initiates each of the MSF components.   |
+
+14) Pointers  to  the  copied  linkage  and  static  sections are
+    derived for  each MSF component.  If the  linkage section has |
+    not been copied yet, hcs_$combine_linkage is called to do so.
+
+15) The  linkage  sections  of  each  of  the  MSF components are |
+    scanned,  looking for  links with  a "47"b3  fault_tag_3 tag, |
+    which indicates a partially snapped link.  These are resolved |
+    as indicated above.
+
+16) The  copied linkage  section headers  are checked  to see  if
+    there are first reference traps in the other components.  (In
+    an object MSF,  there should be at least  one first reference |
+    trap in each component, but  we check anyway.)  If there are,
+    we snap the  links used by the trap, check  the target of the
+    call link  to make sure we are  not re-invoking msf_prelink_, |
+    and then  call the trap procedure.  Traps  to msf_prelink_ in |
+    other components are ignored.  Since the traps in the current
+    component are  already being run  by link_trap caller,  we do
+    not run them again.
+
+17) msf_prelink_ returns, and link_trap_caller_ continues running |
+    any other first reference traps in the component 0.
+
+
+Multics Technical Bulletin                                MTB-711
+Object MSFs.
+
+18) link_trap_caller_ returns.  Due to the stack frame created by
+    ring  0 and the  modified machine conditions,  we essentially
+    return  to the point  just prior to  the linkage fault.   The
+    calling  procedure  now  re-tries  the  reference  using  the
+    snapped link.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

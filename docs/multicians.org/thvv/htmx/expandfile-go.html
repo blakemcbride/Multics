@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Reimplementing expandfile in Go</title>
+    <meta name="description" content="expandfile in Go.">
+    <meta name="keywords" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="xfstyle.css">
+    <style type="text/css">
+     .outer {min-width: 200px; max-width: 800px; width: auto !important; width: 600px; margin: 0px auto;}
+     .mf {display: inline; font-size: 70%;}
+     .mf .mfx {display: none;}
+     .mfaddr {font-size: 9pt; font-family: sans-serif; background-color: #aaaaff; color: #000000;}
+     .mfed {font-size: 9pt; font-family: serif;}
+    </style>
+<style type="text/css">
+<!--
+#leftpanel {background-color: #f0f0f0; margin-right: 1em;  padding: 1em 1em 1em 1em; float: left; width: 175px;}
+#leftpanel a:link {background-color: #f0f0f0; color: #0000ff;}
+#leftpanel a:visited {background-color: #f0f0f0; color: #ff00ff;}
+#leftpanel a:hover {background-color: #ffdddd; color: black;}
+#leftpanel a:active {background-color: #f0f0f0; color: #ff0000;}
+-->
+</style>
+  </head>
+  <body> 
+    <div class="outer">
+      <div class="headbar">
+	<div class="headbar2">
+	  <span class="headingdate">13 Mar 2025</span>
+          <div class="h1holder"><h1>expandfile in Go</h1></div>
+	</div>
+      </div>
+      <div class="main">
+<p>
+  I began writing <span class="cmd">expandfile</span> in 2002.  See <a href="expandfile-history.html">expandfile-history</a>.
+</p>
+<p>
+  Expandfile reads text files, expands macros, and writes a new text file.
+  I use it to create HTML pages for web sites, and to perform other text transformation tasks.
+</p>
+
+<h2>My Project</h2>
+<p>
+  These are my informal notes as I convert the Perl program
+  <a href="expandfile.html"><span class="cmd">expandfile</span></a> to the Go language.
+</p>
+<p class="sm">
+  Go was started at Google in 2007 by Ken Thompson, Robert Griesemer, and Rob Pike.
+  The language was released in 2009.
+  The language was designed for large code projects and concurrent processing.
+  It is easy to learn and use. It compiles to machine code.
+  It has static types and garbage collects memory.
+  It is free.
+</p>
+<p>
+  (Oct 2021) I began porting <span class="cmd">expandfile</span> to Go 1.7.2.
+  (I installed it with <a href="https://formyfriendswithmacs.com/homebrew.html">Homebrew</a>).
+</p>
+<p>
+  (Jan 2022) I restarted porting <span class="cmd">expandfile</span> to Go 1.22.1. (Homebrew now has 1.22.4)
+  I had expandfile mostly running, except for XML.
+  There were performance problems and inconsistencies with the Multics expansions.
+</p>
+<p>
+  (Jun 2024) I restarted porting <span class="cmd">expandfile</span> to Go 1.22.1.
+  <br> As of March 2025, Go is up to 1.24.1; I will have to catch up.
+</p>
+
+<h3>Background: Expandfile in Perl</h3>
+<p>
+  I wrote <span class="cmd">expandfile</span> in Perl. (I have used Perl since 1996.)
+</p>
+<p>
+  The main <span class="cmd">expandfile</span> application is about 75 lines of Perl.
+  It uses a library module, <span class="cmd">expandfile.pm</span>, of about 1500 lines of Perl,
+  plus other smaller libraries for SQL and XML processing.
+  <span class="cmd">expandfile</span> uses about a dozen Perl library modules from CPAN.
+</p>
+<p>
+  In some senses, I wrote <span class="cmd">expandfile</span> in a style of "PL/I written in Perl."
+  One can write very terse Perl statements that do a lot,
+  but I chose to write less dense code that I would be able to understand later.
+  This made it easier to translate to other languages, such as Python.
+</p>
+<p>
+  <span class="cmd">expandfile</span> is open source and available without fee from GitHub.
+  <a href="expandfile.html">Documentation</a> for the program is online.
+</p>
+
+<h3>Expandfile in Go</h3>
+<p>
+  In Go the main <span class="cmd">expandfile</span> application is 160 lines of Go.
+  The application uses a library, <span class="cmd">xflib.go</span>, of about 2523 lines of Perl, including SQL processing but not XML.
+  The Go version uses about a dozen Go library modules including SQL.
+</p>
+<p>
+  I tried to make my Go code clear and modular.
+  Initially I tried to translate one line of Perl to one or more lines of Go.
+  See below for some lessons.
+</p>
+<p>
+  I have not yet put the Go version of expandfile into Github.
+</p>
+
+<h3>History</h3>
+<p>
+  (12 Dec 2021) The basic expandfile functions work.
+  <span class="cmd">testexpandfile</span> runs and most tests pass:
+</p>
+<ul>
+  <li>Basic variable setting and expansion works, including nested evaluation.</li>
+  <li>Arithmetic and string builtin functions work.</li>
+  <li>Builtin functions that loop and generate output by expanding an iterator block mostly work:
+    <ul>
+      <li><span class="cmd">*ssvloop</span> works.</li>
+      <li><span class="cmd">*sqlloop</span> works.</li>
+      <li><span class="cmd">*dirloop</span> lists files, but some file attributes are not set.</li>
+      <li><span class="cmd">*xmlloop</span> To be written.</li>
+    </ul>
+  </li>
+  <li>Multics formatting with and without SQL lookup works.</li>
+  <li>(20 Dec 2021) Testing expansion of various Multics source files revealed bugs.  Fixed them.  </li>
+</ul>
+
+<h4>Known bugs (15 Jan 2022)</h4>
+<ul>
+  <li>
+    Function <span class="cmd">getFirstSentence()</span>, used to create TITLE tags in Multics expansions,
+    returns with "..." where the Perl version does not.
+    It also returns one more word.
+    I need to twiddle with this function to make it identical to the Perl regexp version.
+  </li>
+  <li>
+    Some macro expansions return trailing newlines in the Go version where the Perl version does not.
+    For example, macro <span class="cmd">getcomma3</span> returns a trailing NL in Go, not in Perl.
+  </li>
+</ul>
+
+<h4>Work to be done (19 Jan 2022)</h4>
+<ul>
+  <li>
+    Write XML handling code for <span class="cmd">xflib</span>, based on the Perl program <span class="cmd">readbindxml.pm</span>.
+    The popular XML libraries for Go require the user to compile the XML schema into a Go program -- this won't work for <span class="cmd">expandfile</span>,
+    which wants to discover the schema by examining the result of an Xpath query like "/*/*".
+    So I need to find a better library to learn how to do this. 
+  </li>
+  <li>(done) Package <span class="cmd">epm</span> was renamed to <span class="cmd">xflib</span>.</li>
+  <li>
+    Add <span class="cmd">testmx.htmt</span>, <span class="cmd">testperlisms.htmt</span>, <span class="cmd">testbracketerr.htmt</span>, <span class="cmd">testsetscale.htmt</span> and various Multics expansion tests
+    to the test suite <span class="cmd">testexpandfile</span> for both Perl and Go.</li>
+  <li>
+    Compile pages from <span class="cmd">multicians.org</span> with Go.
+    Make sure nothing crashes or comes out garbage.
+    If there are differences from Perl, decide what to fix and how.
+    If Go is too slow, fix. (see Performance below)
+  </li>
+  <li>
+    Compile the whole Multics site and compare all files with Perl's output.  Should be identical.
+    Currently there are differences: the TITLE attribute of glossary references has one more word,
+    and the extra newline characters mentioned above.
+  </li>
+  <li>(done) Turn off <span class="cmd">GO111MODULE</span> and set up the modern build system.</li>
+</ul>
+
+<h4>Progress (02 Apr 2024)</h4>
+<p>Restarted this project.</p>
+<ul>
+  <li>Changed regexps to quote the braces.</li>
+  <li>Changed regexp package to <span class="cmd">wasilabs/re2</span>.</li>
+  <li>Renamed <span class="cmd">epm</span> to <span class="cmd">xflib</span>.</li>
+  <li>Turned off <span class="cmd">GO111MODULE</span> and set up <span class="cmd">go.mod</span>.</li>
+</ul>
+<p>Bugs found</p>
+<ul>
+  <li>Bug 001 2024-03-04
+    <ul>
+      <li>(6x) trace: ExpandMulticsBody SQL</li>
+      <li>trace: ExpandMulticsBody {[]} nomatch</li>
+    </ul>
+    <ul>
+      <li>
+	re2 syntax is different from Go rexp.  Rewrote code to use re2.
+	Regexps I think should match are not matching.
+	Little regex test program fails.
+      </li>
+      <li>
+	See https://cran.r-project.org/web/packages/re2/vignettes/re2_syntax.html
+      </li>
+      <li>
+	I decided to rewrite ExpandMulticsBody to not use regular expressions.
+	Instead, I would build a little state machine.
+	This should speed things up even more (see below) and be simpler.
+      </li>
+    </ul>
+  </li>
+  
+</ul>
+
+<h4>Plans (06 Apr 2024)</h4>
+<p>Rewrite ExpandMulticsBody.  Decide if we do the state machine or regexps.</p>
+<p>Get test to pass.</p>
+<p>Write more tests.</p>
+<p>Try testexpandfile.</p>
+<p>Measure performance and see if it is adequate.</p>
+<p>What about XML.</p>
+
+<h4>Progress (16 Jun 2024)</h4>
+<p>see expandfile4.e.</p>
+
+
+
+<h4>Performance</h4>
+<p>
+  (17 dec 2021) Expanding <span class="cmd">mx-net.htmx</span> (2126 lines) took 0.889 seconds with Perl and 24.170 seconds with Go -- a factor of 27x slower.
+  This was unacceptable.  Recompiling the whole Multics site (478 files) would take over 3 hours, instead of about 6 minutes.
+  My first Go version of <span class="cmd">expandfile</span> used a simple set of functions to simulate Perl lists.
+</p>
+<p>
+  I analyzed what the Perl <span class="cmd">expandfile</span> was doing.
+  Basically it made 14 passes over the file, doing one transform at a time:
+  block binding, variable and builtin expansion, Multics lookups (4 types), Multics formatting (4 types done twice).
+  Each pass replaced the whole copy of the file with a changed one.
+  Perl is very efficient about this; Go is less so.
+  (Perhaps the Go version of the program invokes the garbage collector a lot, or it is not as fast as Perl's?)
+  Further investigation with the profiler will help understand this.
+  I tried using the Go profiling tools but wasn't able to get them working.
+</p>
+<p>
+  I did some experiments.
+  I found that most of the slowdown came from the "Multics" source constructs that replace a string like
+  "edited by {[VanVleck Tom Van Vleck [THVV]]}"
+  with a hyperlink "edited by <a href="https://www.multicians.org/thvv/multicians.html#VanVleck#VanVleck" title="Multician: System (MIT, CISL, PMDC): FIM, Initialization, BOS, Phase One, ESD, User control, Message Coordinator, Accounting, printer, NSS, data management; Palyn committee.">Tom Van Vleck [THVV]</a>".
+  This construct looks up an identifier in my local MySQL database and outputs a link.
+</p>
+<p>
+  I investigated whether MySQL access was slower in Go than in Perl by instrumenting the lookupSQL function.
+  The 130 lookup calls in <span class="cmd">mx-net.htmx</span> averaged a millisecond or two: not enough to explain over 20 seconds' delay.
+</p>
+<p>
+  I rewrote <span class="cmd">expandMulticsBody()</span> and <span class="cmd">cleanRef()</span> to perform all the formatting, lookup, and unwrapping operations in a single pass over their inputs,
+  rather than repeated passes.
+  My Perl regular expressions became character loops over a string with a state machine.
+  This reduced the number of passes over the input from 14 to 3.
+  Expanding <span class="cmd">mx-net.htmx</span> executed in 3.537 seconds, a factor of 7 improvement.  Go is about 4x slower than Perl.
+  Compiling the source file with the Multics constructs removed takes about 2 seconds: still 2x as long as Perl.
+</p>
+<p>
+  Furthermore, my translation of regexps to state machines did not handle all cases correctly.
+  Other projects claimed my time and I set the Go version aside.
+</p>
+<p>
+  (aug 2022)
+  I learned more about Go and rewrote the list handling routines to use a more object-oriented <span class="cmd">struct</span> that
+  wrapped a <span class="cmd">container/list</span> instance instead of a fixed array.
+  This made the Go version about 4x slower than Perl, a factor of 7 more efficient.
+</p>
+<p>
+  I think the remaining performance issues have to do with regular expression caching.
+  <span class="cmd">epm.go</span> used <span class="cmd">regexp.MustCompile</span> in 21 places.
+  I built a version that used <span class="cmd">github.com/umisama/go-regexpcache</span> instead.
+</p>
+
+<h2>File Setup</h2>
+<p>
+  This section describes the files on my machine as I develop expandfilego.
+</p>
+<ul>
+  <li>$HOME/go
+    <ul>
+      <li>go-mode.el-master/ -- for Emacs</li>
+      <li>howto -- basic how to do it notes</li>
+      <li>other -- misc test programs</li>
+    </ul>
+  </li>
+  <li>$HOME/goproj
+    <ul>
+      <li>
+	expandfile
+	<ul>
+	  <li>
+	    main/
+	    <ul>
+	      <li>main.go</li>
+	      <li>main -- result of compiling -- copy this to $HOME/bin/expandfilego</li>
+	    </ul>
+	  </li>
+	  <li>
+	    xflib/
+	    <ul>
+	      <li>xflib.go</li>
+	    </ul>
+	  </li>
+	  <li>
+	    go.mod, go.sum -- control files for go build
+	  </li>
+	  <li>
+	    golang.org/ -- library programs imported from Go
+	  </li>
+	  <li>
+	    github.com/ -- library programs imported from others
+	  </li>
+	</ul>
+      </li>
+      <li>
+	tests -- misc small tests.. will develop these into the standard 
+      </li>
+    </ul>
+  </li>
+</ul>
+
+<h2>Lessons</h2>
+<p>
+  Here are some of the lessons I learned while writing the Go version of <span class="cmd">expandfile</span>.
+</p>
+<h3>Go Syntax</h3>
+<p>
+  Go's basic syntax is similar to C's. The big differences from Perl are:
+</p>
+<ul>
+  <li>no semicolons</li>
+  <li>variable names do not have sigils <span class="cmd">$</span> or <span class="cmd">%</span> or <span class="cmd">@</span></li>
+  <li>comments are <span class="cmd">//</span> instead of <span class="cmd">#</span></li>
+  <li><span class="cmd">if</span> statement does not need parentheses around the condition; braces mandatory</li>
+  <li>Perl trailing <span class="cmd">if</span> and <span class="cmd">unless</span> not supported</li>
+  <li>no <span class="cmd">if defined()</span></li>
+  <li><span class="cmd">for</span> statement is generalized: replaces <span class="cmd">while</span> as well</li>
+  <li>Perl <span class="cmd">ref</span> becomes a much more general type switch, or use <span class="cmd">reflect.TypeOf()</span></li>
+  <li>no Perl var <span class="cmd">$_</span></li>
+  <li>String quotes are all <span class="cmd">&quot;</span> -- single quotes are glyph</li>
+  <li>no <span class="cmd">&</span> in front of function</li>
+  <li>pointers to an object with <span class="cmd">*</span> not <span class="cmd">\</span></li>
+  <li>Perl evaluation of arrays in scalar context gives length, Go uses len()</li>
+  <li>Perl hash becomes Go map, strongly typed</li>
+  <li>Iterators in Go are powerful</li>
+  <li>sort and grep have function syntax</li>
+  <li>packages are very different. Cannot reach inside them the way Perl allows.</li>
+</ul>
+<p>
+  It is reasonably easy to start by editing Perl source into Go with repeated edit passes,
+  then trying to compile and fixing errors from the compiler.
+  Most Go compiler error messages are clear and tell you what to fix.
+</p>
+
+<h4>Regular expressions</h4>
+<ul>
+  <li>
+    Regular expressions are used 87 times in <span class="cmd">expandfile</span>'s Perl code.
+    Perl caches the JIT compilation of regular expressions invisibly.
+  </li>
+  <li>
+    I needed to make some changes from the Perl version.
+    Because performance sucked with using the standard Go regexps,
+    I tried rewriting the regexps in the Perl version into state machines..  decided to just use a modern RE package.
+  </li>
+  <li>
+    RE features <span class="cmd">expandfile</span> uses are: ., variable interpolation, capture groups with (), character classes and negative character classes, S, d, r, n, s,
+    * + and ? counts, \ for unspecialing, i and g modifiers, ^ and $ anchors, etc.
+  </li>
+  <li>
+    Some features of Perl regular expressions are not used by <span class="cmd">expandfile</span> and need not be supported in whatever package we pick.
+    For example: Q...E, p, P, X, K, R, backtracking, groups with {} and a count.
+  </li>
+  <li>
+    Since Go regexps allow braces with counts, I had to escape all the braces in my regexps.
+  </li>
+  <li>
+    Standard Go libs are slow. I chose https://github.com/wasilibs/go-re2, 20-40x faster.
+    If I need to I can add caching, ala unisama.
+  </li>
+</ul>
+
+<h3>Go Semantics</h3>
+<ul>
+  <li>Each Go program declares an <span class="cmd">import</span> section and lists <b>packages</b> that provide language features.</li>
+  <li>Packages export those functions whose name begins with uppercase.</li>
+  <li>Terminal input and output are in package <span class="cmd">fmt</span> e.g. <span class="cmd">fmt.Println</span></li>
+  <li>Go variables are strongly typed. The allocation of each value includes a size.</li>
+  <li>Go can infer a variable's type from initialization, e.g. <span class="cmd">fred := ""</span> declares fred as a string.</li>
+</ul>
+
+<h3>Go Types</h3>
+<ul>
+  <li>Go has types. And Concrete Types. And inner types. And Interface types.  I am still learning how to use all these appropriately.</li>
+  <li>String values are immutable and include a length.</li>
+  <li>Arrays, also subscripted in <span class="cmd">[]</span>, must have a max size declared.</li>
+  <li>Go does not have implicit numeric conversions. Fine by me. Good compiler diagnostics help me put in explicit casts when needed.</li>
+  <li>An array of bytes is different from string -- my initial version uses strings everywhere.</li>
+  <li>Slices
+    <ul>
+      <li> are a view on underlying array or string, subscripted in <span class="cmd">[x:y]</span></li>
+      <li> subscripts are zero origin</li>
+      <li> upper bound of a slice is tricky.. it is one past the last item included</li>
+    </ul>
+  </li>
+  <li>Hashes in Perl become <i>maps</i> in Go; each map's keys and values have fixed type.</li>
+  <li>The SQL package uses <i>interface{}</i> types which are then cast to string values to put into the values table.</li>
+</ul>
+
+<h3>Resources</h3>
+<p>
+  Many online resources are available for learning Go. 
+</p>
+<ul>
+  <li><a href="https://go.dev/tour/welcome/1">Tour of Go</a> </li>
+  <li><a href="../../index.html">Go library documentation</a>. Well written and thorough.</li>
+  <li>Many Web sites answer questions about Go and provide code snippets. Use Google.</li>
+  <li>https://go.dev/doc/effective_go</li>
+</ul>
+
+<h3>Tools</h3>
+<p>
+  The Go compiler and runtime are easy to download and install.
+  On my Mac, I issued the command <span class="cmd">brew install golang</span> and installation was painless.
+  Currently I have go 1.18.4 installed.
+</p>
+<p>
+  Editing Go programs was tedious, until I installed <span class="cmd">golang-mode</span> into Emacs. That made editing reasonable.
+</p>
+
+<h3>Testing</h3>
+<p>
+  My Perl version has a test suite, <span class="cmd">testexpandfile</span>, that exercises <span class="cmd">expandfile</span> thoroughly.
+  This was valuable for debugging the Go version.
+  I just changed <span class="cmd">export EXPAND=expandfile</span> to <span class="cmd">export EXPAND="go run expandfile.go"</span>
+  and ran the tests, fixed problems, ran it again, until it worked.
+</p>
+
+<h3>Source management and compiling</h3>
+<ul>
+  <li>Basic scheme: source tree, <span class="cmd">$HOME/goproj/expandfile/main/main.go</span>, <span class="cmd">$HOME/goproj/expandfile/xflib/xflib.go</span></li>
+  <li><span class="cmd">cd goproj/expandfile/main; go build</span></li>
+  <li><span class="cmd">go vet</span></li>
+  <li><span class="cmd">copy main $HOME/bin/expandfilego</span></li>
+  <li><span class="cmd">expandfilego args...</span></li>
+  <li><span class="cmd">Expandstring</span> (and other functions) are in package <span class="cmd">xflib</span> contained in <span class="cmd">xflib.go</span> in directory <span class="cmd">xflib</span></li>
+   <li>
+    There is no way to load packages dynamically in Go.
+    (This is disappointing; one of the problems for people using <span class="cmd">expandfile</span> was that
+    they had to install the library routines for SQL and XML even if they never used those features,
+    and this process was tricky.)
+  </li>
+</ul>
+
+<h3>Numbers and conversions</h3>
+<ul>
+  <li>If Perl can find a meaning for a statement, it will execute it; Go won't compile a statement that is not just right.</li>
+  <li>Perl gets the values of a variable in a "context" -- numeric, scalar, etc and tries to automatically convert the value.</li>
+  <li>Example: in Perl <span class="cmd">print "a"+1;</span> will print 1, because it sees "a" in a numeric context and converts it to 0.</li>
+  <li><span class="cmd">expandfile</span> depends on the underlying Perl semantics:
+    <ul>
+      <li>Described in the <a href="https://docstore.mik.ua/orelly/perl4/prog/">Camel book</a> </li>
+      <li>Contexts: float vs integer, string vs numeric vs dont-care, scalar vs list</li>
+      <li>Value interpolation of variables in double quoted strings</li>
+    </ul>
+  </li>
+  <li>
+    I wrote a Go function <span class="cmd">perlnum()</span> that takes a string argument and converts it to float,
+    so I can do arithmetic in float and store the value back as a string representation of <span class="cmd">int</span> or <span class="cmd">float</span>.
+    If the conversion fails, it returns 0.0.
+  </li>
+  <li>I wrote tests for <span class="cmd">testexpandfile</span> to explicitly check that behaviors that <span class="cmd">expandfile</span> depends on are followed.</li>
+</ul>
+
+<h3>Packages</h3>
+<p>
+  Go requires programs to <span class="cmd">import</span> specific packages from the Go library and from external repositories.
+  <span class="cmd">xflib.go</span> imports about a dozen Go library modules:
+</p>
+<ul>
+  <li>"github.com/wasilibs/go-re2" instead of "regexp"</li>
+  <li>"io/ioutil"</li>
+  <li>"net/http"</li>
+  <li>"database/sql"</li>
+  <li>"github.com/go-sql-driver/mysql"</li>
+  <li>"time"</li>
+  <li>"bytes"</li>
+  <li>"fmt"</li>
+  <li>"io"</li>
+  <li>"compress/gzip"</li>
+  <li>"io/ioutil"</li>
+  <li>"net/http"</li>
+  <li>"os"</li>
+  <li>"os/exec"</li>
+  <li>"strconv"</li>
+  <li>"strings"</li>
+  <li>"time"</li>
+  <li>"container/list"</li>
+</ul>
+<p>
+  I have not found an adequate Go library module for XPATH access to XML files. See below.
+</p>
+<p>
+  To fetch packages from GitHub: <span class="cmd">go get -u github.com/antchfx/xmlquery</span>
+</p>
+
+<h3>Functions</h3>
+<ul>
+  <li>Perl <span class="cmd">sub</span> becomes Go <span class="cmd">func</span></li>
+  <li><span class="cmd">sub twodigit { </span> becomes <span class="cmd">func twodigit(x int) string { </span></li>
+  <li>Go functions must have signatures (Perl added optional signatures to Perl5 but I did not use them)</li>
+  <li><span class="cmd">func</span>s can return multiple values: a convention is to return a value and an <span class="cmd">error</span> boolean</li>
+</ul>
+
+<h3>Executing shell commands</h3>
+<p>
+  <span class="cmd">expandfile</span>'s <span class="cmd">*shell</span> builtin executes a command.
+  The package to import that does this is <span class="cmd">os/exec</span>.
+  I converted my Perl code to call <span class="cmd">execCmd := exec.Command(args[0], args[1:]...)</span> and then run and capture its output.
+</p>
+<p>
+  The <span class="cmd">os/exec</span> package locates the binary executable and calls it directly.
+  That is, the command is not sent to the system shell to launch the target process.
+  Perl's <span class="cmd">open($fh, "$cmd|")</span> construct launches the command by calling the shell, which then invokes the command,
+  as described in Section 16.3 of the Camel book.
+</p>
+<ul>
+  <li>
+    Existing <span class="cmd">expandfile</span> expansions sometimes quote their arguments: the shell stripped the quotes off.
+    Go's <span class="cmd">os/exec</span> doesn't do this, and my utilities were failing to find files because the arguments had quote characters in the filename.
+  </li>
+  <li>
+    Existing <span class="cmd">expandfile</span> expansions also sometimes issued commands like <span class="cmd">%[*shell,&amp;result,="mysql &lt; inputfile"]%</span>,
+    using the shell angle brackets to redirect input or output, or the vertical bar to run a pipeline.
+    Go's <span class="cmd">os/exec</span> doesn't provide this functionality.
+  </li>    
+</ul>
+<p>
+  I rewrote my external command builtin to invoke <span class="cmd">sh -c commandline</span> with <span class="cmd">os/exec</span>.
+  This makes it work the way Perl does, and saves me from having to rewrite existing applications of <span class="cmd">expandfile</span>.
+  This has an efficiency penalty, because it launches a shell process and then the command, but <span class="cmd">*shell</span> is not used often in my pages.
+</p>
+
+<h3>CSV access</h3>
+<p>
+  These functions pass basic tests.  The Go version can read a local CSV file and expand a template.
+  The <span class="cmd">*bindcsv</span> test in <span class="cmd">testexpandfile</span> passes for both local files and remote URLs.
+  The <span class="cmd">*csvloop</span> test also passes.
+</p>
+
+<h3>MySQL access</h3>
+<p>
+  (Go did not provide a way to load a feature only if needed at runtime.
+  I tried to implement SQL support as a separate package, but it got a compilation error with a circular dependency.
+  I merged the SQL content back into <span class="cmd">xflib</span>.)
+</p>
+<p>
+  Because the GO SQL query support does not return the number of rows found,
+  I had to count the rows as I processed them, and set the row count at the end of <span class="cmd">IterateSQL()</span> instead of the beginning,
+  so the iterator block cannot use the row-count value.
+  This works differently from the Perl version.
+</p>
+<p>
+  Three internal functions are defined: <span class="cmd">openSQL</span>, <span class="cmd">lookupSQL</span>, and <span class="cmd">iterateSQL</span>.
+</p>
+<p>
+  Opening the MySQL database sets <span class="cmd">ColumnsWithAlias: true</span> in order to include the table name in the column name.
+  (This ability is provided in Perl and Go but not Python.)
+</p>
+<p>
+  <span class="cmd">https://pkg.go.dev/database/sql</span> describes the sql interface for Go.
+  <span class="cmd">http://go-database-sql.org/varcols.html</span> describes how to deal with the query result using reflection.
+</p>
+<p>
+  Interesting: info on connection pooling and error handling.
+  <span class="cmd">https://github.blog/2020-05-20-three-bugs-in-the-go-mysql-driver/</span>
+</p>
+
+<h3>XML access</h3>
+<p>
+  I started on this feature but have not finished it.
+  I plan to try to use <span class="cmd">https://github.com/antchfx/xpath</span> to execute Xpath queries.
+  There were difficulties with introspection, so I set this aside.
+  Currently I have no application for XML iteration, so I will finish this up later.
+  (For a previous application, I had issued <span class="cmd">curl</span> requests to a server that returned XML data,
+  and used this feature to handle the results.)
+</p>
+
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+<div id="otherinfo">
+  <span class="toc">
+    <a href="expandfile.html">Expandfile</a> |
+    <a href="expandfile-tutorial.html">Tutorial</a> |
+    <a href="expandfile-multics.html">Multics Args</a> |
+    <a href="expandfile-wrappers.html">Wrappers</a> |
+    <a href="expandfile-macros.html">Macros</a> |
+    <a href="expandfile-unix.html">Using Unix Tools</a> |
+    <a href="expandfile-history.html">History</a> |
+    <a href="expandfile-internal.html">Internals</a>
+    <br>
+    PDFs: 
+    <a href="quad.pdf">Quad chart</a> |
+    <a href="mx-website-features.pdf">Multics Website Features</a> |
+    <a href="swt.pdf">SWT</a>
+  </span> 
+</div>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+	  <span class="copyright">Copyright (c) 2018-2025, Tom Van Vleck</span>
+        </div> <!-- tail -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="vvmft.txt"><input type="hidden" name="name" value="Tom Van Vleck"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail Tom Van Vleck" title="send mail to Tom Van Vleck" class="mfaddr"></address></form>
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

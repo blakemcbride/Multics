@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-697-01</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-697-01: Improving the security of Message Coordinator input.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  Multics Technical Bulletin                             MTB-697-01
+  Secure Daemon Input
+
+  To:       Distribution
+
+  From:     Benson I. Margulies
+
+  Date:     01/08/85
+
+  Subject:  Improving the security of Message Coordinator input
+
+  1 ABSTRACT
+
+       The B2 criteria require that operators be given limited
+       privileges.   The Multics  operator command environment
+       does  indeed  limit  the  commands  that  operators may
+       enter.    However,  the   Message  Coordinator  "reply"
+       facility permits  operators to send  arbitrary commands
+       to privileged  processes.  This MTB  proposes a general
+       approach to restricting this feature.
+
+       This is  the first revision of  MTB697, containing some      |
+       changes  and  clarifications  requested  by  the design      |
+       review.  It carries change bars.                             |
+
+  Comments should be sent to the author:
+
+  via Multics Mail:
+     Margulies at either System-M, MIT, or CISL-SERVICE.
+
+  via Forum:
+     &gt;udd&gt;m&gt;mtgs&gt;B2 on System-M
+
+  via telephone:
+     (HVN) 261-9333, or
+     (617) 492-9333
+
+  _________________________________________________________________
+
+  Multics  project  internal  working  documentation.   Not  to  be
+  reproduced or distributed outside the Multics project without the
+  consent of the author or the author's management.
+
+
+  MTB-697-01                             Multics Technical Bulletin
+                                                Secure Daemon Input
+
+  2 SECURING PRIVILEGED DAEMONS
+
+  Daemon  processes are  used for  several privileged applications.
+  The  hierarchy  backup, volume  backup, salvager,  scavenger, and
+  utility daemons are the primary  examples.  Most of these daemons
+  require  access  to functions  that  should not  be  available to
+  operators.  Using the message coordinator quit and reply command,
+  though, an operator can take complete control of any of them.
+
+  There  are several  approaches to  securing the  daemons from the
+  operator.  In some  cases, there is no real  need for the process
+  to accept and  input from the operator at  all.  The salvager and
+  scavanger, for example, could get  their instructions from a data
+  segment instead of by reading a command sent to them by admin.ec.
+
+  In other cases,  the daemon could be restricted  to a limited set
+  of commands.   The backup daemons, for  example, need only accept
+  instructions to run dumps.
+
+| These approaches  are insufficient for two  reasons.  First, they
+| are clumsy.   The "no commands"  case would require  special case
+  implementations to pass information  from admin.ec to the daemon.
+  The LSS cases require the creation and maintenance of LSS command
+  lists.   Second,  they have  operational difficulties  for sites.
+  For  example, site  admin.ec's often  contain additional commands
+  for the dumpers that could not be in the lss command list without
+  compromising security.  Third, privileged users cannot circumvent
+  the  restrictions  to  debug  or resolve  problems.   Fourth, and
+  finally,  there  are daemons  (e.g.   the Utility  SysDaemon) for
+  which an LSS is  no use at all.  They must run  in a full Multics
+  environment, but must be protected from the operators.
+
+  For these reasons, we need  to consider a more flexible solution.
+  The following sections describe  a general design for controlling
+  access to the "daemon control" functions of login, logout, reply,
+  and quit.
+
+| Using  the  design here,  it  is possible  to  set up  any daemon
+| without using an LSS.  However, daemons that ask questions (e.g.,
+| the  volume  retriever)  would   require  extensive  and  complex
+| additions to  admin.ec.  For these daemons,  it is neccessary for
+| the  daemon itself  to have some  kind of  limited subsystem.  At
+| this time, the  easiest way to create such a  subsystem is to use
+| an LSS.   Given the problems  described above, we  should replace
+| the LSS's by a more sophisticated approach at a later time.
+
+
+  Multics Technical Bulletin                             MTB-697-01
+  Secure Daemon Input
+
+  3 ACL CONTROL ON MESSAGE COORDINATOR REPLY
+
+  This  proposal is  based on the  observation that  the system has
+  information about the source of  reply and quit commands that can
+  be used  to control access.  We  will control message coordinator
+  replies in two  steps.  First, construct an access  name based on
+  the source of the command.  Second, use this access name to check
+  access to an object.
+
+  3.1 Determining an access name
+
+  This section  specifies the construction of  special access names
+  for use in checking access in the message coordinator.  There are
+  two new conventions that are  used here.  First, if an identified
+  and authenticated  user-id is not available,  then a special name |
+  beginning with "_" is used for the Person component of the access |
+  name.   Second,  the "Operator"  project, already  documented for
+  ordinary  login  by  operators,  will  be  used  as  the  Project
+  component for  operators logged in via  the "sign_on" initializer
+  command, and the new tag "o" will be used for the Tag.
+
+       The  following  list  describes  all the  sources  of daemon
+  control  commands  and the  access  name that  will be  used when
+  checking access:
+
+       Ordinary Operator Commands:
+            An  operator  typing the  reply or  quit command  on an
+            initializer terminal  or the bootload  console.  If the
+            operator is not logged in, then the special access name |
+            "_Unidentified.Operator.o"  is used.   Note the  use of |
+            the special person-id "_Unidentified".  If the operator |
+            is logged  in, then "Person.Operator.o"  is used.  This
+            permits  selective  control  based  on  the  individual
+            operator.
+
+       Exec commands:
+            An  operator  typing  an   "exec"  (x)  command  on  an
+            initializer  terminal  or  the  bootload  console.  The
+            admin ec, or another ec  that it calls, uses sc_command
+            to execute a daemon control command.  In this case, the
+            access  name "_Exec_Command.Operator.o"  is used.  Note |
+            the  use of  the special  person-id "_Exec_command".  A |
+            special  access name  here reflects  the fact  that the
+            admin ec is built by  trusted staff, and can be assumed
+            to  only   permit  the  operators  to   do  a  suitably
+            restricted set of things.
+
+       sc_commands in admin mode:
+            An operator has entered admin mode, and used sc_command
+
+
+  MTB-697-01                             Multics Technical Bulletin
+                                                Secure Daemon Input
+
+            to enter  a daemon control command.   In this case, the
+            access  name is  "Initializer.SysDaemon.z", since admin
+            mode is equivalent to full control of the system.
+
+       send_admin_command sc_commands:
+            A privileged  user has send an  admin command.  In this
+            case,  the  privileged  user's   access  name  is  used
+            verbatim.
+
+  These  access  names  allow  administrators  to  express  precise
+  distinctions.   A  typical approach  would be  to deny  access to
+| "*.Operator.o",     and      then     to     grant      it     to
+| "_Exec_Command.Operator.o".  Then the  neccessary functions would
+| be  put in  the admin  exec_com, and  operators would  never type
+  Multics commands to daemons.
+
+  3.2 Objects of control
+
+        An extended object ACS segment will be used to hold the ACL
+  for each  message coordinator source.  The  extended object model
+  is used because the standard segment "rew" bits cannot be used to
+  describe the  different access modes  that must be  defined for a
+  message  coordinator source.   Since these  modes (defined below)
+  are unique to the message coordinator, the unique suffix ".mcacs"
+  is used instead of ".acs."
+
+       To determine the effective access  of the access name to the
+  daemon source, the Message Coordinator  will look at the extended
+  acl of  the segment &gt;sc1&gt;mc_acs&gt;SOURCE_NAME.mcacs.   For example,
+  if the Utility  daemon is logged in on source  "ut", then the acs
+  would be &gt;sc1&gt;mc_acs&gt;ut.mcacs.
+
+  mcacs  segments  are  extended  objects, but  they  are  not ring
+  protected in  this implementation.  The  extended object paradigm
+  is   used   only  to   provide  more   access  modes   that  rew.
+  Suffix_mcacs_ will define the following ACL modes:
+
+       r    REPLY access, permits the user to reply to the daemon.
+
+       q    QUIT  access, permits  the user to  send a  quit to the
+            daemon.
+
+       c    CONTROL access,  permits the user to  log the daemon in
+            and  out.  If  an initializer new_proc  command is ever
+            defined for daemons, then this mode will control it.
+
+       d    DAEMON  access,  permits a  DAEMON  to log  in  on this
+            source.  This  mode controls the  association of daemon
+            names  with   message  coordinator  sources.    For  an
+
+
+  Multics Technical Bulletin                             MTB-697-01
+  Secure Daemon Input
+
+            operator to log  Daemon A in on source  B, the operator
+            must have  c access on  the source and  the Daemon must
+            have l access.
+
+  4 IMPLEMENTATION DETAILS
+
+  The  acct_start_up.ec will  create the mc_acs  directory, and put
+  acs  segments  in  it  for all  the  daemons  manipulated  in the
+  standard  admin.ec.   For  the Salvager,  Scavenger,  backup, and
+  Utility daemons, it will set the acl to:
+
+            crq   Initializer.SysDaemon.z
+            crq   _Exec_Command.Operator.o
+            crq   *.SysMaint
+            crq   *.SysAdmin
+            cdrq  Backup.SysDaemon.z (or whatever daemon is to log in here)
+            null  *.*.*                                             *
+                                                                    *
+  The IO daemon,  who has a limited command  environment, will give
+  rcq to *.*.o.
+
+  There       will      be       a      new      installation_parm:
+  "validate_daemon_commands".  When this parameter  is set to "on",
+  the reply, quit, login, and logout commands will:
+
+  *    Require  that  the  segment  &gt;sc1&gt;mc_acs&gt;SOURCE.mcacs  exist
+       before logging in a daemon on the source.
+
+  *    Check the extended  ACL on the mcacs segment  for the access
+       of  the  special user  name  defined above,  and  forbid the
+       command if the required access  is missing.  Demand that the
+       Daemon  to be  logged in  have "d"  effective access  to the
+       segment.
+
+  The admin.ec will include the  following new exec commands.  Note |
+  that  we  handle volume  and  hierarchy backup  identically, even |
+  though  volume  backup still  has  an LSS.   This is  intended to |
+  reduce confusion.                                                 |
+
+  Name:  x wakeup_dump
+
+  Function:   causes a  volume or  hierarchy incremental  daemon to
+  wake up and make a dump pass.
+
+  Usage:  x wakeup_dump SOURCE_NAME
+
+  Where SOURCE_NAME  may be either  "bk", "vinc", or  other message
+  coordinator source names defined by your site.
+
+
+  MTB-697-01                             Multics Technical Bulletin
+                                                Secure Daemon Input
+
+  Name:  x end_dump
+
+  Function:   causes a  volume or  hierarchy incremental  daemon to
+  finish an incremental dump, detaching its tape and cleaning up.
+
+  Usage:  x end_dump SOURCE_NAME
+
+  Where  SOURCE_NAME may  be "bk",  "vinc", or  other names message
+  coordinator source names defined by your site.
+
+  5 OTHER DOCUMENTATION ISSUES
+
+  The  Op  Guide  must be  changed  to use  the  initializer logout
+  command to  log non-I/O daemons  out rather than  "r FOO logout".
+  The  SysAdmin  procedures  book,  in the  security  section, must
+  explain  the  mcacs  segments and  how  to  set them  up  for new
+  daemons.  It must note that a B2 security level requires that the
+  "validate_daemon_commands"  installation_parm be  turned on.  The
+  RefGuide must  add .mcacs segments  to its list  of system object
+  types.
+
+  6 OTHER OPPORTUNITIES
+
+  Given  this design,  it would be  very simple  to add distributed
+  control  of  Daemons.  A  new  as_request would  allow a  user to
+  submit a  daemon control command.   The .mcacs segments  could be
+  checked for the user's access.   This feature is NOT required for
+  B2.   The  following command  specification  is provided  on that
+  basis:
+
+  Name:  send_daemon_command
+
+  Function:   Sends  a command  to a  specified daemon  process for
+  execution, or requests that a  specified daemon process be logged
+  in, logged out, or have its process terminated.
+
+  Usage:     send_daemon_command     SOURCE_NAME    {-control_args}
+  COMMAND_LINE
+
+  Where:  SOURCE_NAME
+  is  the  Message Coordinator  source  name on  which a  daemon is
+  logged in or is to be logged in.
+
+  COMMAND_LINE
+  is  a line  of input  to be  sent to  the daemon  via the message
+  coordinator.
+
+
+  Multics Technical Bulletin                             MTB-697-01
+  Secure Daemon Input
+
+  Control arguments may be chosen from the following:
+
+  -login USER.PROJECT
+  Requests that the  specified user be logged in as  a daemon on MC
+  source SOURCE_NAME.
+
+  -logout
+  Requests that the specified daemon be logged out.
+
+  -quit
+  Requests that the specified daemon be sent a quit signal.
+
+  -new_proc
+  Requests that the specified daemon's process be terminated.
+
+  ACCESS REQUIRED For -login, -logout, and -new_proc, the user must
+  have       "c"      (control)       effective      access      to
+  &gt;sc1&gt;mc_acs&gt;SOURCE_NAME.mcacs.  For -quit, the user must have "q"
+  (quit) effective access.  For a  command line, the user must have
+  "r"  (reply)  effective  access.   In addition,  for  -login, the
+  USER.PROJECT specified must have "d" (daemon) effective access to
+  SOURCE_NAME.mcacs, and must have the daemon attribute in the pdt.
+
+  7 OTHER OTHER OPPORTUNITIES
+
+  Design proposals  have been floating  around to apply  a similiar
+  scheme  to  the multiplexer  commands,  and indeed  to  provide a
+  general way to specify that a given user be permitted to send the
+  initializer  a  particular  command  line.  These  ideas  are not
+  addressed  at  all in  this  design.  Note,  though, that  if the
+  as_request is implemented,  then a site can create  a daemon that
+  accepts commands  (defined in an  LSS) from users  and then turns
+  around and uses send_admin_command to execute them.
+
+  8 THIS IS A CONSERVATIVE APPROACH
+
+  The author is well aware that the existing message coordinator is
+  a  crock,  and that  an inner  ring subsystem  is a  long overdue
+  replacement  for the  current collection of  system_low ring four
+  segments in &gt;sc1 that must  be writable by all daemons.  However,
+  the  B2  criteria  do  not REQUIRE  that  we  address  the larger
+  problem.  The ACL  modes proposed here will be  adaptable to some
+  design for a true inner ring multi-class design for passing input
+  and output to and from daemons.  The rest will just have to wait.
+
+
+  MTB-697-01                             Multics Technical Bulletin
+                                                Secure Daemon Input
+
+| 9 MISCELLANEOUS CHANGES
+
+| The  volume  backup LSS  segments  will be  renamed to  have more
+| revealing   names.    volume_retriever   will   be   renamed   to
+| volume_retriever_lss, volume_reloader to volume_reloader_lss, and
+| volume_dumper to volume_dumper_lss.
+
+| 10 TESTING
+
+| This functionality  will be tested manually,  by manipulating the
+| ACL's  (and existence)  of .mcacs  segments and  trying to submit
+| commands.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

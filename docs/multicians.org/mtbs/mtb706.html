@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-706</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-706: Avoiding Ring 0 Audit of Ring 1 TCB file system operations.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-706
+Suppressing Ring 1 FS auditing
+
+To:       Distribution
+
+From:     Benson I. Margulies
+
+Date:     04/04/85
+
+Subject:  Avoiding Ring 0 Audit of Ring 1 TCB file system operations
+
+1 ABSTRACT
+
+     The  ring  1  TCB  defines  objects  that  are  in fact
+     implementing  segments and  directories.  As  a result,
+     ring  1  TCB  subsystems  such  as  RCP  and  the  mseg
+     primitives  make  many  calls  to  ring  0  file system
+     primitives.  These calls need not be audited by ring 0,
+     since the ring 1 TCB is already auditing the actual TCB
+     operation.   For  example,  reading  a  message  from a
+     mailbox,  which  is  a  TCB  operation,  often involves
+     initiating the mailbox segment, which is not.
+
+     This MTB describes the system mechanism that the ring 1
+     TCB uses to inform ring 0  that ring 0 should not audit
+     file system operations.
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Margulies at either System-M, MIT, or CISL-SERVICE.
+
+via Forum:
+   &gt;udd&gt;m&gt;mtgs&gt;B2 on System-M
+
+via telephone:
+   (HVN) 261-9333, or
+   (617) 492-9333
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+MTB-706                                Multics Technical Bulletin
+                                   Suppressing Ring 1 FS auditing
+
+2 OVERVIEW -- WHEN TO AUDIT
+
+The  goal of this  design is to  avoid duplicate auditing  in the
+TCB.  If the  ring one TCB is called to  perform an operation, it
+must  audit  the  operation.   If  ring  one  must call ring zero
+directory  control  to  implement  the  operation, that directory
+control call should not be audited.  However, not all of the code
+in  ring one  takes responsibility  for auditing  its operations.
+Ring  zero  must  not  suppress  audit  of  a  directory  control
+operation  unless it  can positively  verify that  its caller has
+taken responsibility for auditing the operation in progress.
+
+The  following conditions  must be  met for  ring zero  directory
+control to omit auditing:
+
+   1) The validation  level must be zero or  one, indicating that
+the caller was in fact part of the TCB.
+   2)  A flag must  be set indicating  that the caller  requested
+that auditing be omitted.
+   3)  The  process'  initial  ring  must  be  greater  than one,
+indicating  that the  user is  not in  direct control  of the TCB
+interfaces.   Otherwise,  a  user  logged  in  to  ring  1  could
+manipulate the file system with no auditing whatsoever.
+   4)  The  object  of  the  operation  must  be a TCB-controlled
+object.  That is, its first ring bracket must be 0 or 1.
+
+3 SPECIFICATION
+
+     The above criteria will be implemented as follows:
+
+A flag  is defined in the  pds, pds$no_audit_ring1_fs_object_ops.
+This flag indicates that directory control should omit auditing.
+
+A         new        gate        entry         is        defined,
+admin_gate_$admin_level_no_ring1_fs_audit.
+
+     declare admin_gate_$admin_level_no_ring1_fs_audit
+          entry (fixed bin (3) aligned);
+
+     call admin_gate_$admin_level_no_ring1_fs_audit (old_level);
+
+    where  old_level is  fixed bin   (3) aligned  that is  set on
+return to the validation level at the time of the call.
+
+This entry sets the validation level to one.  If pds$initial_ring
+is      greater       than      one,      it       also      sets
+pds$no_audit_ring1_fs_object_ops to "1"b.
+
+
+Multics Technical Bulletin                                MTB-706
+Suppressing Ring 1 FS auditing
+
+level$set   (the    target   of   hcs_$level_set)    will   reset
+pds$no_audit_ring1_fs_object_ops to "0"b whenever it is called to
+set the validation level greater than 1.
+
+access_audit_check_ep_ (called  by the various  directory control
+programs   to    decide   whether   to   audit)    will   respect
+pds$no_audit_ring1_fs_object_ops.  In addition, this program will
+require that the object being audited have a write bracket of one
+or zero.
+
+4 RULES FOR USE
+
+Ring        one       TCB       subsystems        will       call
+admin_gate_$admin_level_no_ring1_fs_audit to set their validation
+level  to one  for file  system operations.   Ring one subsystems
+will  therefore   always  audit  such  operations,   rather  than
+depending on ring zero to audit  for them.  This will ensure that
+the real caller validation level is recorded in the audit record.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

@@ -1,0 +1,2210 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Management of  the on-line  communication between  the.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  MULTICS TECHNICAL BULLETIN                    MTB-663, Revision 3
+
+  To:       MTB Distribution
+
+  From:     Rich Fawcett
+            Paul Farley
+
+  Date:     March 12, 1986
+
+  Subject:   Management of  the on-line  communication between  the
+  Maintenance Channel Adapter (MCA),  located within the Integrated
+  Multiplexer Unit (IMU), and Multics.
+
+  This  MTB  describes  the  plans  for  attaching  and controlling
+  communication between a Multics process and an MCA for performing
+  various  functions.  These will  include reading the  current IMU
+  configuration state, reading selected information from one of the
+  two  internal  IMU  diskette  devices  and  performing Integrated
+  Peripheral Controller (IPC) functions (once the IPC has also been
+  attached).
+
+  All attachments will be performed  by calls through the mca_ gate
+  in  ring_1,  which  will  then  call  rcp_  to perform the actual
+  attachment.  No attachment or I/O to MCAs or IPCs will be allowed
+  outside of ring_1.  This will force all calls to ioi_ for the I/O
+  operations to be executed from the ring_1 mca programs.
+
+  This interface will allow simple and secure access to information
+  contained in the IMU.
+
+  This is the third revision  of MTB663.  This revision defines the |
+  security   auditing   trail,   and   now   reflects  the  current |
+  implementation  of  the  interface.   It  carries  change bars as |
+  related to revision 02.                                           |
+
+  Comments on  this MTB should be placed  in the DIPPER_Development
+  forum on System M:
+
+      &gt;udd&gt;m&gt;CLJones&gt;mtgs&gt;DIPPER_Development (nio)
+
+  or directed by Multics mail to:
+
+      System M:  Fawcett.Multics and / or Farley.Multics
+
+  or by phone to:
+
+      Rich Fawcett       or     Paul Farley
+      HVN: 249-6777             HVN: 249-6776
+      DDD: 602-249-6777         DDD: 602-249-6776
+
+  _________________________________________________________________
+
+  Multics  Project  internal  working  documentation.   Not  to  be
+  reproduced or distributed outside the Multics Project.
+
+
+  MTB-663, Revision 3                         MCA Online-Management
+
+                               CONTENTS
+
+                                                           Page
+
+      1:  Introduction  . . . . . . . . . . . . . . . . .   1
+      2:  MCA Attachment Detachment . . . . . . . . . . .   3
+      3:  Privileged MCA Operations . . . . . . . . . . .   5
+      4:  Miscellaneous MCA Operations  . . . . . . . . .   6
+      5:  IPC Adapter Attachment Detachment . . . . . . .   7
+      6:  Standard IPC Operations . . . . . . . . . . . .   8
+      7:  On-Line T&amp;D Requirements  . . . . . . . . . . .   9
+|     8:  Auditing Trail and Functional Tests . . . . . .   10
+      9:  MCA Subroutine Descriptions . . . . . . . . . .   10
+      mca_  . . . . . . . . . . . . . . . . . . . . . . .   11
+           mca_$attach_ipc  . . . . . . . . . . . . . . .   11
+           mca_$attach_mca  . . . . . . . . . . . . . . .   12
+           mca_$config  . . . . . . . . . . . . . . . . .   13
+           mca_$detach_ipc  . . . . . . . . . . . . . . .   15
+           mca_$detach_mca  . . . . . . . . . . . . . . .   16
+           mca_$diskette_read . . . . . . . . . . . . . .   17
+           mca_$display . . . . . . . . . . . . . . . . .   19
+           mca_$load_ipc  . . . . . . . . . . . . . . . .   20
+           mca_$process_io_event  . . . . . . . . . . . .   21
+           mca_$read_data . . . . . . . . . . . . . . . .   22
+           mca_$reset_ipc . . . . . . . . . . . . . . . .   24
+           mca_$reset . . . . . . . . . . . . . . . . . .   25
+           mca_$tandd_read_data . . . . . . . . . . . . .   26
+           mca_$tandd_write_data  . . . . . . . . . . . .   28
+           mca_$tandd_write_text  . . . . . . . . . . . .   29
+      mca_priv_ . . . . . . . . . . . . . . . . . . . . .   31
+           mca_priv_$load_ipcs  . . . . . . . . . . . . .   31
+           mca_priv_$reset_ipcs . . . . . . . . . . . . .   32
+           mca_priv_$force_reset  . . . . . . . . . . . .   33
+           mca_priv_$force_unlock . . . . . . . . . . . .   34
+           mca_priv_$trace  . . . . . . . . . . . . . . .   35
+      Appendix A:  mca_workspace  . . . . . . . . . . . .   36
+      Appendix B:  mca_config_file  . . . . . . . . . . .   41
+      Appendix C:  mca_area . . . . . . . . . . . . . . .   45
+      Appendix D:  mca_data_seg . . . . . . . . . . . . .   46
+      Appendix E:  mca_diskette . . . . . . . . . . . . .   49
+      Appendix F:  mca_return_status  . . . . . . . . . .   51
+
+
+  MCA Online-Management                         MTB-663, Revision 3
+
+  1:  INTRODUCTION
+
+       With  the introduction  of the  IMU, which  will replace the
+       current  functions of  the IOM,  comes the  existence of  an
+       internal  maintenance processor,  MCA, that  oversees all of
+       the   overhead  functions   of  the   IMU.   These   include
+       initialization of the IMU and  IPCs, firmware loading of the
+       IPC adapters using one of the two internal diskette devices,
+       bootload tape reading, interrogation  of IMU to IPC hardware
+       and  firmware  data  using   overlays  from  the  diskettes,
+       executing tests on the  IPC adapters, internal configuration
+       file maintenance, plus all fault handling, IMU and IPC.
+
+       The MCA has two possible communication paths.
+
+         1) Through  a  special   interface  called  the  Multidrop
+            Interface  (MDI) which  allows one  or more  MCAs to be
+            connected to a IPC adapter called the IPC-CONS-2.  This
+            could  be the adapter  used to connect  the BOS or  BCE
+            console or  a separate console only for  MCA I/O.  This
+            is the path used to initially initialize, load firmware
+            and  boot the  IMU.  Communication  is done  by special
+            input  sequences  at  the   console  which  allows  the
+            operator to select and send input to the right MCA.
+
+            This   interface,  along    with  the   remote  console
+            interface,  should  be  LOCKED   while  the  system  is
+            running,  this  is  done  by  issuing  special  command
+            sequences to the master  console adapter.  The MCA will
+            still be able to output messages to the console, but NO
+            input to the MCA would be allowed by the console.  This
+            will force the use of the mca_ gate while the system is
+            up.
+
+         2) Through overhead  channel #03 in the IMU,  which is the
+            path used by Multics and which this MTB is all about.
+
+       Because  of  the  possible  security  violations  (and other
+       disastrous things) that could occur by allowing uncontrolled
+       communication  through channel 3,  it is necessary  that all
+       I/O to the MCA be either  created by a secure ring_1 program
+       or passed though a ring_1 interface that can verify that the
+       MCA command  text is only going  to affect the IPC  that has
+       been previously attached.
+
+       It should still  be noted that this gate  can perform highly
+       privileged  operations,  like  read  any  information  off a
+       currently  mounted diskette  and  possibly  write data  to a
+       diskette  if the  MCA allows  the operation  in the  future.
+       Access  to the  mca_ and  mca_priv_ gates  should be closely
+       monitored.
+
+
+  MTB-663, Revision 3                         MCA Online-Management
+
+       Having  an internal  Multics  program  perform the  I/O also
+       allows the calling program to  not have to be concerned with
+       the  format  of  the  I/O  to  and  from  the  MCA, only the
+       information desired.
+
+|      This MTB is  divided into nine sections that  will cover the
+|      following:
+
+       o    steps required to attach or detach an MCA (section 2).
+       o    privileged MCA operations (section 3).
+       o    miscellaneous MCA operations (section 4).
+       o    steps required to attach or detach an IPC (section 5).
+       o    standard IPC operations (section 6).
+|      o    on-line t&amp;d requirements (section 7).
+|      o    auditing trail and functional tests (section 8)
+|      o    subroutine descriptions (section 9).
+
+       There are  six appendices that show the  data structures and
+       return  status.  These appendices  are not the  PL/I include
+       files used, but  are similar and appear as part  of this MTB
+       for documentation reference only.
+
+
+  MCA Online-Management                         MTB-663, Revision 3
+
+  2:  MCA ATTACHMENT DETACHMENT
+
+       Prior to performing any I/O  between the MCA and Multics the
+       user must attach a specific MCA to their process.
+
+       It will  be required that there  be an ACS segment  for each
+       configured IMU on the system.  The ACS segment will have the
+       form  "mcaX.acs", where  X will  equal "a"  through "d"  and
+       correspond to the configurations "IOM" card definition.  The
+       ring brackets on  the ACS segment will be set to  1, 1, 1 to
+       force  attachments to  only be  made  by  ring 0  or 1  (ie.
+       through the mca_ gate).
+
+       During system startup the following steps will be performed.
+
+         1. ioi_init will  scan the configuration file  and for all
+            IOM cards that contain a iom-type of IMU it will create
+            entries  in  ioi_data  for  the  MCA  that  will  allow
+            communication through ioi_ during system operation.
+
+         2. rcp_init will  scan the configuration file  and for all
+            IOM  cards that  contain an   iom-type of  IMU it  will
+            create entries in rcp_data defining the configured MCAs
+            as  a new  type of  device called  "mca" with  names of
+            "mcaa", "mcab", "mcac" or  "mcad".  The module mca_init
+            will  be  called  at  this  time  for  each  of the mca
+            entries.    It   sets   up   a   skeleton   segment  in
+            &gt;system_library_1,  called mca_data_seg,  that will  be
+            used  by the  mca modules  to control  their activities
+            during system operation.
+
+         3. rcp_ring1_init_  will create  ACS segments  for the mca
+            type entries  in rcp_data and set the  ring brackets to
+            1,1,1.
+
+       The user process will  call the mca_$attach_mca entry, which
+       will make all  the necessary calls to RCP, from  ring 1, and
+       upon good  attachment return a  IOI index that  will be used
+       for all subsequent calls to  other mca_ entries.  If the MCA
+       is  currently attached  to another  process or  the user has
+       insufficient  access to  attach  the  MCA a  standard system
+       error  code will  be returned.    If the  user specifies  an
+       event_channel  in  the  call,  to  be  used for asynchronous
+       process execution, it will be necessary for the user to call
+       mca_$process_io_event each  time an event is  signalled over
+       the  event  channel  until   the  requested  task  has  been
+       completed.   This also includes  the attachment I/O.   If no
+       event channel is  specified then one will be made  in ring 1
+       and all I/O will be blocked (i.e.  synchronous).
+
+       During  the attachment  three I/Os  will be  performed.  The
+       first will reset the MCA to  a known state.  The second will
+
+
+  MTB-663, Revision 3                         MCA Online-Management
+
+       extract  the current IMU  configuration data from  the MCA's
+       internal  memory, which  will be  placed in  mca_data, to be
+       used for  all other activity.  The third  will terminate the
+       MCA session.
+
+       Only one user  will be allowed to attach a  given MCA at one
+       time, but there can be attachments to other MCAs by the same
+       or other processes.
+
+       After a maintenance session is finished it will be the users
+       responsibility  to detach  the MCA.   This will  be done  by
+       calling the mca_$detach_mca  entry, specifying the ioi_index
+       of the attachment.  This will detach any IPCs that have been
+       attached, if they have not been previously detached.
+
+       For fatal process errors,  disconnections and system crashes
+       RCP will call  the mca modules to detach  any attached IPCs,
+       clean up the mca_data segment and force detach the MCA.
+
+
+  MCA Online-Management                         MTB-663, Revision 3
+
+  3:  PRIVILEGED MCA OPERATIONS
+
+       The  MCA  allows  several  off-line  (through  the  console)
+       commands  that cause  events to   happen to  ALL of  the IPC
+       adapters in the unit.  These are to either RESET all the IPC
+       adapters (i.e.  cause them  to initialize and run self-tests
+       if required), or to LOAD all the IPC adapters (i.e.  same as
+       RESET,  but  the  internal  adapter  firmware  would also be
+       reloaded).
+
+       In an  on-line environment it  would not be  advantageous to
+       allow these types of commands to be sent to the MCA, without
+       first verifying that all system I/O  to and from the IPCs is
+       stopped.   The easiest way  to know this  is to require  the
+       user to attach all the IPCs on the IMU.
+
+       There will  be three types  of commands allowed  through the
+       privileged  gate.  One  will be  to allow  MCA tracing (i.e.
+       displaying of MCA fault and  debug messages) to be turned on
+       or off.  IPC attachment is not required.  The second will be
+       to  reset all the  configured IPC adapters  on the IMU  to a
+       known state.   The third will  be to load  firmware into all
+       the configured  IPC adapters that are  loadable.  The others
+       will  only   be  reset  (e.g.   the   ipc-psia  requires  no
+       firmware).  The  attachment of all the IPCs  is required for
+       the second and third types.
+
+
+  MTB-663, Revision 3                         MCA Online-Management
+
+  4:  MISCELLANEOUS MCA OPERATIONS
+
+       There  are currently  two miscellaneous  MCA operations that
+       can  be done.   One is  to have  the MCA  return the current
+       configuration  of  the  IMU.   This  configuration  contains
+       various  information   about  the  type,   location,  state,
+       channels and firmware identification for all the IPCs in the
+       IMU,  plus IMU specific  information like what  memory ports
+       are available and how they are configured.
+
+       The second is  the ability to read various data  from one of
+       the two diskette  devices connected to the MCA.   It will be
+       possible to read the  diskette header (label), directory and
+       files.
+
+       It should be noted that after either of these operations are
+       done, the  mca_$read_data entry must be  called to terminate
+       the MCA  session.  This is due  to a design flaw  in the MCA
+       firmware.  The session is NOT  over until the MCA can return
+       NO data  back to the user.   A status of "00/02",  major and
+       sub, indicates session complete.
+
+
+  MCA Online-Management                         MTB-663, Revision 3
+
+  5:  IPC ADAPTER ATTACHMENT DETACHMENT
+
+       Prior to executing any I/O to  the MCA that will be directed
+       to a  specific IPC adapter,  all the normal  I/O channels to
+       the adapter must be attached to the user process and all I/O
+       through these channels suspended.
+
+       The  user  process  will  call  the  mca_$attach_ipc  entry,
+       specifying an ipc_id which can  be an IPC (e.g.  "ipc06") or
+       a IOM and  Channel (e.g.  "B34") to attach.   The entry will
+       validate  the specified  IPC,  or  channel by  examining the
+       mca_data  segment kept  in &gt;system_library_1.   If the  user
+       selected an IPC that is not configured, the IPC is marked as
+       attached  and a  good code  is returned.   Otherwise RCP  is
+       called to  attach the IPC and  IOI is called to  suspend the
+       I/O through  the IPC (if disk  or tape).  If any  of this is
+       unable to  be performed then anything attached  in this call
+       will be  detached and a  standard system error  code will be
+       returned.  Otherwise a zero code will be returned indicating
+       successful attachment.
+
+       After a maintenance session is finished it will be the users
+       responsibility  to detach  the IPC.   This will  be done  by
+       calling the mca_$detach_ipc entry, specifying the ipc_id and
+       mca_ioi_idx used during the attachment.
+
+       For fatal process errors,  disconnections and system crashes
+       RCP will force detach the IPC and MCA.
+
+
+  MTB-663, Revision 3                         MCA Online-Management
+
+  6:  STANDARD IPC OPERATIONS
+
+       Once  an  IPC  adapter  is  successfully  attached  the user
+       process  can  execute  the  mca_  entries  that  will either
+       execute  the MCA  "LOAD IPC  N" (mca_$load_ipc)  or the  MCA
+       "RESET IPC N" (mca_$reset_ipc) commands.
+
+       All of the IPC test functions will be performed by the TOLTS
+       environment,  which will use  the mca_ entries  described in
+       section 7.
+
+
+  MCA Online-Management                         MTB-663, Revision 3
+
+  7:  ON-LINE T&amp;D REQUIREMENTS
+
+       The On-line  Test and Diagnostics programs that  will be run
+       on the IPC adapters will be executed from the TOLTS program.
+       A  GCOS Maintenance  Channel Adapter  Driver (MCAD)  program
+       will be  the actual origin of  the tests, which will  be run
+       under the MOLTS executive.
+
+       This driver  was written to  allow GCOS to  communicate with
+       the  MCA,  directly.   So  all  of  the  necessary I/O block
+       structuring (IDCWs, DCWs and data  areas) are being built by
+       the driver.
+
+       For this program  to run on Multics it will  be necessary to
+       have three separate gate entries  in the mca_ interface that
+       will allow this program to pass its I/O blocks through.  One
+       will  be  used  for  early  communication  with  the MCA and
+       passing    of    data    during    actual    IPC   functions
+       (mca_$tandd_write_data).  Another  will be used  to initiate
+       operations    that   will     affect   the    attached   IPC
+       (mca_$tandd_write_text).   The  third  will  be  a read only
+       entry used  when the returned  data is larger  that the area
+       reserved (mca_$tandd_read_data).
+
+       The early communication will be for  the MCA to aid the user
+       in selecting the proper  test requests, no actual operations
+       will be allowed by the MCA until the MCA receives a "initial
+       test request" IDCW (only  sendable from the tandd_write_text
+       entry).   Once this  early  communication  is done  the MCAD
+       routine  will have  the proper  text to  send to  the MCA to
+       initiate the  selected function.  The only  MCA/IPC requests
+       that  will be  allowed are  read config,  reset (ipc),  load
+       (ipc),  rload  (ipc)  and  test  (ipc)  all  others  will be
+       rejected with a system error code.
+
+       The MCAD program will ask for  the IPC to be attached, which
+       will  cause the  TOLTS program  to call  the mca_$attach_ipc
+       entry.  When the  IPC has been attached, MCAD  will ask that
+       the  MCA I/O  block be  sent to  the MCA  as a  initial test
+       request.     TOLTS   will    pass   this    along   to   the
+       mca_$tandd_write_text entry where the  text will be verified
+       as only affecting the attached IPC and passed to the MCA.
+
+       The mca_  entries will wire down  an area for the  TOLTS I/O
+       block to be moved and  also replace the IDCW/DCWs with known
+       valid  ones.   The  mca_  routines   in  ring  1  will  then
+       communicate with  ioi_ to perform the actual  I/O.  When the
+       I/O is complete the portion of the wired I/O block with data
+       from the MCA  will be returned to the TOLTS  area and status
+       returned to TOLTS.
+
+
+  MTB-663, Revision 3                         MCA Online-Management
+
+| 8:  AUDITING TRAIL AND FUNCTIONAL TESTS
+
+|      Security auditing  is done for errors found  that may effect
+|      the  security of  the system  when the mca_$tandd_write_text
+|      entry is used.  These conditions are:
+
+|      o    A request other than any listed in section 7 is issued.
+|      o    The request is for an unattached IPC.
+|      o    The request is for an object other than an IPC.
+
+|      Due to  the overhead of  auditing, only the  DENIED requests
+|      are  audited.   It  is  the  responsibility  of the RCP/RCPM
+|      subsystem  to audit  the  attachment  and detachment  of the
+|      selected MCA.
+
+|      The messages are standard  auditing messages, and are placed
+|      into       the       syserr_log       by       calls      to
+|      access_audit_r1_$log_general.  This uses the added operation
+|      of  access_operations_$invalid_mca.  The  selection criteria
+|      is:
+
+|      o    system object of OTHER
+|      o    operation status of DENIED
+|      o    operation type of READ
+|      o    operation code of "invalid mca command"
+|      o    operation mode of PRIVILEGED OPERATION
+
+|      The audit message contain the  error returned to the user as
+|      well as the complete request line.
+
+|      Functional testing  consists of DAC and MAC  testing for the
+|      ACS   and  data   segments,  and   AUDIT  testing   for  the
+|      mca_$tandd_write_text  gate  entry.   There  is  no need for
+|      LABEL and IA testing.
+
+  9:  MCA SUBROUTINE DESCRIPTIONS
+
+       The  following  pages  will  describe  the  various mca_ and
+       mca_priv_ entry points that will be available for use.
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  Name:  mca_
+
+  Entry:  mca_$attach_ipc
+
+       This entry will  be used to attach a selected  IPC to a user
+       process.   The user must  have previously attached  the MCA,
+       that will communicate with the IPC.
+
+  Usage
+
+  dcl mca_$attach_ipc entry (char (*), fixed bin, fixed bin,
+       fixed bin (35));
+
+       call mca_$attach_ipc (ipc_id, mca_ioi_idx, ipc_num, code);
+
+  where:
+
+  ipc_id
+     IPC  name to be  attached.  The name  must be either  the form
+     "ipcN",  where N  would be  the IPC  number 0  through 15,  or
+     "ICC", where "I" would be the tag of the MCA (i.e.  A, B, C or
+     D) and  CC would be a  channel number that is  assigned to the
+     IPC.  (Input)
+
+  mca_ioi_idx
+     IOI  index value  that was   returned when  MCA was  attached.
+     (Input)
+
+  ipc_num
+     The real IPC  number (0 - 15) that was  attached.  This is the
+     number to be used with the load and reset entries.  (Output)
+
+  code
+     Will  be zero  if attachment  was successful,  else a standard
+     system status code will be returned.  (Output)
+
+  Notes
+
+  When an IPC is attached, it is sometimes necessary to suspend all
+  system I/O  through all the logical channels.   If required, this
+  entry will attempt  to perform this task.  If it  is not possible
+  to suspend  the I/O, the  IPC will NOT  be attached and  an error
+  code returned.
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  Entry:  mca_$attach_mca
+
+  This  entry will  be used  to  attach  a selected  MCA to  a user
+  process.
+
+  Usage
+
+  dcl mca_$attach_mca entry (char (*), fixed bin (71), fixed bin,
+       fixed bin (35));
+
+       call mca_$attach_mca (mca_id, mca_ev_chn, mca_ioi_idx,
+       code);
+
+  where:
+
+  mca_id
+     MCA name to be attached.  The name must be in the form "mcaX",
+     where X will be  equal to the letter of the IMU  the MCA is in
+     (a, b, c, or d).  (Input)
+
+  mca_ev_chn
+     Event channel  that will be  used to signal  completion of MCA
+     I/O.  If it is a value other than 0 or 1,
+      then completion of the I/O for this MCA will be handled using
+     the event method and it will  be required for the user to call
+     mca_$process_io_event for each I/O  completion, until the task
+     is  complete  including  the  attachment  task.  Otherwise all
+     entries that perform  I/O will use ipc_$block to  wait for the
+     I/O to  complete before returning from the  call.  The process
+     will go blocked in ring_1 for this case.  (Input)
+
+  mca_ioi_idx
+     IOI  index  value  that  will  be  returned  when  the  MCA is
+     successfully attached.  (Output)
+
+  code
+     Will be a standard system status code.  (Output)
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  Entry:  mca_$config
+
+  This entry will return the contents of the IMU configuration data
+  currently  residing in  the MCA's   RAM.  The  user will  need to
+  provide  sufficient space,  defined by  ret_ptr, to  hold the the
+  information.  The configuration data will  be defined in a system
+  include file.
+
+  Usage
+
+  dcl mca_$config entry (fixed bin, ptr, fixed bin (21),
+       fixed bin (21) bit (36), fixed bin (35));
+
+       call mca_$config (mca_ioi_idx, ret_ptr, ret_size, ret_len
+       mca_status, code);
+
+  where:
+
+  mca_ioi_idx
+     IOI index value returned when MCA was attached.  (Input)
+
+  ret_ptr
+     User  area to  return  configuration  data.  (See  Appendix B)
+     (Input)
+
+  ret_size
+     Maximum size of user area in characters.  (Input)
+
+  ret_len
+     Actual number characters placed in the users area.  (Output)
+
+  mca_status
+     This will be the status word returned by the MCA on completion
+     of the function.  (Output)
+
+        This will  only be valid  when the mca  is attached without
+        specifying an event channel to signal the completion of the
+        I/O (i.e.  the mca_ module has gone blocked waiting for the
+        I/O to complete and is now returning status).
+
+  code
+     Will be a standard system status code.  (Output)
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  Notes
+
+  The entry mca_$read_data must also  be called after receiving the
+  requested data  to terminate the  "session".  Refer to  section 4
+  (Miscellaneous MCA Operations) for details.
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  Entry:  mca_$detach_ipc
+
+  This  entry  will  be  used  to  detach  a  IPC that is currently
+  attached to a user process.
+
+  Usage
+
+  dcl mca_$detach_ipc entry (char (*), fixed bin, bit (1),
+       fixed bin (35));
+
+       call mca_$detach_ipc (ipc_id, mca_ioi_idx, ipc_operational,
+       code);
+
+  where:
+
+  ipc_id
+     IPC  name to be  detached.  The name  must be either  the form
+     "ipcN",  where N  would be  the IPC  number 0  through 15,  or
+     "ICC", where "I" would be the tag of the MCA (i.e.  A, B, C or
+     D) and CC  would be a channel number that is  part of the IPC.
+     (Input)
+
+  mca_ioi_idx
+     IOI  index value  that was   returned when  MCA was  attached.
+     (Input)
+
+  ipc_operational
+     This bit controls  the release of I/O that  has been suspended
+     through  the  IPC.   If  the  bit  is  true,  then then IPC is
+     considered operational and the I/O will be released (if it had
+     been suspended).  Otherwise the  I/O will remain suspended and
+     the operator will  be notified that the I/O  was not released.
+     (Input)
+
+  code
+     Will be a standard system status code.  (Output)
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  Entry:  mca_$detach_mca
+
+  This entry will be used to detach the currently attached MCA from
+  a user process.
+
+  Usage
+
+  dcl mca_$detach_mca entry (fixed bin, fixed bin (35));
+
+       call mca_$detach_mca (mca_ioi_idx, code);
+
+  where:
+
+  mca_ioi_idx
+     IOI  index value  that was   returned when  MCA was  attached.
+     (Input)
+
+  code
+     Will be a standard system status code.  (Output)
+
+  Notes
+
+  If any IPCs on the MCA  are attached they will be detached before
+  the MCA is detached.
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  Entry:  mca_$diskette_read
+
+  This entry  will allow selected  information from one  of the two
+  diskette devices to be returned to the caller.
+
+  Usage
+
+  dcl mca_$diskette_read entry (fixed bin, char (*), fixed bin,
+       ptr, fixed bin (21), fixed bin (21), bit (36),
+       fixed bin (35));
+
+       call mca_$diskette_read (mca_ioi_idx, read_type, disk_num,
+       ret_ptr, ret_size, ret_len, mca_status, code);
+
+  where:
+
+  mca_ioi_idx
+     IOI index value returned when MCA was attached.  (Input)
+
+  read_type
+     Defines what information is to be returned.  The input will be
+     passed  to  the  MCA  without  alteration.   (See  Appendix E)
+     (Input)
+        Valid inputs are:
+
+        "DIRECTORY"    This will return the directory contents from
+                       the selected diskette.
+
+        "HDR"          This  will   return  the  contents   of  the
+                       diskette header.
+
+        P=file_name    This  will   return  the  contents   of  the
+                       requested file_name.
+
+        VID/file_name  The MCA will return  file_name data, only if
+                       a diskette labeled VID  is mounted in either
+                       of  the 2   diskette devices.   The disk_num
+                       argument will not be used.
+
+  disk_num
+     This will  define which diskette  device to read  the selected
+     data from.  Valid values are 0 and 1.  (Input)
+
+  ret_ptr
+     User area to return data.  (Input)
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  ret_size
+     Maximum size of user area in characters.  (Input)
+
+  ret_len
+     Actual number characters placed in the users area.  (Output)
+
+        This will  only be valid  when the mca  is attached without
+        specifying an event channel to signal the completion of the
+        I/O (i.e.  the mca_ module has gone blocked waiting for the
+        I/O  to  complete  and  is  now  returning  the  number  of
+        characters placed in the user area).
+
+  mca_status
+     This will be the status word returned by the MCA on completion
+     of the function.  (Output)
+
+        This will  only be valid  when the mca  is attached without
+        specifying an event channel to signal the completion of the
+        I/O.
+
+  code
+     Will be a standard system status code.  (Output)
+
+  Notes
+
+  The entry mca_$read_data must also  be called after receiving the
+  requested data  to terminate the  "session".  Refer to  section 4
+  (Miscellaneous MCA Operations) for details.
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  Entry:  mca_$display
+
+  This  entry will  allow a  user to  extract the  contents of  the
+  ring-1  control  segment,  mca_data_seg,  for  examination.  (See
+  Appendix D)
+
+  Usage
+
+  dcl mca_$display entry (ptr, fixed bin (21), fixed bin (21),
+       fixed bin (35));
+
+       call mca_$display (ret_ptr, ret_size, ret_len, code);
+
+  where:
+
+  ret_ptr
+     User area to return data.  (Input)
+
+  ret_size
+     Maximum size of user area in characters.  If this is less than
+     the size of  the mca data, then only  ret_size characters will
+     be returned.  (Input)
+
+  ret_len
+     Actual number characters placed in the users area.  (Output)
+
+  code
+     Will be a standard system status code.  (Output)
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  Entry:  mca_$load_ipc
+
+  This  entry will  allow the  requested IPC  to have  its internal
+  firmware  reloaded   from  the  MCA  diskette  and   reset  to  a
+  initialized state.
+
+  Usage
+
+  dcl mca_$load_ipc (fixed bin, fixed bin, bit (36),
+       fixed bin (35));
+
+       call mca_$load_ipc (mca_ioi_idx, ipc_number, mca_status,
+       code);
+
+  where:
+
+  mca_ioi_idx
+     IOI index value returned when MCA was attached.  (Input)
+
+  ipc_number
+     The IPC  number to be acted on  (returned by mca_$attach_ipc).
+     (Input)
+
+  mca_status
+     This will be the status word returned by the MCA on completion
+     of the function.  (Output)
+
+        This will  only be valid  when the MCA  is attached without
+        specifying an event channel to signal the completion of the
+        I/O (i.e.  the mca_ module has gone blocked waiting for the
+        I/O to complete and is now returning status).
+
+  code
+     Will be a standard system status code.  (Output)
+
+  Notes
+
+  It will be necessary to attach an IPC, using the mca_$attach_ipc,
+  before  invoking this  entry.  Otherwise  an error  code will  be
+  returned.
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  Entry:  mca_$process_io_event
+
+  Used to  notify ring 1 of  the completion of an  asynchronous I/O
+  event.   It may  be necessary  to call  this entry  several times
+  before a task  is complete.  This entry must only  be used when a
+  event channel was passed to  mca_$attach_mca entry point when the
+  MCA was attached.
+
+  Usage
+
+  dcl mca_$process_io_event entry (fixed bin, ptr, ptr,
+       fixed bin (35));
+
+       call mca_$attach_mca (mca_ioi_idx, event_call_info_ptr,
+       mca_area_ptr, code);
+
+  where:
+
+  mca_ioi_idx
+     IOI index value returned when MCA was attached.  (Input)
+
+  event_call_info_ptr
+     Pointer  to the  event_call_info structure  returned when  the
+     event was signalled.  (Input)
+
+  mca_area_ptr
+     Pointer to  the user supplied area for  placing I/O completion
+     information.  (See Appendix C ).  (Input)
+
+  code
+     Will be a standard system status code.  (Output)
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  Entry:  mca_$read_data
+
+  This entry  must be used in  cases, such as diskette  read, where
+  the data  to be sent by  the MCA is larger  that the size of  the
+  user buffer.  This  is indicated by the status  returned for that
+  call.   This entry  reads the   remaining data  from the  MCA and
+  places it in the user buffer  for this call.  The status returned
+  must be checked  to see if there is more  data to read.  Repeated
+  calls to this entry must be used to read the data.
+
+  Usage
+
+  dcl mca_$read_data entry (fixed bin, ptr, fixed bin (21),
+       fixed bin (21), bit (36), fixed bin (35));
+
+       call mca_$read_data (mca_ioi_idx, ret_ptr, ret_size,
+       ret_len, mca_status, code);
+
+  where:
+
+  mca_ioi_idx
+     IOI index value returned when MCA was attached.  (Input)
+
+  ret_ptr
+     User area to return data.  (Input)
+
+  ret_size
+     Maximum size of user area in characters.  (Input)
+
+  ret_len
+     Actual number characters placed in the users area.  (Output)
+
+        This will  only be valid  when the mca  is attached without
+        specifying an event channel to signal the completion of the
+        I/O (i.e.  the mca_ module has gone blocked waiting for the
+        I/O  to  complete  and  is  now  returning  the  number  of
+        characters placed in the user area).
+
+  mca_status
+     This will be the status word returned by the MCA on completion
+     of the function.  (Output)
+
+        This will  only be valid  when the mca  is attached without
+        specifying an event channel to signal the completion of the
+        I/O.
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  code
+     Will be a standard system status code.  (Output)
+
+  Notes
+
+  This  entry must  also be   used to  terminate a  "session", when
+  entries like  config and diskette_read have been  used.  Refer to
+  section 4 (Miscellaneous MCA Operations) for details.
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  Entry:  mca_$reset_ipc
+
+  This  entry  will  allow  the  requested  IPC  to  be reset to an
+  initialized state.
+
+  Usage
+
+  dcl mca_$reset_ipc (fixed bin, fixed bin, bit (36),
+       fixed bin (35));
+
+       call mca_$reset_ipc (mca_ioi_idx, ipc_number, mca_status,
+       code);
+
+  where:
+
+  mca_ioi_idx
+     IOI index value returned when MCA was attached.  (Input)
+
+  ipc_number
+     The IPC  number to be acted on  (returned by mca_$attach_ipc).
+     (Input)
+
+  mca_status
+     This will be the status word returned by the MCA on completion
+     of the function.  (Output)
+
+        This will  only be valid  when the MCA  is attached without
+        specifying an event channel to signal the completion of the
+        I/O (i.e.  the mca_ module has gone blocked waiting for the
+        I/O to complete and is now returning status).
+
+  code
+     Will be a standard system status code.  (Output)
+
+  Notes
+
+  It will be necessary to attach an IPC, using the mca_$attach_ipc,
+  before  invoking this  entry.  Otherwise  an error  code will  be
+  returned.
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  Entry:  mca_$reset
+
+  This  entry will  allow the  user  to  reset the  MCA to  Multics
+  communication dialogue.  This entry  issues a reset_status opcode
+  ("40"b3) to the MCA.
+
+  Usage
+
+  dcl mca_$reset (fixed bin, bit (36), fixed bin (35));
+
+       call mca_$reset (mca_ioi_idx, mca_status, code);
+
+  where:
+
+  mca_ioi_idx
+     IOI index value returned when MCA was attached.  (Input)
+
+  mca_status
+     This will be the status word returned by the MCA on completion
+     of the function.  (Output)
+
+        This will  only be valid  when the MCA  is attached without
+        specifying an event channel to signal the completion of the
+        I/O (i.e.  the mca_ module has gone blocked waiting for the
+        I/O to complete and is now returning status).
+
+  code
+     Will be a standard system status code.  (Output)
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  Entry:  mca_$tandd_read_data
+
+  This  entry will  allow the  tolts subsystem  to send  previously
+  prepared IO blocks to the MCA.   This entry must be used by tolts
+  to perform a read only operation  from the MCA.  This is the case
+  when the  previous command status  return indicates that  the MCA
+  has more data to send than the tolts subsystem had reserved space
+  for.  The IDCW and DCW will  be supplied by the gated code.  When
+  the MCA returns  response data, it will be copied  from the wired
+  block  into the  user area  and the  MCA status  returned to  the
+  caller.
+
+  Usage
+
+  dcl mca_$tandd_read_data (fixed bin, ptr, fixed bin, bit (36),
+       fixed bin (35));
+
+       call mca_$tandd_read_data (mca_ioi_idx, io_block_ptr,
+       io_block_len, mca_status, code);
+
+  where:
+
+  mca_ioi_idx
+     IOI index value returned when MCA was attached.  (Input)
+
+  io_block_ptr
+     Tolts  area  that  contains  the  IO  block  to be sent.  (See
+     Appendix A) (Input)
+     Note:  The data_header_2 area will be nulled as well as data_2
+     the size will be set to  0.  The data returned will be defined
+     by data_header_1 and the data returned in the data_1 area.
+
+  io_block_len
+     Size of tolts area in words.  (See Appendix A) (Input)
+
+  mca_status
+     This will be the status word returned by the MCA on completion
+     of the function.  (Output)
+
+        This will  only be valid  when the mca  is attached without
+        specifying an event channel to signal the completion of the
+        I/O (i.e.  the mca_ module has gone blocked waiting for the
+        I/O to complete and is now returning status).
+
+  code
+     Will be a standard system status code.  (Output)
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  Notes
+
+  This  entry  must  also  be  used  to  terminate  a  "maintenance
+  session".  Refer to mca_$read_data for details.
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  Entry:  mca_$tandd_write_data
+
+  This  entry will  allow the  tolts subsystem  to send  previously
+  prepared IO blocks to the MCA.   This entry will be used by tolts
+  to perform early communication with  the MCA, prior to initiating
+  a test request,  and to send TEST OVERLAY data to  the MCA and to
+  maintain a response area for the  MCA while a given test is being
+  executed.   This entry  will also  move the  IO block  to a wired
+  area, replacing the IDCWs (15, 03) and DCWs with known good ones.
+  When the  MCA returns response data,  it will be copied  from the
+  wired block into the user area and the MCA status returned to the
+  caller.
+
+  Usage
+
+  dcl mca_$tandd_write_data (fixed bin, ptr, fixed bin, bit (36),
+       fixed bin (35));
+
+       call mca_$tandd_write_data (mca_ioi_idx, io_block_ptr,
+       io_block_len, mca_status, code);
+
+  where:
+
+  mca_ioi_idx
+     IOI index value returned when MCA was attached.  (Input)
+
+  io_block_ptr
+     Tolts  area  that  contains  the  IO  block  to be sent.  (See
+     Appendix A) (Input)
+
+  io_block_len
+     Size of tolts area in words.  (See Appendix A) (Input)
+
+  mca_status
+     This will be the status word returned by the MCA on completion
+     of the function.  (Output)
+
+        This will  only be valid  when the mca  is attached without
+        specifying an event channel to signal the completion of the
+        I/O (i.e.  the mca_ module has gone blocked waiting for the
+        I/O to complete and is now returning status).
+
+  code
+     Will be a standard system status code.  (Output)
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  Entry:  mca_$tandd_write_text
+
+  This  entry will  allow the  tolts subsystem  to send  previously
+  prepared IO blocks to the MCA.   This entry must be used by tolts
+  to initiate  a IO activity with  the MCA, for a  given IPC.  This
+  entry  will  verify  that  the  text  portion  of  the block only
+  contains the  valid commands READ,  RESET, LOAD or  TEST and that
+  the IPC attached is the  only adapter specified after the command
+  text.  This  entry will also move  the IO block to  a wired area,
+  replacing the IDCWs (13, 03) and DCWs with known good ones.  When
+  the MCA returns  response data, it will be copied  from the wired
+  block  into the  user area  and the  MCA status  returned to  the
+  caller.
+
+  Usage
+
+  dcl mca_$tandd_write_text (fixed bin, ptr, fixed bin, bit (36),
+       fixed bin (35));
+
+       call mca_$tandd_write_text (mca_ioi_idx, io_block_ptr,
+       io_block_len, mca_status, code);
+
+  where:
+
+  mca_ioi_idx
+     IOI index  value returned when the selected  MCA was attached.
+     (Input)
+
+  io_block_ptr
+     Tolts area that  contains the text IO block to  be sent.  (See
+     Appendix A) (Input)
+
+  io_block_len
+     Size of tolts area in words.  (See Appendix A) (Input)
+
+  mca_status
+     This will be the status word returned by the MCA on completion
+     of the function.  (Output)
+
+        This will  only be valid  when the MCA  is attached without
+        specifying an event channel to signal the completion of the
+        I/O (i.e.  the mca_ module has gone blocked waiting for the
+        I/O to complete and is now returning status).
+
+  code
+     Will be a standard system status code.  (Output)
+
+
+  ____                                                         ____
+
+  mca_                                                         mca_
+  ____                                                         ____
+
+  Notes
+
+  If  the text  of the  I/O  block  specifies an  IPC adapter,  the
+  adapter must be attached to the  user process.  If the adapter is
+  not attached no  I/O will be performed and an  error code will be
+  returned.
+
+
+  _________                                               _________
+
+  mca_priv_                                               mca_priv_
+  _________                                               _________
+
+  Name:  mca_priv_
+
+  Entry:  mca_priv_$load_ipcs
+
+  This entry  will allow all of  the currently defined IPCs  of the
+  selected IMU  to have their  internal firmware reloaded  from the
+  MCA diskette and reset to a initialized state.  This requires all
+  the  IPCs of  the IMU  be attached  to this  process before  this
+  command can be executed.
+
+  Usage
+
+  dcl mca_priv_$load_ipcs entry (fixed bin, bit (36),
+       fixed bin (35));
+
+       call mca_priv_$load_ipcs (mca_ioi_idx, mca_status, code);
+
+  where:
+
+  mca_ioi_idx
+     IOI index value returned when MCA was attached.  (Input)
+
+  mca_status
+     This will be the status word returned by the MCA on completion
+     of the function.  (Output)
+
+        This will  only be valid  when the mca  is attached without
+        specifying an event channel to signal the completion of the
+        I/O (i.e.  the mca_ module has gone blocked waiting for the
+        I/O to complete and is now returning status).
+
+  code
+     Will be a standard system status code.  (Output)
+
+
+  _________                                               _________
+
+  mca_priv_                                               mca_priv_
+  _________                                               _________
+
+  Entry:  mca_priv_$reset_ipcs
+
+  This entry  will allow all of  the currently defined IPCs  of the
+  selected IMU to  be reset to a initialized  state.  This requires
+  all the IPCs  of the IMU be attached to  this process before this
+  command can be executed.
+
+  Usage
+
+  dcl mca_priv_$reset_ipcs entry (fixed bin, bit (36),
+       fixed bin (35));
+
+       call mca_priv_$reset_ipcs (mca_ioi_idx, mca_status, code);
+
+  where:
+
+  mca_ioi_idx
+     IOI index value returned when MCA was attached.  (Input)
+
+  mca_status
+     This will be the status word returned by the MCA on completion
+     of the function.  (Output)
+
+        This will  only be valid  when the mca  is attached without
+        specifying an event channel to signal the completion of the
+        I/O (i.e.  the mca_ module has gone blocked waiting for the
+        I/O to complete and is now returning status).
+
+  code
+     Will be a standard system status code.  (Output)
+
+
+  _________                                               _________
+
+  mca_priv_                                               mca_priv_
+  _________                                               _________
+
+  Entry:  mca_priv_$force_reset
+
+  This  entry will allow  the user to  reinitialize the MCA.   This
+  entry issues a  reset_mask PCW to the MCA.   Executing this entry
+  has the same effect as pushing  the "MCA Reset" button located in
+  the IMU cabinet.
+
+  Usage
+
+  dcl mca_priv_$force_reset (char (*), bit (36), fixed bin (35));
+
+       call mca_priv_$force_reset (mca_id, mca_status, code);
+
+  where:
+
+  mca_id
+     MCA name  to be reset.  The  name must be in  the form "mcaX",
+     where X will be  equal to the letter of the IMU  the MCA is in
+     (a, b, c, or d).  (Input)
+
+  mca_status
+     This will be the status word returned by the MCA on completion
+     of the function.  (Output)
+
+  code
+     Will be a standard system status code.  (Output)
+
+  Notes
+
+  The  MCA must  be in  the FREE  state for  this entry  to operate
+  properly.  The entry will attach the MCA, do the reset and detach
+  the MCA when complete.
+
+
+  _________                                               _________
+
+  mca_priv_                                               mca_priv_
+  _________                                               _________
+
+  Entry:  mca_priv_$force_unlock
+
+  This entry will allow the per MCA lock in the ring-1 mca_data_seg
+  to be force unlocked.
+
+  Usage
+
+  dcl mca_priv_$force_unlock (char (*), fixed bin (35));
+
+       call mca_priv_$force_unlock (mca_id, code);
+
+  where:
+
+  mca_id
+     MCA name to be unlocked.  The name must be in the form "mcaX",
+     where X will be  equal to the letter of the IMU  the MCA is in
+     (a, b, c, or d).  (Input)
+
+  code
+     Will be a standard system status code.  (Output)
+
+
+  _________                                               _________
+
+  mca_priv_                                               mca_priv_
+  _________                                               _________
+
+  Entry:  mca_priv_$trace
+
+  This entry  will allow the turning  ON or OFF of  the MCA console
+  messages (i.e.   TRACING) displayed on the  IPC-CONS adapter that
+  currently has the multidrop (MD) interface enabled.
+
+  Usage
+
+  dcl mca_priv_$trace entry (fixed bin, bit (3), bit (1),
+       char (40), bit (36), fixed bin (35));
+
+       call mca_priv_$trace (mca_ioi_idx, mca_option, on_off_bit,
+       trace_state, mca_status, code);
+
+  where:
+
+  mca_ioi_idx
+     IOI index value returned when MCA was attached.  (Input)
+
+  mca_option
+     A three bit field that will define what MCA tracing types will
+     be  affected by the  call.  The three  types in order  will be
+     FAULT, BOOT and DEBUG.  (Input)
+     The values are:  "100"b -&gt; FAULT, "010"b -&gt; BOOT, or "001"b -&gt;
+     DEBUG.  These values may be or'ed together.
+
+  on_off_bit
+     A  one bit field  that will define  whether to turn  the above
+     MCA_OPTIONS ON or OFF.  "1"b = turn on tracing.  "0"b turn off
+     tracing.  (Input)
+
+  trace_state
+     This  is the ascii  data returned by  the MCA to  indicate the
+     state of tracing.  (Output)
+
+  mca_status
+     This will be the status word returned by the MCA on completion
+     of the function.  (Output)
+
+        This will  only be valid  when the mca  is attached without
+        specifying an event channel to signal the completion of the
+        I/O (i.e.  the mca_ module has gone blocked waiting for the
+        I/O to complete and is now returning status).
+
+  code
+     Will be a standard system status code.  (Output)
+
+
+  MTB-663, Revision 3                         MCA Online-Management
+
+  APPENDIX A:  MCA_WORKSPACE
+
+  This is  the definition of the  workspace used by the  mca ring-1
+  modules  when  communicating  with  the  MCA  through  IOI.   The
+  structure is declared in mca_data_area.incl.pl1.
+
+  dcl  data_header_ptr ptr;
+
+  dcl  (data_size_1, data_size_2) fixed bin (21) init (0);
+
+  dcl  io_param_blk_ptr ptr;
+
+  dcl  mca_dcw_list_ptr ptr;
+
+  dcl  mca_work_space_ptr ptr;
+
+  dcl  1 mca_work_space based (mca_work_space_ptr),
+         2 list_of_dcw like mca_dcw_list,
+           /* the list of idcws and dcws */
+         2 status_area like istat,
+           /* the ioi status return area */
+         2 data_header_1 aligned like data_header,
+           /* the structure that defines the HOST to MCA data */
+        2 data_1 char (data_size_1),
+           /* the text of the data to be sent to the MCA */
+         2 data_header_2 aligned like data_header,
+           /* the structure that defines the MCA to HOST data */
+        2 data_2 char (data_size_2);
+          /* the text of the data returned by the MCA */
+
+  Note:
+    data_header_1 and data_1 areas are reserved for data TO the
+    MCA. The data_header_2 and data_2 areas are reserved for data
+    FROM the MCA. However if the "mca_$tandd_read_data" entry is
+    call the data will be returned in data_1 and defined in the
+    data_header_1 area. The data_header_2 values should be nulled.
+
+
+  MCA Online-Management                         MTB-663, Revision 3
+
+  dcl  1 data_header based (data_header_ptr) aligned,
+         2 type bit (9) unal,
+           /* must be equal to "000"b3 (MBZ) */
+         2 definer fixed bin (9) unal unsigned,
+           /* defines type of info in header */
+         2 ctl_sw bit (18) unal,
+           /* "currently undfined" mbz  = "000000"b3 */
+         2 host_sts_ign1 bit (1) unal,
+         2 host_sts_msb bit (8) unal,
+         2 host_sts_ign2 bit (1) unal,
+         2 host_sts_lsb bit (8) unal,
+         2 rd_flpy fixed bin (9) unal unsigned,
+           /* 0 = data files from host */
+           /* 1 = data files from flopy */
+         2 io_param_blk like io_parameter_block unal;
+
+
+  MTB-663, Revision 3                         MCA Online-Management
+
+  dcl  1 io_parameter_block based (io_param_blk_ptr) unal,
+         2 open fixed bin (9) unal unsigned,
+         2 cmd bit (18),
+         2 sts_ptr bit (18),
+           /* Unused */
+         2 file_name char (8),
+           /* file name for this request */
+         2 options bit (18),
+           /* Unused */
+         2 source_ptr bit (18),
+           /* Unused */
+         2 source_len,
+           /* data_size =
+              source_len_msb||source_len_lsb MCA to HOST */
+           3 source_len_ign1 bit (1),
+           3 source_len_msb bit (8),
+           3 source_len_ign2 bit (1),
+           3 source_len_lsb bit (8),
+         2 dest_ptr bit (18),
+           /* Unused */
+         2 blk_ct,
+           /* if MCA to HOST blk_ct_msb||blk_ct_lsb =
+              MAX number of 256 byte BLOCKS  */
+           /* else not used */
+           3 blk_ct_ign1 bit (1),
+           3 blk_ct_msb bit (8),
+           3 blk_ct_ign2 bit (1),
+           3 blk_ct_lsb bit (8),
+         2 dest_len,
+           /* supplied by host as the number of bytes
+              in data_field max value is 16128 */
+           /* dest_len_msb = substr(unspec(data_size),21,8) */
+           /* dest_len_lsb = substr(unspec(data_size),29,8) */
+           3 dest_len_ign1 bit (1),
+           3 dest_len_msb bit (8),
+           3 dest_len_ign2 bit (1),
+           3 dest_len_lsb bit (8);
+
+  /* Constants used for data_header.definer */
+
+
+  MCA Online-Management                         MTB-663, Revision 3
+
+  dcl  DATA_FROM_HOST
+         fixed bin (9) unsigned init (0) static options (constant);
+  dcl  WRITE_CONSOLE
+         fixed bin (9) unsigned init (1) static options (constant);
+  dcl  WRITE_READ_CONSOLE
+         fixed bin (9) unsigned init (2) static options (constant);
+  dcl  DATA_FROM_MCA
+         fixed bin (9) unsigned init (3) static options (constant);
+  dcl  REQ_DATA_FROM_HOST
+         fixed bin (9) unsigned init (4) static options (constant);
+  dcl  STATUS_FROM_MCA
+         fixed bin (9) unsigned init (5) static options (constant);
+  dcl  SEEK
+         fixed bin (9) unsigned init (6) static options (constant);
+  dcl  CON_DATA_FROM_HOST
+         fixed bin (9) unsigned init (7) static options (constant);
+  dcl  BIN_DATA_FROM_HOST
+         fixed bin (9) unsigned init (8) static options (constant);
+  dcl  ABORT_SES_FROM_HOST
+         fixed bin (9) unsigned init (9) static options (constant);
+
+  dcl  1 mca_dcw_list based (mca_dcw_list_ptr),
+         2 idcw1 like idcw,
+         2 dcw1 like dcw,
+         2 idcw2 like idcw,
+         2 dcw2 like dcw;
+
+  dcl 1 dcw based (dcwp) aligned,
+       /* Data Control Word */
+       (2 address bit (18),
+          /* address for data transfer */
+        2 char_pos bit (3),
+          /* character position */
+        2 m64 bit (1),
+          /* non-zero for mod 64 address */
+        2 type bit (2),
+          /* DCW type */
+        2 tally bit (12)) unal;
+          /* tally for data transfer */
+
+
+  MTB-663, Revision 3                         MCA Online-Management
+
+  dcl 1 idcw based aligned,
+       /* Instruction DCW */
+       (2 command bit (6),
+         /* device command */
+       2 device bit (6),
+         /* device code */
+       2 ext bit (6),
+         /* address extension */
+       2 code bit (3),
+         /* should be "111"b for PCW */
+       2 ext_ctl bit (1),
+         /* "1"b if address extension to be used */
+       2 control bit (2),
+         /* terminate/proceed and marker control bits */
+       2 chan_cmd bit (6),
+         /* type of I/O operation */
+       2 count bit (6)) unal
+         /* record count or control character */;
+
+  dcl 1 istat based aligned,
+      /* I/O Interfacer status structure */
+        2 completion,
+          /* completion flags */
+         (3 st bit (1),
+            /* "1"b if status returned */
+          3 er bit (1),
+            /* "1"b if status indicates error condition */
+          3 run bit (1),
+            /* "1"b if channel still running */
+          3 time_out bit (1)) unal,
+            /* "1"b if time-out occurred */
+        2 level fixed bin (3),
+          /* IOM interrupt level */
+        2 offset fixed bin (18),
+          /* DCW list offset */
+        2 absaddr fixed bin (24),
+          /* absolute address of workspace */
+        2 iom_stat bit (72),
+          /* IOM status */
+        2 lpw bit (72)
+          /* LPW residue */;
+
+
+  MCA Online-Management                         MTB-663, Revision 3
+
+  APPENDIX B:  MCA_CONFIG_FILE
+
+  The following structure was built based on data obtained from the
+  EPS-1 "Dipper  Firmware Loading" Rev B section  3.5.1 starting on
+  sheet 25.  The structure is declared in mca_config_file.incl.pl1.
+
+  dcl  mca_config_file_ptr ptr;
+
+  dcl 1 mca_config_file based (mca_config_file_ptr),
+      2 diskette_data,
+        /* total of 20 chars (bytes) */
+        3 unique_id char (8),
+          /* User ID assiged to diskette from witch FW was loaded */
+        3 date_created char (6),
+          /* MMDDYY */
+        3 date_late_changed char (6),
+          /* MMDDYY */
+      2 iioc_data,
+        /* total of 31 chars (bytes) */
+        3 iioc_config char (8),
+          /* mca path_name of file used to load from */
+        3 iioc_state_control,
+          4 will_be_zero_1 bit (1),
+            /* zero because of 8 bit-byte to 9 bit-byte */
+          4 state_counter fixed bin (5) unsigned unal,
+            /* values are not defined */
+          4 RFU_1 bit (1),
+          4 RFU_2 bit (1),
+          4 write_protect_ptw_sw bit (1),
+        3 operating_system fixed bin (9) unal unsigned,
+          /* better be a value equal to Multics */
+        3 iioc_num fixed bin (9) unal unsigned,
+          /* the number of the imu  */
+        3 iioc_disk_tab fixed bin (9) unal unsigned,
+          /* The value of the TAB number of the Diskette_Product_Set
+            containing the proper revision of diagnostics for IMU */
+        3 p_s_disk_tab fixed bin (9) unal unsigned,
+          /* same as iioc_disk_tab only for the Port Select */
+        3 port_select_state fixed bin (9) unal unsigned,
+          /* State counter values will exists which uniquely define:
+             o P. S. not loaded
+             o Single port
+             o Load failed
+             o Read failed
+             o Verify failed
+             o P. S. loaded */
+        3 config_valid char (1),
+          /* ascii number of drive this config was read from.
+             if value = "000"b3 drive door has been opened. */
+        3 iioc_rfu char (2),
+      2 bootstrap_data,
+        /* total of 15 chars (bytes) */
+
+
+  MTB-663, Revision 3                         MCA Online-Management
+
+        3 control fixed bin (9) unal unsigned,
+          /* 0 = bootstrap not configured
+             1 = bootstrap allowed
+             2 = auto boot at power up  */
+        3 imu_port_at_scu fixed bin (9) unal unsigned,
+          /* port number for bootstrap (0 to 7) */
+        3 chan_num fixed bin (9) unal unsigned,
+          /* bootstrap channel number (8 to 63) */
+        3 dev_num fixed bin (9) unal unsigned,
+          /* bootstrap device number (1 to 63) */
+        3 int_base char (4),
+        3 mb_base char (4),
+        3 boot_src fixed bin (9) unal unsigned,
+          /* bootstrap source 1=card, 2=tape, 3=disk */
+        3 unatt_op fixed bin (9) unal unsigned,
+          /* 1 = unattended operation */
+        3 boot_rfu bit (9),
+      2 port_data (0:3),
+        /* total 28 chars (bytes) */
+        3 enable fixed bin (9) unal unsigned,
+          /* 1 = port enable */
+        3 init fixed bin (9) unal unsigned,
+          /* 1 = init allowed */
+        3 ilace char (1),
+          /* no interlace = "000"b3,
+             A,B,C,D = the other port for interlace */
+        3 port_size,
+          4 msb_ign1 bit (1),
+          4 msb bit (8),
+          4 lsb_ign1 bit (1),
+          4 lsb bit (8),
+        3 disk_tab fixed bin (9) unal unsigned,
+          /* value of TAB number of the D_P_S containing the proper
+             revision of diagnostics for port adapter. */
+        3 assignment fixed bin (9) unal unsigned,
+          /* (0 - 3) */
+      2 channel_data (0:15),
+        /* total of 160 bytes */
+        3 lvl_1_state fixed bin (9) unal unsigned,
+          /* State counter values define:
+             = No config present
+             = Not configured
+             = Phyically not present
+             = Basic ROM test failed (mico IPCs only)
+             = Jam test failed (mico IPCs only)
+             = Self test failed  (mico IPCs only)
+             = HW ID does not match config ID
+             = Console set up failed (console only)
+             = RSO failed (PSIA only)
+             = FW not found on diskette (FW loadable IPCS only)
+             = Alter file not found
+             = Alter load failed
+
+
+  MCA Online-Management                         MTB-663, Revision 3
+
+             = FW execute failed (FW loadable IPCS only)
+             = Operational
+             = Stop On condition occured */
+        3 lvl_1_ctl_att,
+          4 ctl_ign1 bit (1),
+          4 ctl1 bit (1),
+            /* if master console true = rmt_maint
+               else true = RSO required at init */
+          4 ctl2 bit (1),
+            /* if master console true = master
+               else reserved of future use */
+          4 ctl3 bit (1),
+            /* if master console true = active/slave
+               else true = 18X */
+          4 ctl_p2 bit (5),
+        3 disk_tab fixed bin (9) unal unsigned,
+          /* Tab number of the D_P_S containing the proper
+             revision of diagnostics for this adapter */
+        3 fw_id_ign1 bit (1),
+        3 fw_id bit (8),
+        3 lvl_1_id_ign1 bit (1),
+        3 no_lev_2 bit (1),
+          /* true = Do not ask for lvl-2 info. */
+        3 micro_ctl bit (1),
+          /* true = micro-procesor controled */
+        3 fbus_latch bit (1),
+          /* true = F-Bus Disable Latch is true */
+        3 lvl_1_id_type fixed bin (5) unsigned unal,
+          /* unique Lvl-1 type */
+        3 fw_rev char (1),
+        3 prim_ch_num fixed bin (9) unal unsigned,
+          /* primary channel number (8 to 63) */
+        3 num_of_log_ch fixed bin (9) unal unsigned,
+          /* number of logical channels */
+        3 num_of_busses fixed bin (9) unal unsigned,
+          /* number of data busses */
+        3 cont_byte_ign1 bit (1),
+        3 cont_byte_rfu bit (5),
+        3 cont_byte_soc bit (1),
+          /* true = Stop-On-Condition present */
+        3 cont_byte_mpfp bit (1),
+          /* true = maint. panel fuction present */
+        3 cont_byte_mc bit (1),
+          /* true = has been set to Master Console */
+      2 adapter_data (0:15, 0:7),
+        3 lvl_2_state fixed bin (9) unal unsigned,
+        3 lvl_2_clt_att fixed bin (9) unal unsigned,
+        3 disk_tab fixed bin (9) unal unsigned,
+        3 fw_idfixed bin (9) unal unsigned,
+        3 lvl_2_id fixed bin (9) unal unsigned,
+        3 fw_rev_ign1 bit (1),
+        3 fw_rev bit (8),
+
+
+  MTB-663, Revision 3                         MCA Online-Management
+
+        3 rfu bit (1),
+      2 uses_less_data char (200);
+
+
+  MCA Online-Management                         MTB-663, Revision 3
+
+  APPENDIX C:  MCA_AREA
+
+  MCA Area Structure:
+
+  The mca_area_ptr  points to a structure which  defines the format
+  of the  data filled in  by the mca_  module when I/O  between the
+  attached MCA and  Multics has completed.  This area  is only used
+  when  the user  has specified   an event  channel to  be notified
+  through.  The structure is declared in mca_area.incl.pl1.
+
+  dcl  1 mca_area aligned based (mca_area_ptr),
+         2 version char (8),
+         2 io_outstanding bit (1) aligned,
+         2 mca_attach_state fixed bin (17),
+         2 mca_status bit (72),
+         2 ret_len fixed bin (21);
+
+  dcl  mca_area_ptr ptr;
+
+  dcl  MCA_area_version_1 char (8) int static options
+            (constant) init ("MCA00001");
+
+  where:
+
+  version
+     Is the  version number of the structure.   The current version
+     is MCA00001.
+
+  io_outstanding
+     This  will indicate  the  status  of the  maintenance session.
+     Will be  false if the  requested task has  been completed.  If
+     true, the task  is not complete and the user  will be required
+     to call this entry again upon completion of the next I/O.
+
+  mca_attach_state
+     This  will   contain  the  current  attachment   state.   1  =
+     "Attaching", which means that the mca modules are still in the
+     process of  attaching the mca  (doing the reset  &amp; read-config
+     IO).  2  = "Attached", which means  that the mca is  now fully
+     attached.
+
+  mca_status
+     Is  the status  returned by   the MCA  upon completion  of the
+     request.
+
+  ret_len
+     Is the number of characters placed in the user area.
+
+
+  MTB-663, Revision 3                         MCA Online-Management
+
+  APPENDIX D:  MCA_DATA_SEG
+
+  This  is the  format of  the ring_1  MCA control  segment.  It is
+  created  by mca_init_  in ring_1.   The structure  is declared in
+  mca_data.incl.pl1.
+
+  dcl  mca_data_seg$ ext;
+
+  dcl  MCA_data_version_1 char (8) int static options
+            (constant) init ("MCA00001");
+
+  dcl  mca_data_seg_ptr ptr;
+
+  dcl  mcad_ptr ptr;
+
+  dcl  ipcd_ptr ptr;
+
+  The  data segment is  an array of  four data structures,  one for
+  each possible IMU that can be configured on the system.
+
+  dcl  1 mca_data_seg based (mca_data_seg_ptr),
+         2 array (1:4) like mcad;
+
+  The following structure is the format for each array element.
+
+  dcl  1 mcad based (mcad_ptr) aligned,
+         2 lock bit (36),
+           /* The mca write lock. */
+         2 state fixed bin,
+           /* Current mca state */
+         2 attach_time fixed bin (71),
+           /* DT/time of attach */
+         2 attach_pid bit (36),
+           /* PID of attaching process */
+         2 name char (1),
+           /* name of this mca (a b c d) */
+         2 imu_number fixed bin (17),
+           /* number of the IMU */
+         2 ioi_idx fixed bin,
+           /* value to use with ioi_ */
+         2 event_chn fixed bin (71),
+           /* ipc channel for IO processing ring_1 */
+         2 ioi_wks_ptr ptr,
+           /* pointer to IOI Workspace */
+         2 max_ws_size fixed bin (19),
+         2 user_ptr ptr,
+           /* used for async_io */
+         2 return_data_ptr ptr,
+           /* user for async_io */
+         2 io_param_ptr ptr,
+           /* pointer to the io_parameter_block
+              for mca returned data */
+
+
+  MCA Online-Management                         MTB-663, Revision 3
+
+         2 entry_to_return_data entry
+             (ptr, fixed bin (21), fixed bin (35)),
+           /* entry that will return the data
+              to the user for async_io */
+         2 status_offset fixed bin,
+           /* offset into work space for status */
+         2 current_ws_size fixed bin (19),
+           /* current work_space */
+         2 rcp_id bit (36),
+         2 flags unaligned,
+           3 async_io bit (1),
+             /* 1 = outer ring will catch IO events */
+             /* 0 = ring 1 will go blocked and wait
+                    for IO to complete */
+           3 config_data_requested bit (1),
+             /* used during mca attachment */
+           3 pad bit (34),
+         2 max_time_out fixed bin (71),
+           /* maximum time for time out */
+         2 last_status bit (71),
+           /* most recent MCA status return */
+
+         2 ipcd_array (0:15) like ipcd aligned;
+
+  The ipc_array elements are initiated  when the MCA is attached to
+  a  users process.  Most  of the data  used is extracted  from the
+  internal  MCA config file.   At attach time  this config file  is
+  read  from  the  MCA  and  the  mca_util_$fill_config_data  entry
+  (ring_1) copys the selected data  from this file into the correct
+  ipc_array  element.  The  data in   the mca_config  file must  be
+  converted from 8 bit bytes to the Multics 9 bit bytes.
+
+  dcl  1 ipcd based (ipcd_ptr) aligned,
+         2 ipc_name char (8),
+           /* "ipcXX" */
+         2 channel fixed bin,
+           /* base channel */
+         2 nchan fixed bin,
+           /* number of channels */
+         2 type_info,
+           /* type of IPC */
+           3 no_level_2_info bit (1),
+           3 is_micro_cont bit (1),
+           3 fbus_disable_latch bit (1),
+           3 pad bit (6) unaligned,
+           3 type_index fixed bin,
+         2 state fixed bin (17) unaligned,
+           /* current state */
+         2 level_1_state fixed bin,
+           /* LVL-1_STATE  */
+         2 prph_attachments fixed bin (17),
+
+
+  MTB-663, Revision 3                         MCA Online-Management
+
+           /* # of RCP attachments */
+         2 attach_data (8),
+           3 prph_name char (4),
+             /* Multics prph name */
+           3 flags unaligned,
+             4 attached_thru_rcp bit (1),
+               /* must detach when done */
+             4 io_suspended bit (1),
+               /* must resume IO when done */
+             4 pad (34) bit (1),
+           3 attach_time fixed bin (71),
+             /* DT/time of attach */
+           3 ipc_rcp_id bit (36),
+             /* rcp id */
+           3 ipc_ioi_idx fixed bin;
+             /* index from rcp */
+
+  dcl  SYSTEM_DIR char (17)
+       init ("&gt;system_library_1") static options (constant);
+  dcl  DATA_SEG char (12)
+       init ("mca_data_seg") static options (constant);
+
+  /* possible mcad.state values */
+
+  dcl  (MCA_NOT_CONFIGURED init (0),
+        MCA_FREE init (1),
+        MCA_ATTACHING init (2),
+        MCA_ATTACHED init (3),
+        MAINT_SESSION init (10))
+          fixed bin internal static options (constant);
+
+  /* possible ipcd.state values */
+
+  dcl  (IPC_NOT_CONFIGURED init (0),
+        IPC_FREE init (1),
+        IPC_ATTACHED init (2))
+         fixed bin internal static options (constant);
+
+
+  MCA Online-Management                         MTB-663, Revision 3
+
+  APPENDIX E:  MCA_DISKETTE
+
+  This  is the  definition of  the data  returned by  the MCA  when
+  either  reading the  diskette  header,  directory or  files.  The
+  structure is declared in mca_diskette.incl.pl1.
+  dcl header_ptr ptr;
+
+  dcl 1 header based (header_ptr),
+      2 copyright char (55),
+      2 title char (8),
+      2 unique_id char (8),
+      2 date_created char (6),
+      2 date_changed char (6),
+      2 space_adr bit (18) unal,
+      2 space_x bit (18) unal,
+      2 space_size bit (18) unal,
+      2 dir_adr bit (18) unal,
+      2 dir_x bit (18) unal,
+      2 dir_size like two_byte,
+      2 config_name char (8),
+      2 config_count fixed bin (9) unal unsigned,
+      2 disk_type fixed bin (9) unal unsigned,
+      2 val fixed bin (9) unal unsigned,
+      2 equip_type char (4),
+      2 ipi_num char (12),
+      2 disk_dwg_num char (12),
+      2 prod_num_tab char (3),
+      2 x_of_n bit (18) unal;
+
+  dcl dir_ptr ptr;
+  dcl dire_ptr ptr;
+  dcl dir_number fixed bin;
+
+  dcl 1 directory based (dir_ptr),
+      2 array (dir_number) like dire;
+
+  dcl two_byte_ptr ptr;
+
+  dcl 1 two_byte based (two_byte_ptr) unal,
+        2 pad1 bit (1) unal,
+        2 lsb bit (8) unal,
+        2 pad2 bit (1) unal,
+        2 msb bit (8) unal;
+
+  dcl 1 dire based (dire_ptr),
+      2 path_name char (8),
+      2 sector_address like two_byte,
+      2 file_size like two_byte,
+      2 rfu like two_byte,
+      2 attributes bit (8) unal,
+
+
+  MTB-663, Revision 3                         MCA Online-Management
+
+      2 deleted bit (1) unal,
+      2 rfu1 char (1);
+
+  dcl file_ptr ptr;
+  dcl file_size fixed bin (21);
+  dcl 1 hex_file based (file_ptr),
+      2 hex_data (file_size) like two_byte;
+
+
+  MCA Online-Management                         MTB-663, Revision 3
+
+  APPENDIX F:  MCA_RETURN_STATUS
+
+  Status                                Major  Substatus    Octal
+
+  Channel Ready                         0000
+     Normal Termination                         x00000    4000 or 4040
+     Adapter Failure                            x00001    4001 or 4041
+     Maint. Session Normal Term.                x00010    4002 or 4042
+     Maint. Session Abnormal Term.              x00011    4003 or 4043
+     Response Data Present                      1xxxxx *
+
+  Attention (Diskette)                  0010
+     Write Inhibit                              x00001    4201 or 4241
+     Seek Incomplete                            x00010    4202 or 4242
+     Device Not Present                         x00100    4204 or 4244
+     Device Inoperable                          x01000    4210 or 4250
+     Device in Standby (door open)              x10000    4220 or 4260
+
+  Data Alert                            0011
+     Transmission Parity Alert                  x00010    4302 or 4342
+     Check Character Alert                      x10000    4320 or 4360
+
+  Command Reject                        0101
+     Invalid Operation Code                     x00001    4501 or 4541
+
+  Attention (MCA)                       1010
+     MCA Executive F/W Error                    x00001    5201 or 5241
+     MCA Overlay F/W Error                      x00010    5202 or 5242
+     Connect Time Out                           x10000    5220 or 5260
+
+  Data Alert (MCA)                      1011
+     Data Overflow on Load                      x00110    5306 or 5346
+     Data Underflow on Load                     x00111    5307 or 5347
+
+  Command Reject (MCA)                  1101
+     Invalid Sequence                           x00001    5501 or 5541
+     Invalid PATH_NAME                          x00010    5502 or 5542
+     Invalid Request Format                     x00011    5503 or 5543
+     Continue Bit Error                         x00100    5504 or 5544
+     Invalid Block Header                       x00101    5505 or 5545
+
+  * The Response Data Present bit is applicable to ALL status returns.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

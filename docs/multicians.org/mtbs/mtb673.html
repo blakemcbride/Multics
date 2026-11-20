@@ -1,0 +1,1737 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-673</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-673: Adaptive Disk Optimization.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-673
+Disk DIM
+
+To:       Distribution
+
+From:     Tom Oke
+
+Date:     08/16/84
+
+Subject:  Adaptive Disk Optimization
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Oke.Multics on System M or CISL.
+
+via Mail:
+
+   Tom Oke
+   Advanced Computing Technology Centre
+   Foothills Professional Building
+   #301, 1620, 29th Street, N.W.
+   Calgary, Alberta, Canada
+   T2N 4L7
+   (403) 270-5414
+
+1 ABSTRACT
+
+     This MTB outlines modifications to the existing disk control
+software to produce an optimization of system performance.  These
+modifications produce  a disk driver (disk  DIM) which adaptively
+optimizes  disk   operations  to  attain   best  possible  system
+responsiveness and system throughput, as opposed to best possible
+disk throughput.
+
+     The resulting disk DIM  permits better resource utilization,
+is site tunable and provides additional metering support over the
+existing software.
+
+________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project.
+
+
+Multics Technical Bulletin                                MTB-673
+Disk DIM
+
+2 INTRODUCTION
+
+     The  modifications  described  in  this  MTB  are  aimed  at
+producing a  MULTICS disk driver  (DISK DIM) which  adapts to the
+changing   paging  needs   of  the  system   to  optimize  system
+responsiveness and performance.
+
+     Traditional  disk  optimization schemes  have been  aimed at
+optimizing the throughput of the disk system itself, and have not
+accounted for the management characteristics of secondary storage
+inherent in  a Virtual Memory  system, particularly one  in which
+all  storage   access  is  essentially  done   through  a  paging
+mechanism, rather than distinct file IO.
+
+     Such  approaches have  meant that  system responsiveness and
+system performance were adversely  affected by the delays imposed
+to  service  disk  IO.   In a  traditional  IO  system,  in which
+processes  explicitly  wait  (block) until  IO  completion, these
+delays may be necessary.  In a system which only blocks processes
+reading  information  from secondary  storage, and  which buffers
+data destined for secondary storage, such service characteristics
+are detremental to system operation by increasing average process
+blocking delays and reducing the level of multi-programming.
+
+     MULTICS has attempted  to solve some of these  problems by a
+prioritization and  buffering of IO, such  that blocking types of
+IO's, page reads and VTOC  operations, are high priority and will
+be  done  before non-blocking  operations,  such as  page writes.
+This  noticably increases  system throughput  and responsiveness.
+It is  still too static  an optimization technique  to serve well
+through a wide range of system loading.
+
+     The new  DIM described in  this MTB is an  attempt to answer
+the  dynamic  requirements of  optimization of  a system  such as
+MULTICS.  It  provides acceptable system performance  over a wide
+range of load levels, and permits  site tuning of the disk system
+to  individual  site  needs.   Tuning is  done  at  the  level of
+individual IO  types, for each  drive, providing a  great deal of
+flexibility.   Ballpark  system  defaults  attempt  to  provide a
+system which does  not require a great deal  of tuning to provide
+acceptable results.  Additional meter  information is provided to
+provide a site with as  much information as possible to determine
+hardware and tuning needs and effectiveness.
+
+     The  resultant   DIM,  provides  a  wide   range  of  tuning
+parameters, and responds well to good ballpark tuning values.  It
+has  a  fairly  broad  tuning   range  and  does  not  appear  to
+demonstrate tuning instabilities.  Thus it should be difficult to
+
+
+MTB-673                                Multics Technical Bulletin
+                                                         Disk DIM
+
+provide  BAD  tuning  parameters  when  following  the guidelines
+mentioned in this MTB.
+
+3 MULTICS DISK MANAGEMENT
+
+     The following sections  outline the physical characteristics
+of the MULTICS  disk system, and the rational  behind its current
+management.   MULTICS  disk  management   is  done  through  disk
+sub-systems,   composed   of   channels,   Micro-Programmed  Disk
+Controllers (Disk MPC's) and disk drives.
+
+3.1 Disk Drives
+
+      Each disk drive can be  dual-ported, meaning that it can be
+controlled through  either of two sets  of cables, each typically
+connected to  a different MPC.  This  provides redundant physical
+paths to each disk drive,  and permits continued drive service if
+one physical path is down.
+
+3.2 MPC's
+
+     Each MPC has  physical connections to one or  more IOM's and
+is accessed through the use of Logical Channels.  A 451 MPC (used
+for  MSU451 disk  drives) can have  two LA's  (Link Adaptors) and
+thus can be connected to two different IOM's, providing redundant
+paths to the MPC.  Since  MSU500/501 disk drives require a faster
+transfer, each 607 MPC can have only  a single LA.  A 612 MPC can
+handle both  451 and 501  drives, and has a  single LA connection
+per  MPC (two  separate MPCs  exist in  the same  cabinet).  Path
+redundancy  for MSU500/501  is provided  through redundant MPC's,
+each typically cabled to a different IOM.
+
+3.3 Sub-systems
+
+     A   disk  sub-system   is  a  reflection   of  the  physical
+connectability characteristics  of the MULTICS  disk hardware.  A
+disk sub-system is  granted a string of disk drives  and a set of
+Logical Channels.   Each Logical Channel  must be able  to access
+all  drives of  the string,  thus all  disk drives  have the same
+physical connectability and the logical  paths from all drives of
+a sub-system are identical.
+
+     The disk software uses any of  the channels granted to it to
+access any  of the drives  granted to it.  If  the channel cannot
+access the drive an error situation results, and the channel will
+be removed from active service.
+
+
+Multics Technical Bulletin                                MTB-673
+Disk DIM
+
+4 MR10.2 SYSTEM LIMITS
+
+     The  following  section details  the characteristics  of the
+disk control system, as seen in MR10.2 and earlier releases.
+
+4.1 Channels
+
+     As  of  MR10.2  a  disk sub-system  has  a  maximum software
+configuration limit of 8 channels.  The channels specified to the
+sub-system are  presumed to be  specified in terms of  an LA base
+channel and the number of  Logical Channels configured on the LA.
+This  presumes specification  in terms  of physical  paths.  This
+specification  is used  to order channel  use to  evenly load all
+available physical paths to the disks of the sub-system.
+
+     The following  example defines two 451  MPC's, each of which
+has two LA's.  Each MPC is  connected to two IOM's.  The PRPH and
+CHNL cards supply information to  the system about the sub-system
+definition for  DSKA and describe the  channel connections to it.
+It would be specified in the config_file as:
+
+     PRPH  DSKA  A  8.  4  451.  6
+     CHNL  DSKA  A  12.  4  B  8.  4  B  12.  4
+     MPC  MSPA  451.  A  8.  4  B  8.  4
+     MPC  MSPB  451.  A  12.  4  B  12.  4
+
+4.2 Channel Use Ordering
+
+     The  algorithm used  to allocate channels  to the sub-system
+permutes  channel numbers  to produce an  ordering which utilizes
+the MPC's LA  base channels first, thus distributing  the IO load
+across the  maximum number of  separate physical paths.   It does
+this by  taking the index  to an array of  channels and reversing
+the bits of this index to  alter the selection order.  This looks
+like:
+
+  Array Index:      000 001 010 011 100 101 110 111
+  Permutes to:      000 100 010 110 001 101 011 111
+                     0   4   2   6   1   5   3   7
+
+     For  this permutation  algorithm to  function correctly, the
+number of channels  allocated to a sub-system must  be a power of
+two, and the number of channels on each base channel must also be
+a power of 2.
+
+
+MTB-673                                Multics Technical Bulletin
+                                                         Disk DIM
+
+Thus for the following prph and channel examples you get:
+
+   prph xxx a. 8. 2
+   chnl xxx b. 8. 2 a 12. 2 b 12. 2
+
+                     0   1   2   3   4   5   6   7
+   original:        A08 A09 B08 B09 A12 A13 B12 B13
+   permuted:        A08 A12 B08 B12 A09 A13 B09 B13
+
+     If channel specification  is not done in powers  of two then
+incorrect  initialization occurs,  which may  not crash  a system
+until  a  heavy  disk  load   requires  use  of  the  incorrectly
+initialized channel entries.
+
+   prph xxx a. 8. 3
+   chnl xxx b. 8. 3
+
+                     0   1   2   3   4   5   6   7
+   original:        A08 A09 A10 B08 B09 B10 *** ***
+   permuted:        A08 B09 A10 *** A09 B10 B08 ***
+
+     In this example if we try to run 4 drives simultaineously we
+will  use  an uninitialized  channel  entry and  the  system will
+crash.  This same  situation will probably re-occur if  an ESD is
+attempted, since we heavily load the IO system at this time too.
+
+     This algorithm is  supposed to permute channel use  so as to
+split the loading  of a sub-system between 2  or 4 Link Adaptors.
+If  three  link adaptors  are  specified, or  a non-power  of two
+channel  count, the  algorithm malfunctions as  above by creating
+uninitialized channel table entries,  or by incorrectly assigning
+load across its Link Adaptors.
+
+4.3 Seek Overlap
+
+     Multics uses Logical Channels to hold complete disk requests
+(both  seek and  IO).  If  a drive  is requested  to perform some
+action, the channel upon which this request is made is busy until
+the  request  is  completed.   This  gives  a  direct correlation
+between  the  number  of  Logical Channels  available  to  a disk
+sub-system and the number of  drives which can simultaineously be
+doing IO.  (In  fact it is only the SEEK  portion of the IO which
+can  be overlapped,  but this  is a  major portion  of the delays
+involved.)
+
+     A disk  sub-system with fewer channels  than drives can only
+simultaineously  move  heads  on  as  many  drives  as  there are
+channels.   In  effect a  disk sub-system  with more  drives than
+channels looks for the purposes  of head movement and seek delays
+
+
+Multics Technical Bulletin                                MTB-673
+Disk DIM
+
+as if it had only as many  drives as there are channels, with the
+drives  being proportionally  bigger.  This  reduces total system
+throughput.
+
+     This  makes  the limited  number  of channels  which  can be
+allocated  to a  disk sub-system, due  to software implementation
+limits, significant and a point of inefficient service.  It tends
+to  limit  the size  of a  disk  string which  is allocated  to a
+sub-system  and may  needlessly cause  additional hardware  to be
+required to support seek overlap.
+
+     In  addition,  one  desires  more  Logical  Channels  to  be
+allocated to a sub-system than  there are drives to reduce system
+degradation in situations where an MPC or a Link Adaptor is lost.
+
+4.4 Queue Limits
+
+     Disk sub-systems  are currently limited by  an allocation of
+64  queue  slots which  are accessible  only to  that sub-system.
+This limits  each sub-system to have  no more than a  total of 64
+requests queued for all its drives  at any point in time.  Due to
+the page write burst  characteristics of MULTICS page management,
+it  is rather  easy to load  individual drives to  more than this
+level,  and quite  trivial to load  an entire  sub-system to more
+than this level.   When a sub-system runs out  of queue elements,
+page  control  must  wait  in  a  spin-lock  situation  termed an
+ALLOCATION LOCK.
+
+     MULTICS IO  burst characteristics tend  to poorly distribute
+the instantaineous load across  the disk sub-systems, thus poorly
+utilizing the queue resources allocated to each sub-system.
+
+     Optimization    of   head    motion   is    done   using   a
+nearest-seek-first algorithm.   The efficiency of  this algorithm
+is rather dependant  upon the number of requests  available to be
+optimized,  more  requests will  produce  a shorter  average seek
+length.  If a shallow queue depth is available, then optimization
+is not  as efficient and  produces longer seek  lengths and lower
+throughput  rates.  If  a deep  queue is  available, then shorter
+seeks will occur.
+
+4.5 Per Sub-System Work Queue Management
+
+     The  MR10.2 implementation  allocates work  queues on  a per
+sub-system  basis.  Each  sub-system has  two separate  queues, a
+high  priority  queue  and  a  low  priority  queue.  On-cylinder
+requests are not optimized between the two queues.
+
+
+MTB-673                                Multics Technical Bulletin
+                                                         Disk DIM
+
+     Having  combined  queues  for  all  drives  on  a sub-system
+produces queues with more requests  in them, and higher overheads
+for   the   nearest-seek   algorithm,   but   does   not  improve
+optimization, since no more requests  per drive are queued.  Thus
+there is no optimization improvement from combined queues.
+
+     Having complete separation between the high and low priority
+queues prevents any possible  optimizations between these request
+types and tends to create  de-optimization of all requests due to
+the pre-emptive nature of its operation.
+
+4.6 Request Service Selection
+
+     One  of  the  aspects  of  optimization  is  how  drives are
+selected  for service,  in situations  where more  than one drive
+could become active.
+
+     Current  operation  has  request   selection  made  to  keep
+channels busy by examining the  sub-system work queue to pick the
+drive to service  next.  The work queue, of  each priority, holds
+all  the  requests  for  that  priority  for  all  drives  of the
+sub-system.  The  oldest requests are  at the head  of the queue,
+the youngest at the tail.   Selecting drives for service from the
+oldest  unserviced requests  tends to  place emphasis  on busiest
+drives.
+
+     It  does  not  prevent  stagnation  of  requests,  since the
+nearest-seek algorithm will pick the  closest seek of the current
+priority to the current cylinder  position.  It does however tend
+to provide unequal service according to the current queue loading
+at the head of the queue.  It is dependant for its operation upon
+the availability of a sub-system wide queue to determine ordering
+of requests for all drives of the sub-system.
+
+5 OPTIMIZATION TECHNIQUES
+
+     Two common  disk optimizing strategies  are nearest-seek and
+combing.
+
+  Nearest-Seek
+      This  technique  attempts to  produce the  highest possible
+      disk throughput rate by presuming  that the best request to
+      service  next  is  the  one  nearest  to  the  current head
+      positition.   This   algorithm  attempts  to   produce  the
+      smallest  average  seek  length, but  suffers  from request
+      stagnation problems if the  arrival rate of requests within
+      a certain band of the disk  surface is higher than they can
+      be  processed.  At  this arrival rate  requests outside the
+
+
+Multics Technical Bulletin                                MTB-673
+Disk DIM
+
+      band stagnate since there is  always a closer candidate for
+      processing.
+
+  Combing
+      This technique  is named for  the head motion  it produces.
+      It  attempts  to  guarantee  request  service  and  totally
+      eliminates request stagnation.  It  starts the heads at one
+      edge of the disk surface and sweeps them to the other edge,
+      servicing all  requests in cylinder  order.  Requests which
+      are behind the current head  position, and arrive after the
+      head has passed their location, wait only until the reverse
+      sweep.
+
+     The  optimization algorithm  used in the  MR10.2 software is
+the  nearest-seek  algorithm, and  it  does in  fact  suffer from
+request stagnation at extremely high IO rates.  It is possible to
+hang normal system operation through this stagnation.
+
+6 ADAPTIVE OPTIMIZER
+
+     The  following  section  details  the  modifications  of the
+Adaptive  Optimizer to  alleviate the restrictions  of the MR10.2
+disk  control software  and provide  an Adaptive  Optimization to
+disk requests to better service the MULTICS system.
+
+6.1 New Channel Allocation
+
+     The  new  channel  allocation  algorithm  presumes  that the
+channel  specifications  supplied  to  it  are  according  to the
+premises  of a  sub-system.  Each  indicates a  real Link Adaptor
+Base  channel  and  indicates  the  number  of  Logical  Channels
+physically allocated on it.
+
+     It  considers   these  channels  as   unique  resources  and
+allocates  these  resources  to  the  sub-system  until  they are
+exhausted.  For example:
+
+   prph xxx a. 8. 3
+   chnl xxx b. 8. 2 a 12. 4 b 12. 1
+
+   Has the following channel resources:
+
+   A08 A09 A10                          On one link adaptor LA0
+   B08 B09                              On one link adaptor LA1
+   A12 A13 A14 A15                      On one link adaptor LA2
+   B12                                  On one link adaptor LA3
+
+
+MTB-673                                Multics Technical Bulletin
+                                                         Disk DIM
+
+     Resource  allocation takes  the first channel  from all link
+adaptors, then the next and so on, and produces an allocation of:
+
+   A08 B08 A12 B12 A09 B09 A13 A10 A14 A15
+   LA0 LA1 LA2 LA3 LA0 LA1 LA2 LA0 LA2 LA2
+
+     This   produces   the   best   possible   loading  situation
+irrespective  of  the number  or grouping  of channels.   It also
+permits  intuitive understanding  of what order  channels will be
+used and the loading on the Link Adaptors.
+
+     The new  resource allocator will allocate  up to 32 channels
+to a sub-system,  the current hardware maximum of  8 channels for
+each of  four possible LA's  (only with 451  MPC's).  If desired,
+this channel limit can be  trivially increased as future hardware
+capacity is increased.  This greatly increases the previous limit
+of 8 channels per sub-system.
+
+     With  these  two  modifications the  channel  bottleneck and
+channel  ordering  limitations are  alleviated.  In  addition the
+channel  ordering  has  been   rationalized  to  permit  an  easy
+understanding of  what will actually occur  and how channels will
+be used.
+
+6.2 New Free Queue Allocation
+
+     The FREE QUEUE is treated  as a system-wide resource and its
+members  may  be  committed  to  any  disk  drive  regardless  of
+sub-system.   The free  queue modifications also  permit the FREE
+QUEUE size to  be specified in the config_file  on the PARM card.
+For example:
+
+   PARM xxx xxxx xxxx DSKQ n
+
+     Where n  can be either  octal or decimal  (terminated with a
+period) and indicates  the number of elements in  the FREE QUEUE.
+Limits are enforced to average no  fewer than 5 nor more than 200
+elements per drive.   Thus a 10-drive system may  have between 50
+and  2000  queue  elements.   If no  parameter  is  provided, the
+default is 20 elements per drive.
+
+     Observation  of running  systems indicates that  most of the
+excessive  overhead  spent in  paging is  due to  ALLOCATION LOCK
+waiting, which is a SPIN LOCK until a free queue element is freed
+by the completion of a physical IO.  On an system overloaded with
+disk requests, either  by bursts longer than the  freeq depth per
+sub-system, or average request load  greater than the freeq depth
+available, this paging overhead can mount to the region of 25% or
+more of the  total system CPU time.  This  SPIN-LOCK is done with
+
+
+Multics Technical Bulletin                                MTB-673
+Disk DIM
+
+the PAGE TABLE  LOCK held, which prevents all  other paging until
+the completion of an IO  in the sub-system causing the ALLOCATION
+LOCK.
+
+     Testing   with   a  very   large   freeq,  with   the  FREEQ
+modifications, has indicated that  the deeper queues available do
+in  fact   produce  noticably  better   optimization  and  system
+throughput and  can easily eliminate ALLOCATION  LOCKS.  In tests
+of a highly loaded system, much more loaded than is possible with
+the existing freeq depth available, it has been shown that paging
+overheads stay in the region of  6% or less on a single processor
+system doing  about 75 IO/sec  on three 451 disk  drives.  If the
+system  is provided  a normal  size freeq  (64 elements)  it uses
+about  35-45%   paging,  due  to  ALLOCATION   LOCKS  and  has  a
+significantly reduced disk throughput.
+
+6.3 Per Drive Work Queue Management
+
+     The new work queue management  has a single queue per drive,
+which holds only the requests for  that drive.  This will tend to
+reduce optimization overheads and  speed servicing time.  It will
+also  make  full  optimization  of requests  possible,  since all
+requests  will be  considered in the  optimization algorithm, and
+on-cylinder optimization occurs.
+
+     Queue elements have been extended from 4 words to 6 words to
+permit the addition of forward and backward linking in the queues
+and for expanded fields for  sector, cylinder and queue_time.  In
+addition, the  pvtx (physical volume table  index) has been added
+to the queue entry to permit easier debugging.
+
+     Since  there  is  a single  work  queue per  drive,  and all
+additions  are made  to the  tail of  the work  queue, the oldest
+requests are at  the head of the work queue.   This makes it easy
+to determine the oldest request to prevent request stagnation.
+
+6.4 Request Service Selection
+
+     As  previously seen,  the MR10.2  system selects  drives for
+service  by  viewing the  collection of  requests for  all drives
+represented  in the  two work queues,  as an  indication of drive
+loading and using this collection  to determine the best drive to
+service.
+
+     The new optimizer cannot use this selection mechanism, since
+work queues  are now on  a per-drive basis, and  do not represent
+sub-system  loading.   Instead  it will  round-robin  through the
+
+
+MTB-673                                Multics Technical Bulletin
+                                                         Disk DIM
+
+drives to select the next requests  to keep a channel busy.  This
+will provide continuous and equal service to drives.
+
+     A point to remember is that  one should be striving for more
+channels  than  drives.  In  such  a situation  there will  be no
+advantage to either method, since  there will always be a channel
+to be serviced  and all drives will be  kept maximally busy.  The
+only  time  that  selection  order will  determine  an efficiency
+difference is in busy sub-systems which have insufficient channel
+allocation,   or   which   are  suffering   a   hardware  channel
+degradation.
+
+6.5 Optimization - Concepts
+
+     The disk  system is an  extension of the real  memory of the
+MULTICS system to provide its VIRTUAL MEMORY characteristics.  As
+such we are not per-se looking for an optimization which provides
+the maximum throughput for a  disk system, instead we are looking
+for VIRTUAL MEMORY service  characteristics which elicit the best
+response and throughput from the entire system.
+
+     Nearest-seek and  disk combing techniques  will provide high
+drive  throughput, with  disk combing  preventing stagnation, and
+nearest-seek  perhaps having  the advantage  in higher  IO rates.
+But good system  performance, as viewed by the  users, is whether
+they  get  good response,  and  whether their  individual process
+throughput is acceptably high.
+
+     Two major types of IO occur within the MULTICS system:
+
+  Blocking IO
+      IO which causes a process  to wait for IO completion.  This
+      IO prevents  a process from executing  (blocks the process)
+      and reduces  the number of  currently executable processes.
+      An example is  a page read sponsored by  a page fault.  The
+      process must  stop execution until the  data it requests is
+      available to permit it to continue.
+
+  Non-blocking IO
+      IO which  is essentially a background  task, which does not
+      cause the system to wait for its completion.  An example is
+      a page write caused by the need to evict a page from memory
+      to permit  the page frame  to be used for  another page.  A
+      user process does not need  to be suspended until the write
+      is complete, in fact the  user process may well have logged
+      out by this time.
+
+
+Multics Technical Bulletin                                MTB-673
+Disk DIM
+
+     There are  many shades of  these IO forms.   VTOCE reads are
+blocking IO's,  since a page  cannot be read until  the VTOCE has
+been  read to  fill in  the ASTE  information.  A  VTOCE write is
+non-blocking, since it does not  cause an executing process to be
+suspended.  But since there are a limited number of VTOCE buffers
+available, a large number of  non-blocking VTOCE writes can cause
+other  processes to  be suspended  until sufficient  VTOCE buffer
+space has been recovered to read a blocked VTOCE in.  In the same
+way, the disk  queue can be fully allocated  to requests to write
+pages, and the core map could be saturated by pages waiting to be
+written.   Either situation  will cause processes  to block until
+queue or core map space can be recovered by the completion of the
+non-blocking IO.
+
+     In this way even non-blocking IO can cause blocking to occur
+when the applicable resource is totally consumed (over-loading of
+the resource).
+
+6.6 New Adaptive Optimization
+
+     This paper introduces a new optimization strategy which aims
+at idealized  service to the  current demands of  disk operation.
+The  simplistic desire  of this system  is to  provide the lowest
+possible  service  times  for  blocking  IO,  and  to  ignore the
+existance  of non-blocking  IO.  However  it also  recognizes the
+loading of various queue resources and takes this into account in
+determining optimization.
+
+     This optimization identifies a number of different IO types,
+such as VTOCE READ, VTOCE WRITE, PAGE READ, PAGE WRITE, TEST READ
+and TEST WRITE.  Each IO type is individually optimized according
+to  its  current disk  loading, with  higher optimization  for IO
+types which are more heavily  loaded, on a per-drive basis.  Thus
+response is degraded only on  drives needing higher throughput of
+lower priority IO  and only for the type of  IO which is reaching
+load saturation.   It does this through  an optimization strategy
+specified for each IO type for each drive.
+
+     Optimization   is  done   utilizing  a  Nearest-Logical-Seek
+algorithm,  rather  than  a  Nearest-Physical-Seek  algorithm.  A
+Logical Seek  is determined by a  combination of the optimization
+priority of the  request's IO type, and the  Physical Seek length
+of a request.
+
+     The  optimizing  algorithm uses  a  MULTIPLIER to  convert a
+Physical Seek Length into a Logical Seek Length.  This multiplier
+is  determined by  the queue  management routines  each time they
+queue or de-queue a request.  Each  drive has a table of IO types
+
+
+MTB-673                                Multics Technical Bulletin
+                                                         Disk DIM
+
+which   holds   optimizing  information,   used  to   derive  the
+multiplier, and holds the multiplier itself.
+
+     Optimization  is  determined according  to a  site specified
+optimization policy, which states two  points on a straight line,
+the Response Point and the Load Point.
+
+  Response Point
+      The Response  Point is the  point at which  the system will
+      optimize for  best system response,  and is the  point, for
+      each IO type,  when there is only a  single request of that
+      type in the queue.  The  value stated for priority is given
+      in tracks and is essentially  the multiplier to be used for
+      an  IO  type for  this  single request  case, to  convert a
+      Physical Seek into a Logical  Seek.  For example, to mirror
+      the current  High/Low queue priority  separation, one would
+      state the Response  Point value for High Priority  IO as 1,
+      for Physical = Logical, and  would state the Response Point
+      value for  Low Priority IO  as the number of  tracks on the
+      disk.  Thus a single track  move for a Low Priority request
+      looks  longer  than the  longest possible  move for  a High
+      Priority  request  and  nearest-seek  optimization produces
+      complete separation, of all but on-cylinder requests.
+
+  Load Point
+      The Load  Point is the  point in queue loading  for each IO
+      type  at  which  it  should  become  fully  optimized.  For
+      Blocking  IO,  this  would  typically state  a  point which
+      preserves  sufficient  multiprogramming.   For Non-Blocking
+      IO,  this  would typically  state  a point  before resource
+      saturation of  that IO type  would occur, and  cause the IO
+      type to become Blocking.  This  point is stated in terms of
+      queue elements.
+
+     Between these  two straight line  end-points, the optimizing
+algorithm  derives  an  optimizing  multiplier  which  will  be a
+combination  of the  current load of  the IO type  and the stated
+policy  for the  IO type.  There  will be a  continual merging of
+Logical Seek lengths  such that there will no  longer be complete
+separation, and  short seeks of low  Response priority will start
+to  be  taken  in  preference  to  long  seeks  of  high Response
+priority.    Thus   the  simple   policy  statement   will  cause
+interaction  in  a complex  manner,  dependant upon  the relative
+loadings of the IO types at any particular point in time.
+
+     Beyond the  Load Point limit, the  multiplier will remain at
+1, to continue optimization at maximum throughput.
+
+
+Multics Technical Bulletin                                MTB-673
+Disk DIM
+
+     The multiplier is basically  determined by the straight line
+formula:
+
+       multiplier = max (1.0, intercept - slope * load_level)
+
+     Given that:
+       At Response Point: load_level = 1, multiplier = Response
+       At Load Point    : load_level = Load, multiplier = 1
+
+     One can trivially derive from the two equations:
+       Response = intercept - slope * 1
+       1        = intercept - slope * Load
+
+     That:
+       Response - 1 = -slope * (1 - Load)
+
+     and therefore:
+       slope     = -(Response - 1)/(1 - Load)
+       intercept = Response + slope
+
+     This results in the restriction:
+       Load Point &gt; 1
+
+     The  straight-line formula  uses a subtraction  of the slope
+product to permit  a positive slope value to  be used, since this
+will be printed in the meter.
+
+     The optimization algorithm uses  a nearest-seek algorithm on
+Logical Seek Lengths, derived from the formula:
+
+       Logical Seek Length = Physical Seek Length * multiplier
+
+     This calculation  is performed within innermost  loop of the
+nearest-seek algorithm.  Thus the use  of a simple calculation is
+highly desirable.
+
+6.7 Optimization Policies
+
+     A typical policy statement might be:
+
+                    Response Point       Load point
+     VTOC READ:          100                 3
+     VTOC WRITE:         150                 3
+     PAGE READ:          200                 5
+     PAGE WRITE:       80000               100
+
+
+MTB-673                                Multics Technical Bulletin
+                                                         Disk DIM
+
+     The multiplier figures are chosen with some head room on the
+highest  priority IO  type, to  let other  IO's become  even more
+optimized than the stated highest priority IO type as they become
+saturated.  Essentially Page Write is multiplied such that at the
+low  load point  even a single  track move looks  longer that the
+longest possible  VTOC track move, or  even longest possible Page
+Read  head move.   Thus there is  no interaction  between the two
+until Page Writes start to become heavily loaded.
+
+     This  policy indicates  that VTOCE Read  is quite important,
+and will typically be done with highest priority.  It is possible
+(since the  multiplier is 100)  that other IO could  be even more
+highly optimized at some point in time.  Note that VTOC Read will
+be  very highly  optimized if 3  are queued on  this drive, since
+this may be blocking a number of eligibility slots.
+
+     VTOCE Write is less important, since it is non-blocking, but
+becomes  important  if  3  become queued,  since  this  starts to
+bottleneck VTOCE operations.
+
+     Page Read is quite important,  but less than VTOCE Read.  If
+we  have 5  Page Reads  outstanding we will  be getting  out of a
+multi-programming  situation  and  thus   wish  to  increase  the
+priority of Page Reads.
+
+     Page Write is least important, and since we typically have a
+large  core   map  and  and  reasonable   size  disk  queues  the
+optimization of Page Write does not need to occur until the queue
+fills significantly.  Thus we only reach full optimization at 100
+outstanding IO's per drive.
+
+     Thus, as  long as the  disk system adequately  keeps up with
+the IO  load placed upon it,  it will be as  system responsive as
+possible.   As loading  starts to approach  stated thresholds the
+system  moves  towards  throughput  optimization,  as  needed  to
+prevent blocking system operation by loss of queued resources.
+
+6.8 Systemic Optimization Criteria
+
+     The optimizations  as stated above  are done on  a per-drive
+basis,  but simply  specifying a  number of  per-drive Load Point
+limits   will   probably   result  in   system-wide   FREE  QUEUE
+over-commitment  and not  produce the desired  effect of reducing
+queue saturation.
+
+     Additional system-wide optimization  factors are maintained,
+one for each IO type, which track the queue commitment to each IO
+type,  and  a specified  Max  Depth tuning  factor.   The current
+system-wide commitment  and the Max Depth  factor are combined to
+
+
+Multics Technical Bulletin                                MTB-673
+Disk DIM
+
+produce a system-wide Load Correction Factor to be applied to the
+multiplier derived from the drive loading.
+
+     The system-wide Load Correction Factor is a fraction &lt;= 1.0.
+It is determined by the formula:
+
+       Factor = (Max_depth - Depth)/Max_depth
+
+     This  factor  is  calculated  for  each  request  queued  or
+de-queued  for each  IO type.   It is  applied to  the Multiplier
+determined from the straight-line optimizing formula as follows:
+
+       Final_Multiplier = max (1.0, Factor * Multiplier)
+
+     A  system load  optimizer depth  counter may  be mapped into
+another  system  load  optimizer   depth  counter,  to  let  them
+accumulate together.   Thus the system  wide loading will  be the
+sum of the  two (or more) loads, while  the individual drive's IO
+type optimization factor will be calculated from the loading only
+of the one IO type on that drive.
+
+     The effect, and flexibility, of the system load optimization
+factor, as applied to the  individual IO type multipliers further
+enhances  the  load  recovery  characteristics  of  the  Adaptive
+Optimizer,  without   significantly  obscuring  it   purpose  and
+methods.
+
+     Since system  load depth counters can  be remapped,the depth
+is calculated such  that it can never decrement  below 0, and may
+be reset  to 0, to  be corrected by  the normal operation  of the
+system.  Thus re-mapping of depth counters does not significantly
+disrupt normal system operations and can be done on the fly.
+
+6.9 Stagnation Management
+
+     The  Nearest-Seek  algorithm  sufferes  from  the  flaw that
+request arrival rates higher than  the maximum drive service rate
+can result  in request stagnation which  can deadlock the system.
+Throughput testing  on a stock  MR10.2 has already  produced this
+deadlock several times, requiring an Execute Fault to recover the
+system.   Since  the  Adaptive  Optimizer  utilizes  an  Adaptive
+Nearest Seek Algorithm it could also suffer from thsi problem.
+
+     The  problem  of stagnation  is dealt  with by  altering the
+optimization strategy  utilized, and switching to  a Disk Combing
+algorithm when  stagnation situations are  detected.  The Combing
+algorithm is stagnation free, but does produce a degraded request
+response time,  since no optimization differentiation  is made to
+
+
+MTB-673                                Multics Technical Bulletin
+                                                         Disk DIM
+
+speed Blocking IO service.  The  stagnation time period is a site
+tunable parameter.
+
+     The  system manages  stagnation situations  by examining the
+first  (oldest) element  of the work  queue for a  device it will
+operate  upon.  If  the first request  has been in  the queue for
+longer  than a  stagnation time  period (defaults  to 5 seconds),
+then the  device will be  managed with a  disk-combing technique,
+rather  than the  ADAPTIVE OPTIMIZED  NEAREST-SEEK.  Thus  when a
+drive  becomes so  clogged with  requests that  it cannot service
+some  of  them  within  an  acceptable  time  period,  we  switch
+optimization  strategies  to  correctly  manage  this  overloaded
+situation in the most efficient manner possible.  This provides a
+guarantee  of  service and  continued system  operation.  Combing
+continues until no requests in the  work queue are older than the
+stagnation time period.
+
+     Load testing to levels  which would previously have rendered
+the  system  essentially  catatonic   merely  produce  very  slow
+service, but system operation continues.
+
+     If extreme IO  rates are maintained over a  long time period
+another  syndrome  occurs, even  with stagnation  management.  In
+this case IO rates are such that extremely long disk queues occur
+and service times become longer than  memory lap time.  In such a
+situation  a secondary  stagnation can  occur in  which processes
+thrash,  even though  they are guaranteed  to get  the pages they
+request.  By the time the page being referenced has been moved to
+memory,  the  page holding  the instruction  which took  the page
+fault has been written to disk or discarded.  During testing this
+a  situation occurred  with the  Initializer such  that a console
+command  to kill  the loading jobs  could not  be completed.  The
+system  was recovered  by spinning  down a  drive holding process
+directories,  causing  the test  processes  to be  suspended long
+enough for  the Initializer to  get its command  working set into
+memory.  It is not expected that this level of system loading can
+be approached, or maintained, in normal service.
+
+7 METERING DATA
+
+     A  performance dependant  system such as  paging IO requires
+good  metering, to  permit good tuning.   The Adaptive Optimizing
+system   will  create   additional  queue   management  metering,
+providing information  on average queue  depth, allocation counts
+and high water mark of queue  depth.  This will be maintained for
+the system wide FREEQ and  for the individual drive QUEUES.  This
+will  permit  sufficient queue  depth  statistics to  be  kept to
+provide necessary tuning information for freeq allocation.
+
+
+Multics Technical Bulletin                                MTB-673
+Disk DIM
+
+     Additional  metering  information is  maintained  on channel
+use,  indicating  system  utilization  of  channels  and  channel
+service information.
+
+     The  metering  system  also  provides  a  number  of service
+statistics  for each  IO type,  for each  drive, indicating total
+seek  length,  seek  count,  total  queue  wait  time,  and queue
+allocation count,  total channel wait time  and channel use count
+and comb  count.  The metering tools  utilize this information to
+provide   extensive  meter   output  from   which  a   number  of
+observations  can  be  directly  made,  and  further  operational
+characteristics inferred.
+
+8 SEEK LENGTH AVERAGING
+
+     The MR10.2  SEEK LENGTH meter  is wildly inaccurate,  due to
+decaying average algorithm.  The current algorithm is:
+
+     ave = ave + divide (seek - ave, 256, 35, 18);
+
+     This will  produce a long  term average which  will approach
+the  correct value,  but takes hundreds  of iterations  to do so.
+Individual long  seeks are inconsequential  and the result  is an
+average which is always too high  or too low, and usually quite a
+bit off.
+
+     Adaptive Optimizer  seek metering is done  per device per IO
+type  by  dividing the  integer  summation of  the  physical seek
+lengths performed by the count of the number of seeks done.
+
+     The accumulator for total seek  length per IO type per drive
+is  only a  fixed bin  (35) variable,  and can  potentially cause
+overflow faults  which would result  in system crashes.   Using a
+maximum average seek length of  800 cylinders, a seek and service
+time  of 0.050  sec and the  accumulator size results  in a worst
+case overflow time of:
+
+     9942 days = (2**35/800 tracks)/(.050 * 3600 * 24)
+
+     Even if  the service time  were taken to  be 1 milli-second,
+the overflow time would be 198 days.
+
+9 AFFECTED PROGRAMS
+
+     These  modifications affect  a fairly small  set of sources,
+essentially  those  routines which  reference  dskdcl.incl.pl1 or
+dskdcl.incl.alm:
+
+
+MTB-673                                Multics Technical Bulletin
+                                                         Disk DIM
+
+References to dskdcl.incl.pl1:  (09/07/82 1300.0 mdt Tue)
+   azm_display_fdump_events.pl1, device_meters.pl1,
+   disk_control.pl1, disk_init.pl1, disk_meters.pl1,
+   disk_queue.pl1, get_io_segs.pl1, ioi_init.pl1,
+   process_dump_segments.pl1, spg_fs_info_.pl1,
+   structure_library_2_.cds
+
+References to dskdcl.incl.alm:  (09/07/82 1300.0 mdt Tue)
+   dctl.alm
+
+10 DYNAMIC TABLE ALLOCATION
+
+     Storage allocation is done through the routine, get_io_segs,
+which looks  for a DSKQ  entry on the  PARM card.  If  one is not
+found, then an  allocation of 20 entries per  drive is done.  The
+FREEQ is allocated with an even number of slots, to ensure double
+word alignment for structures which follow it.
+
+     The size of  the FREEQ is passed in  the disk_data structure
+by get_io_segs and is used  by disk_init to create and initialize
+the free queue.
+
+     Channel  count  is also  done by  get_io_segs, and  space is
+allocated   for   channel   entries.   These   entries   must  be
+individually  double word  aligned, and double  word multiples in
+length.
+
+11 FREEQ ISSUES
+
+     Several issues occur with a system wide free queue.
+
+1. Locking
+    Since the  freeq becomes a  system wide resource,  and exists
+    outside  the current  sub-system lock,  it must  have its own
+    lock   to  protect   multiple-access  in   a  multi-processor
+    environment.  This  lock will be  held for a  very short time
+    period, since  it only protects  in the order of  20 lines of
+    straight-line  code.   Thus  this   is  a  spin-lock  and  is
+    un-metered.
+
+2. Run Polling
+    During times that  the DIM has been called  from Page Control
+    and must  check for the  completion of IO's, it  calls a Disk
+    RUN routine, which scans the channels to determine completion
+    of  IO's.  This  is necessary  since Page  Control runs  in a
+    masked environment, and cannot recieve interrupts.
+
+
+Multics Technical Bulletin                                MTB-673
+Disk DIM
+
+    With the MR10.2 software, Run Polling was performed only upon
+    the channels of the current  sub-system and could only detect
+    IO completion for requests on that sub-system.  With the FREE
+    QUEUE  modifications, Run  Polling has been  extended to scan
+    all  channels of  the system, rather  than just  those of the
+    sub-system.   This  is necessary  to handle  ALLOCATIONS LOCK
+    situations,  in  which the  completion of  the IO  which will
+    unlock the Allocation Lock occurs  on a sub-system other than
+    that which sponsored the lock.  If only the single sub-system
+    were tested for IO completion, the Allocation Lock would be a
+    deadly embrace.
+
+3. Debugging
+    Since the  individual free queue  elements are not  tied to a
+    particular  sub-system,  the  ol_dump and  AZM  event display
+    functions  cannot  find the  drive reference  left in  a free
+    queue entry and turn it back to a pvtx reference to determine
+    drive name.   Thus a pvtx  field has been added  to the freeq
+    entry.   In addition  the time field  has been  expanded to a
+    full  71  bits  from  36-bits so  no  modulus  operations are
+    performed  and  it  is   much  easier  to  determine  request
+    stagnation.
+
+12 METERING TOOLS
+
+         The  new   modifications  have  required   the  complete
+    re-write of  the disk_meters command, and  the obsolecense of
+    the device_meters  command.  The re-written  disk_meters will
+    provide  a  great deal  more  metering information,  and will
+    default to an output almost identical to the old disk_meters.
+    However  control  options  will  permit  a  greatly  extended
+    metering  output.   A  synopsis  of this  command  is  in the
+    disk_meters.info appendix.
+
+12.1 Meter Interpretation
+
+         Interpretation   of   this   metering   output  provides
+    considerable  information  on the  internal operation  of the
+    disk system,  though much of  it is determined  by inference.
+    Information  is  presented for  system-wide  data, sub-system
+    data  and individual  drive data.   If the  long form  of the
+    command is selected, detailed information is provided down to
+    the level of individual  IO types, drive load characteristics
+    and channel specific information.
+
+
+MTB-673                                Multics Technical Bulletin
+                                                         Disk DIM
+
+12.2 Queue Information
+
+         For  all  queues  the  average  depth  is  determined by
+    summing  the  depth  of a  queue  prior to  insertion  of the
+    current  request, and  counting the number  of requests which
+    needed to be queued.  Since much  of the time drives are idle
+    and do not  have a queue it is typical  to see a much smaller
+    drive queue  allocation count than  the number of  IO's which
+    the  drive   has  actually  done.   The   ratio  of  IO's  to
+    allocations in comparison to the average IO rate of the drive
+    can give an indication whether a drive is being supplied with
+    infrequent large bursts  of IO, or is running  in a situation
+    of steady requests.  If infrequent large bursts are typical a
+    drive  will have  a relatively  high allocation  count, but a
+    relatively  low IO  rate, and may  have a  high maximum queue
+    depth.
+
+         The maximum queue depth of  any queue is the peak number
+    of requests which were outstanding  in that queue, or for the
+    system  FREEQ,  the peak  number of  requests which  had been
+    allocated at one time.
+
+12.3 Stagnation
+
+         The   system   information  area   also   indicates  the
+    stagnation time limit.  This is a factor governing how long a
+    request  may  remain in  a  drive's work  queue before  it is
+    considered to  have stagnated.  Stagnation of  a disk request
+    can result  in situations where there  is enough disk traffic
+    in a small region of the disk to prevent requests on outlying
+    areas from ever being serviced.   This can result in a locked
+    up system and very poor user response.  The optimizing driver
+    uses the stagnation time period  it is supplied with to alter
+    its optimization strategy from one  in which fast service for
+    the  majority  of requests  is  maintained, to  one  in which
+    guaranteed  service  for  all  requests  is  maintained.  The
+    nearest seek algorithm will sustain higher peak IO rates, but
+    disk  combing will  guarantee service  to all  disk requests,
+    thus assuring continued system operation.
+
+         Stagnation  is  handled  per  disk drive  by  the simple
+    expedient  of  comparing  the  oldest  disk  request  in each
+    drive's  queue with  the current  calendar/clock reading.  If
+    the request is more than the stagnation time old, then a disk
+    combing   algorithm   is   used,   otherwise   an   optimized
+    nearest-logical seek  algorithm is used.  When  the queue has
+    been reduced such that the  oldest request is no longer older
+    than the  stagnation time, the drive  returns to an optimized
+    nearest-logical seek.   Each request processed  while combing
+
+
+Multics Technical Bulletin                                MTB-673
+Disk DIM
+
+    is counted for that drive, producing the COMB count figure in
+    the detailed drive statistics.
+
+12.4 System and Drive Load Optimization
+
+         Two  forms of  IO optimization  are in  effect.  Each IO
+    type has a per-drive optimization algorithm and a system-wide
+    optimization algorithm.   The system information  area of the
+    meter output indicates the  current status of the system-wide
+    optimization.   For each  IO type  it indicates  a maximum IO
+    depth  value,  a  current  depth and  depth  mapping  and the
+    optimization fraction.
+
+         The  maximum  depth  value  is  a  tuning  factor  which
+    indicates  the   maximum  system-wide  allocation   of  queue
+    elements  to each  IO type  before all  drives are  forced to
+    maximum throughput  optimization.  It is  used in conjunction
+    with  the  current depth,  which  is the  current sum  of all
+    requests of that IO type,  to produce a fractional multiplier
+    by  which  to  reduce  the  ADAPTIVE  OPTIMIZER's  conversion
+    multiplier.  The smaller the system-wide fraction, the higher
+    the throughput optimization afforded the IO type system-wide.
+
+         The  algorithm  permits  a  tuner  to  merge system-wide
+    counters to produce different  optimization effects.  This is
+    done  by   MAPPING  a  number  of   counters  into  a  single
+    accumulator.
+
+         Initially   each  IO   type  is  given   its  own  depth
+    accumulator,  but  each type  is  also permitted  to indicate
+    which  of  the  system-wide  accumulators is  to  be  used to
+    accumulate current depth information.   This lets a number of
+    IO  types  share  a  single  counter,  each  with  their  own
+    max_depth values.   The result is  to artificially accentuate
+    loading  for  an IO  type  which is  a prime  system response
+    factor by  the loading of  a different IO  type.  For example
+    one could map VTOC WRITES and PAGE READS into the same system
+    wide counter, and supply a high response multiplier point for
+    the  VTOC WRITES,  with a small  throughput optimization load
+    point.  Then VTOC WRITES will be optimized if either they are
+    loaded, or there is a high combined total of outstanding PAGE
+    READS or VTOC WRITES.
+
+12.5 Bailouts
+
+         The system information  area of the meter is  also has a
+    figure termed 'bailouts'.   This is a count of  the number of
+    times that the fast ALM disk interrupt path called the slower
+
+
+MTB-673                                Multics Technical Bulletin
+                                                         Disk DIM
+
+    PL1  disk interrupt  path to  process an  interrupt requiring
+    some  complex  processing.   The  fast path  only  deals with
+    completely straight-forward IO completions.
+
+12.6 Run Polling
+
+         Two  forms of  IO completion  can occur  within the DIM,
+    which will result in meter output indicating:  Run Polls, Get
+    IO w/o Term,  etc.  If the system receives  an IO completion,
+    it will post an interrupt, and  the interrupt path of the DIM
+    will  be called  to process  the completed  IO.  This  is the
+    typical  path  for  IO  completion and  handles  most  of the
+    traffic.
+
+         However,  if  the DIM  has  already been  called, either
+    through the CALL side, or if  a DISK RUN has been called, the
+    processor  will  be running  masked,  and cannot  receive the
+    interrupt indicating  completion of an  IO.  So the  RUN code
+    polls  all channels  of all  subsystems to  determine if IO's
+    have completed,  and to post  them.  It will  also initiate a
+    new IO on the channel.
+
+         The number  of times that  an IO completion  is seen and
+    processed by RUN  is indicated in the "run  polls" figure for
+    each channel.   However, if an IO  completion is processed by
+    RUN, there  may still be a  resultant interrupt posted, which
+    will probably show in the value "get_io w/o term", indicating
+    that in  processing an interrupt, there  was no terminate bit
+    on for the channel, and the interrupt was ignored.  Two other
+    terminate stealing situations may occur but usually require a
+    multi-processor  system  to   produce  the  appropriate  race
+    conditions.
+
+
+Multics Technical Bulletin                                MTB-673
+Disk DIM
+
+13 TEST PLAN
+
+         Testing will be a multi-stage affair.  There are several
+    distinct areas of test:
+
+Test Free Queue modifications.
+    This means storage allocation,  queue linking and addressing,
+    esd reset of queues, locking and statistics.  This also means
+    modifications to necessary meters and dump analysis tools.
+
+Test Channel modifications.
+    This  means  all  forms   of  channel  addressing  and  error
+    recovery,  allocation  of wierd  channel groups  and numbers,
+    cross-sub-system channel use  (since addressing has changed),
+    esd  resetting  and channel  breaking and  recovery (requires
+    cede  and recover  of channel  to IOI  for polts  testing and
+    firmware load).   This also means  modifications to necessary
+    meters and dump analysis tools.
+
+Test queue field extensions.
+    Test  modification to  queue field  definitions for increased
+    addressing  ranges  for  FIPS  drives  and  modifications for
+    queue-per-drive and associated definition changes.
+
+Test adaptive optimization modifications and associated tools.
+
+Perform  loading  tests  to  determine  response  and  throughput
+    measures.
+
+Test  disk  formatting,  firmware  loading,  error  recovery  for
+    channels and drives, ESD shutdowns.
+
+Test locking in a multi-processor environment.
+    This is  necessary since the  new disk_data area's  require a
+    separate lock management to that of the sub-system.
+
+Test channel recovery and ESD.
+
+14 TESTING ACCOMPLISHED
+
+1.  Have  run highly  loaded tests, including  crash recovery and
+    ESD in highly loaded situations with no errors.
+
+2.  Have run disk formatting on a drive while dropping one of two
+    MPC's on  the sub-system.  Dropped channels  (on crashed MPC)
+    broke correctly, no IO was lost and formatting continued with
+    no problems.  This was against  a background of drive loading
+    jobs.  When formatting finished, and channel activity dropped
+
+
+MTB-673                                Multics Technical Bulletin
+                                                         Disk DIM
+
+    to normal, we were able to reload firmware in the crashed MPC
+    and recover the channels with no problems.
+
+3.  Have  run  basic throughput  tests with  FREEQ modifications.
+    Clearly demonstrate  increased performance and  no ALLOCATION
+    LOCKS  are possible  with adequate queue  allocation.  In any
+    situation of high IO, but no allocation locks paging overhead
+    was quite low.   Any situation with even a  low percentage of
+    allocation  locks,  paging overhead  was  high.  Thus  we can
+    assure  sites  which  are  experiencing  loaded  systems with
+    allocation lock problems of a greatly lowered paging overhead
+    as a result of these modifications.
+
+4.  Have  run  ADAPTIVE  OPTIMIZATION with  complete  sucess both
+    single  and  multi-processor.   System  loads  well  and does
+    function even in extremely  high loading situations.  We have
+    seen one effect of stagnation where the system could lock up.
+    This is due to page replacement occuring on all process pages
+    before a faulted  page could be brought in.   In this case we
+    recovered the  Initializer by spinning down  some PDIR drives
+    and  permitting  IO to  complete for  the Initializer  in his
+    PDIR's.   The problem  here was that  we were  paging out the
+    Initializer's pages by  the time we could bring  in a faulted
+    page (drive  service time in  combing was longer  than memory
+    lap time) such that we reached a situation of deadly embrace.
+    Such a situation is not  amenable to a disk control solution,
+    only more memory could solve it to increase the lap time.
+
+
+Multics Technical Bulletin                                MTB-673
+Disk DIM
+
+                             GLOSSARY
+
+IOM       Input-Output  Multiplexor.   It  is  a semi-intelligent
+          processor  connected to  ALL the  SCU's of  the MULTICS
+          system.   It  uses  an   assigned  area  of  memory  to
+          communicate  commands and  status information  with the
+          MULTICS system, and an area  of memory through which to
+          vector faults.   The fault and  command mailbox address
+          are defined  on the IOM panel  by switch settings, each
+          IOM on a system is assigned a different area for faults
+          and mailboxes.
+
+          An IOM  takes an SCU  port, thus the  mix of processors
+          and  IOM's on  a system cannot  total more  than 8 (4MW
+          SCU).
+
+LA        Link Adaptor.  It is the physical connection between an
+          IOM and an  MPC and consists of a set  of boards in the
+          MPC cabinet.  The IOM has  another set of boards (PSIA)
+          in its  cabinet to connect  the other end  of the cable
+          joining the LA and the IOM.
+
+Logical Channel
+          Unlike    a    Physical    Channel,    which    is    a
+          physical/electrical object, a Logical  Channel is not a
+          physical  entity.  It  is a  logical sub-division  of a
+          Physical  Channel which  can hold  a request.   The IOM
+          micro-program scans all its  mailboxes for requests for
+          Logical  Channels  and  posts these  down  the Physical
+          Channel.   Replys from  the MPC  will be  tagged with a
+          Logical Channel  number and the results  posted back to
+          the IOM.   Thus a Logical Channel  holds requests to be
+          performed by an  MPC and acts like a  buffer area for a
+          Physical Channel.
+
+MPC       Micro-Programmed Controller.  It  is a semi-intelligent
+          processor  connected  to  an  IOM  which  controls  the
+          operation  of  the disk  drives cabled  to it.   It can
+          accept multiple  requests, one per  Logical Channel and
+          perform  full seek  overlap on  all its  connected disk
+          drives.  A  451 MPC can  have two LAs, a  607 MPC (used
+          for MSU500/501) disk drives has a single LA.
+
+Physcial Channel
+          A Physical  Channel is the  physical connection between
+          an MPC  or FNP and an  IOM.  It is a  set of two cables
+          terminated on one  end in the MPC and  the other end in
+          the IOM.  It carries all electrical signals between the
+          two devices.
+
+
+MTB-673                                Multics Technical Bulletin
+                                                         Disk DIM
+
+PSIA      Peripheral Serial Interface Adaptor.   This is the name
+          for a high speed connection  in the IOM, typically used
+          for disk or tape MPC's.
+
+          Each PSIA transforms the physical channel it terminates
+          into  a set  of Logical Channels.   The channel numbers
+          and  the number  of channels addressable  on the single
+          physical  channel  is determined  by resistor  packs or
+          switches  on the  PSIA boards.   These define  the Base
+          Channel  number  and  indicate  the  number  of Logical
+          Channels which follow it.  Base Channel numbers must be
+          a  multiple of  the number  of channels  defined on the
+          Base  Channel  in  power-of-two multiples.   Thus  if a
+          physical channel has one  logical channel, it can occur
+          on  any boundary.   A physical  with two  logicals must
+          occur  on  an  even address,  a  physical with  3  or 4
+          channels must  be on a  quad boundary, a  physical with
+          5,6,7 or 8 channels must be on an octal boundary.
+
+SCU       System  Control  Unit.   This  is a  system  and memory
+          controller.  The current 4MW  controller also houses up
+          to 4 million  words of memory in the  same cabinet.  An
+          SCU  provides  multi-ported  access  to  the  memory it
+          controls to all ports connected  on it.  Each SCU has 8
+          port slots, each processor takes a slot, each IOM takes
+          a slot.  Each SCU is  cabled to ALL processors and IOMs
+          of the system,  and they should all have  the same port
+          numbers on all SCUs.
+
+
+Multics Technical Bulletin                                MTB-673
+Disk DIM
+
+                  Appendix A - disk_meters.info
+
+06/08/84  disk_meters, dskm
+
+Syntax:  dskm sub_sys1 sub_sys2 {-control_args}
+
+Function:  Prints metering output from MULTICS disk management.
+
+Arguments:
+sub_sysn
+   Multiple  position-independant  sub-system  identifiers may be
+   specified  to  select  specific sub-system information.  If no
+   sub-system  identifiers  are  supplied,  all  sub-systems  are
+   listed.  A sub-system identifier takes the form of:
+
+      dskm dska
+
+Control Arguments:
+-channels, -chn
+   Requests  sub-system channel information.  This will be of the
+   form:
+
+          dska: Channel information.
+          A8 : 42530 connects, 163 int w/o term, 385 run polls
+          A12: 4559 connects, 13 int w/o term, 129 run polls
+          A9 : 1307 connects, 15 int w/o term, 225 run polls
+          A13: 86 connects
+
+   connects         - Number of channel connections made.
+   int w/o term     - Number of interrupts without terminate
+                      status.
+   run polls        - Number of IO's seen by RUN polling.
+   get_io w/o term  - Number of io_manager calls not returning
+                      terminate.
+   term not active  - Number of interrupts with terminate on an
+                      inactive channel.
+   IOI              - The channel has been released to IOI use.
+   INOP             - The channel is deemed to be inoperative.
+   BROKEN           - The channel is deemed to be broken.
+
+-detail, -dtl
+   Requests detailed printout of drive information.  It is of the
+   form:
+
+
+MTB-673                                Multics Technical Bulletin
+                                                         Disk DIM
+
+ dska_04 #Seeks AveSeek Queue-wait Channel-wait Queued Multiplier
+  PageRd  11338   70.38       44.5  0.8%   27.3      0      119.8
+  PageWt   1482   51.98     1153.7  0.1%   32.4      0    50239.2
+  VtocRd   1712   90.71       26.3  0.1%   24.4      0       23.8
+  VtocWt   1518   89.38       26.4  0.1%   20.8      0       49.9
+  TEST    0 UNLOADs,  39 TESTs
+ Channels 1.05% busy,  212 Combs.
+
+-long, -lg
+   Requests all of -dtl, -chn, -q, -sys.
+
+-queues, -q
+   Requests inclusion of drive queue information, of the form:
+
+ dska_04 Queue: Ave 16.1, Alloc 99, Max Depth 50/280, Cur Depth 0
+
+   This  indicates  the  average  queue  depth  for the specified
+   number   of   queue   allocations,  the  maximum  depth  since
+   max_depth_meters  were last reset and the current depth in the
+   queue.   Requests are only queued if a drive is busy and/or it
+   already has requests queued.
+
+-report_reset, -rr
+   Requests  normal  statistics  to  be printed, according to the
+   other  control  arguments, and then meters to be reset to this
+   point in time (see reset).
+
+-unreset, -urs
+   Requests  that  disk_meters  reset its meters to boot time, by
+   releasing its temporary meters segment.
+
+-reset, -rs
+   Requests  that  disk_meters  reset its meters to this point in
+   time,  and  not  print statistics.  A reset is accomplished by
+   making  a  copy of the statistics as of the reset time; future
+   invocations of the command will display the difference between
+   current statistics and the copy.
+
+-system, -sys
+   Requests  that system statistics and optimizing information be
+   printed, in the form:
+
+  FREE Queue: Ave 6.2, Alloc 60237, Max Depth 99/280, Cur Depth 1
+System Factors: stagnate time 5.000 seconds, 378 bail outs.
+          Maximum Depth Meters reset at: 06/07/84  2207.7 mdt Thu
+    PageRd   Max Load    6, Depth   0 (PageRd), Fraction 1.0000
+    PageWt   Max Load  210, Depth   0 (PageWt), Fraction 1.0000
+    VtocRd   Max Load    6, Depth   0 (VtocRd), Fraction 1.0000
+    VtocWt   Max Load   12, Depth   0 (VtocWt), Fraction 1.0000
+
+
+Multics Technical Bulletin                                MTB-673
+Disk DIM
+
+   This  indicates  FREE  Queue use, stagnation time beyond which
+   the  system does disk combing and the number of times that the
+   ALM  driver  had  to  call  the  PL1 driver to process complex
+   interrupt  information.   The  time that max_depth meters were
+   last  reset  at  is  given,  as  is  the current status of the
+   system-wide load optimization algorithm.
+
+Default Information:
+   The default invokation of disk_meters will provide information
+   like:
+
+                    Metering Time:     11:23:01
+
+Subsystem  dski:
+                Locks   Waits    %Calls  Average      %CPU
+  Call Lock:    11768       0   0.0000%    0.000   0.00000%
+  Int Lock:     11764       0   0.0000%    0.000   0.00000%
+  Run Lock:      3091       0   0.0000%    0.000   0.00000%
+  Alloc Lock:   11755       3   0.0255%   12.223   0.00009%
+
+     Drive  Reads    Writes      Seek     ATB       ATB      ATB
+                               Distance  Reads    Writes     I/O
+
+      1      3064      1831        68    13375     22382    8372
+      2       729        36         9    56216   1138375   53570
+      3      3065      1934        77    13370     21190    8197
+      4       922        26        11    44448   1576212   43229
+
+   This  indicates  the  metering period, the sub-system and lock
+   information  for  the  sub-system,  and  individual  drive  IO
+   information  for  all  drives  which  have performed IO in the
+   metering   period.   Typically  0  counts  are  suppressed  to
+   highlight useful information.
+
+
+Multics Technical Bulletin                                MTB-673
+Disk DIM
+
+                   Appendix B - tune_disk.info
+
+08/16/84  tune_disk, td
+
+Syntax:   tune_disk drive_name io_type {-load | -ld} n
+               {-response | -rsp} m
+          tune_disk reset_max
+          tune_disk reset_sys
+          tune_disk stagnate seconds
+          tune_disk system io_type {-max n} {-map io_type}
+
+Function:  Permits a user with hphcs_ access to alter disk tuning
+parameters.
+
+Arguments:
+io_type
+   An  io_type  is the name of a type of IO tunable by tune_disk.
+   If  tune_disk  is  envoked  without  arguments it will print a
+   usage message which includes the valid io_type names.
+
+drive_name
+   Is  the  name  of  a disk drive to be tuned.  Drive names must
+   begin  with  the three characters "dsk", followed by a letter,
+   an underline and one or two numeric digits.
+
+-load n, -ld n
+   This  argument  pair  defines  the  optimization maximum queue
+   loadpoint  for  the  specified  drive.   It  is one of the two
+   points  which  define  the  optimization  line.  If -load 1 is
+   specified,  the  initial  response  value  is  the  optimizing
+   multiplier and no load optimization is performed.
+
+-response m, -rsp m
+   This  argument  pair defines the optimization maximum response
+   value, which is the multiplier to be used for an IO type queue
+   load of a single request.
+
+reset_max
+   This  argument requests that all queue maximum depth meters be
+   reset  in  the  disk_seg database.  The time and date at which
+   the meters were last reset is also maintained in the database.
+   This  argument is useful to permit a new/lower max depth to be
+   seen  after altering tuning parameters, or after an Allocation
+   Lock has occurred.
+
+
+MTB-673                                Multics Technical Bulletin
+                                                         Disk DIM
+
+reset_sys
+   This argument requests that all system depth counters be reset
+   to  0.   This  is  useful  after altering system depth counter
+   mapping.   If  counter mapping has been changed while requests
+   were in the queue, the counter which had been used may be left
+   artificially  high.   Resetting  back  to  0  lets  the system
+   correct the value.
+
+stagnate seconds
+   This  argument  pair  specifies  a  change  of the system wide
+   stagnation  time  period  to  the specified number of seconds.
+   Tune_disk sets a maximum stagnation time period of 6 minutes.
+
+system
+   This   argument   indicates   modification  of  a  system-wide
+   optimization factor.  The maximum depth and/or mapping for the
+   specified io_type will be altered.  If neither a maximum depth
+   value, nor a mapping is altered an error message is issued.
+
+-map io_type
+   This  argument  specifies  that the current depth counting for
+   the  specified  system-wide  optimization entry should be done
+   using the counter for io_type.  For example:
+
+      tune_disk system PageRead -map PageWrite
+
+   Would  have the depth counter for PageWrite used to accumulate
+   the number of PageRead IO's currently outstanding.
+
+-max n
+   This  argument  pair  indicates that the maximum depth for the
+   specified  system-wide  optimization entry should be set to n.
+   If  this  depth  is  reached then full optimization of this IO
+   type will be done system wide for all drives.
+
+Notes:
+   Optimization  is  performed  by determining a multiplier to be
+   used  to  convert  a  Phsical  Seek Length into a Logical Seek
+   Length,  for  the  purposes of determining the Nearest Logical
+   Seek   to  perform  on  a  disk  drive.   The  Response  Point
+   determines  what  this  multiplier  is  for a situation with a
+   single  request  of  that  IO  type  in  the queue, and is the
+   multiplier required to produce best system response.  The Load
+   Point  specifies the number of requests permitted in the queue
+   of  the  specified  IO  type  before full optimization occurs,
+   Logical  Seek Length = Physical Seek Length.  These two values
+   define the two endpoints of a straight line.  The optimization
+
+
+Multics Technical Bulletin                                MTB-673
+Disk DIM
+
+   multiplier  is determined by the current load of the queue and
+   its corresponding position on the straight line.
+
+   System-wide   queue  loading  optimization  is  determined  by
+   looking  at the system-wide load of an IO type and the maximum
+   depth  it should be permitted before becoming fully optimized.
+   The fraction produced by:
+
+      fraction = max (0.0, (max_depth - depth)/max_depth)
+
+   is  used to alter the individual drive's IO type multiplier to
+   determine  the  system-wide queue loading effect on individual
+   drive optimization.
+
+   The  system-wide  optimization  utilizes a max_depth specified
+   for  the  IO  type,  and  a  counter  of  the current depth to
+   determine   the   system-wide   loading  optimization.   Depth
+   counters   can   be  mapped  together  to  form  an  aggregate
+   system-wide queue loading effect.  When decrementing, counters
+   are  not  permitted to become negative, but if re-mapped while
+   non-zero  they  may remain &gt; 0 with no load.  The tuning tools
+   permit  resetting  the  current depth counters for system-wide
+   optimization  back  to  0, to let the system correct them to a
+   true load indication.
+
+   All  queues  have  a high-water-mark accumulator.  This can be
+   reset through the tuning tools to permit a new high-water-mark
+   to be determined.
+
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

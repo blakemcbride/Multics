@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Implementing Internet Protocol on Multics.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+MULTICS TECHNICAL BULLETIN                                 MTB769
+
+To:       MTB Distribution
+
+From:     John Hunter
+
+Date:     October 14, 1987
+
+Subject:  Implementing Internet Protocol on Multics
+
+               -----------------------------------
+
+This  MTB describes work  which must be  done to have  a complete
+version of the DARPA Internet Protocol on Multics.
+
+               -----------------------------------
+
+Comments on this MTB should be sent to the author -
+          via Multics mail to:
+                    Hunter%pco@bco
+          via telephone to:
+                    John Hunter, STMS (602) 862-3594
+
+          via forum on System-M to:
+                    &gt;exl&gt;net&gt;mtgs&gt;IP_implementation (ip)
+
+_________________________________________________________________
+
+Multics project  internal documentation; not to  be reproduced or
+distributed outside the Multics project without permission of the
+Director of STMS.
+
+
+MTB769                               INTERNET PROTOCOL ON MULTICS
+
+                             CONTENTS
+
+                                                         Page
+
+   1:  Introduction  . . . . . . . . . . . . . . . . . . . .     1
+   2:  Internet Protocol (IP)  . . . . . . . . . . . . . . .     1
+   3:  Areas of Non-Compliance . . . . . . . . . . . . . . .     2
+   3.1:  ICMP  . . . . . . . . . . . . . . . . . . . . . . .     3
+   3.2:  Packet Fragmentation and Reassembly . . . . . . . .     3
+   3.3:  The IP Options  . . . . . . . . . . . . . . . . . .     4
+   4:  Additional Work . . . . . . . . . . . . . . . . . . .     5
+   4.1:  Testing . . . . . . . . . . . . . . . . . . . . . .     5
+   4.2:  Logic Errors  . . . . . . . . . . . . . . . . . . .     6
+   4.3:  Site Dependencies . . . . . . . . . . . . . . . . .     6
+   5:  Additional Benefits . . . . . . . . . . . . . . . . .     6
+   Appendix A:  Glossary . . . . . . . . . . . . . . . . . .     7
+   Appendix B:  IP Routing and Protocols . . . . . . . . . .     9
+   B.1:  Protocols . . . . . . . . . . . . . . . . . . . . .     9
+   B.2:  Internet Routing and Architecture . . . . . . . . .     9
+
+
+INTERNET PROTOCOL ON MULTICS                               MTB769
+
+1:  INTRODUCTION
+
+     This MTB describes work which  must be done to implement the
+     DARPA  Internet Protocol   on Multics.   This implementation
+     will meet all DARPA requirements.
+
+     References   are  made   in   this   MTB  to   the  ARAPANET
+     specification  documents  known   as  Requests  for  Comment
+     (RFCs).   The RFCs  mentioned in  this MTB  may be  reviewed
+     online  on System-M  in the  &gt;exl&gt;net&gt;rfcs directory.   This
+     directory does not contain a complete collection of all RFCs
+     in existance.  However, as  noted above, all RFCs referenced
+     in this MTB are present in the &gt;exl&gt;net&gt;rfcs directory.
+
+     It  is  recognized  that  not  all  readers  of this MTB are
+     familiar with  network terminology.  A glossary  is included
+     at the end of this document  to provide a quick reference to
+     that  terminology.  Note  that network  terminology may also
+     include  terms that  have completely  different meanings  in
+     other  areas  of  computer  applications.   An  appendix  is
+     included to summarize the  signifcance of Internet protocols
+     and  to summarize  the routing  of packets  in the Internet.
+     The  reader  who  is  unfamiliar  with  Internet routing and
+     network  terminology  is  strongly  encouraged  to  read the
+     glossary and the appendix before continuing.
+
+2:  INTERNET PROTOCOL (IP)
+
+     The  Internet  Protocol  (IP)  describes  procedures  to  be
+     observed   by    hosts   in   interconnected    systems   of
+     packet-switched   computer  communication   networks.   This
+     protocol  is  specified   in  RFC791,  "Internet  Protocol".
+     RFC791 describes  the format and meaning  of packets, packet
+     headers  and  network   addresses.   Strategies  for  packet
+     fragmentation, reassembly, and routing are also described.
+
+     IP provides  an unreliable datagram  service and is  used by
+     many  higher-level protocols   for exchanging  messages with
+     their peers on other Internet  hosts.  IP is used to support
+     such  applications  as  reliable  message  service, resource
+     sharing,  remote  login,  remote  file  transfer, electronic
+     mail, and electronic news services.
+
+     The DARPA Internet protocols are the most widely implemented
+     internetwork protocols in the  industry at this time.  These
+     protocols   are  often   referred  to   as  "TCP/IP".   This
+
+
+MTB769                               INTERNET PROTOCOL ON MULTICS
+
+     terminology is misleading.  TCP is a DARPA Internet protocol
+     which  provides a  reliable message  service on  top of  the
+     unreliable  datagram  service  of  IP.   TCP/IP  refers to a
+     two-layered  protocol structure   which provides  a reliable
+     message service.   TCP/IP does not accurately  represent the
+     full functionality or structure of DARPA Internet protocols.
+     For example, UDP is a DARPA Internet protocol which provides
+     an  application with  unreliable datagram  service.  UDP  is
+     also run  on top of  IP.  For the  purposes of this  MTB the
+     more general terminology "Internet protocols" will be used.
+
+     A  version  of  IP  exists   on  System-M  in  the  &gt;exl&gt;net
+     hierarchy.  This version was  implemented in the early 1980s
+     and periodically updated.  The code  was reviewed at STMS to
+     determine   whether  it   was  in   compliance  with   DARPA
+     requirements for hosts  implementing the Internet protocols.
+     These  requirements are  enumerated in  RFC1010 -  "Official
+     Protocols".  Several areas of non-compliance were detected.
+
+     This  MTB  describes  the  areas  of  non-compliance and the
+     actions necessary to bring  the IP implementation to current
+     standard.   The  resulting  design  proposals  will  require
+     several MTBs and these are noted where appropriate.
+
+3:  AREAS OF NON-COMPLIANCE
+
+     Non-compliance was noted in 3 areas.
+
+     o    Internet Control Message Protocol (ICMP)
+
+     o    Packet fragmentation and reassembly
+
+     o    IP options
+
+     Non-compliance  to  requirements   refers  to  protocols  or
+     portions of  protocols which are  not implemented in  the IP
+     implementation at  hand.  These areas of  non-compliance and
+     the  steps  which  must  be  completed  to  resolve them are
+     detailed  below.  All  of these   action items  will be  the
+     subject of future MTBs.   Therefore, only brief descriptions
+     of  the  problems  and  their  solutions  are  given  below.
+
+
+INTERNET PROTOCOL ON MULTICS                               MTB769
+
+     Detailed descriptions are deferred to the future MTBs.
+
+3.1:  ICMP
+
+          Internet Control Message Protocol (ICMP) is detailed in
+          RFC792,   "Internet  Control   Message  Protocol"   and
+          augmented  in  RFC950,  "Internet  Standard  Subnetting
+          Procedure".   The job  of  ICMP  is to  provide routing
+          control messages and error  reports.  These are used at
+          the  IP  level  for  tuning  routing  decisions and for
+          requesting  information about  the current  logical and
+          physical connectivity  of the Internet.   ICMP utilizes
+          IP  to send  and receive   messages.  IP  uses ICMP  to
+          advise other  hosts of routing conditions  at the local
+          host.   IP  and  ICMP  are  tightly  connected.   No IP
+          implementation   is  considered  complete   without  an
+          implementation of ICMP [RFC791].   ICMP is required for
+          all Internet hosts [RFC1010].
+
+          There  is  no  implementation  of  ICMP  in our current
+          version of  the Internet protocols.   An implementation
+          of  ICMP  must  be  developed  and  integrated into the
+          current collection of Internet programs.  Some work has
+          begun on the latter task  during the analysis of the IP
+          implementation.  This  work consisted of  noting points
+          in the  code where conditions warrant  invoking ICMP to
+          send  messages.  Once  the protocol  is implemented, we
+          will be able  to receive and act on  ICMP messages from
+          remote  hosts.   We  will  also  be  able  to send ICMP
+          messages  from Multics  hosts.  The  design details  of
+          this implementation  will be included in  a future MTB.
+          The planned implementation  will encompass the protocol
+          specifications   set   forth    in   RFC792   and   the
+          augmentations  for supporting  subnetting specified  in
+          RFC950.
+
+3.2:  Packet Fragmentation and Reassembly
+
+          RFC791,  "Internet Protocol",  describes the  following
+          problem and its solution.  When  a packet arrives at an
+          input  interface and  is passed  to IP,  IP must decide
+          which output  interface should receive the  packet.  It
+          may be the case that  the packet must be forwarded over
+          another  network to which  our host is  connected.  The
+          carrying capacity  of this network may be  too small to
+          send  the packet in  one piece.  Therefore,  the packet
+          may  be fragmented  and forwarded  through the network.
+
+
+MTB769                               INTERNET PROTOCOL ON MULTICS
+
+          Sufficient  information  is  preserved  in  the  packet
+          header  so  that  the  packet  may  be  reassembled  on
+          reaching its destination.  It  is also possible for the
+          user to  specify in the  packet header that  the packet
+          should  not be   fragmented.  Packet  fragmentation and
+          reassembly functionality is required by RFC791.
+
+          The current implementation of  IP does not provide this
+          functionality.  Several suggested  algorithms exist for
+          performing packet fragmentation  and reassembly and are
+          published in RFC791 and  RFC815.  These algorithms will
+          be   analyzed   and   an   implementation   of   packet
+          fragmentation  and  reassembly  will  be  designed  and
+          executed.  This  work will be  the subject of  a future
+          MTB.
+
+3.3:  The IP Options
+
+          RFC791  specifies  network   parameters  which  may  be
+          applied  to packets sent  by a host.   These parameters
+          allow an applications process  to customize the service
+          provided by  IP.  The parameters govern  the setting of
+          precedence  for  IP  datagrams,  speed  and  urgency of
+          delivery   of   datagrams,   route   specification   of
+          datagrams,  security  labelling  of  IP  datagrams, and
+          other  performance  and  service  parameters.   Some of
+          these service parameters are  set in required fields of
+          the IP  header, others are  set in an  options field of
+          the IP  header.  The options  field is optional  in the
+          sense  that  this  field  is  not  required  in  all IP
+          datagrams.  The implementation of  the options field in
+          the host IP module is not optional, however.
+
+          The  current version of  IP only partially  attempts to
+          implement the options field.   The upper level protocol
+          which utilizes the services of  IP may specify that the
+          security  option is  present in  an outbound  datagram.
+          The security  options field will be included  in the IP
+          header  as a  result.  No   provision is  made for  the
+          remaining  options.  In  addition, when  the current IP
+          module receives a packet  with the security option set,
+          no  processing  occurs  other  than  to  note  that the
+          security  option  is  present.   The  new  version must
+          provide an interface to the upper level protocols which
+          allows all options to be specified with a datagram.  In
+          addition, all datagrams received  with options set must
+          have those options processed  in an appropriate manner.
+          This will be the subject of a future MTB.
+
+
+INTERNET PROTOCOL ON MULTICS                               MTB769
+
+4:  ADDITIONAL WORK
+
+     Additional work  must be done on  the current implementation
+     to  ensure the  correct functioning  of the  IP package.   A
+     suite of tests must be  developed to ensure that any changes
+     performed  on  the  current  version  of  IP  do  not have a
+     negative  impact  on  the  proper  functioning of previously
+     correct code.  These tests  must also ensure the correctness
+     of  newly implemented  functionality.  Logic  errors in  the
+     current  version, detected  in the  review process,  must be
+     corrected.  Site dependencies in the current version must be
+     removed.   A routing  server must   be developed  to aid  in
+     removing these site dependencies.
+
+4.1:  Testing
+
+          The revised code can be tested without having an actual
+          connection to the Internet.   One focus of testing will
+          be  on  ensuring  that  packets  are  presented  to the
+          correct network  interface in proper format.   This can
+          be done  by providing a wrapper environment  for the IP
+          modules  within  which  IP  input  and  output  can  be
+          observed.   Standard I/O  interfaces could  be used  to
+          construct  the  wrapper  environment.   Other  foci  of
+          testing will be
+
+          o    Appropriate actions on receiving ICMP messages
+
+          o    Sending appropriate ICMP messages
+
+          o    Fragmentation and reassembly
+
+          o    Packet routing
+
+          o    Setup and shutdown of the IP environment
+
+          Once we  are assured of the correct  functioning of the
+          code in a closed environment,  we can begin a series of
+          live tests, either from BCO, or from Phoenix, utilizing
+          a  future  Internet  connection.   Details  of proposed
+          tests  will be  given in  future MTBs  dealing with the
+          changes and additions proposed here.
+
+
+MTB769                               INTERNET PROTOCOL ON MULTICS
+
+4.2:  Logic Errors
+
+          Several   logic  errors   were  noted   and  informally
+          documented in the review process of the current version
+          of IP.  These errors will  be corrected and the results
+          of  those  corrections  will  be  tested.   To  provide
+          another  layer of error  trapping, it is  proposed that
+          the new  version be processed through  standard Multics
+          installation procedures.
+
+4.3:  Site Dependencies
+
+          The current version contains  some site dependencies in
+          its routing  management.  Packets with  addresses which
+          cannot be resolved as local or known addresses are sent
+          to  MIT for  further routing.   An attempt  was made to
+          remedy this  site dependency in an  earlier revision of
+          the IP module.  This effort was not completed, however.
+          The  key element  missing is  a routing  server for the
+          host.
+
+          The current version of IP  does not provide for routing
+          to be  done on the  host.  As noted  above, all packets
+          for  other  hosts  are  routed   to  MIT.   This  is  a
+          non-robust approach to routing  which must be addressed
+          in  the new  version of  IP.  A  general routing server
+          must be  developed which is  adaptable to the  needs of
+          the individual host site.  This  will be the subject of
+          a future MTB.
+
+5:  ADDITIONAL BENEFITS
+
+     It  is the  goal of   STMS to  have a  complete, functioning
+     network package as the result of the efforts detailed above.
+     In   addition  to   the  software,   it  is   expected  that
+     documentation  and software tools  support will grow  out of
+     this  effort.  This  will  aid  customers in  developing and
+     analyzing  the  performance  of  their  own network systems.
+     Future effort  at STMS may then be  focussed on implementing
+     new network products to  enhance the networking abilities of
+     our customers and to  meet their networking needs.  Specific
+     areas of future development include interfacing the Internet
+     protocols  with MNA, and  development of network  drivers to
+     support internetworking for hosts  whose local network is an
+     Ethernet.
+
+
+INTERNET PROTOCOL ON MULTICS                               MTB769
+
+APPENDIX A:  GLOSSARY
+
+Addresses -  A means of encoding  the identity and location  of a
+     host.  ARPANET addresses are  represented as 32-bit strings.
+     Encoded  within the  string is  the number  assigned to  the
+     network  where a  host resides  and the  number within  that
+     network assigned to the host.
+ARPA - Advanced Research Projects  Agency.  Sponsoring agency for
+     the ARPANET.  ARPA is now known as DARPA (see below).
+ARPANET - Packet communications network  sponsored by ARPA in the
+     early 1970s.   The oldest and largest  packet communications
+     network in existence.
+DARPA - Defense  Advanced Research Projects Agency.   Sponsors of
+     the DARPA Internet Program.  Formerly known as ARPA.
+Datagram  - The  basic data  unit in  the Internet  Protocol.  To
+     cross a  physical network, a  datagram is encapsulated  in a
+     packet.
+Datagram Service - An approach to sending packets in a network in
+     which  each packet  is independant  of all  others.  A  good
+     analogy  to datagram  service  is  the postal  system.  Each
+     letter being handled by the postal service is independant of
+     all other letters.
+Host -  A machine  in a   computer network  intended to  run user
+     programs.    Hosts  in   a  network   are  connected   by  a
+     communications subnet.  The job of the communications subnet
+     is to carry messages from host to host.
+Internet - The Internet  system consists of interconnected packet
+     networks supporting communication among host computers using
+     Internet protocols.  A network of networks.
+Packet  -  The  basic  data  unit  in  a  network.   The  unit of
+     transmission in a physical network.
+Protocol   -  The  means   by  which  processes   organize  their
+     cooperation.  Protocols  may prescribe formats  for messages
+     and addresses  and ways in which  internetwork communication
+     and transmission is synchronized and otherwise controlled.
+RFC - Request  for  Comment.   A  document  used  by  the ARPANET
+     community for proposing and publishing standards for ARPANET
+     network  communications.  RFCs  are numbered  and are  often
+     referred  to  as  "RFCxxx"  where  "xxx"  refers  to the RFC
+     number.
+Routing - Packets arrive at a host on an input interface and must
+     then be  passed on to  an output interface.   The process of
+     checking  the packet  destination and  deciding which output
+     interface to pass the packet on to is called routing.
+Unreliable Datagram  Service - A  datagram service is  said to be
+     unreliable if it does not guarantee that all packets will be
+     delivered.  Further, an unreliable datagram service does not
+     guarantee that packets will  arrive in any particular order.
+     Note that unreliability indicates  that the service provided
+     is primitive, not that it is bad .  Again, postal service is
+     a good analogy.  When a letter is lost in the postal system,
+     the sender  has no way of  knowing.  It is not  customary to
+
+
+MTB769                               INTERNET PROTOCOL ON MULTICS
+
+     send multiple copies of a  letter until the letter's arrival
+     is acknowledged.  When two letters are sent on the same day,
+     it is impossible  to guarantee the order in  which they will
+     arrive.
+
+
+INTERNET PROTOCOL ON MULTICS                               MTB769
+
+APPENDIX B:  IP ROUTING AND PROTOCOLS
+
+     The purpose  of this appendix is to  provide some background
+     into ARPANET  architecture and design issues.   The appendix
+     is intended to answer the following questions.
+
+          1) What is  a protocol and what do we  do with one once
+          we've read it?
+
+          2) How  do messages get  from source to  destination in
+          the Internet?
+
+     For a more thorough description  of the Internet system, the
+     reader is referred to RFC791, which describes the system and
+     details the role of gateways in the Internet system.
+
+B.1:  Protocols
+
+          DARPA  Internet   protocols  describe  the   format  of
+          information  packets to  be sent  through the Internet.
+          Where necessary, a sequence of messages to be exchanged
+          between  processes   may  be  specified.    The  actual
+          implementation of  a protocol is not  prescribed by the
+          protocols, however.  The role of a protocol can be seen
+          as  a  statement  of  conventions  to  be  observed  by
+          participating    hosts   in    order   to    facilitate
+          communications   in   the    Internet.    It   is   the
+          responsibility  of  the  implementor  to  see  that the
+          individual  implementation  performs  in  a  reasonable
+          manner.  For  example, the ICMP protocol  (RFC 792, RFC
+          950) describes the format of messages by which a source
+          host  may be  advised of  events in  the Internet which
+          effect the transmission of  packets.  The protocol also
+          specifies  the  conditions  under  which  ICMP messages
+          should be sent.  The protocol  does not, in most cases,
+          specify what action must be  taken once a host receives
+          an   ICMP   message.     The   protocol   also   leaves
+          specification of the local  interfaces to ICMP strictly
+          up to the implementor.
+
+B.2:  Internet Routing and Architecture
+
+          "The   Internet  system   consists  of   a  number   of
+          interconnected packet networks supporting communication
+          among  host computers   using the  Internet protocols."
+
+
+MTB769                               INTERNET PROTOCOL ON MULTICS
+
+          [RFC 1009] The two protocol implementations required of
+          all  hosts  are  the  Internet  Protocol  (IP)  and the
+          Internet   Control   Message   Protocol   (ICMP).   The
+          constituent  networks may  be of  any configuration and
+          need  not rely on  Internet protocols to  send messages
+          within the local network.   The Internet protocols come
+          into  play when a  process wishes to  send a packet  of
+          information to  a process on  another network, or  to a
+          process  resident on  a host  on the  local network who
+          also recognizes the Internet protocols.
+
+          In order for hosts to communicate, they must have a way
+          to  identify  each  other.   This  is  achieved through
+          Internet  addresses.   Each  network  and  host  on the
+          Internet  has an  address.   This  address is  a 32-bit
+          field  which  encodes  the  network  on  which the host
+          resides,  and a  number identifying  the host.   If the
+          network  has  logical  subnets,  then  the  subnets are
+          identified by applying a  mask to the Internet address.
+          The most common practice is to reserve a portion of the
+          host  address for  the  subnet  address.  In  this way,
+          several subnets can share  the same Internet address in
+          a  manner transparent  to the  outside world.  Internet
+          addresses of the source and destination of all messages
+          are included in all properly formed Internet messages.
+
+          The Internet protocols have  a layered structure.  If a
+          local  application process  wishes to  communicate with
+          another  process, it passes  its message to  a protocol
+          module  which  provides  the  service  required.   This
+          protocol   module  must    now  communicate   with  the
+          corresponding protocol module  at the destination host.
+          This is done by constructing a header and concatenating
+          it with  the application process message.   This header
+          will  provide  enough  information  for  the  receiving
+          protocol module to forward  the original message to the
+          receiving  user process.   Having constructed  this new
+          message, the  protocol now passes  it to a  lower level
+          protocol,   which   constructs   a   new   header   and
+          concatenates  it with the  message it has  received and
+          passes  this message to  a lower level  protocol.  This
+          process  is repeated until  the message arrives  at the
+          protocol module which interfaces  to the local network.
+          This  protocol  module  sends  the  message through the
+          local network  to an Internet  gateway which is  on the
+          local  network.  The  message then  passes through  the
+          Internet  to   the  destination  host.    The  original
+          message,   encapsulated   by   the   headers   it   has
+          accumulated, is known as a packet.
+
+
+INTERNET PROTOCOL ON MULTICS                               MTB769
+
+          The  packet is  received by  the lowest  level protocol
+          module  at the  destination host.   This module removes
+          the   header  from   the  message   and  extracts   the
+          information  it  needs  from  the  header  to  pass the
+          message  (minus  the  lower-level  header)  up  to  the
+          protocol  at the next  highest level.  This  process is
+          repeated until  the message arrives at  the destination
+          process on the destination host.
+
+          The lowest level Internet  protocol is IP.  IP provides
+          an unreliable datagram service.   IP packets may arrive
+          out of order, may be lost,  or may be damaged.  If more
+          reliable communication is needed,  it is implemented by
+          a   higher  level  protocol   such  as  TCP.    If  the
+          applications process requires  only a datagram service,
+          it is provided by the higher level protocol UDP.  Below
+          IP  are   the  non-Internet  protocols   which  support
+          communication  within the  local network.   An Internet
+          application which required reliable communication could
+          be built on top of TCP.   TCP itself is built on top of
+          IP [See RFC791, page 5].
+
+          Once a packet arrives at the IP module, the destination
+          address is  checked.  If the destination  happens to be
+          on  this host,  then the   packet is  forwarded to  the
+          appropriate upper  level protocol.  The message  may be
+          destined for  another host, however.  At  this point, a
+          local  database  is  consulted  to  determine where the
+          packet should go next.  This decision process is called
+          routing.  The routing  decision involves deciding where
+          the packet should be passed on the local network to get
+          it one  step closer to its destination.   If the packet
+          must go outside the local network, it must be routed to
+          another  host  which  is  connected  to  both the local
+          network and at least one other network.  Such a host is
+          known as a gateway.  A packet traverses the Internet by
+          being  routed   from  gateway  to  gateway.    At  each
+          intermediate  gateway,  the   IP  module  receives  the
+          message and forwards it to  the next gateway across the
+          intervening local network [See RFC791,page 6].
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

@@ -1,0 +1,3403 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-660</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-660: New Pattern-Matching Routines Via Regular Expressions.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+To:       Distribution
+
+From:     Gregory A.  Baryza
+
+Date:     20 August 1984
+
+Subject:  New Pattern-Matching Routines Via Regular Expressions
+
+1.  Abstract
+
+This  document  describes  a  set  of  subroutine  interfaces and
+commands which perform textual  pattern matching.  The facilities
+described  here  include  those  supplied  by  the "search_file_"
+entries used by qedx, emacs,  mail, and others.  In addition, the
+syntax proposed  is such that upwardly  compatible extensions may
+be made in the future without jeopardizing existing applications.
+
+Comments on this MTB should be sent to the author -
+
+     via Multics mail to:
+
+        Baryza.Multics
+
+     via posted mail to:
+
+        Gregory A.  Baryza
+        Honeywell Information Systems, Inc.
+        Four Cambridge Center
+        Cambridge, Massachusetts, U.S.A.   02142
+
+     via telephone to:
+
+        (HVN)-492-9315,
+        (617)-492-9315
+
+     via Multics forum on System-M:
+
+        &gt;udd&gt;Multics&gt;Baryza&gt;Online_Meetings&gt;Regular_Expressions
+        &gt;udd&gt;m&gt;Baryza&gt;mtgs&gt;rx
+
+________________________________________
+
+Multics project  internal documentation; not to  be reproduced or
+distributed outside the Multics project.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+                        TABLE OF CONTENTS
+
+Section    Page  Subject
+=======    ====  =======
+
+1             i  Abstract
+2             1  Introduction
+3             2  Definition of Regular Expressions
+4             5  Commentary
+4.1           5  . . The Null String
+4.2           5  . . Bounded Iteration
+4.3           6  . . Operator Precedence &amp; Associativity
+4.4           6  . . Strong vs Weak Alternatives
+4.4.1         7  . . . . Strong Alternatives
+4.4.2         7  . . . . Weak Alternatives
+4.5           8  . . Recursively Defined Expressions
+4.6          10  . . References
+5            11  Input Conventions
+6            13  The Pattern-Matching Process
+6.1          13  . . Macro-components of Regular Expressions
+6.2          14  . . A Model of the Matching Process
+6.3          19  . . Labelling Substrings
+7            21  Some Examples
+7.1          21  . . Alternative Matches
+7.2          24  . . Recursive Patterns
+8            30  String versus Line Mode
+9            32  Subroutines
+9            33  . . rx_$get_escape_char
+9            34  . . rx_$set_escape_char
+9            36  . . rx_$translate
+9            38  . . rx_$translate_old
+9            40  . . rx_$execute
+9            42  . . rx_$release
+9            43  . . rx_$search
+9            45  . . rx_$substitute
+9            48  . . rx_$get_newline_count
+9            49  . . rx_$sub_error_handler
+10           51  Commands and Active Functions
+10           52  . . rx_escape_char
+10           53  . . rx
+10           54  . . . . change
+10           56  . . . . change_all
+10           57  . . . . change_some
+10           57  . . . . count
+10           58  . . . . exclude
+10           59  . . . . exclude_index
+10           59  . . . . include
+10           60  . . . . include_index
+10           60  . . . . match_count
+10           61  . . . . test
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+11           62  Include Files
+11.1         62  . . rx_execute_ctl.incl.pl1
+11.2         64  . . rx_match_info.incl.pl1
+11.3         67  . . rx_error_info.incl.pl1
+12           68  Comparative Timings
+12.1         68  . . The Test Environment
+12.1.1       69  . . . . Test 1
+12.1.2       69  . . . . Test 2
+12.1.3       69  . . . . Test 3
+12.1.4       70  . . . . Test 4
+12.1.5       70  . . . . Test 5
+12.2         71  . . General Commentary on the Tests
+12.3         72  . . Comparison Against A Compiled Program
+13           73  Miscellaneous Topics
+13.1         73  . . Use of National Characters
+13.2         73  . . Installing it in the System
+13.3         74  . . Starname Processing
+13.4         74  . . Efficiency Considerations
+13.4.1       74  . . . . Translator Optimizations
+13.4.2       76  . . . . Sequences That Work Against Efficiency
+13.5         77  . . Implementation Restrictions
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+2.  Introduction
+
+String  pattern-matching in  PL/I and  other high-level languages
+can be a chore at best.  Although  there is a great deal of power
+available to handle the characters themselves, the implementation
+of a  matching strategy given an  arbitrary pattern specification
+is not straightforward.  Nonetheless, the efficient interrogation
+of text  data is a  necessity in many  data-base applications, in
+word-processing, and in command parsing.
+
+This  document  is an(other)  attempt  to alleviate  some  of the
+character  handling   burden  by  providing   a  pattern-matching
+facility  employing  regular   expressions.   Unlike  the  common
+Multics  line  editors,  however,  all  characters  appearing  in
+regular expressions  are treated literally  except those preceded
+by a  user-specified escape character.  It  is conceded that this
+does   not  provide   a  smooth   transition  from   the  present
+"search_file_" interface.   For that reason, a  special entry has
+been included to provide for the same kind of pattern definitions
+as are presently available.
+
+These routines are intended to  provide a reasonably complete set
+of   pattern  matching   capabilities  upon   which  other,  more
+specialized or more specific, routines may be built.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+3.  Definition of Regular Expressions
+
+A  regular expression(1)  is a pattern  which specifies  a set of |
+character strings; it is said  to match certain strings.  Regular
+expressions  are used  in searching  for text  strings satisfying
+some  condition.  Regular  expressions are  defined rigorously as
+follows.
+
+    a)  An  ordinary  character  is  a  regular  expression which
+        matches that character.
+
+    b)  "^"  is a  regular expression which  matches the null(2)
+        character before the first character of a string.
+
+    c)  "$"  is  a  regular  expression which  matches  the null
+        character after the last character of a string.
+
+    d)  "."  is a regular  expression which matches any non-null
+        character.
+
+    e)  "[&lt;string&gt;]" is a regular  expression which matches any
+        one of the characters in  the &lt;string&gt; and no others.  It
+        is illegal to include  other regular expression sequences
+        (like  "."   for  example)   within  the  characters  of
+        &lt;string&gt;.
+
+    f)  "[^&lt;string&gt;]"  is a  regular expression  which matches
+        any one character but the characters of &lt;string&gt;.
+
+________________________________________
+
+(1) Strictly  speaking, the  definition describes  something more
+    powerful  than a  recognizer for  a regular  grammar can cope
+    with.  The use  of the term "regular expression"  here is due
+    to historical antecedents.
+
+(2) The  "null"  character referred  to  in this  context  is the
+    character of length zero and  not the ASCII character at 0/0.
+    In this document, the ASCII  character will be shown as &lt;NUL&gt;
+    and  the   word  "null"  will  refer   to  empty  strings  or
+    characters.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+    g)  A  regular  expression  followed  by  "*"  is  a regular
+        expression  which matches  the largest  number (including
+        zero) of adjacent occurrences of  the text matched by the
+        regular expression.
+
+    h)  A regular  expression followed by "&lt;m:n&gt;"  is a regular |
+        expression which  matches at least  m but no  more than n |
+        adjacent occurrences  of the text matched  by the regular |
+        expression.   This  regular  expression  matches  as many |
+        adjacent  occurrences as  it can.  The  semantics of this |
+        bounded count matching is discussed below.                |
+
+    i)  Two   adjacent   regular  expressions   form   a  regular
+        expression which matches adjacent  occurrences of the the
+        text matched by each of the regular expressions.
+
+    j)  Two regular expressions separated  by "|" or "||" form
+        a  regular expression  which matches the  text matched by
+        either  of  the  regular expressions.   The  semantics of
+        alternatives is discussed below.
+
+    k)  A  regular  expression enclosed  by  "(" and  ")"  is a
+        regular  expression which  matches the  same text  as the
+        original  regular expression.   Meta-parentheses are used
+        to  alter the  order of  evaluation implied  by "g", "h", |
+        "i", and "j"; for  example, "a(b|c)d" will match "abd"
+        or "acd", while "ab|cd" matches "ab" or "cd".
+
+    l)  If "&lt;regexp&gt;" is a regular expression, "{&lt;regexp&gt;}A" is
+        a  regular  expression,  where  A  is  any  ASCII graphic
+        character.   This  regular  expression  matches  the same
+        strings  as &lt;regexp&gt;;  it has certain  side effects which
+        allow references to sub-portions of the string matched by
+        the regular expression.
+
+    m)  "&amp;"  is a  regular expression  which recursively matches
+        the  regular   expression  in  which   it  is  contained.
+        Left-recursive  regular  expressions may  be  defined via
+        this  route.  Care  must be  taken in  their use, however
+        Their  effectiveness  depends  on the  actual  strings to
+        which they applied.  Infinite loops are possible and will
+        be detected and reported as errors at run-time.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+    n)  Nothing else is a regular expression.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+4.  Commentary
+
+In  most  of the  examples  given throughout  this  document, the
+meta-characters  which  make  up  regular  expressions  are shown
+beginning  with the  backslash character,  "".  This  is not the
+only representation.  The user is free to choose any character as
+the  "lead-in"  or  "escape"  for  meta-characters.   See  "Input
+Conventions" for more on representation.
+
+4.1.  The Null String
+
+According to  definition "g" above, a  regular expression has the
+potential  for  matching  strings   of  zero  length.   That  the
+expression "A*" should match "" is not surprising in itself.  It
+seems most reasonable.
+
+However, what should  "A*" match in the string  "BBBB"?  That is
+to  say, how  many null strings  are there in  the string "BBBB"?
+Certainly,  there  are any  number of  answers to  this question;
+however,  for purposes  of this document  and implementation, the
+regular expression "A*" matches the  single occurrence of a null
+string which occurs (in this example)
+
+     -- BEFORE the first character of the string
+
+     -- BETWEEN each pair of characters in the string
+
+     -- AFTER the last character of the string
+
+Thus, if we were to substitute a "-" for each occurrence of "A*"
+in "BBBB", the resulting string would be "-B-B-B-B-".
+                                                                  |
+                                                                  |
+4.2.  Bounded Iteration                                           |
+                                                                  |
+Definition "h" above gives a way to explicitly control the number |
+of  times  a particular  regular  expression match  is attempted. |
+Both m and  n must be unsigned integers,  and the relation m &lt;= n |
+be true.
+                                                                  |
+                                                                  |
+For ease of use, the following defaults are applied:              |
+                                                                  |
+     -- if m is omitted, its value is taken to be zero.           |
+                                                                  |
+     -- if n is  omitted, its value is taken  to be (effectively) |
+        infinity.                                                 |
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+The   following   is  a   list   of  various   formats   and  the |
+interpretations of each one:                                      |
+                                                                  |
+     A&lt;1:5&gt;            match any string containing at least one |
+                         but no more than five A's in a row       |
+                                                                  |
+     B&lt;:10&gt;            matches any string of up to ten B's in a |
+                         row (including zero)                     |
+                                                                  |
+     C&lt;5:&gt;             matches five or more C's in a row        |
+                                                                  |
+     D&lt;8&gt;              matches exactly eight D's                |
+                                                                  |
+     E&lt;:&gt;              is equivalent to "E*"                   |
+                                                                  |
+     F&lt;&gt;               is syntactically ambiguous and therefore |
+                         will cause an error at compile time      |
+
+4.3.  Operator Precedence &amp; Associativity
+
+The operators of the regular expression are listed below in order
+of decreasing precedence (binding power).
+
+    "*" and "&lt;m:n&gt;"    indefinite or bounded repetition        |
+
+     concatenation        implied by juxtaposition of expressions
+
+      "|" and "||"     pattern alternation
+
+Furthermore, operators  of equal precedence  are left-associative
+so that the  regular expression A|B||C is parsed  as if it had
+been written (A|B)||C.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+4.4.  Strong vs Weak Alternatives
+
+The  use of  "|" and  "||" in  regular expressions  allows the
+implementation  of  alternative   regular  expressions  during  a
+pattern-match attempt.
+
+4.4.1.  Strong Alternatives
+
+In matching the expression defined by "|", an attempt is made to
+match  the regular  expression on the  left of the  "|".  If the
+attempt succeeds,  the next match attempted  is the one following
+the entire  pattern defined by  "|".  However, note  is taken of
+the fact  that there is  an untried pattern  to the right  of the
+"|".   Should  a regular  expression  later fail  to  match, the
+"state of the match" will be restored  to what it was at the time
+the "|" was  detected, and an attempt will be  made to match the
+regular expression to the right of  the "|".  (Of course, if the
+expression to the  left of the "|" fails,  the expression to the
+right will be tried immediately).
+
+This sequence of "remembering" and retrying will continue as long
+as untried alternatives exist.
+
+4.4.2.  Weak Alternatives
+
+The  "||"  functions  somewhat differently.   It  still permits
+alternative match  attempts, but once the  expression to the left
+of the  "||" succeeds, any  untried expression to  the right of
+the "||"  is disregarded.  Thus,  "||" acts locally  like the
+SNOBOL4 "fence".
+
+Another way to  think about weak alternatives is  that they are a |
+way  of expressing  preferences for  the matches  which should be |
+tried  first.  And  furthermore, the  preference specification is |
+such that, once a particular match is made, none of the remaining |
+options will be exercised.                                        |
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+As an example,  suppose we wish to parse  a FORTRAN-like "common" |
+statement  which  consists of  either  the word  "common"  or its |
+abbreviation "com",  followed by a variable  name.  An expression |
+of the form:                                                      |
+
+               (common||com) *[ul][a]*               |
+
+will properly  match a statement  like "common X" or  "comY".  It |
+will  not,  however,  parse  the  statement  consisting  only  of |
+"common" as placing the variable "mon" in the common area.  There |
+is no way to prevent this latter interpretation using only strong |
+alternation.                                                      |
+
+To  correctly interpret  the statement "common2"  as referring to |
+the variable  "mon2" (variable names  must begin with  a letter), |
+the expression should read                                        |
+
+         (common *[ul]||com *[ul])[a]*          |
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+4.5.  Recursively Defined Expressions
+
+The  use of  the "&amp;"  allows regular  expressions to  be defined
+recursively.   Its  most  common  use is  in  the  formulation of
+patterns which are "balanced" in the SNOBOL4 sense of "BAL()".
+
+When a "&amp;" is encountered in the execution of a compiled regular
+expression,  the  state  of the  match  is saved  and  the entire
+expression is re-invoked on that  part of the target string which
+remains  as  yet unmatched.   Of  course, this  re-invocation may
+itself  cause  another state-save  and another  invocation.  This
+recursive  "calling" may  occur an  arbitrary number  of times(1)
+depending on the data in the target string.
+
+At  some point,  a given invocation  will either  succeed or fail
+without doing any  more calls.  If it fails,  any alternatives in
+its caller  are tried just as  in the processing of  "|".  If it
+succeeds, it updates the state of  the match on the target string
+to reflect  the characters that  it matched.  It  then returns to
+its "caller", who continues its  own match attempt from the newly
+updated string positions.
+
+As an example of this process, the strings matched by the regular
+expression
+
+     &lt;&amp;&gt;|[abcdef][abcdef]*
+
+in the following target string are underlined.
+
+     &lt;&lt;&lt;bad&gt;&gt; + &lt;deaf&gt;&gt; + dead
+
+One  assumption which  is made by  the run-time  routines is that
+each recursively invoked attempt to  continue the match will make
+some  amount of  progress or "fail".   If an  invocation does not
+match any characters before  invoking another level of recursion,
+the  run-time support  library will take  this as  evidence of an
+error     condition     and     return     the     status    code
+error_table_$fatal_error.
+
+________________________________________
+
+(1) The  recursion  level is  also constrained  by the  amount of
+    scratch storage available for saved match states.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+4.6.  References
+
+Further information  on regular expressions  and pattern-matching
+are presented in the following articles.
+
+     "A Theory  of Discrete Patterns and  their Implementation in
+     SNOBOL4"
+     J.  F.  Gimpel
+     Communications of the ACM
+     Vol.  16, No.  2 (Feb 1973), pp.91-100
+
+     "Regular Expression Search Algorithm"
+     K.  Thompson
+     Communications of the ACM
+     Vol.  11, No.  6 (June 1968), pp.419-422
+
+     "Derivatives of Regular Expressions"
+     J.  A.  Brzozowski
+     Journal of the ACM
+     Vol.  11, No.  4 (Oct 1964), pp.481-494
+
+     Formal Languages and their Relation to Automata
+     J.  Hopcroft and J.  Ullman
+     Addison-Wesley Publishing Co.
+     Reading Mass., 1969
+
+     U.S.  Patent #3,568,156
+     Issued to K.  Thompson, 1971
+
+     "QED Text Editor"
+     B.  W.  Kernighan, D.  M.  Ritchie, K.  L.  Thompson
+     Computing Science Technical Report #5
+     Bell Telephone Laboratories
+     Murray Hill, N.  J.
+     May 1972
+
+     The SNOBOL4 Programming Language
+     R.  E.  Griswold, J.  F.  Poage, I.  P.  Polansky
+     Prentice-Hall
+     Englewood Cliff, N.  J.
+     1971
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+5.  Input Conventions
+
+Escape sequences are used for three purposes:
+
+     1) they are used to add special meanings to characters (i.e.
+        make  them into  "meta-characters") so  that they  can be
+        dealt with in a reasonably direct manner.
+
+     2) they provide  a concise means  of representing frequently
+        occurring character sequences  thus improving readability
+        and decreasing programming error.
+
+     3) they  are  used  to   represent  the  occurrence  of  the
+        character  which   is  the  "escape"   character  itself.
+        Instances  of  the  escape character  are  represented by
+        "doubling" according to conventional practice.  If "" is
+        the   escape   character,   a   backslash   character  is
+        represented  as  a  "normal" character  by  the sequence,
+        "\".
+
+The  following  sequences  are  allowed  as  an  aid  in  program
+maintenance and  readability.  These sequences  are recognized in |
+either  case,  i.e.  both  "n" and  "N" are  taken to  mean the |
+newline  character.   They  are  listed in  upper-case  below for |
+brevity.                                                          |
+
+     Char      Interpretation                                     |
+
+       A       the set of ASCII letters and digits                |
+
+       B       the ASCII backspace character                      |
+
+       C       the  set  of ASCII  control characters  &lt;NUL&gt; thru |
+               &lt;US&gt; and &lt;DEL&gt;                                     |
+
+       D       the ASCII digits "0" thru "9"                      |
+
+       E       the current escape character                       |
+
+       F       the ASCII form-feed character                      |
+
+       G       the    set    of    ASCII    graphic    characters |
+               exclamation-point thru tilde                       |
+
+       H       the ASCII digits "0" thru "9", characters "a" thru |
+               "f", and characters "A" thru "F"                   |
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+       L       the ASCII characters "a" thru "z"                  |
+
+       N       the ASCII newline character                        |
+
+       O       the ASCII digits "0" thru "7"                      |
+
+       S       the ASCII space character                          |
+
+       T       the ASCII tab character                            |
+
+       U       the ASCII characters A thru Z                      |
+
+       V       the set of valid ASCII characters                  |
+
+       W       the  ASCII  characters:  horizontal  tab, vertical |
+               tab, form-feed, and space                          |
+
+In addition, an occurrence of the escape character followed by up |
+to three octal digits is interpreted as the character whose octal |
+is  equal to  that specified.   Thus, assuming  that "?"   is the |
+escape  character,  "?12",  "?n",  and "?012"  all  represent the |
+newline  character;  and  "?101"  and "A"  are  equivalent.  This |
+sequence may  also be used  to represent characters  "outside" of |
+ASCII, e.g.  "?776".                                              |
+
+NOTE:  All sequences employing the  escape character as a lead-in
+character except those described in this document will be treated
+as illegal.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+6.  The Pattern-Matching Process
+
+As with many things, reference  material is not enough to provide
+an  understanding  of  the  object  defined.   Descriptions which
+suggest   appropriate  models   and  give   examples  are  highly
+desirable.  This section attempts to provide an operative, though
+slightly inaccurate, paradigm of  pattern-matching and gives some
+examples with discussion.
+
+6.1.  Macro-components of Regular Expressions
+
+One of  the most important  cognitive steps in  understanding the
+meaning of a regular expression  is the ability to "clump" groups
+of  characters  into semantically  more meaningful  pieces.  This
+takes  practice, but  is of great  utility.  It  is equivalent to
+becoming comfortable  enough with Multics  starname processing to
+read
+
+     dl  bound_??*_.s.archive
+
+as a request  to delete "all source archive  files in the working
+directory whose names are bound_&lt;something-or-other&gt;_".
+
+In  this  vein, the  following  table gives  some  simple regular
+expressions along  with a suggested  way of thinking  about them.
+Note  that  in  each case,  the  expression given  has  many more
+components  (according   to  the  formal   definition)  than  are
+described by the larger view.
+
+Expression             Interpretation
+
+^cat                  the  word  "cat"  at  the  beginning  of a
+                       string
+
+fox...*            the  word "fox"  followed by  at least two
+                       characters(1)
+
+^$                   a null string (contains no characters)
+
+^.*$               all the characters of any string, even the
+                       null one
+
+________________________________________
+
+(1) The word, "fox", followed by two characters, followed by zero
+    or more characters implies at  least two characters after the
+    word.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+declare|dcl           the start of a PL/I data declaration(1)
+
+ca(n|b|t|re)s     any of the words:  "cans", "cabs", "cats",
+                       or "cares"
+
+ca[brn]s             any  of  the  words:   "cabs",  "cars", or
+                       "cans"(2)
+
+$[d][d]*        an integral dollar amount
+
+"[01]*"b            a  PL/I  bit-string  of  arbitrary  length
+                       (including ""b)
+
+6.2.  A Model of the Matching Process
+
+Once  we have  decomposed a  regular expression  string into some
+reasonably high-level clumps,  talking about the pattern-matching
+process becomes easier.  One way  to visualize what happens is to
+watch the interaction among three items:
+
+     1. an  ordered  list of  the  clumps making  up  the regular
+        expression,
+
+     2. a string  of characters which  is to be  searched for the
+        desired pattern,
+
+     3. a cursor indicating the "current" position in the string.
+
+For  illustration purposes,  a cursor  will be  shown as pointing
+between  the characters  of a string.   In special  cases, it can
+also point  before the first  or after the last  character of the
+string.  The sample  strings to be searched in  this section will
+not contain blanks  in them, so we will depict  the position of a
+cursor within a string schematically as
+
+                   string:     ABCDEF GHIJKLMN
+                                     A|
+                   cursor:           |        
+
+________________________________________
+
+(1) Catenation of  expressions (such as "d",  "c", and "l") binds
+    more  tightly  than alternation.   Hence, No  parentheses are
+    necessary.
+
+(2) Note  that tests  for membership  in a  set of  characters is
+    often   more  readable   than  a   list  of  single-character
+    alternatives.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+In this case, the cursor is said to be between "F" and "G", after
+the "F", or  before the "G" depending on  which context makes the
+most sense.
+
+Once  we have  the ideas  of "clumps"  and "cursors", determining |
+whether a given regular expression  can match a pattern somewhere
+in a specified string is a simple process.  We must ask, for each
+"clump" in the list, the following question:
+
+    "Does the pattern I am  looking for occur immediately to
+     the right of the cursor?"
+
+Each  time the  answer to  the question  is "yes",  the cursor is
+advanced  to the  right by  the appropriate  number of characters
+Then, the next  clump in the list gets to  ask the same question.
+When all  the clumps have,  in turn, answered  "yes", the regular
+expression  has  matched  some   portion  (perhaps  all)  of  the
+specified string.
+
+This  simplified picture  ignores issues of  bookkeeping, such as
+where the cursor  starts, how it is advanced,  whether it must be
+remembered, and where  it is left when things  are done.  It also
+does not touch  on how alternatives are handled,  or how patterns
+like ".*" know how many  characters to match.  Those items will
+be covered now.
+
+Before the first clump takes its first look at the target string,
+the  cursor  is  positioned before  (to  the left  of)  the first
+character  of  the string.   After all  the clumps  have answered
+"yes" and some portion of the target string has been matched, the
+position of the  cursor is examined.  If the  cursor is not after
+the last character of the string,  the list of clumps is asked to
+try  and  match the  remaining  (as yet  unexamined) part  of the
+string to the right of the cursor.
+
+This approach has two main  consequences.  First, a given regular
+expression  may match  several times at  several different places
+within  the  target string.   Second,  if there  are two  or more
+matches, none of them overlap with any other.(1)
+
+________________________________________
+
+(1) There  are a  few special  cases involving  "^" and  "$" in
+    which this is not true.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+We have  not discussed what  happens when some clump  in the list
+cannot find its pattern in the string to the right of the cursor.
+In the  simplest case (a regular  expression that doesn't contain
+"*", or  flavors of "|"),  the obvious happens.   The cursor is
+restored to the position it had  before the first clump was asked
+to decide.(1)  If  this point is after the  last character of the
+string, the  regular expression gives up  and reports any matches
+it might have already made.  Otherwise, the cursor is advanced to
+the right  one position and the  clumps in the list  are asked to
+decide again.
+
+In the  more complicated case where  there are alternatives ("|"
+or  "||")  in  a  regular  expression  or  where  an indefinite
+repetition  ("*") occurs,  the actions  taken are  slightly more
+complicated.  In each of these cases, the clump "remembers" where
+it was when it found one of  the patterns it was supposed to look
+for.   If one  of the  later clumps should  fail to  find its own
+pattern, rather  than advancing the  cursor and starting  over at
+the  head of  the clump  list, the most  recent clump  that has a
+remembered choice is given a chance to try again.
+
+In the case of an alternative, the clump tries to match the other
+pattern.  In the  case of an indefinite repetition,  the match is
+shortened by one group.  Then, the next clump after this point of
+recovery is asked to try again.
+
+In an obvious fashion, the  opportunities to "try again" provided
+by  this  process  are  nested.  Failure  at  one  level  is only
+reported back if  all the possibilities at this  and lower levels
+have  been  exhausted.   This  allows  all  possibilities  to  be
+systematically and reliably tried.
+
+________________________________________
+
+(1) This  is  not  necessarily   the  beginning  of  the  string.
+    Successful matches  may have been  made in the  target string
+    prior to this attempt.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+As an example, the following table  shows how this process may be
+visualized.   The  regular  expression  which  will  be  used  to
+illustrate the procedure is
+
+                           or.*ten$
+
+which  can  be divided  into  the clumps  given in  the following
+table.
+
+    Clump             Interpretation
+
+    or                the word, "or"
+
+    .*              some number of characters, maybe none
+
+    ten$             The word, "ten", at the end of the string
+
+Given   that  regular   expression  and   those  clumps   as  its
+interpretation, the following table shows the target string (with
+cursor), the "active"  clump, and a short explanation  of what is |
+happening.
+
+    Step  Target_String    Clump   Commentary
+
+      1.   foreshorten     or      "or"   doesn't   match   here.
+          A|                        Since this is the first clump,
+          |                        advance  the  cursor  and  try
+                                   again.
+
+      2.  f oreshorten     or      There   is   a   match   here.
+           A|                       Advance  the   cursor  by  the
+           |                       length  of  the  pattern.  Get
+                                   the next clump.
+
+      3.  for eshorten     .*    This   matches   the   longest
+             A|                     string it can.   It gobbles up
+             |                     the  remainder of  the string,
+                                   but remembers  there are other
+                                   choices.  The  next clump gets
+                                   control.
+
+      4.  foreshorten      ten$   There  is no  possibility of a
+                     A|             match.  Fall back.
+                     |
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+      5.  foreshorte n     .*    The indefinite  repeat of step
+                    A|              3 gives up a character, moving
+                    |              the  cursor   back  one.   The
+                                   match  attempt  restarts  with
+                                   the next clump.
+
+      6.  foreshorte n     ten$   Still no match.  Fail again.
+                    A|
+                    |
+
+      7.  foreshort en     .*    Once  again,  a  character  is
+                   A|               surrendered  from  the  series
+                   |               grabbed  in  step 3.   And the
+                                   next  clump  in the  list gets
+                                   control.
+
+      8.  foreshort en     ten$   There still aren't enough here
+                   A|               to match.   This attempt fails
+                   |               miserably.  But there is hope;
+                                   some  characters  still remain
+                                   from the match in step 3.
+
+      9.  foreshor ten     .*    Another   character   whittled
+                  A|                away in the name of progress.
+                  |
+
+     10.  foreshor ten     ten$   This one works!
+                  A|
+                  |
+
+At the  completion of the  last step in the  preceding table, the
+first and  third clumps have  matched copies of  themselves.  The
+indefinite  repetition  has  matched  the  string  of characters,
+"eshor".  Since the cursor will now be positioned to the right of
+the  last character,  no further  attempts to  match this pattern
+will be tried.
+
+It should be noted once again, that  that this is only a model of
+how pattern matching works.  In actuality, the compiler does many
+optimizations to reduce the amount  of backtracking which must be
+done.  However, the process shown above does provide a reasonably
+accurate model.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+6.3.  Labelling Substrings
+
+Those people  who are users  of the text editor  QEDX are already |
+familiar with the concept of  a "label" for a regular expression.
+In the context of the  "substitute" command, the occurrence of an
+"&amp;" on the right-hand side it  interpreted to mean a reference to
+whatever string was matched by the regular expression on the left
+side.  This is what allows the command
+
+                           s/quick/&amp;,/
+
+to change the familiar sentence fragment
+
+                  The quick brown fox jumped ...
+
+into
+
+                 The quick, brown fox jumped ...
+
+Labelled  substrings  in  the  context of  this  facility  are an
+extension  of  this interpretation.   They allow  references, not
+only to the entire string matched,  but also to pieces of it.  In
+the example of the preceding table, if the regular expression had
+been written as
+
+                         or{.*}Xten$
+
+then "X" would name the sequence of characters "eshor".  Assuming
+that QEDX supported this kind of facility, the command
+
+                    s/or{.*}Xten$/rXed/                     |
+
+would change "foreshorten" into the (dubious) word, "reshored".
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+The  "labelling" facility  listed here  allows up  to 94 labelled
+substrings to be a part of each match; one for each ASCII graphic
+character.   Nesting  is permitted  as in  "{{..*}X}Y" which
+names  the  same substring  with  the tags  "X"  and "Y".   It is
+illegal, however, to define a regular expression which causes the
+same label character to be defined simultaneously to two separate
+strings in the same match.  Thus,
+
+                       {.....}X{.....}X
+
+is  always  illegal (and  can,  in general,  only be  detected at
+run-time), while
+
+                     {[D]}X|{[L]}X
+
+is correct usage (and will always work, in fact).
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+7.  Some Examples
+
+This  section  contains  some  detailed examples  of  the pattern
+matching  process.    While  they  do  not   illustrate  all  the
+possibilities,  there are  enough here to  illustrate the general
+methodology.
+
+7.1.  Alternative Matches
+
+This  example  demonstrates the  use  of alternatives  in pattern
+matching.  The words  we are looking for are  "is" and "it".  The
+pattern we will use for this is
+
+                            i(s|t)
+
+which is decomposed in the following way.
+
+    Clump             Interpretation
+
+    i                 the letter, "i"
+
+    s|t              either  the letter  "s", or  the letter "t"
+                      (note  that  the parenthesis  only indicate
+                      the grouping and play no active role in the
+                      match)
+
+The  sentence  we will  apply  this pattern  to  is "This_is_it."
+Underscores  have been  used so that  the cursor  position can be
+shown unequivocally in the table.
+
+    Step  Target_String    Clump   Commentary
+
+      1.   This_is_it.     i       The character to  the right of
+          A|                        the  cursor  does  not  match.
+          |                        Since  there  are  more  left,
+                                   advance  the  cursor  and  try
+                                   again from the beginning.
+
+      2.  T his_is_it.     i       The  same result  (and action)
+           A|                       as in the previous step.
+           |
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+      3.  Th is_is_it.     i       This  time,  the  character to
+            A|                      the right is an "i".  Remember
+            |                      this as the  start of a match.
+                                   Advance  the   cursor  by  the
+                                   length  of  the  pattern  (one
+                                   character),  and try  the next
+                                   clump.
+
+      4.  Thi s_is_it.     s|t    Remember  this  as  a fallback
+             A|                     point.  Try the alternative on
+             |                     the left first.
+
+      5.  Thi s_is_it.     s       The character to  the right is
+             A|                     an "s".  Advance the cursor by
+             |                     the length of the pattern (one
+                                   character).  Since this is the
+                                   end  of the  clumps, the match
+                                   succeeds.  However,  there are
+                                   characters left  in the string
+                                   so restart the  match from the
+                                   beginning   (and   forget  the
+                                   saved fallback point).
+
+      6.  This _is_it.     i       The  character  to  the  right
+              A|                    doesn't  match.   Advance  the
+              |                    cursor and start again.
+
+      7.  This_ is_it.     i       The     character     matches.
+               A|                   Remember  the   start  of  the
+               |                   second  match in  this string.
+                                   Advance  the   cursor  by  the
+                                   length  matched,  and  try the
+                                   second clump.
+
+      8.  This_i s_it.     s|t    Remember  this  as  a fallback
+                A|                  point.  Try the alternative on
+                |                  the left first.
+
+      9.  This_i s_it.     s       The character to  the right is
+                A|                  an "s".  Advance the cursor by
+                |                  the length of the pattern (one
+                                   character).  Since this is the
+                                   end of the  clumps, the second
+                                   match    succeeds.    However,
+                                   there  are characters  left in
+                                   the  string   so  restart  the
+                                   match from  the beginning (and
+                                   forget   the   saved  fallback
+                                   point again).
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+     10.  This_is _it.     i       Try the first clump again.  It
+                 A|                 fails  to match  so we advance
+                 |                 the cursor and start again.
+
+     11.  This_is_ it.     i       This time  there is an  "i" to
+                  A|                the   right  of   the  cursor.
+                  |                Remember  the   start  of  the
+                                   third     potential     match.
+                                   Advance  the cursor  as before
+                                   and move to the next clump.
+
+     12.  This_is_i t.     s|t    Mark this cursor position as a
+                   A|               fallback  point  and  try  the
+                   |               clump on the left.
+
+     13.  This_is_i t.     s       The character to  the right is
+                   A|               not  an "s".   The match would
+                   |               fail  if not  for the fallback
+                                   point established  in step 12.
+                                   In  this  case,  it  does  not
+                                   involve  any  readjustment  of
+                                   the cursor.
+
+     14.  This_is_i t.     s|t    Having come back  to a restart
+                   A|               position,   try  to   use  the
+                   |               pattern  on   the  right  (but
+                                   remember  that   there  is  no
+                                   further recourse  if something
+                                   fails after this).
+
+     15.  This_is_i t.     t       This  pattern  also  succeeds.
+                   A|               The  start  and  size  of  the
+                   |               third   successful   match  is
+                                   remembered.   The   cursor  is
+                                   advanced  by  the size  of the
+                                   match.     There    are   more
+                                   characters  left.   The  great
+                                   mandala continues.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+     16.  This_is_it .     i       The character to  the right of
+                    A|              the cursor is not an "i".  The
+                    |              cursor is  advanced.  However,
+                                   because no more characters are
+                                   left(1)  to  the right  of the
+                                   cursor, no  further tries will
+                                   be made.
+
+The  results  returned  from   this  pattern-match  attempt  will
+indicate  that  there were  three matches  in the  target string.
+They occurred at positions 3, 6,  and 9.  All were two characters
+long.
+
+7.2.  Recursive Patterns
+
+This   example    demonstrates   the   use    of   recursion   in
+pattern-matching.  In this case, we will use a simplified form of
+arithmetic expressions.   If we define  the arithmetic expression
+as:
+
+     1) a variable name, or
+
+     2) a variable  name followed by  an operator followed  by an
+        expression, or
+
+     3) an expression enclosed in parentheses,
+
+then the regular expression which matches this is given by
+
+               [abcde][+-*/]&amp;|(&amp;)|[abcde]
+
+where  the  variable names  have  been simplified  to  the single
+characters chosen from  the first five letters of  the lower case
+alphabet,  and the  operators to those  of addition, subtraction,
+multiplication, and division.  This pattern is broken down as
+
+    Clump             Interpretation
+
+    [abcde]         a variable name
+
+    [+-*/]          an arithmetic operator
+
+________________________________________
+
+(1) In  fact,  this  match  attempt  will  never  be  made.   The
+    translator will recognize the fact that this pattern needs at
+    least two characters to succeed  and pass this information to
+    the  run-time.  At  this point,  there aren't  two characters
+    left.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+    &amp;                an occurrence of an expression
+
+    (                 the character, "("
+
+    &amp;                an occurrence of an expression
+
+    )                 the character, ")"
+
+    [abcde]         a variable name
+
+The alternation  clumps have been omitted  from the discussion as
+previously.  As a test case, we will use the string
+
+                            a+(b*(c))
+
+which  is an  example of  most all  the items  we have informally
+mentioned above.  To simplify  the following discussion, however,
+the  alternations and  fallback points  will be  mentioned in the
+commentary rather than being given explicitly as separate steps.
+
+    Step  Target_String    Clump       Commentary
+
+      1.   a+(b*(c))       [abcde]   There  is a  variable name
+          A|                            to   the   right   of  the
+          |                            cursor.    However,  there
+                                       are       two      untried
+                                       possibilities  to  use  if
+                                       something    goes    wrong
+                                       later.      Advance    the
+                                       cursor,  and try  the next
+                                       clump.
+
+      2.  a +(b*(c))       [+-*/]    There  is  an  operator to
+           A|                           the  right of  the cursor.
+           |                           Advance  it by  the length
+                                       of   the    pattern   (one
+                                       character)  and   try  the
+                                       next clump.
+
+      3.  a+ (b*(c))       &amp;          Remember  this  as  return
+            A|                          point from  recursion.  Do
+            |                          not  advance  the  cursor,
+                                       but  "call"  ourselves  to
+                                       start with the first clump
+                                       again.
+
+      4.  a+ (b*(c))       [abcde]   This  doesn't  match;  but
+            A|                          there   are   alternatives
+            |                          left to try.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+      5.  a+ (b*(c))       (           This  alternative matches.
+            A|                          Advance the  cursor by the
+            |                          length  of the  match (one
+                                       character)     and    pass
+                                       control to the next clump.
+                                       Remember  that   there  is
+                                       still one  other remaining
+                                       alternative from step 3.
+
+      6.  a+( b*(c))       &amp;          This is  another recursive
+             A|                         "call"  on  ourselves.  At
+             |                         this    point,    we   are
+                                       three-deep in invocations,
+                                       the other  two having been
+                                       started at steps 1 and 3.
+
+      7.  a+( b*(c))       [abcde]   This one matches.  Advance
+             A|                         the  cursor by  the length
+             |                         of  the match  and try the
+                                       next clump.  Remember that
+                                       there   are    two   other
+                                       alternative  patterns left
+                                       untried   (besides   those
+                                       pending from earlier).
+
+      8.  a+(b *(c))       [+-*/]    This also  matches.  Looks
+              A|                        like  we're on  a roll, so
+              |                        advance  the  cursor again
+                                       and continue with the next
+                                       clump.
+
+      9.  a+(b* (c))       &amp;          Once   again,   we  "call"
+               A|                       ourselves to  continue the
+               |                       pattern.   This  will make
+                                       the   fourth    level   of
+                                       invocation.
+
+     10.  a+(b* (c))       [abcde]   Nothing  here  like  that;
+               A|                       maybe the next alternative
+               |                       will have some luck.
+
+     11.  a+(b* (c))       (           That   alternative   looks
+               A|                       fine.  Step the cursor and
+               |                       try the next clump.
+
+     12.  a+(b*( c))       &amp;          Another          recursive
+                A|                      invocation.
+                |
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+     13.  a+(b*( c))       [abcde]   This one matches  so we do
+                A|                      the  customary  things  to
+                |                      the  cursor  and  list  of
+                                       clumps.    However,  there
+                                       are  untried things  to do
+                                       if we fail  to match later
+                                       on (hint, hint).
+
+     14.  a+(b*(c ))       [+-*/]    This  one  fails.  Restore
+                 A|                     things to  where they were
+                 |                     at  the point  of the last
+                                       alternative   choice,  and
+                                       retry  with  the  next one
+                                       (if any) in line.
+
+     15.  a+(b*( c))       (           This    is     the    next
+                A|                      alternative  to  try (left
+                |                      over   from    step   13).
+                                       Unfortunately,   it   also
+                                       fails.  So we try the last
+                                       alternative  available  to
+                                       us.  If that doesn't work,
+                                       we  will   report  failure
+                                       back  to the  last untried
+                                       alternative  prior  to us,
+                                       and so on.
+
+     16.  a+(b*( c))       [abcde]   This   one   matches.   We
+                A|                      advance the  cursor by the
+                |                      length  of the  match (one
+                                       character).       However,
+                                       there  are no  clumps left
+                                       in  the  list.   Since  we
+                                       were called as a recursive
+                                       invocation  from  step 13,
+                                       we  return  control  there
+                                       leaving  the   cursor  and
+                                       match information alone.
+
+     17.  a+(b*(c ))       )           This  matches   too.   The
+                 A|                     cursor is  advanced.  This
+                 |                     is the end of this portion
+                                       of  the  pattern.  Control
+                                       returns to the "caller" at
+                                       step 9.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+     18.  a+(b*(c) )       &lt;NONE&gt;      There   is   no  successor
+                  A|                    clump to  pass control to.
+                  |                    The  pattern  which called
+                                       us  from  step  9  was one
+                                       which   ended    with   an
+                                       invocation     of    "|&amp;".
+                                       Therefore,  the expression
+                                       ends  at this  point.  The
+                                       cursor is  not changed and
+                                       this   "returns"   to  its
+                                       caller at step 6.
+
+     19.  a+(b*(c) )       )           This   is    the   pattern
+                  A|                    following the "&amp;" invoked
+                  |                    by  step  6.   It matches,
+                                       advances  the  cursor, and
+                                       (since this is  the end of
+                                       a  successful alternative)
+                                       returns  to its  caller at
+                                       step 3.
+
+     20.  a+(b*(c))        &lt;NONE&gt;      The same  sequence happens
+                   A|                   here that happened in step
+                   |                   18.   The  alternative has
+                                       successfully matched.  The
+                                       only  difference  is  that
+                                       the "caller"  was actually
+                                       the    run-time    support
+                                       software.    It  initiated
+                                       this  match  attempt  with
+                                       step  1.   Since  all  the
+                                       clumps have  been used, we
+                                       have   had   a  successful
+                                       match.    Moreover,  there
+                                       are no  further characters
+                                       left in the string, so all
+                                       processing is finished.
+
+The results returned from this match will show a pattern detected
+starting at position 1 which has a length of 9.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+There are  a few general  points to be noted  about the preceding
+example and about recursion in general.
+
+     1) If untried alternatives exist at  the end of a particular
+        "invocation", they  will be discarded once  that level of
+        recursion returns to  its "caller".  Untried alternatives
+        from previous levels are still available, however.(1)
+
+     2) Recursive expressions are easy to write, and even natural
+        for  patterns  involving  nested  constructs.   They  can
+        easily go awry if the  writer does not understand clearly
+        how the matches will be made.
+
+     3) The   use   of  labelled   substrings   within  recursive
+        expressions will  almost always cause  the same character
+        to  be  associated  with  more than  one  substring  in a
+        pattern.   This is  an error  as far  as the  run-time is
+        concerned.
+
+     4) Because  of the  way recursion  works, we  cannot write a
+        pattern to match &lt;expr&gt; &lt;op&gt; &lt;expr&gt; as "&amp;[+-*/]&amp;" The
+        reason is  that the initial "&amp;"  causes a left-recursion
+        loop which will be detected  by the run-time and reported
+        as an error.
+
+________________________________________
+
+(1) Untried  alternatives  mimic  the  action  of  PL/I condition
+    handlers with respect to recursive procedures.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+8.  String versus Line Mode                                       |
+                                                                  |
+The discussion  up until now  has presumed that the  string to be |
+matched was viewed as an  unbroken series of characters.  This is |
+called "string" mode.   However, it is possible to  view a string |
+to  be examined  as a  series of  "lines", that  is, sequences of |
+characters delimted by ASCII  newline characters.(1)  By changing |
+the way the  sequence of characters is viewed,  rapid searches of |
+textual data are possible.                                        |
+                                                                  |
+                                                                  |
+This  other  ("line")  model  of character  sequences  means that |
+certain  regular  expressions  will have  to  perform differently |
+depending on whether the character sequence is viewed as a single |
+string, or a series of  lines.  The following discussion explains |
+the differences.                                                  |
+                                                                  |
+                                                                  |
+Item        String Mode                  Line Mode
+                                                                  |
+Ordinary    matches a newline if the     ditto
+Character   ordinary       character
+            itself is a newline
+                                                                  |
+.          matches   any  character     matches   any  character
+            including a newline          except a newline
+                                                                  |
+[  ]      matches a newline if the     ditto
+            newline  is  included in
+            the  set  of  characters
+            within the brackets
+                                                                  |
+[^  ]    matches  a newline  if a     never matches a newline
+            newline is  not included
+            in the set of characters
+            within the brackets
+                                                                  |
+^          matches before the first     matches before the first
+            character of the string      character of the string,
+                                         or   immediately  before
+                                         any  character  preceded
+                                         by a newline
+                                                                  |
+
+________________________________________
+
+(1) The entire body of a Multics mail text is an example of this.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+$          matches  after  the last     matches  after  the last
+            character of a string        character  of  a string,
+                                         or  before a  newline in
+                                         the middle  or end(1) of
+                                         the string
+
+________________________________________
+
+(1) The newline is stepped over in  this case, but is not counted
+    as being in the part of the string that is matched.  Newlines
+    may  only  be  included  in  matches  by  including  them  as
+    "ordinary characters" in a pattern definition.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+9.  Subroutines
+
+The following  pages describe subroutines  available to translate
+strings  which  define regular  expressions into  Multics machine
+code, and apply the patterns they define to "target" strings.     *
+
+The  include  files  used  as  part  of  the  regular  expression
+processing are described in a separate part of this document.
+
+All  routines  described in  this  section are  interruptable and
+re-entrant.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+___________________                           ___________________
+
+rx_$get_escape_char                           rx_$get_escape_char
+___________________                           ___________________
+
+NAME:  rx_$get_escape_char
+
+This entry  returns the present  value of the  "escape" character
+for regular expressions.
+
+USAGE
+
+declare rx_$get_escape_char entry (char(1) varying);
+
+call rx_$get_escape_char (escape_char);
+
+ARGUMENTS
+
+escape_char
+     is  the present  value of  the process-local  default escape
+     character.  (Output)
+
+NOTES:
+
+If no default  escape character has been established  at the time
+of  the call  to this entry  point, a zero-length  string will be
+returned.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+___________________                           ___________________
+
+rx_$set_escape_char                           rx_$set_escape_char
+___________________                           ___________________
+
+NAME:  rx_$set_escape_char
+
+This  entry  defines  the character  to  be used  as  the default
+"escape"  character  when  one  is  not  supplied  in  a  call to
+rx_$translate.  It also returns the value of the escape character
+which was set prior to calling this entry.
+
+USAGE
+
+declare rx_$set_escape_char entry (char(1)    varying,    char(1)
+                                   varying);
+
+call rx_$set_escape_char (new_escape_char, old_escape_char);
+
+ARGUMENTS
+
+new_escape_char
+     is  the  new  value  for  the  process-local  default escape
+     character.  (Input)
+
+old_escape_char
+     is the  value of the process-local  default escape character
+     before the call to this entry.  (Output)
+
+NOTES:
+
+The  present value  of the escape  character may  be cancelled by
+setting new_escape_char to the null string.  All subsequent calls
+to rx_$translate must then explicitly provide an escape character
+if they wish regular expression meta-characters to be recognized.
+
+If no default  escape character has been established  at the time
+of the  call to this  entry point (or  it has been  cancelled), a
+zero-length string will be returned.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+___________________                           ___________________
+
+rx_$set_escape_char                           rx_$set_escape_char
+___________________                           ___________________
+
+The user should choose a value  for the escape character which is
+not  likely  to  be  typed in  the  normal  course  of specifying
+patterns  to avoid  unexpected results.   Choosing a  period, for
+example, is  probably a "bad"  idea because it  occurs frequently
+and  using it  as the escape  character also prevents  its use in
+matching an arbitrary character.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+_____________                                       _____________
+
+rx_$translate                                       rx_$translate
+_____________                                       _____________
+
+NAME:  rx_$translate
+
+This subroutine  translates a regular  expression defining string
+into an  internal form.  This  internal form can  subsequently be
+applied to other strings by rx_$execute to determine whether they
+"match" the pattern defined by the regular expression.
+
+USAGE
+
+declare rx_$translate entry (char(*), char(1) varying, ptr, fixed |
+                             bin(35));                            |
+
+call rx_$translate (rx_string, escape_char, form_p, code);        |
+
+ARGUMENTS
+
+rx_string
+     is  the  string  defining  the  regular  expression pattern.
+     (Input)
+
+escape_char
+     is the character which should be considered to be the escape
+     or    "lead-in"    character    for    regular    expression
+     meta-characters.  (Input)
+                                                                  *
+form_p
+     is  a  pointer  to  the   translated  form  of  the  regular
+     expression.  (Output)
+
+code
+     is a standard status code.  (Output)
+
+NOTES:
+
+If  escape_char  is  passed  in  as  a  zero-length  string,  the
+character established  as the "default" escape  character will be
+used.   If no  character has  previously been  established as the
+default escape  character, no regular  expression meta-characters
+will be recognized.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+_____________                                       _____________
+
+rx_$translate                                       rx_$translate
+_____________                                       _____________
+
+Processing of  "doubled" escape characters  takes precedence over
+recognition of  meta-characters.  For example, if  "."  is chosen
+as the escape character, then  ".."  is interpreted as matching a
+period, not any non-null character.
+
+The  return value  "form_p" can be  considered a  "ticket" to the |
+translated form of the regular  expression.  It will be needed in |
+subsequent calls  to rx_$execute or rx_$search  to accomplish the |
+actual searching of  strings.  It is valid only  for the duration |
+of  the process.   It can be  voided during  execution by calling |
+rx_$release to return the space it occupies.                      |
+
+If the string  defining the regular expression to  be compiled is |
+malformed, or if the translator encounters an internal error, the |
+return     code     will     be     set     to     the     value, |
+error_table_$translation_failed.  In addition, rx_$translate will |
+signal sub_err_ passing additional information about the location |
+of  the error,  if known.  This  information is  described by the |
+include file, rx_error_info.                                      |
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+_________________                               _________________
+
+rx_$translate_old                               rx_$translate_old
+_________________                               _________________
+
+NAME:  rx_$translate_old
+
+This  entry point  performs a  translation function  identical to
+that  defined  by  rx_$translate,  and  returns  the  same result
+information.   The  difference  lies  in  the  syntax  of regular
+expressions.   This  entry  point  accepts  the  form  of regular
+expression defined for the "qedx" command.(1)  It also recognizes
+the "c"  convention to strip  regular expression meta-characters
+of their special meanings.
+
+USAGE
+
+declare rx_$translate_old entry (char(*), ptr, fixed bin(35));    |
+
+call rx_$translate_old (rx_string, form_p, code);                 |
+
+ARGUMENTS
+
+rx_string
+     is  the  string  defining  the  regular  expression pattern.
+     (Input)
+                                                                  *
+form_p
+     is  a  pointer  to  the   translated  form  of  the  regular
+     expression.  (Output)
+
+code
+     is a standard status code.  (Output)
+
+________________________________________
+
+(1) See  manual #AG92,  Multics Programmer's  Manual, Command and
+    Active Functions; "NOTES ON REGULAR EXPRESSIONS"
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+_________________                               _________________
+
+rx_$translate_old                               rx_$translate_old
+_________________                               _________________
+
+NOTES:
+
+The  structure returned  as the  result of  translating the given
+regular expression is  exactly the same as the  one documented by
+rx_$translate.  There is no way that the run-time support routine
+can know from what form the regular expression derived.
+                                                                  *
+
+This  entry is  being provided  to allow  the replacement  of the
+interpreter presently included in the "search_file_" subroutine.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+___________                                           ___________
+
+rx_$execute                                           rx_$execute
+___________                                           ___________
+
+NAME:  rx_$execute
+
+This  subroutine  applies  the  translated form  of  a previously
+defined  regular  expression  pattern  to a  "target"  string and
+returns information about any "matches" which occur.
+
+USAGE
+
+declare rx_$execute entry (ptr, char(*), ptr, ptr, fixed bin(35), |
+                           fixed bin(35));                        |
+
+call rx_$execute (form_p,  string,  control_info_p, match_info_p, |
+                  match_count, code);                             |
+
+ARGUMENTS
+
+form_p
+     is  a  pointer  to  the   translated  form  of  the  regular
+     expression pattern.  (Input)
+
+string
+     is the string to be tested.  (Input)
+
+control_info_p
+     is a pointer to  a structure, rx_execute_ctl, describing the
+     kind of match to be done and the results desired.  (Input)
+                                                                  |
+match_info_p                                                      |
+     is  a  pointer  to  a  structure  describing  the  places in |
+     "string"  where   the  regular  expression   represented  by |
+     "form_p" matched.  This data  can be selectively returned to |
+     the  user  under control  of  the options  expressed  in the |
+     structure pointed to by "control_info_p".  (Input/Output)    |
+                                                                  |
+match_count                                                       |
+     is the number of times the regular expression represented by |
+     "form_p" matched the string given by "string".  (Output)     |
+
+code
+     is a standard status code.  (Output)
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+___________                                           ___________
+
+rx_$execute                                           rx_$execute
+___________                                           ___________
+
+NOTES:
+
+The  input  argument,  form_p,  identifies  the  location  of the
+translated regular expression.                                    *
+
+The information specifying whether labels  are desired as part of
+the returned info; whether one, all,  or a bounded set of matches
+is desired; and similar information is contained in the structure
+described by rx_execute_ctl.incl.pl1.
+
+Upon completion  of the routine, information  about the places in |
+the  string where  the pattern matched  is returned  to the user. |
+This  information  is  contained  in the  segment  pointed  to by |
+match_info_p and is described by  the structures contained in the |
+include file, rx_match_info.incl.pl1 (q.v.).                      |
+
+If  the  caller specifies  that  details on  the match  should be |
+returned,  then a  temp segment  will be  allocated to  hold that |
+information.   A  pointer  to  the segment  will  be  returned in |
+match_info_p.  It  may be returned by  passing it to rx_$release. |
+As  an  efficiency consideration,  however,  this segment  may be |
+re-used  by passing  it to  subsequent calls  to rx_$execute thus |
+saving the time of disposal and re-allocation.                    |
+                                                                  |
+                                                                  |
+Errors  which  occur  during  the  attempted  application  of the |
+translated  pattern  to the  target string  will be  reported via |
+calls  to  sub_err_ so  that additional  explanatory text  can be |
+given.                                                            |
+                                                                  |
+                                                                  |
+All  non_zero  status  returns,  save   one,  from  the  call  to |
+rx_$execute are fatal.   In the fatal cases, the  contents of the |
+match  segment  are indeterminate.   A  returned status  value of |
+error_table_$noalloc is indicative of  the single non-fatal case. |
+It  signifies  that  the match  segment  was not  long  enough to |
+contain all the match results.   In this case, the returned match |
+data are consistent and properly threaded; and in most instances, |
+application may begin again later on the substring after the last |
+match described with no ill effect.                               |
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+___________                                           ___________
+
+rx_$release                                           rx_$release
+___________                                           ___________
+
+NAME:  rx_$release                                                |
+                                                                  |
+                                                                  |
+This  subroutine  de-allocates the  storage obtained  for various |
+return   arguments   from  the   rx_$translate   and  rx_$execute |
+entrypoints.                                                      |
+                                                                  |
+                                                                  |
+USAGE                                                             |
+                                                                  |
+                                                                  |
+declare rx_$release entry (ptr, fixed bin(35));                   |
+                                                                  |
+call rx_$release (object_p, code);                                |
+                                                                  |
+                                                                  |
+ARGUMENTS                                                         |
+                                                                  |
+                                                                  |
+object_p                                                          |
+     is  a pointer  to some object  returned by one  of the other |
+     rx_$XXX entrypoints.  It can, for example, be the translated |
+     regular   expression   form   returned   by   rx_$translate. |
+     (Input/Output)                                               |
+                                                                  |
+code                                                              |
+     is a standard status code.  (Output)                         |
+                                                                  |
+                                                                  |
+NOTES:                                                            |
+                                                                  |
+                                                                  |
+If  "object_p" is  a null pointer  upon entry,  then this routine |
+will set the status code to zero and return.                      |
+                                                                  |
+                                                                  |
+If "object_p" legitimately points at one of the items returned by |
+an rx_$XXX  entrypoint, then the storage  occupied by that object |
+will be de-allocated and "object_p" will be set to null.          |
+                                                                  |
+                                                                  |
+In      all      other     cases,      the      error     status, |
+error_table_$unimplemented_version, will be  returned and nothing |
+will  be  done to  the input  pointer value  or the  locations it |
+references.                                                       |
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+__________                                             __________
+
+rx_$search                                             rx_$search
+__________                                             __________
+
+NAME:  rx_$search                                                 |
+                                                                  |
+                                                                  |
+This subroutine  searches for the  first occurrence of  a regular |
+expression  in a  given string.   Either the  entire string  or a |
+substring may be examined for the pattern.                        |
+                                                                  |
+                                                                  |
+USAGE                                                             |
+                                                                  |
+                                                                  |
+declare rx_$search entry (ptr,  char(*),   fixed  bin(21),  fixed |
+                          bin(21), fixed  bin(21), fixed bin(21), |
+                          fixed bin(35));                         |
+                                                                  |
+call rx_$search (form_p,    string    scan_start,    scan_length, |
+                 match_start, match_length, code);                |
+                                                                  |
+                                                                  |
+ARGUMENTS                                                         |
+                                                                  |
+                                                                  |
+form_p                                                            |
+     is  a  pointer  to  the   translated  form  of  the  regular |
+     expression.  (Input)                                         |
+                                                                  |
+string                                                            |
+     is the string to be searched.  (Input)                       |
+                                                                  |
+scan_start                                                        |
+     is  the  position within  "string"  where searching  for the |
+     pattern may commence.  (Input)                               |
+                                                                  |
+scan_length                                                       |
+     is  the  number  of characters,  beginning  at "scan_start", |
+     which  may be  examined for  the occurrence  of the pattern. |
+     (Input)                                                      |
+                                                                  |
+match_start                                                       |
+     is the index position relative  to the beginning of "string" |
+     where the first match occurred.  (Output)                    |
+                                                                  |
+match_length                                                      |
+     is  the  number  of  characters  in  "string",  beginning at |
+     "match_start",  which  were included  in  the pattern-match. |
+     (Output)                                                     |
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+__________                                             __________
+
+rx_$search                                             rx_$search
+__________                                             __________
+
+code                                                              |
+     is a standard status code.  (Output)                         |
+                                                                  |
+                                                                  |
+NOTES:                                                            |
+                                                                  |
+                                                                  |
+If "scan_length"  is given as the  value -1, it is  taken to mean |
+the rest of the string from "scan_start" to "length(string)".     |
+                                                                  |
+Other than using -1 for "scan_length", all substrings defined via |
+the  use  of  "scan_start"   and  "scan_length"  must  be  wholly |
+contained within "string" itself.                                 |
+                                                                  |
+                                                                  |
+If the pattern  does not occur within the  string specified, both |
+"match_start" and "match_length" will be set to zero.             |
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+______________                                     ______________
+
+rx_$substitute                                     rx_$substitute
+______________                                     ______________
+
+NAME:  rx_$substitute
+
+This entry implements the algorithm  for modifying a string given
+a  set  of  match  data derived  from  application  of  a regular
+expression  to  the  string   and  a  change  specification.   In
+subroutine  terms,  it performs  like  the qedx  "substitute" (s)
+command.
+
+USAGE
+
+declare rx_$substitute entry (char(*),    ptr,   char(1) varying,
+                              char(*),   char(*),  fixed bin(21),
+                              fixed bin(35));
+
+call rx_$substitute (input_string,   match_data_p,   escape_char,
+                     change_spec,                  output_string,
+                     output_string_used, code);
+
+ARGUMENTS
+
+input_string
+     is the  string to which the  regular expression was applied.
+     (Input)
+
+match_data_p
+     is  a pointer  to the  match data  structure, rx_match_info,
+     returned from the call to rx_$execute.  (Input)
+
+escape_char
+     is the character  which can be used to  override the default
+     escape  character  in  recognizing  references  to  labelled
+     substrings in the match data.  (Input)
+
+change_spec
+     is a string  which describes what to substitute  for each of
+     the matched portions of "input_string".  (Input)
+
+output_string
+     is the place  where the transformed string is  to be stored.
+     (Output)
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+______________                                     ______________
+
+rx_$substitute                                     rx_$substitute
+______________                                     ______________
+
+output_string_used
+     is a value that indicates how long the resultant string was.
+     It  may   indicate  a  value  longer   than  the  length  of
+     "output_string" (see NOTES below).  (Output)
+
+code
+     is a standard status code.  (Output)
+
+NOTES:
+
+The  algorithm  used to  affect the  transformation of  the input
+string according to the change specifications is as follows:
+
+A)   The  internal  escape  character  is  set  to  the  value of
+     "escape_char".   If this  is a zero-length  string, then the
+     default value returned by rx_$get_escape_char is used.
+
+B)   The input string is broken down into a series of substrings.
+     The  criteria for  the break  is that  each piece  is either
+     wholly  described  by  one  of  the  elements  in  the match
+     information (rx_match_data_template), or  does not intersect
+     any of the matched parts.
+
+C)   Once this has been done,  the substrings of the input string
+     are  examined one  at a  time from  left to  right.  Each is
+     processed according to the  rules described by the remainder
+     of this section.
+
+D)   If this substring  is not part of a  successful match, it is
+     copied to  the output string  as is.  The  next substring to
+     the right is then examined.
+
+E)   Otherwise, each character of the change specification string
+     is  examined in  turn.  If it  is not equal  to the internal
+     escape character, the  change specification character itself
+     is copied to  the output string.  And the  next character of
+     the change specification is examined.
+
+F)   If  the  current change  specification character  equals the |
+     internal  escape  character,   the  following  character  is |
+     checked  to  see  if it  a  second occurence  of  the escape |
+     character.  If this  is so, a single instance  of the escape |
+     character is copied to the output string.                    |
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+______________                                     ______________
+
+rx_$substitute                                     rx_$substitute
+______________                                     ______________
+
+G)   Otherwise,  if  the current  change  specification character |
+     equals   the  internal   escape  character,   the  following |
+     character is checked to see if it is a valid label character
+     for regular expression sub-matches.
+
+H)   If it is valid, a check is  made to see if a "label" by that
+     name was defined during the  match.  If so, the substring of
+     the  input  string matched  by  the label  is copied  to the
+     output  string.   If not,  the  label character  is ignored;
+     i.e.,  nothing is  copied to  the output  string.  In either
+     case,   the   next   change   specification   character   is
+     subsequently examined.
+
+If both the  input escape character supplied to  this routine and
+the  default escape  character obtained  from rx_$get_escape_char
+are  zero-length  strings, no  labels will  be recognized  in the
+change specification.  It is an error to end "change_spec_string"
+with the escape character.
+
+Under the rules outlined above,  a pair of escape characters will |
+always cause  a single escape  character to appear  in the output |
+string, even if there was  a labelled substring which was "named" |
+by the escape character.                                          |
+
+The return  value, "output_string_used", will  contain the length
+of the transformed string in  all cases.  When "output_string" is
+too small to contain the result,  "code" will be set to the value
+error_table_$smallarg and "output_string_used" will have the size
+needed to fully contain the  result.  Otherwise, the result is in
+substr(output_string, 1, output_string_used).
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+_____________________                       _____________________
+
+rx_$get_newline_count                       rx_$get_newline_count
+_____________________                       _____________________
+
+NAME:  rx_$get_newline_count                                      |
+                                                                  |
+                                                                  |
+This  functions  returns  the  maximum  number  of  lines  that a |
+translated  regular  expression will  match  if it  applied  to a |
+target string  in "line mode".  If the  expression would match an |
+arbitrary number of lines, then  this function returns the value, |
+-1.                                                               |
+                                                                  |
+                                                                  |
+USAGE                                                             |
+                                                                  |
+                                                                  |
+declare rx_$get_newline_count entry   (ptr)                       |
+                              returns (fixed bin(21));            |
+                                                                  |
+nl_cnt = rx_$get_newline_count (form_p);                          |
+                                                                  |
+                                                                  |
+ARGUMENTS                                                         |
+                                                                  |
+                                                                  |
+form_p                                                            |
+     is  a  pointer  to  the   translated  form  of  the  regular |
+     expression pattern.  (Input)                                 |
+                                                                  |
+                                                                  |
+NOTES:                                                            |
+                                                                  |
+                                                                  |
+If the argument supplied is null,  or does not point to a version |
+of  the  translated regular  expression,  then this  routine will |
+signal the sub_error_ condition  by calling the sub_err_ routine. |
+The text of the sub_error_info  structure will contain the reason |
+for the error.   Upon return from the signal,  this function will |
+return the value, -1.                                             |
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+_____________________                       _____________________
+
+rx_$sub_error_handler                       rx_$sub_error_handler
+_____________________                       _____________________
+
+NAME:  rx_$sub_error_handler                                      |
+                                                                  |
+                                                                  |
+This  entry  provides  a  simple,  common  way  of  handling  the |
+sub_error_ condition  raised when errors are  detected in various |
+rx_  routines.   It provides  for obtaining  the most  recent rx_ |
+error   frame,   interpreting  the   information   supplied,  and |
+displaying it via standard output mechanisms.                     |
+                                                                  |
+                                                                  |
+USAGE                                                             |
+                                                                  |
+                                                                  |
+declare rx_$sub_error_handler entry (entry options(variable),     |
+                                     char(*), fixed bin(35));     |
+                                                                  |
+call rx_$sub_error_handler (error_report_proc,      callers_name, |
+                            code);                                |
+                                                                  |
+                                                                  |
+ARGUMENTS                                                         |
+                                                                  |
+                                                                  |
+error_report_proc                                                 |
+     is  a procedure  which can  be called  to display  the error |
+     information to the user (see NOTES below).  (Input)          |
+                                                                  |
+callers_name                                                      |
+     is  the name  of the routine  on whose  behalf the condition |
+     handling is taking place.  (Input)                           |
+                                                                  |
+code                                                              |
+     is a standard status code.  (Output)                         |
+                                                                  |
+                                                                  |
+NOTES:                                                            |
+                                                                  |
+                                                                  |
+This entry  assumes that it  is being called  as the result  of a |
+sub_error_  condition signalled  by an rx_  routine.  It searches |
+backward on the stack for  the most recent, appropriate condition |
+frame and interprets the information supplied.  It then calls the |
+routines  given as  the value of  "error_report_proc" passing the |
+interpreted error information.                                    |
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+_____________________                       _____________________
+
+rx_$sub_error_handler                       rx_$sub_error_handler
+_____________________                       _____________________
+
+This  routine assumes  that the "error_report_proc"  has the same |
+calling    sequence    as     com_err_    and    its    siblings: |
+com_err_$suppress_name,                          active_fnc_err_, |
+active_fnc_err_$af_suppress_name.      This     routine     calls |
+"error_report_proc"  passing it  the status code  supplied in the |
+call to sub_err_,  the value given as "callers_name"  as the name |
+of the reporting entity, and  ioa_ control strings and parameters |
+describing the error condition.                                   |
+                                                                  |
+                                                                  |
+The  return  status code  from this  entry indicates  whether the |
+transmission of the error information to the user was successful. |
+It      is      zero      if     it      was.       The     code, |
+error_table_$action_not_performed, will be  returned if the frame |
+could not be  located; and error_table_$unimplmented_version will |
+be returned if the frame was  present but the "info_ptr" given to |
+sub_err_ did not point to a valid instance of rx_error_info.  One |
+other  source  of non-zero  return codes  is find_condition_info_ |
+itself.                                                           |
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+10.  Commands and Active Functions
+
+The  following   pages  describe  several   commands  and  active
+functions built on the  regular expression subroutines documented
+earlier.   They  allow manipulation  and testing  of command-line
+arguments,  generalized selection,  and control  over the default
+escape character.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+______________                                     ______________
+
+rx_escape_char                                     rx_escape_char
+______________                                     ______________
+
+SYNTAX AS A COMMAND:
+
+   rx_escape_char {value}
+
+SYNTAX AS AN ACTIVE FUNCTION:
+
+   [rx_escape_char {value}]
+
+FUNCTION:  sets/prints/returns  the default escape  character for
+regular expression processing.
+
+ARGUMENTS:
+
+value
+   gives  the  character  to  be  used  as  the  default  regular
+   expression escape character.
+
+NOTES:
+
+Whether or not the first argument is supplied, the present escape
+character   will  be   printed  (command)   or  returned  (active
+function).   Unless "value"  is supplied, however,  no attempt to
+modify the character saved as the default will be made.
+
+If the string supplied for  "value" is longer than one character,
+the  first  character  of  the argument  will  become  the escape
+character.  In the case of command invocation, this instance will
+be noted as a warning.
+
+The default  escape character can  be cancelled by  supplying the
+null string as the value of the argument.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+__                                                             __
+
+rx                                                             rx
+__                                                             __
+
+SYNTAX AS A COMMAND:
+
+   rx opname regexp string1 ... stringN
+
+SYNTAX AS AN ACTIVE FUNCTION:
+
+   [rx opname regexp string1 ... stringN]
+
+FUNCTION:  translates the regular  expression given as the second
+argument  and,  depending  on  the  opname  given  as  the  first
+argument,  "applies" the  translated expression  to the following
+strings and returns a result.
+
+ARGUMENTS:
+
+opname
+   designates a list of possible operations to perform on the the
+   strings  given as  arguments.  Opnames  permitted, followed by
+   their alternate forms where applicable are:
+
+      change, chg
+      change_all, chga
+      change_some, chgs
+      count, ct
+      exclude, ex                                                 |
+      exclude_index, exi                                          |
+      include, in                                                 |
+      include_index, ini                                          |
+      match_count, mct
+      test
+
+   See  "List  of Operations"  below  for a  description  of each
+   opname, its syntax, and  specific application.  Operations are
+   arranged in the same order as above.
+
+regexp
+   is a string which defines a regular expression.  The syntax of |
+   this  string  is the  syntax  governing input  strings  to the |
+   entrypoint, rx_$translate.                                     |
+
+stringi
+   can  be  one or  more  arguments depending  on  the particular
+   operation to be performed.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+__                                                             __
+
+rx                                                             rx
+__                                                             __
+
+LIST OF OPERATIONS:
+
+Unless  otherwise  noted,  all   errors  detected  by  a  command
+invocation  will  be  reported   via  com_err_;  active  function |
+invocations   will    report   their   errors    via   calls   to
+active_fnc_err_.
+
+OPERATION:  change
+
+SYNTAX AS A COMMAND
+
+   rx change regexp change_spec string {strings}
+
+SYNTAX AS AN ACTIVE FUNCTION
+
+   [rx change regexp change_spec string {strings}]
+
+FUNCTION:   applies the  regular expression  given as  the second
+argument to its fourth  and following arguments.  Those arguments
+which the regular expression matches are transformed according to
+the  specifications  given as  the  third argument  and returned.
+Arguments that the regular expression does not match are returned
+unaltered.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+__                                                             __
+
+rx                                                             rx
+__                                                             __
+
+NOTES:
+
+The  transformation  of arguments  takes  place according  to the
+following  rules.(1)  For  purposes of this  example, the regular
+expression  escape  character  is  assumed  to  be  the backslash
+character, "".
+
+     A)   each  occurrence of  "regexp" in "strN"  is replaced by
+          "change_spec".
+
+     B)   if a construct of  the form "{regexp2}X" is evaluated
+          as  part  of  the  resulting  pattern-match,  then  any
+          occurrence of  "X" in "change_spec" is  replaced by the
+          string matched by "regexp2" during rule A above.
+
+     C)   the character, "&amp;", is predefined  to be a "label" for
+          the characters matched by  "regexp".  Its occurrence in
+          "change_spec" is treated as in rule B above.
+
+     D)   preceding any character in "change_spec" by a "c" will
+          cause  that  character  to be  copied  literally during
+          replacement, thus  negating the effects of  rules B and
+          C.
+
+These  rules  imply that  the "change"  operation functions  in a |
+manner  which is  similar to  the "substitute"  command(2) of the |
+qedx  editor; regexp  plays the role  of the  left-hand side, and
+change_spec  mimics the  right-hand side.   Each of  the argument
+stringN's  are   analogues  of  lines  in   a  text  buffer.   If
+"change_spec"  is a  null string,  any occurrence  of "regexp" in
+each argument will be deleted.
+
+________________________________________
+
+(1) These are the same actions  as implemented by the subroutine,
+    rx_$substitute.  In addition, if the default escape character
+    is  not one  of the characters  "{", "}", or  "&amp;", the user's
+    regular expression  is augmented to  be preceded by  "{" and
+    followed by "}&amp;" before it  is translated.  This allows easy
+    reference  to  the  entire   matched  string  by  the  change
+    specification.
+
+(2) The actions which take place  are similar.  The syntax of the
+    regular  expression  is that  of  rx_$translate, not  that of
+    rx_$translate_old (or qedx).
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+__                                                             __
+
+rx                                                             rx
+__                                                             __
+
+As an example, the command line
+
+     rx  change  "^f.{..*}X$"  X.fortran  [segs **]       |
+
+will change all two-component names  whose first component is "f"
+to  names  comprised  of  the  second  and  succeeding components
+suffixed  by  ".fortran".   All  other names  are  returned asis.
+Thus,  "f.foo.source"  becomes "foo.source.fortran";  but nothing
+happens to "x.pl1".
+
+OPERATION:  change_all
+
+SYNTAX AS A COMMAND
+
+   rx change_all regexp change_spec string {strings}
+
+SYNTAX AS AN ACTIVE FUNCTION
+
+   [rx change_all regexp change_spec string {strings}]
+
+FUNCTION:   applies the  regular expression  given as  its second
+argument to its fourth  and following arguments.  Those arguments
+which the regular expression matches are transformed according to
+the  specifications  given as  the  third argument  and returned.
+This functions returns an error  diagnostic if any argument fails
+to match the regular expression.
+
+NOTES:
+
+The  rules for  transforming arguments  are the  same as  for "rx
+change" (q.v.).
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+__                                                             __
+
+rx                                                             rx
+__                                                             __
+
+OPERATION:  change_some
+
+SYNTAX AS A COMMAND
+
+   rx change_some regexp change_spec string {strings}
+
+SYNTAX AS AN ACTIVE FUNCTION
+
+   [rx change_some regexp change_spec string {strings}]
+
+FUNCTION:   applies the  regular expression  given as  its second
+argument to its fourth  and following arguments.  Those arguments
+which the regular expression matches are transformed according to
+the  specifications  given as  the  third argument  and returned.
+Arguments that the regular expression does not match are returned
+unaltered.   This  function  returns  an error  diagnostic  if no
+argument can be matched by the regular expression.
+
+NOTES:
+
+The  rules for  transforming arguments  are the  same as  for "rx
+change" (q.v.).
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+__                                                             __
+
+rx                                                             rx
+__                                                             __
+
+OPERATION:  count
+
+SYNTAX AS A COMMAND
+
+   rx count regexp string {strings}
+
+SYNTAX AS AN ACTIVE FUNCTION
+
+   [rx count regexp string {strings}]
+
+FUNCTION:   applies the  regular expression  given as  its second
+argument   to  its   third  and  subsequent   arguments.   On  an
+argument-by-argument  basis,  it  returns   "1"  if  the  regular
+expression  matched  at  least  once in  that  argument,  and "0"
+otherwise.
+
+OPERATION:  exclude
+
+SYNTAX AS A COMMAND
+
+   rx exclude regexp string {strings}
+
+SYNTAX AS AN ACTIVE FUNCTION
+
+   [rx exclude regexp string {strings}]
+
+FUNCTION:   applies the  regular expression  given as  its second
+argument to  its third and  subsequent arguments.  It  returns as
+its result only those arguments  which do not "match" the regular
+expression.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+__                                                             __
+
+rx                                                             rx
+__                                                             __
+
+OPERATION:  exclude_index
+
+SYNTAX AS A COMMAND
+
+   rx exclude_index regexp string {strings}
+
+SYNTAX AS AN ACTIVE FUNCTION
+
+   [rx exclude_index regexp string {strings}]
+
+FUNCTION:   applies the  regular expression  given as  its second
+argument to  its third and  subsequent arguments.  It  returns as
+its result  the indices of  those arguments which  do not "match"
+the  regular  expression.   The  first  string  in  the  list  is
+considered to have an index value of 1.
+
+OPERATION:  include
+
+SYNTAX AS A COMMAND
+
+   rx include regexp string {strings}
+
+SYNTAX AS AN ACTIVE FUNCTION
+
+   [rx include regexp string {strings}]
+
+FUNCTION:   applies the  regular expression  given as  its second
+argument to  its third and  subsequent arguments.  It  returns as
+its  result  only  those  arguments  which  "match"  the  regular
+expression.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+__                                                             __
+
+rx                                                             rx
+__                                                             __
+
+OPERATION:  include_index
+
+SYNTAX AS A COMMAND
+
+   rx include_index regexp string {strings}
+
+SYNTAX AS AN ACTIVE FUNCTION
+
+   [rx include_index regexp string {strings}]
+
+FUNCTION:   applies the  regular expression  given as  its second
+argument to  its third and  subsequent arguments.  It  returns as
+its  result  the indices  of  those arguments  which  "match" the
+regular expression.  The first string  to be tested is considered
+to have an index value of 1.
+
+OPERATION:  match_count
+
+SYNTAX AS A COMMAND
+
+   rx match_count regexp string {strings}
+
+SYNTAX AS AN ACTIVE FUNCTION
+
+   [rx match_count regexp string {strings}]
+
+FUNCTION:   applies the  regular expression  given as  its second
+argument to  its third and  subsequent arguments.  It  returns as
+its result  the number of times  the regular expression "matched"
+in each argument on an argument-by-argument basis.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+__                                                             __
+
+rx                                                             rx
+__                                                             __
+
+OPERATION:  test
+
+SYNTAX AS A COMMAND
+
+   rx test regexp string {strings}
+
+SYNTAX AS AN ACTIVE FUNCTION
+
+   [rx test regexp string {strings}]
+
+FUNCTION:   applies  the regular  expression  given as  its first
+second    to    all    its   subsequent    arguments.     On   an
+argument-by-argument  basis,  it  returns "true"  if  the pattern
+defined by the regular expression  appears in the given argument,
+and "false" otherwise.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+11.  Include Files
+
+This  section  contains the  declarations and/or  descriptions of
+several include files available to the caller of rx_.
+                                                                  *
+
+11.1.  rx_execute_ctl.incl.pl1
+
+This structure describes the parameters which control the pattern
+match attempt and provide information on what kind of results are
+desired.
+
+dcl  1  rx_execute_ctl                aligned based,
+        2  version                    char (8) aligned,
+        2  select                     aligned,                    *
+           3  restriction             fixed bin(35) aligned,      *
+        2  flags                      aligned,
+           3  match_detail_wanted     bit(1) unaligned,           |
+           3  ignore_labels           bit(1) unaligned,
+           3  restriction_is_bound    bit(1) unaligned,           *
+           3  restriction_is_index    bit(1) unaligned,
+           3  line_mode               bit(1) unaligned,           |
+           3  PAD                     bit(31) unaligned;          |
+
+where:
+
+version
+     is the identifier for this version of the structure.
+
+                                                                  *
+restriction
+     is a value  which provides for the selection  of a subset of
+     all  possible  matches  found  in  the  target  string.  The
+     interpretation of this value depends upon the setting of the
+     flag variables.
+
+                                                                  *
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+match_detail_wanted
+     is a flag which indicates  that the locations and lengths of
+     each match should be placed in  a segment and the address of
+     that  segment  should  be  returned  to  the  user.   In the
+     description  of  rx_$execute,  this is  the  argument named,
+     match_info_p.
+ignore_labels
+     when  set  to  "1"b  indicates that  any  labelled substring
+     information  provided  by  compiled  code  for  "{ ... }X"
+     sequences be left out of the match information structure.
+                                                                  *
+restriction_is_bound
+     when  set to  "1"b indicates  that the  value of restriction
+     should be taken  as an upper bound on  the number of matches
+     reported  in the  match information  segment.  No  more than
+     "restriction" instances of  the rx_match_info structure will
+     be  placed  in  the  segment.   Less  than  this  amount may
+     actually be returned, however.
+
+restriction_is_index
+     when set to "1"b indicates that only information on the N-th
+     successful pattern match be returned.
+
+line_mode                                                         |
+     when set  to "1"b indicates  that the string  to be searched |
+     for patterns  is to be  treated as if  it were made  up of a |
+     series of lines separated by  newlines, rather than a single |
+     string of characters.  The newlines in this case are treated |
+     as delimiters for a sequences of strings.                    |
+
+PAD
+     is unused.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+11.2.  rx_match_info.incl.pl1
+
+These structures  describe the information on  where matches have
+been made in the target string.
+
+dcl  1  rx_match_info            aligned based,
+        2  version               char (8) aligned,
+        2  template_count        fixed bin (35) aligned,
+        2  PAD                   bit (36) aligned,
+        2  first_rx_match_data   ptr aligned;                     |
+
+dcl  1  rx_match_data_template   aligned based,
+        2  link                  aligned,
+           3  next               ptr aligned,
+        2  match                 aligned,
+           3  start              fixed bin(21) aligned,
+           3  length             fixed bin(21) aligned,
+        2  label_count           fixed bin(17) aligned,
+        2  label                 aligned,
+           3  name   (0                                           |
+                      refer(rx_match_data_template.label_count))  |
+                                 char(1) unaligned,
+           3  start  (0                                           |
+                      refer(rx_match_data_template.label_count))  |
+                                 fixed bin(21) aligned,
+           3  length (0                                           |
+                      refer(rx_match_data_template.label_count))  |
+                                 fixed bin(21) aligned;
+
+where:
+
+version
+     is the identifier for the current version of this structure.
+
+template_count
+     is the  number of instances  of rx_match_data_template which
+     have  been placed  in the segment.   It is  included here to
+     make the match data self-describing.
+
+PAD
+     is presently unused and should be set to ""b.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+rx_match_data
+     is the  pointer to the  first (if there were  any matches at |
+     all)  of  a  series  of  linked  structures  describing  the
+     patterns found.
+
+next
+     is a pointer  to the next instance of  this structure in the
+     match  info  segment.   It  has  the  value  null()  if this
+     instance is the last in the list.
+
+start
+     is the index  from the beginning of the  string to the start
+     of the match.
+
+length
+     is  the number  of characters  which matched  the pattern on
+     this attempt.
+
+label_count
+     is a count  of the number of labelled  substrings which were
+     identified  during this  pattern match  attempt.  This value
+     may      be      forced     to      zero      by     setting
+     rx_execute_ctl.flags.ignore_labels.
+
+name
+     is the character which was specified to be used as the label
+     for this substring.
+
+start
+     is the index from the beginning  of the target string to the
+     first character of the substring.
+
+length
+     is the number of characters in the named substring.
+
+NOTES:
+
+Match data is  returned as a starting location  and a length.  To
+clarify the  notion of starting location,  the following model is
+used.   Given  a  string  of length  n,  there  are  n+1 possible
+starting locations for a string match, numbered as follows:
+
+       1. before the first character of the string
+
+       2. between the first and second characters of the string
+
+       3. between the second and third characters of the string
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+      ...
+
+       n. between  the next-to-last  and the  final characters of
+          the string
+
+     n+1. after the last character of the string
+
+The  length of  the match  is given  as the  number of characters
+matched.  Thus, a match or  labeled substring which is identified
+as starting at location 2 with a length of 0 (zero) specifies the
+null string between the first and second characters.
+
+Match information is returned in order from the leftmost match to
+the rightmost.   Note, however, that two  succeeding instances of
+rx_match_info may specify the same starting location depending on
+the regular expression being used(1) for the match attempt.
+
+Unlike match attempts which proceed from left to right, the order
+of  production  of  labeled   substring  data  is  implementation
+dependent.  The user is  cautioned against making any assumptions
+about the order in which the labels are returned.
+
+________________________________________
+
+(1) Consider  that  the  expression  "^|."   will  return  two
+    instances  of  rx_match_info starting  at  location 1  in the
+    string "A".  One  will have a length of  zero, the other will
+    have a length of one.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+                                                                  |
+                                                                  |
+11.3.  rx_error_info.incl.pl1                                     |
+                                                                  |
+Whenever  possible, the  rx_subroutine reporting  an error  via a |
+call to  sub_err_ will supply  information to assist  the user in |
+locating  the  source of  the error.   This takes  the form  of a |
+formatted  string, and  a position  withing the  string where the |
+error is.  The formatted string is pre-processed so that terminal |
+dependencies  are edited  out; e.g.  backslashes  are doubled for |
+printing,  control and  non-ASCII characters  are converted  to a |
+"nnn"  representation.   The error  position reflects  the error |
+position within this edited string.                               |
+                                                                  |
+                                                                  |
+A  pointer  to  this  structure is  supplied  as  the information |
+pointer on the call to sub_err_.                                  |
+                                                                  |
+                                                                  |
+dcl  rx_error_info_string_len         fixed bin(21);              |
+                                                                  |
+dcl  1 rx_error_info                  aligned based,              |
+       2 version                      char(8) aligned,            |
+       2 string                       aligned,                    |
+         3 len                        fixed bin(21),              |
+         3 error_pos                  fixed bin(21),              |
+         3 text          char (rx_error_info_string_len           |
+                            refer (rx_error_info.string.len));    |
+                                                                  |
+                                                                  |
+where:                                                            |
+                                                                  |
+                                                                  |
+version                                                           |
+     is the identifier for the current version of this structure. |
+                                                                  |
+len                                                               |
+     is the length of the edited display string.                  |
+                                                                  |
+error_pos                                                         |
+     is the position, relative to  the start of the string, where |
+     the error occurred.  When error_pos  = 0, the error reported |
+     applies to the entire string.                                |
+                                                                  |
+text                                                              |
+     is the edited display string.                                |
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+12.  Comparative Timings
+
+This section  provides some timing comparisons  for the functions
+of  translation  and  execution  between  the  regular expression
+facility   described   here  and   that  presently   provided  by
+search_file_.(1)
+                                                                  |
+                                                                  |
+The  timings  represented  here  are  those  of  the  software as |
+described  by  the first  publication  of the  MTB.   They differ |
+slightly, but not substantially, from those of later revisions.   |
+
+12.1.  The Test Environment
+
+The overall setup of each test is as follows:
+
+     1) All  target  strings were  built from  randomly generated
+        strings of  digits or alphabetic  characters.  The random
+        number generator  "seed" was set at  the beginning of the
+        tests to insure repeat results.
+
+     2) Only the time used from  the beginning of the translation
+        (or execution)  to the return  from the routine  has been
+        accumulated.  No  processing times for  the returned data
+        are included.  All times reported are in milliseconds.
+
+     3) For  each  test,  the   translation  routine  was  called
+        multiple times,  and the results averaged.   The same was
+        done for the execution routine.  In both cases, the first
+        timing run data was discarded.
+
+     4) In all  tests, the number  of strings which  were matched
+        was the same by both routines.
+
+________________________________________
+
+(1) The  search_file_  interface  does not  provide  for separate
+    translation  and  execution.   Translation  was  simulated by
+    applying  the pattern  to a zero-length  string; execution by
+    making use of the "last expression" feature.
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+12.1.1.  Test 1
+
+Objective:  match an entire string of characters.
+
+Regular expression:  "^.*$"
+
+Strings:                  1
+Length (min):           100
+Length (max):           100
+Length (average):       100
+
+Total Trials:            25
+Total Matches:           25
+
+                               rx_   search_file_         ratio
+                                                               
+Compilation                 10.100          0.328         30.79
+
+Execution                    0.330          0.504          0.65
+
+12.1.2.  Test 2
+
+Objective:  match  the  last  character  in  a  string  of random
+            length.
+
+Regular expression:  ".$"
+
+Strings:                100
+Length (min):             1
+Length (max):            99
+Length (average):        50
+
+Total Trials:            25
+Total Matches:         2475
+
+                               rx_   search_file_         ratio
+                                                               
+Compilation                  8.937          0.406         22.01
+
+Execution                   38.512        323.394          0.12
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+12.1.3.  Test 3
+
+Objective:  find  all  runs  of  9's in  digit  string  of random
+            length.
+
+Regular expression:  "99*"
+
+Strings:                100
+Length (min):             1
+Length (max):            98
+Length (average):        50
+
+Total Trials:            25
+Total Matches:        11300
+
+                               rx_   search_file_         ratio
+                                                               
+Compilation                  8.596          0.271         31.72
+
+Execution                  100.374        119.587          0.84
+
+12.1.4.  Test 4
+
+Objective:  find runs of ordered sequences of digits.
+
+Regular expression:  "0.*1.*2.*3.*4.*5.*6.*7.*8.*9"
+
+Strings:                100
+Length (min):             1
+Length (max):            97
+Length (average):        49
+
+Total Trials:            25
+Total Matches:          500
+
+                               rx_   search_file_         ratio
+                                                               
+Compilation                 41.026          1.221         33.60
+
+Execution                1,867.058      2,697.056          0.69
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+12.1.5.  Test 5
+
+Objective:  find all strings of random characters ending in "Zz".
+
+Regular expression:  "Zz$"
+
+Strings:                500
+Length (min):             1
+Length (max):           160
+Length (average):        80
+
+Total Trials:            25
+Total Matches:           25
+
+                               rx_   search_file_         ratio
+                                                               
+Compilation                  9.515          0.231         41.19
+
+Execution                  120.327        100.171          1.20
+
+12.2.  General Commentary on the Tests
+
+As should  be obvious, the  translation times for  the new method
+are  significantly longer  than those  of search_file_.   This is
+primarily  due to  the increased complexity  which the translator
+must be prepared to handle.  Furthermore, there are optimizations
+in both the lexical scanning and code generation phases which are
+performed  to  speed  up  the execution.   This  is  done  on the
+expectation  that  translation  will  occur far  less  often than
+execution.   Since  the storage  of  the compiled  code  is under
+control  of  the caller,  it  is possible  to  provide additional
+guarantees that this is so by  means of an "n"-level LRU cache of
+expression strings and translated equivalents.
+
+In four  out of the five  tests done, the execution  speed of the
+new method was faster.  The exception has been analyzed and it is
+slower because,  again, there is additional  mechanism present to
+support the additional information-return possibilities.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+12.3.  Comparison Against A Compiled Program
+
+Research,  using  an earlier  implementation  of a  facility like
+this,  was done  comparing its performance  against PL/I programs
+specially  written for  specific purposes.  A  description of the
+work  was published  in the Proceedings  of HLSUA Forum XXXIV.(1)
+The  timing  studies indicate  that,  at best,  the hand-tailored
+program  offered a  30% performance advantage  while taking about
+300% longer to write and debug.
+
+________________________________________
+
+(1) April 4-7, 1982; pp. 276-291
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+13.  Miscellaneous Topics
+
+This section  contains various topics  related to the  subject of
+the regular expression facility  described in this document which
+do not logically fit in the exposition of other sections.
+
+13.1.  Use of National Characters
+
+The facility  described in this document  employs many characters
+from the  ISO International Alphabet  #5 which are  designated as
+"national"  characters.  In  view of the  evolving consensus away
+from the  use of such  characters in Multics'  text processors, a
+few words about their use here is appropriate.
+
+The  regular  expressions  implemented  by  this  facility employ
+"national"   characters  for   two  reasons.    First,  they  are
+considered  as  part of  the  Multics standard  character set.(1)
+Second,  it  is  difficult  (if not  impossible)  to  provide the
+required functionality in such a  compact form without the use of
+these, or other, "national" characters.
+
+The author is open to suggestions and comments which will rectify
+this situation.
+
+13.2.  Installing it in the System
+
+By use of the entry  point rx_$translate_old, this facility could
+be  used  in a  re-written  "search_file_" to  provide equivalent
+functionality  through  an   existing  interface.   In  addition,
+"search_file_"  could also  be enhanced to  provide a multi-level
+cache of  the "n" most recently  used regular expressions, rather
+than the single level provided now.
+
+Users could select which type of processing they wanted "old" vs.
+"new"  via  an  interface  command  or  through  a process-global
+switch.
+
+________________________________________
+
+(1) See MPM Reference Manual, AG91-03  Appendix A, (in draft form
+    at the time of this  writing) which defines the characters of
+    Multics to be those of ANSI X3.4-1968.
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+13.3.  Starname Processing
+
+Given the  facility described here,  it is possible  to provide a
+simple  transformation  from  Multics  "starnames"  into  regular
+expressions.   This would  enable a  single facility  to underlie
+both mechanisms.   An informal set  of rules which  describe this
+transformation  are listed  below.  For  discussion purposes, the
+escape  character is  assumed to  be the  accent grave character,
+"`".
+
+     1) All  occurrences of  the escape character  are doubled so
+        that they match themselves literally.
+
+     2) Any "?"  is transformed into "`.".
+
+     3) The sequence "**" is changed to be "`.`*".
+
+     4) The single "*" occurrence becomes "`[`^.`]`*".
+
+     5) All other characters are copied as is.
+
+     6) After the pattern is constructed,  it is prefixed by "`^"
+        and suffixed by "`$".
+
+Of  course,  this transformation  assumes  that the  starname was
+well-formed  to  begin  with.   However, syntax  checking  can be
+incorporated as part of the transformation process.  An advantage
+of this method  is that the starname syntax  may later be relaxed
+to allow items  like "*foo*" with much less  effort than re-doing
+the present finite-state machine program.
+                                                                  |
+                                                                  |
+13.4.  Efficiency Considerations                                  |
+                                                                  |
+Despite  attempts  to make  the  translated form  of  the regular |
+expression  run  as quickly  as  possible, there  are  still some |
+things that the  writer of the regular expression  can do to help |
+out.  This  section discusses some of  the optimizations that the |
+translator does  and gives some tips  on what the user  can do to |
+avoid causing the execution to be slowed.                         |
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+13.4.1.  Translator Optimizations                                 |
+                                                                  |
+In  order   to  provide  for  efficient   pattern  matching,  the |
+translator does  a number of optimizations  (described earlier as |
+building "clumps").  In this way,  it can generate more effective |
+code than  would otherwise be  the case if  the syntax definition |
+definition  were  followed  slavishly.    The  semantics  of  the |
+optimization  are identical  with that in  the formal definition, |
+however.                                                          |
+                                                                  |
+                                                                  |
+In the  following discussion, the escape  character is assumed to |
+be the accent grave (`) character.                                |
+                                                                  |
+                                                                  |
+     -- A  single  character  set  membership  test  followed  by |
+        indefinite repetition is treated as indefinite repetition |
+        of  the character.   That is, "`[X`]`*"  is translated as |
+        "X`*".                                                    |
+                                                                  |
+     -- Strings of "`."s are combined  into a single test for the |
+        specified number of characters remaining to be matched.   |
+                                                                  |
+     -- Strings of "`."s followed by a repetition are adjusted to |
+        include  the length  of the  "`."-string less  one in the |
+        bounds.   For  example, "`.`.`.`.`*"  becomes "`.`&lt;3:`&gt;"; |
+        and  "`.`.`.`.`.`&lt;:6`&gt;"  is  translated  as  if  it  were |
+        "`.`&lt;4:10`&gt;".                                             |
+                                                                  |
+     -- Strings of  ordinary characters are  combined into single |
+        string comparisons.                                       |
+                                                                  |
+     -- Set membership ("`[  `]")  and set exclusion ("`[`^  `]") |
+        strings are  transformed internally into  tables suitable |
+        for  use  with  the  hardware  TCT  (Test  Character  and |
+        Translate) instruction.                                   |
+                                                                  |
+     -- Notice is taken of initial character strings which can be |
+        used  to  find places  where  the scan  can begin  in the |
+        target strings.  Expressions  like "define`|declare" will |
+        only  be profitably  begun in  target strings  which have |
+        sequences of the letters "de".                            |
+                                                                  |
+     -- The translator remembers the  minimum and maximum lengths |
+        which the pattern needs to succeed and passes this to the |
+        execute phase.  The pattern  "AB`.`.`*C" needs at least a |
+        four-character target string to succeed.                  |
+
+
+MTB-660                                Multics Technical Bulletin
+Revision 1                            Regular Expression Routines
+
+     -- Items  which  are  indefinitely repeated,  and  which are |
+        followed by character string patterns, will automatically |
+        do  "backscanning"  to find  effective places  to resume. |
+        For example,  in "`.`*AB", the "`.`*"  matches the entire |
+        remainder  of  the  string.   Then  it  backs  up  to the |
+        rightmost  occurrence  of "AB"  before  proceeding.  This |
+        cuts down on excessive backtracking at run-time.          |
+                                                                  |
+     -- When  building  the  parse   tree,  notice  is  taken  of |
+        "anchoring" of  the pattern at  either end.  And  this is |
+        propagated to the root node.  Thus, "`^ABCDE`|`^VWXYZ" is |
+        just  as  effective  as  "`^`(ABCDE`|VWXYZ`)".   The same |
+        applies to the use of "`$".                               |
+                                                                  |
+                                                                  |
+13.4.2.  Sequences That Work Against Efficiency                   |
+                                                                  |
+Despite the attempts at  producing efficient run-time code, there |
+is a limited  amount of time and effort  that the translator will |
+spend  achieving  this goal.   While the  assumption is  that the |
+translated  pattern will  be applied many  more times  than it is |
+translated,  it is  also assumed that  the source of  many of the |
+strings given to the translator will be a human user.  Therefore, |
+speed in translation also must be considered.  The following list |
+of  situations  result  in  slower execution  speeds  because the |
+translator is not yet good enough  or fast enough to resolve them |
+into efficient equivalent sequences.                              |
+                                                                  |
+                                                                  |
+As above, the escape character  used in the illustrations will be |
+accent grave.                                                     |
+                                                                  |
+                                                                  |
+     -- Items  enclosed  in  parentheses, which  are  followed by |
+        repetition  forms,  are   translated  into  longer,  more |
+        general, and  therefore slower code  sequences.  For this |
+        reason, "X`*" is preferable  to "`(X`)*" even though they |
+        have equivalent semantics.                                |
+                                                                  |
+     -- The  use of  alternation on single  characters results in |
+        slower  execution  than   set  membership  tests.   Thus, |
+        "`[XYZ`]" executes faster than "X`|Y`|Z".                 |
+                                                                  |
+     -- Recursion is slower than repetition.  The pattern, "A`*", |
+        will run faster than "A`&amp;".                               |
+                                                                  |
+     -- In  general,  recursion upsets  the anchoring  and target |
+        string  length analysis  due to  the difficulty  of doing |
+        efficient  flow  analysis.  Therefore,  it  executes more |
+        slowly.                                                   |
+
+
+Multics Technical Bulletin                                MTB-660
+Regular Expression Routines                            Revision 1
+
+13.5.  Implementation Restrictions                                |
+                                                                  |
+The  following  items  are  general notes  about  details  of the |
+implementation  which  restrict in  some  way the  extent  of the |
+translator or execution domains.                                  |
+                                                                  |
+                                                                  |
+     -- The  translator  does all  of its  space allocation  in a |
+        single segment area for efficiency.  This is not expected |
+        to  cause  problems  since it  requires  several thousand |
+        "clumps"  before  this  limit is  broached.   Most users' |
+        regular expressions have on the order of a dozen or less. |
+                                                                  |
+     -- There   is  a   limit  to  the   amount  of  backtracking |
+        (checkpoint) information which can be stored at execution |
+        time.   A checkpoint  is taken when  alternation ("`|" or |
+        "`|`|")  is done,  when repetition  is used  ("A`*"), and |
+        when  recursion is  performed ("A`&amp;")  at execution time. |
+        There   is   room  for   about  32,000   checkpoints  per |
+        pattern-match attempt.                                    |
+                                                                  |
+     -- Since  the match  data is  returned in  a single segment, |
+        there is a  limit to the number of  times a given pattern |
+        will be reported as  matching a particular target string. |
+        This limit  is also affected  by the number  of "labelled |
+        substrings" which  are defined.  If  all ninty-four label |
+        characters   are  used   in  each   match  attempt,  then |
+        approximately  900 matches  can be  reported back  to the |
+        user.  If  no label characters  are used (or  if they are |
+        specifically  ignored),  then slightly  more  than 52,000 |
+        matches will be reported.                                 |
+                                                                  |
+     -- Because of limits on the  nature of the data available to |
+        the   run-time   regarding   "long"   repetition   as  in |
+        "`(ABCDE`)`&lt;10:20`&gt;" where the parentheses interfere with |
+        optimization,   recursion   cannot   be   used   in  such |
+        combinations.  Thus, the translator will refuse to accept |
+        "`(/`&amp;/`)`&lt;14:16`&gt;".    Simpler   repetition,   as   with |
+        "X`&lt;6:7`&gt;, can still be used with recursion, however.     |
+                                                                  |
+        The exact conditions where this will cause a conflict are |
+        difficult to delineate exactly.  Furthermore, this is not |
+        expected to cause most users a problem.                   |
+
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

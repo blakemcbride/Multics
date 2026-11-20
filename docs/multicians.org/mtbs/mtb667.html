@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-667</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-667: A Partial Solution to Limitations on Quota.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+Multics Technical Bulletin                                MTB-667
+The Trouble with Quota
+
+To:       Distribution
+
+From:     Benson I. Margulies
+
+Date:     07/06/84
+
+Subject:  A Partial Solution to Limitations on Quota
+
+1 ABSTRACT
+
+     There is a serious design flaw in the file system quota
+     mechanism.  It produces a  series of implementation and
+     operational  problems  for  us  and  sites.   This  MTB
+     describes the problem and the solution.
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Margulies at either System-M, MIT, or CISL-SERVICE.
+
+via Forum:
+   &gt;udd&gt;m&gt;mtgs&gt;hardcore on System-M
+
+via telephone:
+   (HVN) 261-9333, or
+   (617) 492-9333
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+MTB-667                                Multics Technical Bulletin
+                                           The Trouble with Quota
+
+2 A SPECTRE IS HAUNTING MULTICS
+
+     A  spectre  is  haunting  Multics,  the  spectre  of  "quota
+received."  Every month or so we get another TR about the lack of
+a  salvager, or  the apparent  2**18 record  limit on  quota in a
+hierarchy.  Sites have experienced serious service outages due to
+broken hierarchies.
+
+    What is the problem, and why have we never fixed it?  It is a
+combination of a  design limitation with a bug  that allows sites
+to  circumvent  the  limitation.  Having  circumvented  it, their
+hierarchy has become inconsistent,  and cannot be made consistent
+again unless we remove the original limitation.
+
+3 HOW THE QUOTA HIERARCHY WORKS
+
+     The  quota  hierarchy  is  a hierarchy  of  directories with
+terminal  quotas.   Each such  directory has  a quota  cell.  The
+quota cell records  the amount of quota that  has been moved into
+the directory, and  how much of it has been  used.  (In fact, all
+directories have  quota cells, but they  are only interesting for
+terminal quota.)
+
+     When quota is moved into a  directory, it is recorded in two
+fields    in   the    quota   cell:     quota_cell.received   and
+quota_cell.quota.   So  long  as  no  sub-directories  are  given
+terminal quotas, these two cells are equal.
+
+     As  pages   of  data  are  created,   they  are  counted  in
+quota_cell.used.   The  amount  of  quota available  for  data is
+determined by subtracting quota_cell.used from quota_cell.quota.
+
+     When  quota is  moved to  a sub-directory,  it is subtracted
+from  quota_cell.quota, but  NOT from  quota_cell.received.  Thus
+quota moved down is no longer available for data pages.
+
+    At any time, quota_cell.received is the total amount of quota
+added  to  the  directory  with  move_quota  (or set_mdir_quota).
+quota_cell.quota is the portion of  that which has not been moved
+further down.
+
+4 THE LIMITATION -- 18 BIT FIELDS
+
+     All of  these fields are  restricted to 18  bits.  quota and
+used are stored  in both the vtoce and the  aste, and received in
+the vtoce alone.  The result was supposed to be that no hierarchy
+could ever have more than 2**19-1 records of quota.
+
+
+Multics Technical Bulletin                                MTB-667
+The Trouble with Quota
+
+5 THE BUG -- RECEIVED ARITHMETIC IS MODULAR
+
+     Unfortunately,  size checking  is not enabled  by default in
+PL/1.    None   of   the   code  in   quota.pl1   that  maintains
+quota_cell.received checks  for overflow or underflow  out of the
+18 bits when  doing arithmetic; it does 35  bit arithmetic.  Thus
+the following script becomes possible.
+
+     1) Put 262143 records of quota in a directory.
+        received = 262143
+        quota = 262143
+
+     2) Move all 262143 records to a sub-directory.
+        received = 262143
+        quota = 0
+
+     3) Move another 262143 records into the directory.
+        received = 0   (2*262143 mod 262143)
+        quota = 262143
+
+     4) continue
+
+Now, we have a hierarchy with more than 262143 records in it, and
+a received value that is wrong.
+
+6 WHAT'S WRONG WITH THIS PICTURE
+
+     First,  and most  important, we  cannot salvage crash-caused
+inconsistencies  in  received, because  the salvage  would detect
+these intentional inconsistencies.  If we  had such a salvager, a
+site   would   have   to    choose   between   tolerating   these
+inconsistencies (which affect users)  and adhereing to the 262143
+record  limit   on  quota  in   a  hierarchy  (which   is  simply
+impractical).
+
+     Second, this is not a  practical way to administer a system.
+The only  way to determine how  much quota has been  moved into a
+hierarchy  is to  add up  the subdirectories.   Imagine trying to
+write an explanation of this mess.
+
+7 WHAT DO WE DO ABOUT IT?
+
+     Eventually,  the  aste and  vtoce  should be  reformatted to
+maintain full words for all quota fields.  This is a big project,
+and cannot be undertaken soon.
+
+    However, there is a smaller change that rectifies much of the
+difficulty.  There is  sufficient pad space in the  vtoce to move
+
+
+MTB-667                                Multics Technical Bulletin
+                                           The Trouble with Quota
+
+to  36 bit  received values  (see vtoce.pad6  in vtoce.incl.pl1).
+Such a change would allow  hierarchies to contain more quota, but
+would  continue the  current restriction  on the  amount of quota
+that can be available as "quota" in a single directory.  Received
+could be maintained in a consistent fashion.
+
+The change would be compatable.  vtoc_attributes would be changed
+to  save  received  in  the  new  location.   The  quota salvager
+(fix_quota_used) would be changed  to recalculate received on the
+basic  of  quota  and  used.   Since  the  old  values  would  be
+undisturbed, the hardcore system could be backed out painlessly.
+
+                             Page 4
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

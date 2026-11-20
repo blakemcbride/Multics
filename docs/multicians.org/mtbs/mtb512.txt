@@ -1,0 +1,407 @@
+Multics Technical Bulletin                                MTB-512
+DM: Transaction Management
+
+
+
+To:       Distribution
+
+From:     Matthew Pierret
+
+Date:     05/15/81
+
+Subject:  Data Management: Transaction Management Overview
+
+
+
+1 ABSTRACT
+
+    This  document defines  transactions and  their role  in the
+Data  Management  Architecture   on  Multics.   Transactions  are
+operationally  atomic,   and  deal  with   the  availability  and
+volatility of  data.  Transactions are  run by agents,  have four
+fundamental events in their lifetime, and provide services to the
+layers of the Data Storage & Retrieval system.
+
+
+
+
+Comments should be sent to the author:
+
+via Multics Mail:
+  Spratt.Multics on either MIT Multics or System M.
+
+via US Mail:
+  Lindsey Spratt
+  Honeywell Information Systems, inc.
+  4 Cambridge Center
+  Cambridge, Massachusetts 02142
+
+via telephone:
+  (HVN) 261-9321, or
+  (617) 492-9321
+
+
+
+
+
+
+_________________________________________________________________
+
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+
+
+                            Page i. 
+
+
+
+
+
+
+
+
+
+
+                           CONTENTS
+
+
+                                                        Page
+
+                1 Abstract . . . . . . . . . . . . . .     i
+                2 Introduction . . . . . . . . . . . .     1
+                3 The Transaction  . . . . . . . . . .     1
+                4 Basic Definitions  . . . . . . . . .     1
+                   4.1 Agents  . . . . . . . . . . . .     2
+                   4.2 Availability of Data  . . . . .     2
+                   4.3 Volatility of Data  . . . . . .     2
+                5 Fundamental Events of Transactions .     3
+                   5.1 Begin Transaction . . . . . . .     3
+                   5.2 Definitional Phase  . . . . . .     3
+                   5.3 Commit Transaction  . . . . . .     4
+                   5.4 Abort Transaction . . . . . . .     4
+                6 Services . . . . . . . . . . . . . .     4
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                              iii Multics Technical Bulletin                                MTB-512
+DM: Transaction Management
+
+
+
+2 INTRODUCTION
+
+    Transactions  are  the  basic  working  unit  for  the  Data
+Management  architecture,  and  therefore must  be  understood in
+order  to  understand  other  documents  about  the architecture.
+Transaction management  is responsible for  maintaining the state
+of  transactions  as  they  effect data  controlled  by  the data
+management system.  This is not to be confused with a transaction
+processing  system   as  known  in   the  industry.   Transaction
+processing systems  are responsible for maintaining  the state of
+execution  of a  transaction, including  things that  do not have
+anything  to do  with data  management, such  as I/O  queues, job
+queues,  and  changes made  to  the storage  system.   This paper
+describes transaction management, which would serve as a facility
+for a transaction processing system, and the reader familiar with
+transaction   processing   systems   should  be   aware   of  the
+distinction.   Pre-requisite  to  proper  understanding  of  this
+document is MTB-508,  "Data Management:  Architectural Overview".
+Later  documents  will  describe  functional  specifications  and
+design of transaction management in detail.
+
+
+3 THE TRANSACTION
+
+    A  transaction is  a sequence of  data management operations
+with  an  explicit  beginning  and   end.   Between  the  time  a
+transaction is begun  and the time it is ended,  it is said to be
+in progress, and many transactions can be in progress at the same
+time.  Transactions must be viewed as atomic in two ways:
+
+  ox All operations of a transaction  must be completely done, or
+    if they cannot be completed, must be completely undone.
+
+  ox While  a   transaction  is  in   progress,  data  management
+    operations it  makes must not affect  any other transaction.
+    Only after a transaction  has completed successfully can the
+    data   become  visible   to  other   transactions.   If  the
+    transaction cannot be completed  successsfully and has to be
+    undone,  its  operations will  never  be seen  by  any other
+    transaction.
+
+By following  the two preceding rules  of atomicity, transactions
+form  a unit  of consistency.   Each transaction  transforms data
+from one consistent state to a new consistent state.
+
+
+4 BASIC DEFINITIONS
+
+    Vital to  understanding how transaction  management works is
+understanding agency and availability and volatility of data.
+
+
+                            Page 1. 
+MTB-512                                Multics Technical Bulletin
+                                      DM: Transaction Management
+
+
+
+4.1 Agents
+
+    The operations which make up a transaction are run by one or
+more  agents.   On  Multics a  process  acts  as an  agent  for a
+transaction.  A transaction  is owned by one and  only one agent,
+and  an  agent  may own  only  one transaction.   This  agent may
+request other agents to do part of the transaction on its behalf.
+Whether or not the owner agent and the participating agent are on
+the same system, or even both  on Multics systems does not matter
+to the transaction  manager.  In the normal case,  a single agent
+runs a transaction without involving other agents.
+
+
+4.2 Availability of Data
+
+    Transaction management must see  to it that the availability
+of data is controlled, and in  this way can keep data consistent.
+Data which is public is  potentially available to any transaction
+(aside from security constraints); data  which is private is only
+available  to one  transaction, which  includes all participating
+agents.  Data to be modified must be made private by, and to, the
+modifying  transaction until  all operations  of that transaction
+are completed.  The data is then  made public again.  In this way
+no modifications of data are  ever apparent to other transactions
+until  all  of them  are  complete, and  no transaction  has been
+affected by the modifications until the transaction is finished.
+
+    It is not actually the contract of transaction management to
+make  data  public  and  private,   but  to  use  the  underlying
+concurrency management,  which actually changes  the availability
+of data.  There is a more  detailed discussion of the handling of
+the   availability   of  data   in  MTB-514,   "Data  Management:
+Concurrency Management - Overview".
+
+
+4.3 Volatility of Data
+
+    Transaction  management   also  keeps  data   consistent  by
+controlling the  volatility of data.  Data  which is permanent is
+data  which  does not  depend  upon the  existence of  any agent.
+Volatile data is  dependent upon whatever agent is  using it, and
+exists only as  long as the agent exists.   If some modifications
+are made  by a transaction  and some of those  are made permanent
+and some  remain volatile, and  the data was made  public in this
+state, the  data may become inconsistent.   By enforcing the rule
+that  transactions  cannot  allow  this situation,  data  is kept
+consistent.
+
+    As in the  case of availability of data,  it is not actually
+the  contract  of transaction  management  to make  volatile data
+
+
+                            Page 2. 
+Multics Technical Bulletin                                MTB-512
+DM: Transaction Management
+
+
+
+permanent, only to use the underlying recovery mechanism in a way
+that will maintain the integrity of the data.
+
+    The method  by which volatile  data is made  permanent is by
+the checkpoint mechanism.  When a  checkpoint request is made for
+a transaction, volatile data relating to that transaction is made
+permanent,  though still  remaining private.   There are implicit
+checkpoints made at the beginning  of all transactions.  There is
+a more  detailed explanation of checkpointing  and the volatility
+of  data  in MTB-513,  "Data  Management:  Recovery  Management -
+Overview".
+
+
+5 FUNDAMENTAL EVENTS OF TRANSACTIONS
+
+    Three  significant  events  are   necessary  to  make  up  a
+transaction:  an  explicit beginning, a  definitional phase where
+operations on data  are done, and an explicit end.   The end of a
+transaction  may be  a commit, where  all of  the operations were
+successful, or an abort, where they were not.
+
+
+5.1 Begin Transaction
+
+    A  transaction  identifier  is   generated  when  the  BEGIN
+operation is issued.  This identifier is unique across everything
+that  the  Data  Management  System  is  responsible  for.   In a
+distributed  environment, it  would be  unique across  all of the
+operating  systems in  the network.   The identifier  is also not
+dependent  upon  the  agent  that   requested  it,  and  thus  is
+permanent.   This  identifier  is  noted along  with  some global
+information about  the transaction, such  as what agent  owns it.
+Also, a checkpoint is noted at this point, before any transaction
+operations have begun.
+
+
+5.2 Definitional Phase
+
+    This "phase" is  the sequence of reads and  writes that make
+up   the  transaction.    Concurrency  and   recovery  management
+mechanisms keep track of operations  done by the transaction, and
+are  overseen  by  the  transaction  management  mechanism.  When
+modifications  are  made,  the  data  in  its  modified  state is
+available  to the  modifying transaction, but  unavailable to all
+other transactions.  Some information  must be monitored and kept
+track of  that was not  known at begin-time, such  as what agents
+are now participating.
+
+
+
+
+
+                            Page 3. 
+MTB-512                                Multics Technical Bulletin
+                                      DM: Transaction Management
+
+
+
+5.3 Commit Transaction
+
+    When  all of  the operations  of a  transaction successfully
+complete, the COMMIT operation is issued by the transaction.  The
+volatile  data of  the transaction  is made  permanent.  Then all
+private  data is  made public.   Hence, it  appears to  all other
+transactions as if  all of the operations made  by the committing
+transaction  were made  at once.   The transaction  identifier is
+marked  as  "committed" so  that  it cannot  be used  again.  The
+recovery  and  concurrency  management  mechanisms  are  used  to
+perform the commit.  If more  than one agent are participating in
+a transaction,  transaction management coordinates  the commit by
+using  a  two-phase commit.   Once  a transaction  has committed,
+under no circumstances can it be undone.
+
+
+5.4 Abort Transaction
+
+    If  the   transaction  reaches  a  point   where  it  cannot
+successfully  complete, an  ABORT operation is  issued, either by
+the   transaction  itself   or  by   the  transaction  management
+mechanism.   All modifications  made by  the aborting transaction
+are  undone.    Any  data  that  was   made  private  during  the
+transaction  is  made  public  once again.   Hence,  the  data is
+returned  to the  state it was  in before  the transaction began.
+The  transaction  identifier is  not  thrown away,  but  kept and
+marked as "aborted" so that  it can't be used again.  Transaction
+management makes  use of the recovery  and concurrency management
+mechanisms to make the abort.
+
+
+6 SERVICES
+
+    The transaction manager provides the following services:
+
+BEGIN:  generate a permanent  transaction identifier, making note
+    of  it  and  other  information about  the  transaction, and
+    notify    recovery    and    concurrency    mechanisms   for
+    initialization.
+
+ABORT:  undo all modifications made  by this transaction and make
+    public all  data objects which were  made private during the
+    transaction.  Mark  the transaction identifier  as "aborted"
+    so  that  it  cannot  be   used  again.   The  recovery  and
+    concurrency management mechanisms are used.
+
+COMMIT:  make  all volatile data  permanent and make  all private
+    data public.  Mark the transaction identifier as "committed"
+    so that it cannot be used again.  Use a two-phase commit for
+
+
+
+                            Page 4. 
+Multics Technical Bulletin                                MTB-512
+DM: Transaction Management
+
+
+
+    coordination.   The  recovery   and  concurrency  management
+    mechanisms are used.
+
+CHECKPOINT:   make  all volatile  data  that this  transaction is
+    responsible   for   permanent.    The   recovery  management
+    mechanism is used.
+
+ROLLBACK:  undo  modifications made since a  given checkpoint and
+    make public  all data objects  that were made  private since
+    that  checkpoint.  The  recovery and  concurrency management
+    mechanisms are used.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                            Page 5. 
+

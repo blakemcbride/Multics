@@ -1,0 +1,379 @@
+%nolist; %include 'ldd>incl>s$_kludge.incl.pl1'; %list;
+
+main /* dump_tape */:
+     procedure;
+
+/* Program to dump a tape.
+   PG 801010 */
+
+/* automatic */
+
+declare   code fixed bin (15),
+          done bit (1),
+          filex fixed bin (15),
+          n_files fixed bin (15),
+          n_first_file fixed bin (15),
+          status_ptr ptr,
+          tape_unit fixed bin (15);
+
+declare   1 g,
+          2 file_number       fixed bin (15),
+          2 record_number     fixed bin (15),
+          2 n_bytes_read      fixed bin (15);
+
+/* builtins */
+
+declare   (addr, divide, hbound, lbound, length, min, null, substr) builtin;
+
+/* constants */
+
+%replace  my_name by 'dump_tape';
+%replace  dft_tape_unit            by 0;
+%replace  MAX_TAPE_RECORD_SIZE     by 6144;  /* words */
+
+%replace  REWIND_TAPE              by '0020'b4;
+%replace  BACKSPACE_FILE_TAPE9     by '2440'b4;
+%replace  BACKSPACE_REC_TAPE9      by '6440'b4;
+%replace  WRITE_FILEMARK_TAPE9     by '2490'b4;
+%replace  FORWARD_REC_TAPE9        by '6480'b4;
+%replace  FORWARD_FILE_TAPE9       by '2480'b4;
+%replace  SELECT_TRANSPORT         by '8000'b4;
+%replace  READ_REC_2CPW_TAPE9      by '4580'b4;
+%replace  READ_FIX_REC_2CPW_TAPE9  by '5580'b4;
+
+/* Tape Status codes */
+
+%replace  TS_FILEMARK              by -8;
+%replace  TS_REWIND_COMPLETE       by -16;
+
+/* based */
+
+declare   1 status  based (status_ptr),
+          2 flag    fixed bin (15),     /* 0=finished, 1=in progress */
+          2 value   bit (16) aligned,   /* hardware status */
+          2 n_words fixed bin (15),     /* n words transmitted */
+          2 rfu     (5) fixed bin (15);
+
+/* entries */
+
+declare   s$parse_command entry (char (*) varying, fixed bin (15),
+               char (*) varying, fixed bin (15),
+               char (*) varying, fixed bin (15),
+               char (*) varying, fixed bin (15),
+               char (*) varying, bit(1) aligned,
+               char (*) varying);
+declare   s$write entry (char (*) varying);
+declare   t$mt entry (fixed bin (15), ptr, fixed bin (15), fixed bin (15),
+               (8) fixed bin (15), fixed bin (15));
+
+/* extended builtins */
+
+declare   ltrim entry (char (256) varying) returns (char (256) varying);
+
+/* external static */
+
+declare   buffer$ char (32767) external static;
+
+declare   soft_eot bit(1) aligned;
+
+/* program */
+
+     tape_unit = dft_tape_unit;
+
+     call s$parse_command (my_name, code,
+          'option(first_file)number,word,min(1),=1', n_first_file,
+          'option(file_count)number,word,min(1),=32767', n_files,
+          'option(unit)number,word,min(0),max(16),value', tape_unit,
+          'switch(eot),neg=1', soft_eot,
+          'end');
+     if code ^= 0
+     then return;
+
+     call position_to_file (tape_unit, n_first_file, code);
+     if code ^= 0
+     then return;
+
+     do filex = 1 to n_files;
+          g.file_number = g.file_number + 1;
+          g.record_number = 0;
+          call s$write ('--- File ' !! ltrim ((g.file_number)) !! ' ---');
+
+          done = '0'b;
+          do while (^done);
+               call read_record (tape_unit, buffer$, code);
+               if code ^= 0
+               then if code = TS_FILEMARK
+                    then done = '1'b;
+                    else return;
+
+               if ^done
+               then call dump_record;
+          end;
+          if g.record_number <= 1 & soft_eot
+          then do;
+               call s$write( '*** End of Tape Mark ***' );
+               return;
+               end;
+     end;
+     return;
+%page;
+convert_status:
+     procedure (p_status_ptr, p_code);
+
+/* parameters */
+
+declare   p_status_ptr ptr,
+          p_code fixed bin (15);
+
+/* automatic */
+
+declare   sx fixed bin (15);
+
+/* program */
+
+     p_status_ptr -> status.value = p_status_ptr -> status.value &
+          'ff22'b4;
+
+     if p_status_ptr -> status.value = ''b
+     then p_code = 0;
+     else do sx = 1 to length (p_status_ptr -> status.value);
+               if substr (p_status_ptr -> status.value, sx, 1)
+               then p_code = - sx;
+          end;
+
+     end convert_status;
+%page;
+dump_record:
+     procedure;
+
+/* automatic */
+
+declare   code fixed bin (15);
+
+/* defined */
+
+declare   buffer_overlay char (1) defined (buffer$);
+
+/* entries */
+
+declare   s$dump entry (fixed bin (31), char (1), fixed bin (15),
+               fixed bin (31), fixed bin (15));
+
+/* program */
+
+     call s$write ('--- Record ' !! ltrim ((g.record_number)) !! ' ---');
+     call s$write ('');
+
+     call s$dump (0, buffer_overlay, g.n_bytes_read, 1, code);
+
+     end dump_record;
+%page;
+perform_control:
+     procedure (p_tape_unit, p_opcode, p_code);
+
+/* parameters */
+
+declare   p_tape_unit fixed bin (15),
+          p_opcode fixed bin (15),
+          p_code fixed bin (15);
+
+/* automatic */
+
+declare   sp ptr,
+          status_arg (8) fixed bin (15);
+
+/* program */
+
+     sp = addr (status_arg);
+     sp -> status.value = 0;
+     call t$mt (p_tape_unit, null, 0, p_opcode, status_arg, p_code);
+     if p_code ^= 0
+     then return;
+
+     call wait_for_completion (p_tape_unit);
+     call convert_status (sp, p_code);
+
+     end perform_control;
+%page;
+perform_read:
+     procedure (p_tape_unit, p_buffer_ptr, p_buffer_length, p_opcode,
+          p_bytes_read, p_code);
+
+/* parameters */
+
+declare   p_tape_unit fixed bin (15),
+          p_buffer_ptr ptr,
+          p_buffer_length fixed bin (15),
+          p_opcode fixed bin (15),
+          p_bytes_read fixed bin (15),
+          p_code fixed bin (15);
+
+/* automatic */
+
+declare   n_words fixed bin (15),
+          status_arg (8) fixed bin (15);
+
+/* program */
+
+     status_ptr = addr (status_arg);
+     status.value = 0;
+     status.n_words = 0;
+
+     n_words = divide (p_buffer_length, 2, 15, 0);
+     n_words = min (n_words, MAX_TAPE_RECORD_SIZE);
+     call t$mt (p_tape_unit, p_buffer_ptr, n_words, p_opcode, status_arg,
+          code);
+     if code ^= 0
+     then return;
+
+     call wait_for_completion (p_tape_unit);
+     p_bytes_read = addr (status_arg) -> status.n_words * 2;
+     call convert_status (status_ptr, p_code);
+
+     end perform_read;
+%page;
+position_to_file:
+     procedure (p_tape_unit, p_filex, p_code);
+
+/* parameters */
+
+declare   p_tape_unit fixed bin (15),
+          p_filex fixed bin (15),
+          p_code fixed bin (15);
+
+/* automatic */
+
+declare   filex fixed bin (15);
+
+/* program */
+
+     g.file_number = 0;
+     g.record_number = 0;
+
+     call perform_control (p_tape_unit, REWIND_TAPE, p_code);
+     if p_code ^= 0
+     then if p_code ^= TS_REWIND_COMPLETE
+          then do;
+                    call tape_error (p_code, 'While rewinding tape.');
+                    return;
+               end;
+
+     do filex = 1 to p_filex - 1;
+          g.file_number = g.file_number + 1;
+          call perform_control (p_tape_unit, FORWARD_FILE_TAPE9, p_code);
+          if p_code ^= 0
+          then if p_code ^= TS_FILEMARK
+               then do;
+                         call tape_error (p_code, 'While positioning to file '
+                              !! ltrim ((p_filex)));
+                         return;
+                    end;
+     end;
+     p_code = 0;
+
+     end position_to_file;
+%page;
+read_record:
+     procedure (p_tape_unit, p_buffer, p_code);
+
+/* parameters */
+
+declare   p_tape_unit fixed bin (15),
+          p_buffer char (*),
+          p_code fixed bin (15);
+
+/* program */
+
+     g.record_number = g.record_number + 1;
+     call perform_read (tape_unit, addr (p_buffer), length (p_buffer),
+          READ_REC_2CPW_TAPE9, g.n_bytes_read, p_code);
+     if p_code ^= 0
+     then if p_code = TS_FILEMARK
+          then return;
+          else do;
+                    call tape_error (p_code, 'While reading tape.');
+                    return;
+               end;
+
+     p_code = 0;
+
+     end read_record;
+%page;
+tape_error:
+     procedure (p_code, p_msg);
+
+/* parameters */
+
+declare   p_code fixed bin (15),
+          p_msg char (*) varying;
+
+/* entries */
+
+declare   errpr$ entry (fixed bin (15), fixed bin (15), char (*),
+               fixed bin (15), char (*), fixed bin (15));
+
+/* internal static */
+
+declare   error_messages (0:16) char (32) varying internal static init (
+          'Unknown error.',             /* 0 */
+          'Vertical Parity Error.',     /* 1 */
+          'Runaway.',                   /* 2 */
+          'CRC Error.',                 /* 3 */
+          'LRC Error.',                 /* 4 */
+          'False Gap/Bad DMA Range.',   /* 5 */
+          'Uncorrectable Error.',       /* 6 */
+          'Raw Error.',                 /* 7 */
+          'File Mark.',                 /* 8 */
+          'Selected Transport Ready.',  /* 9 */
+          'Selected Transport Online.', /* 10 */
+          'Selected Transport EOT.',    /* 11 */
+          'Selected Transport Rewinding.',   /* 12 */
+          'Selected Transport BOT.',    /* 13 */
+          'Tape Write Protected.',      /* 14 */
+          'DMX Overrun/No Formatter.',  /* 15 */
+          'Rewind Complete.');          /* 16 */
+
+/* program */
+
+     if code > 0
+     then call errpr$ (2, code, '', 0, my_name, length (my_name));
+     else do;
+               code = -code;
+
+               if code < lbound (error_messages, 1) !
+                    code > hbound (error_messages, 1)
+               then code = lbound (error_messages, 1);
+
+               call s$write (my_name !! ': ' !! error_messages (code) !! ' '
+                    !! p_msg);
+          end;
+
+     call s$write ('While on file ' !! ltrim ((g.file_number)) !!
+          ', record ' !! ltrim ((g.record_number)));
+
+     end tape_error;
+%page;
+wait_for_completion:
+     procedure (p_tape_unit);
+
+/* parameters */
+
+declare   p_tape_unit fixed bin (15);
+
+/* automatic */
+
+declare   sp ptr,
+          wait_status (8) fixed bin (15);
+
+/* program */
+
+     sp = addr (wait_status);
+     sp -> status.flag = 1;
+
+     do while (sp -> status.flag ^= 0);        /* wait for completion */
+          call t$mt (p_tape_unit, null, 0, SELECT_TRANSPORT, wait_status, (0));
+     end;
+
+     end wait_for_completion;
+
+     end;

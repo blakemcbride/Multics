@@ -1,0 +1,523 @@
+Multics Technical Bulletin                                MTB-511
+DM: Page Access Layer Overview
+
+
+
+To:       Distribution
+
+From:     John J. Bongiovanni
+
+Date:     05/14/81
+
+Subject:  Data Management: Page Access Layer Overview
+
+
+
+1 INTRODUCTION
+
+    The  intent of  this document is  to describe  a common file
+interface  to  Multics  files.   At  present,  Multics  files are
+integrated into the virtual memory,  although not in a consistent
+manner   (multi-segment   files   are    an   example   of   this
+inconsistency).  To achieve more efficient and effective recovery
+of user  data following system catastrophe  (ESD failure or media
+damage) and  to handle very  large data bases  efficiently, a new
+type of  file object in  Multics is under  development.  This new
+type  of  file object  is  named tentatively  "large  file".  The
+purpose of the Page Access Layer is to provide a common method of
+dealing with all file objects on Multics, without needing to know
+the specific implementations of these objects, or, within certain
+bounds,  to  know in  a  given instance  the  type of  a  file of
+interest.  The Page Access Layer will  be implemented by a set of
+routines  called collectively  the Page  File Manager.   When the
+Page File Manager  is in place, "large files"  can be implemented
+in a manner hidden to routines  other than the Page File Manager.
+This MTB  contains an overview  of the functions  and services of
+the Page File manager.  The design  of the Page File Manager will
+be the subject of a later MTB.
+
+Send comments by one of the following means:
+
+    By Multics Mail, on MIT or System M:
+       Bongiovanni.Multics
+
+    By Telephone:
+       HVN 261-9314 or (617)-492-9314
+
+
+_________________________________________________________________
+
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+
+
+                            Page i. 
+
+
+
+
+
+
+
+
+
+
+                           CONTENTS
+
+
+                                                        Page
+
+                1 Introduction . . . . . . . . . . . .     i
+                2 Objectives . . . . . . . . . . . . .     1
+                   2.1 Background  . . . . . . . . . .     1
+                   2.2 Purpose of the Page File
+                    Manager  . . . . . . . . . . . . .     2
+                   2.3 Functions of the Page File
+                    Manager  . . . . . . . . . . . . .     2
+                   2.4 Constraints . . . . . . . . . .     3
+                3 Services of the Page File Manager  .     3
+                   3.1 Creation  . . . . . . . . . . .     3
+                   3.2 Destruction . . . . . . . . . .     4
+                   3.3 Access  . . . . . . . . . . . .     4
+                   3.4 Recovery Journalization . . . .     5
+                   3.5 Administration  . . . . . . . .     5
+                4 Internals  . . . . . . . . . . . . .     6
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                              ii Multics Technical Bulletin                                MTB-511
+DM: Page Access Layer Overview
+
+
+
+2 OBJECTIVES
+
+
+2.1 Background
+
+    A complete discussion of the limitations of the Multics file
+system  in the  context of  supporting data  base systems  can be
+found in MTB-329, "A New  Proposal for Accessing Large Files" and
+in MTB-483, "Multics Data  Management:  Problem Statement".  This
+discussion  is summarized  here for  those unfamiliar  with those
+documents.  In  Multics, the file  system is integrated  into the
+virtual  memory.  That  is, one accesses  a file  by attaching it
+into  the  process virtual  memory,  and then  referencing  it as
+memory, using a segment number and word offset.  A non-supervisor
+procedure (and most ring-supervisor  procedures, in fact) does no
+explicit I/O, as  all I/O is done by page  control in response to
+page faults.  Under this philosophy,  a given page of data exists
+in only  one place--either in  main memory or on  disk.  When the
+system crashes, a system function called Emergency Shutdown (ESD)
+is run  which writes all  data pages remaining in  main memory to
+disk,  thus  ensuring valid  copies  of all  such pages  on disk.
+However,  there  are hardware  and  software failure  modes under
+which ESD cannot be accomplished.  When such failures occur, data
+is lost.  User programs cannot control the migration of data from
+main memory to disk efficiently.  So there is no suitably general
+mechanism on Multics  to ensure the integrity of  user data under
+likely system failures.
+
+    The address space of a  single addressable entity in Multics
+is approximately 1 million bytes (the size of a segment).  Larger
+files   are  implemented   as  a  sequence   of  segments  called
+multi-segment  files.  Although  the size  of files  which can be
+supported in this  way is large, it is  not sufficiently large to
+support applications  expected within the next  five years.  More
+immediately, the multi-segment file  method is rather inefficient
+for  even moderately  sized files  accessed randomly,  due to the
+overhead (memory,  CPU, and disk  channel) of segment  control in
+multiplexing individual page tables.
+
+    For the  above reasons, the  current Multics file  system is
+inadequate  to  support  large  data  bases.   To  address  these
+inadequacies, a  new type of file  object is planned, tentatively
+called a "large file".  Although this type of file object has not
+been  designed,  it  is likely  that  it will  exist  outside the
+present Multics file system, managed by an entirely different set
+of ring-zero routines,  and accessed by means of  a different set
+of primitives from those presently in being.
+
+
+
+
+
+                            Page 1. 
+MTB-511                                Multics Technical Bulletin
+                                  DM: Page Access Layer Overview
+
+
+
+2.2 Purpose of the Page File Manager
+
+    The   Page   File   Manager  will   satisfy   the  following
+requirements:
+
+1.  Implement the  interfaces to "large files"  in a manner which
+   does not depend on the  existence or implementation of "large
+   files" themselves.  In this  way, the later implementation of
+   "large files"  will not depend on  or require modification of
+   user  programs  or  of  programs  outside  of  the  Page File
+   Manager.
+
+2.  Implement these interfaces in a manner which does not require
+   the use  of "large files"  after the latter  are implemented.
+   That  is,  following implementation  of "large  files", these
+   interfaces could be used to  access both files in the Multics
+   storage system and "large files".
+
+    The  Page File  Manager is  thus a  common interface between
+system and applications programs and lower-level Multics routines
+which  manage   particular  types  of  file   objects.   This  is
+illustrated in the following diagram:
+
+               +------------------------------+
+               |                              |
+               |      Page File Manager       |
+               |                              |
++--------------+--------------+---------------+--------------+
+|              |              |               |              |
+|   Multics    | Multi-Segment|     Large     |  Other File  |
+|   Segment    |     File     |      File     |    Object    |
+|              |              |               |              |
++--------------+--------------+---------------+--------------+
+
+    Note  that this  scheme allows distribution  of file objects
+among physically  separated systems in a  manner invisible to the
+invoker  of  the Page  File  Manager.  If  a  lower-level Multics
+routine  were  available  which  accessed file  objects  on other
+systems, this routine  could be invoked by the  Page File Manager
+as easily as the other routines indicated explicitly.
+
+
+2.3 Functions of the Page File Manager
+
+1.  Provide a common interface to  users of page files on Multics
+   which  is independent  of the  lower level  implementation of
+   these  files This  interface is to  be complete  in the sense
+   that there  will be no  need to access page  files other than
+   through this interface.
+
+
+
+                            Page 2. 
+Multics Technical Bulletin                                MTB-511
+DM: Page Access Layer Overview
+
+
+
+2.  The view of a file accessed  through the Page File Manager is
+   as a string of bits, each  of which may be addressed by means
+   of  a  unique  offset  within  the  file,  with  no  limit in
+   principle to the size of a file.
+
+3.  Although it  is not the  purpose of the Page  File Manager to
+   provide recovery  services, it is  nonetheless convenient for
+   the Page File  Manager to invoke recovery services  as a page
+   file is  being modified.  The Page  File Manager will provide
+   this capability as a default.
+
+
+2.4 Constraints
+
+1.  The  Page File  Manager should  not add  appreciable overhead
+   (CPU or paging)  to the normal data access  path (compared to
+   the  case where  the invokers of  the Page  File Manager call
+   lower-level services directly).
+
+2.  The same security and  protection services provided currently
+   for files  in the Multics  storage system should  be provided
+   for all file objects accessed through the Page File Manager.
+
+3.  All interfaces  and services should be  implemented such that
+   they  can  be used  by any  application outside  the hardcore
+   supervisor   (e.g.,  site   developed  subsystems,  answering
+   service, etc.).
+
+
+3 SERVICES OF THE PAGE FILE MANAGER
+
+    The primary  services provided by the  Page File Manager are
+the creation of, destruction of, administration of, and access to
+files.   The  only ancillary  service planned  for implementation
+within  the   Page  File  Manager   is  recovery  journalization.
+However, other  services (e.g., concurrent access  control at the
+physical record level) could be provided if necessary.
+
+
+3.1 Creation
+
+    This    service    creates   the    lower-level   structures
+corresponding to a file in  the Multics system.  Upon creation, a
+page file will  be empty (that is, no space  will be allocated in
+the  sense  described below).   Creation  is analogous  to branch
+creation in the Multics storage system.  At creation, a number of
+static  attributes  are associated  with  the newly  created page
+file.  These attributes  include a unique name for  the page file
+(analogous to the  path name in the Multics  storage system), and
+
+
+
+                            Page 3. 
+MTB-511                                Multics Technical Bulletin
+                                  DM: Page Access Layer Overview
+
+
+
+access control  attributes (Access Control  Lists, ring brackets,
+etc.).
+
+
+3.2 Destruction
+
+    This service destroys all  lower-level structures in Multics
+corresponding to a specified  named file.  The function performed
+by this  service is analogous  to branch deletion  in the Multics
+storage system.
+
+
+3.3 Access
+
+    A set of services for reading and writing data from and to a
+file during normal operation.  These services are the following:
+
+  o Open - Specify a named file for which access is desired, and
+    obtain  an  identifier  for  use  in  such  access  (such an
+    identifier  is  not strictly  necessary,  but is  useful for
+    efficiency).  This  service is analogous to  initiation of a
+    segment,  as  it binds  a  file path  name to  a per-process
+    identifier  which can  be used  for efficient  access to the
+    file.  It is necessary to  open a page file before accessing
+    the file through the Page File Manager.
+
+  o Close - This service  removes the file-to-identifier binding
+    established by  Open.  It is  analogous to termination  of a
+    segment.
+
+  o Allocate Space  - This service  makes a section  of the file
+    logical address space available for use by Get and Put.  All
+    Get and Put  calls must specify a section  of the file space
+    which has  been allocated previously during  the life of the
+    page  file.   This  does not  imply  that each  Put  must be
+    preceded  by (its  own) Allocate,  as an  invoking subsystem
+    could choose to  allocate large sections of a  file at once,
+    and  then suballocate  these sections  according to  its own
+    algorithms.  The logical address space,  or view of the page
+    file  to  a  user  program  is a  string  of  bits,  with no
+    practical  upper  bound on  the length  of this  string.  In
+    allocating  and  deallocating  space  in  the  file,  and in
+    reading and writing  to the file, the target  section of the
+    file  is specified  by a beginning  bit offset  and a length
+    (also in  bits).  Explicit allocation of  this nature has no
+    direct analogue in the current Multics storage system.
+
+  o Free  Space -  This service makes  a section  of the virtual
+    address space  of a specified  file unavailable for  Get and
+
+
+
+                            Page 4. 
+Multics Technical Bulletin                                MTB-511
+DM: Page Access Layer Overview
+
+
+
+    Put.   The  section specified  must  be allocated  when this
+    service is invoked.
+
+  o Get  -  This service  copies data  from a  page file  into a
+    buffer  specified  by  the  invoker.   The  data  copied  is
+    specified  as  a contiguous  string  of bits,  all  of which
+    reside in allocated sections of the file.
+
+  o Put - This  service copies data into the  file from a buffer
+    specified by  the invoker.  The target  of this operation is
+    specified  as  a contiguous  string  of bits,  all  of which
+    reside in allocated sections of the file.
+
+
+3.4 Recovery Journalization
+
+    Preserving   the  integrity   of  data   in  files   is  the
+responsibility of the Recovery  Manager (reference MTB-513, "Data
+Management:  Recovery Management Overview").  Briefly, the method
+used by  the Recovery Manager  is to journalize  data images when
+data in a file is modified.  On modification, two data images may
+be  journalized:   a  "before"  image and  an  "after"  image.  A
+"before" image is  the data prior to modification;  it is used to
+roll back modifications if a  transaction cannot be completed for
+any reason (e.g.,  a deadlock is detected).  An  "after" image is
+the data following modification; it is used to reconstruct a file
+from  a  previous  copy  following catastrophic  system  or media
+failure.   For  most applications  for  which such  protection is
+required,  the  most convenient  time  to journalize  is  at each
+modification  of data  (this time is  the invocation  of the Page
+File  Manager).  For  more sophisticated applications,  it may be
+desirable to exercise more intelligence over journalization.  For
+instance,   some   data  may   not  require   journalization,  or
+journalization may  be accomplished more effectively  at a higher
+level  than  the  modification of  data  in a  file.   In certain
+applications, considerable gains in  efficiency could result from
+the judicious exercise of intelligence over journalization.
+
+    For  these  reasons,  the   Page  File  Manager  will  allow
+automatic  journalization to  be specified  for a  file.  If this
+option is in effect, all calls to the Page File Manager for which
+journalization is appropriate will result in calls to the Journal
+Manager.   Additionally,  over-rides of  automatic journalization
+will be provided  for each call, along with  "journalize for this
+call" options.
+
+
+
+
+
+
+
+                            Page 5. 
+MTB-511                                Multics Technical Bulletin
+                                  DM: Page Access Layer Overview
+
+
+
+3.5 Administration
+
+    A  set of  routines can be  called to  perform the following
+functions:
+
+  o Change the static attributes  associated with a file (access
+    rights, etc.).
+
+  o Obtain  control  information  associated  by  the  Page File
+    Manager   with   the    file   (e.g.,   static   attributes,
+    corresponding  lower-level  Multics  structures,  allocation
+    map, etc.).
+
+
+4 INTERNALS
+
+     Although it is not intended to present a detailed design in
+this document,  some internals of  the Page File  Manager can be
+outlined as natural consequences of the above discussion.
+
+     The  Page  File Manager  will  be implemented  as a  set of
+subroutines  callable from  outside of  the hardcore supervisor,
+and  usable by  all system and  user applications  which are not
+part of  the hardcore supervisor.   It will map  calls to itself
+into calls to supervisor primitives.
+
+     For  each  named  file  under its  control,  the  Page File
+Manager  must   maintain  sufficient  information   to  map  bit
+addresses  into offsets  within lower-level  Multics structures.
+This  information  can  be  considered  as  overhead information
+associated with a file (analogous  to branches and VTOCEs in the
+present Multics  file system).  Clearly,  some transformation of
+this information must also  be maintained in lower-level Multics
+structures.    This   does  not   represent   redundant  control
+information,  as much  of the  information required  by the Page
+File Manager  is local to the  Page Access Layer, and  it is not
+meaningful  to  lower-level  Multics  structures.   One possible
+implementation is to maintain this  information as a part of the
+structures in which  the data of the files  is maintained (as is
+done   in   structured  files   presently).    Another  possible
+implementation is to maintain  this information in an associated
+structure  which  is  distinct  logically  from  the  structures
+associated with the data (the analogy is branches).
+
+     Whatever   implementation   is   selected,   the  following
+philosophy  concerning access  control will  be maintained.  The
+invokers  of  the  Page  File Manager  cannot  be  considered as
+"trusted" regarding access control.  Since the Page File Manager
+will  exist  (possibly)  at  the same  level  of  Multics access
+
+
+
+                            Page 6. 
+Multics Technical Bulletin                                MTB-511
+DM: Page Access Layer Overview
+
+
+
+control  as  its  invokers,  it must  rely  on  lower-level (and
+protected) Multics mechanisms to implement access control.
+
+     The   Page  File   Manager  will   be  maintaining  control
+structures describing files, and thus requires concurrent access
+protection  to  ensure the  integrity  of these  structures.  To
+achieve  this, the  Page File  Manager will  use the Concurrency
+Management  provided  by  the  architecture  (reference MTB-514,
+"Data Management:  Concurrency Management Overview").
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                            Page 7. 
+

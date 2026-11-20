@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-749</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-749: A New IPC Channel Type:  The Async Call Channel.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+Multics Technical Bulletin                                MTB-749
+IPC Async Channels
+
+To:       Distribution
+
+From:     Richard J.C.  Kissel
+
+Date:     04/02/86
+
+Subject:  A New IPC Channel Type:  The Async Call Channel
+
+1 ABSTRACT
+
+     A  new   type  of  IPC  event  channel   is  described,  the
+asynchronous  event call  channel.   The  handlers for  these new
+channels  can be  invoked whether  or not  the owning  process is
+blocked.  A  new interface is  also described for  creating event
+channels.
+
+Comments should be sent to the author:
+
+via Forum:
+   &gt;udd&gt;m&gt;rjck&gt;mtgs&gt;Multics_Networking (mnet).
+
+via Multics Mail:
+   Kissel.Multics on all systems
+
+via telephone:
+   (HVN) 492-9320 or (617) 492-9320
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+Multics Technical Bulletin                                MTB-749
+IPC Async Channels
+
+2 INTRODUCTION
+
+     This  MTB describes  a new  type of  IPC event  channel, the
+asynchronous  event call channel.   A new interface  for creating
+event channels is also described in Appendix A.
+
+3 A PROBLEM WITH THE CURRENT IPC
+
+     During  the implementation  of DSA  software on  Multics the
+following   problem   arose    with   respect   to   interprocess
+communication  (IPC).   A  Daemon  process  receives  input  data
+destined for a  user process.  This data indicates  that the user
+process  should take  some immediate  action.  For  instance, the
+data might indicate that the user  has pressed the "break" key on
+his terminal,  and therefore, "quit"  should be signalled  in the
+user's process.  With current  IPC mechanisms, the Daemon process
+can send  a wakeup to  the user's process.   However, this wakeup
+will  be received only  when the user's  process is blocked  (has
+called ipc_$block).   If the process  is wedged in  some way, and
+the user is trying to make it stop with the "quit" signal, it may
+not  go  blocked  at  a  convenient  time  (maybe it never blocks
+because it is looping).
+
+     A possible solution, in this particular case, is to give the
+Daemon  access to  hphcs_ so  that it  could send  an IPS  "quit"
+signal  directly to  the user's   process.  This  solution has  a
+number of problems.  The Daemon must analyze the data it is going
+to give to the user's process  to determine exactly what it means
+(in  this  case  it  means  "quit",  but  it  might  mean  almost
+anything).  We  would then need  an IPS signal  for each possible
+meaning  of the  data (there   are only  35 possible  IPS signals
+allowed),  and  a  handler  in  the  user's  process for each IPS
+signal.  Finally, the Daemon needs access to hphcs_.
+
+     What is  needed is a more general,  extensible mechanism for
+asynchronously  signalling  a  user's  process  without having to
+define new IPS signals and having to give out access to hphcs_ to
+use them.
+
+4 A SOLUTION
+
+     The  proposed  solution  is  to  define  a  new  type of IPC
+channel,  the   asynchronous  call  event  channel   (async  call
+channel).   This channel  is just   like the  current call  event
+channel  except that sending  a wakeup on  an async call  channel
+(using hcs_$wakeup) sends an IPS "wkp_" signal to the destination
+process as well as sending a normal IPC wakeup.
+
+MTB-749                                Multics Technical Bulletin
+                                               IPC Async Channels
+
+     The IPS signal  causes the handler for the  "wkp_" signal to
+be  invoked   in  the  destination  user's   process  immediately
+(assuming the  "wkp_" signal is  not masked)), regardless  of the
+process' state with  respect to IPC.  The handler  for the "wkp_"
+IPS signal can then look through  the list of async call channels
+and cause the  handlers (for any with pending IPC  wakeups) to be
+run.
+
+     This solution  allows the user  process to set  up IPC event
+channels  with  handlers  for  any  sort  of  special  processing
+required.  Only one IPS signal  is needed, the "wkp_" signal, and
+no special access is needed by a process to send an IPC wakeup to
+the user's process.
+
+5 THE IMPLEMENTATION
+
+     There are two key parts to the implementation.  The first is
+the  IPS "wkp_"  signal.  As   it happens,  this signal  has been
+defined  for   a  long  time   and  is  handled   by  default  by
+wkp_signal_handler_,  which  currently  does  nothing.   This IPS
+signal  was added  to perform  exactly the  function that  is now
+being  proposed, although  the previous  implementation was never
+completed.  The second key part  of the implementation is the use
+of 3 bits  in the IPC channel name that  were introduced in MR11.
+These bits are  currently unused, but they were  provided so that
+event channel  names could be  given types.  In  this case, these
+bits are used  to indicate whether the event channel  is a normal
+event  channel (only  an IPC  wakeup is  to be  sent) or an async
+event channel(both an IPC wakeup and  an IPS "wkp_" signal are to
+be  sent).   Constant  values  for  these  bits  are  declared in
+event_channel_name.incl.pl1.   It is   necessary to  indicate the
+type of a channel in the name  because the name is the only piece
+of data that  is shared between a process  which receives wakeups
+on the  event channel and  the processes which  send the wakeups.
+That is, at  the time a wakeup is sent,  the sending process does
+not  have any good  way of finding  the receiving process'  Event
+Channel  Table (ECT)  to determine  what type  of channel  it is.
+Thus, this information must be encoded in the channel name.
+
+     The  implementation  involves  the  following  changes.  The
+program which actually sends wakeups, hc_ipc, must be modified to
+decode the event channel name to find out what type of channel it
+is.  If it is a normal channel, it sends an IPC wakeup as before.
+If it  is an async  channel, it also  sends an IPS  "wkp_" signal
+after sending the IPC wakeup.
+
+     The  wkp_signal_handler_ is changed  to call a  new internal
+entry  in ipc_,  run_event_calls  (see  Appendix B).   This entry
+performs processing similar to that performed when the ipc_$block
+entry is called.  That is, it looks for async call channels which
+
+Multics Technical Bulletin                                MTB-749
+IPC Async Channels
+
+have pending wakeups and runs  their handlers.  In the ipc_$block
+case,  the same  thing is   done for  normal call  channels.  One
+difference is  that ipc_$run_event_calls only copies  out the ITT
+once, while ipc_$block checks the ITT after each handler is runs.
+The  effect of  this one  time copying  is that  there is  only a
+finite  amount  of  work  to  be  done  by  any one invocation of
+ipc_$run_event_calls,  and thus,  by wkp_signal_handler_  when it
+handles  the IPS  "wkp_" signal.    In the  ipc_$block case,  the
+process  can  spend  an  arbitrary  amount  of  time running call
+handlers, depending on how other processes are sending wakeups to
+it.
+
+     On the calling side, a way is needed to create an async call
+channel (see  the next section).  Otherwise,  async call channels
+are  just  like  current  call  channels.   They  share  the same
+priority numbering space, they can  be masked, they can be turned
+into wait channels, etc.  They  cannot be turned into normal call
+channels (i.e.  ones for which no IPS signal is sent) because the
+fact that an IPS  signal is to be sent is encoded  in the name of
+the channel, which  cannot be changed.  Also, this  means that if
+an  async call  channel is  turned into  a wait  channel, the IPS
+signal is  still sent, but is  a no-op because the  channel is no
+longer  a call  channel (i.e.   the wkp_signal_handler_  will not
+find it when it calls ipc_$run_event_calls).
+
+6 A NEW INTERFACE FOR CREATING IPC CHANNELS
+
+     Because the type of an event channel is to be encoded in its
+name,  the current  two step  mechanism for  creating call  event
+channels  cannot  be  used  for  async  call  channels.  With the
+current   IPC,  an   event   channel   is  first   created  using
+ipc_$create_ev_chn,  and then  it is  turned into  a call channel
+using  ipc_$decl_event_call_chn.   At  the  time  the  channel is
+created it  is not known that  it will be an  async call channel,
+and  so the  correct type  bits cannot  be encoded  in its  name.
+Another deficiency  of the current  interface is that  fast event
+channels cannot be created with  ipc_, they must be created using
+hcs_$assign_channel.   To  solve  the  problem,  and  improve the
+current awkward interface, this MTB proposes to finally implement
+ipc_$create_event_channel (a name we  have presumably been saving
+until  we could  "get it  right").  Subroutine  documentation for
+this entry can be found in Appendix A.
+
+
+
+               Appendix A - ipc_$create_event_channel
+
+     This  appendix gives  MPM  style  documentation for  the new
+entry, create_event_channel, in ipc_.
+
+04/02/86                       A-1                        MTB-749
+
+____                                                         ____
+
+ipc_                                                         ipc_
+____                                                         ____
+
+Name: ipc_
+
+     This  is   the  documentation  for  the   new  user  visible
+entrypoint in ipc_.  It should be included in MPM Subroutines.
+
+MTB-749                        A-2                       04/02/86
+
+____                                                         ____
+
+ipc_                                                         ipc_
+____                                                         ____
+
+Entry: ipc_$create_event_channel
+
+          This  entry creates an  event channel of  the specified
+type with the specified parameters.  This entry should be used as
+a  replacement  for:   hcs_$assign_channel  to  create fast event
+channels,   the    ipc_$create_ev_chn,   ipc_$decl_event_call_chn
+sequence to create normal call  channels.  This entry is the only
+way to create an async event call channel.
+
+Usage
+
+     dcl ipc_$create_event_channel entry (ptr, fixed bin (71),
+          fixed bin (35));
+
+     call ipc_$create_event_channel (arg_ptr, channel_id, code);
+
+where:
+
+       arg_ptr                      (Input)
+            is  a pointer  to ipc_create_arg_structure  described
+            below.
+
+       channel_id                   (Output)
+            is the identifier of the event channel created.
+
+       code                         (Output)
+            is a standard system status code.
+
+04/02/86                       A-3                        MTB-749
+
+____                                                         ____
+
+ipc_                                                         ipc_
+____                                                         ____
+
+Notes
+
+     The  following  structure  contains  the  arguments  to  the
+create_event_channel entry.   All of the fields  of the structure
+are  to be  filled in  on input.   The structure  is declared  in
+ipc_create_arg.incl.pl1:
+
+dcl  1 ipc_create_arg_structure      aligned
+                      based (ipc_create_arg_structure_ptr),
+       2 version                     char (8) unaligned,
+       2 channel_type                fixed bin,
+       2 call_entry                  variable entry (ptr),
+       2 call_data_ptr               ptr,
+       2 call_priority               fixed bin (17);
+
+where:
+
+       version                      (Input)
+            is the version of the structure.  It should be set to
+            the constant:  ipc_create_arg_structure_v1.
+
+       channel_type                 (Input)
+            is the type  of event channel that is  to be created.
+            Constant  values  for  the   type  can  be  found  in
+            event_channel_types.incl.pl1 as follows:
+
+                   1  - FAST_EVENT_CHANNEL_TYPE
+                   2  - WAIT_EVENT_CHANNEL_TYPE
+                   3  - CALL_EVENT_CHANNEL_TYPE
+                   4  - ASYNC_CALL_EVENT_CHANNEL_TYPE
+
+       call_entry                   (Input)
+            is  the procedure entry  point invoked when  an event
+            occurs on the specified channel.
+
+       call_data_ptr                (Input)
+            is a pointer to data  to be passed to and interpreted
+            by the procedure entry point.
+
+       call_priority                (Input)
+            is a number indicating the  priority of an event call
+            channel  as  compared  to  other  event call channels
+            declared  by this  process for  this ring.   If, upon
+            interrogating   all   the   appropriate   event  call
+            channels, more than one is  found to have received an
+            event, the lowest-numbered priority is honored first,
+
+MTB-749                        A-4                       04/02/86
+
+____                                                         ____
+
+ipc_                                                         ipc_
+____                                                         ____
+
+            and  so   on.   Synchronous  and   asynchronous  call
+            channels are the same with respect to this priority.
+
+04/02/86                       A-5                        MTB-749
+
+____                                                         ____
+
+ipc_                                                         ipc_
+____                                                         ____
+
+                  Appendix B - ipc_$run_event_calls
+
+     This  appendix gives  PLM  style  documentation for  the new
+internal entry, run_event_calls, in ipc_.
+
+04/02/86                       B-1                        MTB-749
+
+____                                                         ____
+
+ipc_                                                         ipc_
+____                                                         ____
+
+Name: ipc_
+
+     This is the documentation for the new internal entrypoint in
+ipc_.
+
+MTB-749                        B-2                       04/02/86
+
+____                                                         ____
+
+ipc_                                                         ipc_
+____                                                         ____
+
+Entry: ipc_$run_event_calls
+
+          This entry causes the handlers of any event channels of
+the  specified  type  which  have  pending  wakeups  to be run in
+priority order.
+
+Usage
+
+     dcl ipc_$run_event_calls entry (fixed bin, fixed bin (35));
+
+     call ipc_$run_event_calls (channel_type, code);
+
+where:
+
+       channel_type                 (Input)
+            is the type of the call event channels whose handlers
+            should be run.  Constant values  for the types can be
+            found in event_channel_types.incl.pl1 as follows:
+
+                   3  - CALL_EVENT_CHANNEL_TYPE
+                   4  - ASYNC_CALL_EVENT_CHANNEL_TYPE
+                   10 - ANY_CALL_EVENT_CHANNEL_TYPE
+
+       code                         (Output)
+            is a standard system status code.
+
+04/02/86                       B-3                        MTB-749
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

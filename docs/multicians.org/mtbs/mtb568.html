@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-568</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-568: Data Management:  Rollback.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-568
+DM: Rollback
+
+To:  Distribution
+
+From:  Andre Bensoussan
+
+Date:  06/23/83
+
+Subject:  Data Management:  Rollback
+
+ABSTRACT
+
+     This  MTB  describes  how  the  recovery  system  rolls back
+unfinished transactions during normal operation, and how it rolls
+back  all unfinished  transactions after a  system crash.  During
+normal operation, a transaction may be rolled back by the process
+that started the transaction, if it is still alive; otherwise, it
+is rolled  back by the  Data Management Daemon  process.  After a
+system  crash,  the  Multics  system is  first  initialized; then
+various  Deamons  are  logged  in, and  in  particular,  the Data
+Management Daemon  process.  Its first  task is to  check if some
+transactions were  in progress at  the time of the  crash and, if
+so, to roll them back.
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Bensoussan.Multics on System M.
+
+via US Mail:
+   Andr&eacute; Bensoussan
+   Honeywell Information Systems, inc.
+   575 Tech Square
+   Cambridge, Massachusetts 02139
+
+via telephone:
+   (HVN) 261-9334, or
+   (617) 492-9334
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project.
+
+
+
+                            CONTENTS
+
+                                                         Page
+
+                 Abstract . . . . . . . . . . . . . . .     i
+                 1 Introduction . . . . . . . . . . . .     1
+                 2 Rolling back a transaction . . . . .     2
+                    2.1 Summary of what the rollback
+                     procedure does . . . . . . . . . .     3
+                    2.2 Environment of the rollback
+                     procedure  . . . . . . . . . . . .     3
+                    2.3 File identification . . . . . .     3
+                    2.4 How the rollback procedure does
+                     its job  . . . . . . . . . . . . .     4
+                 3 Rolling back after crash . . . . . .     8
+                    3.1 Invoking the
+                     rollback_after_crash . . . . . . .     8
+                    3.2 Finding all Journals and Files      8
+                    3.3 Finding the end of each before
+                     journal  . . . . . . . . . . . . .     9
+                    3.4 Finding the end of each after
+                     journal  . . . . . . . . . . . . .    10
+                    3.5 Phasing before and after
+                     journals . . . . . . . . . . . . .    10
+                    3.6 Finding all unfinished
+                     transactions . . . . . . . . . . .    11
+                    3.7 Rolling back all unfinished
+                     transactions . . . . . . . . . . .    12
+                    3.8 Cleaning up . . . . . . . . . .    12
+                    3.9 Accepting users again . . . . .    13
+
+Multics Technical Bulletin                                MTB-568
+DM: Rollback
+
+1 INTRODUCTION
+
+     The  Rollback  description  contained  in this  memo  is the
+logical  continuation  of  the   Before  Journal  Manager  Design
+document (MTB-560).  It  is the object of a  separate MTB because
+of practical size consideration.  It can  be viewed as Part II of
+the  Before Journal  Manager Design.  Part  I (MTB-560) describes
+what information is stored in the  journal, and how it is stored,
+in  order  to  be  used  later if  needed.   Part  II  (this MTB)
+describes  how  rollback  uses  the  information  stored  in  the
+journal.
+
+     The first portion of this  memo describes how the "rollback"
+primitive of the  before journal manager does its  job of rolling
+back a single transaction,  during normal system operation.  This
+rollback may be  performed by the process that  was executing the
+transaction,  if it  is still  alive, or  by the  Data Management
+Daemon process.
+
+     The second  portion describes how recovery  after crash does
+its  job of  finding out,  after a crash,  what the  state of the
+system  was  at  the time  of  the  crash, and  rolling  back all
+transactions  that were  in progress  at the  time of  the crash.
+This job is always done by the Data Management Daemon process.
+
+
+MTB-568                                Multics Technical Bulletin
+                                                     DM: Rollback
+
+2 ROLLING BACK A TRANSACTION
+
+     Rolling  back a  transaction consists  of several operations
+executed by the  before journal, the after journal,  the file and
+the lock managers, orchestrated  by the transaction manager.  The
+transaction   manager   may  perform   a  rollback   because  the
+transaction has to  be aborted or because it  has to be restarted
+from  the beginning  or from a  given checkpoint.   To rollback a
+transaction, the transaction manager takes the following steps:
+
+(1)  Call    before_journal_manager_$rollback,   to    undo   the
+     modifications made  by the transaction, up  to the beginning
+     or up to a specified checkpoint.
+
+(2)  Call  file_manager_$flush_modified_ci, to  flush all control
+     intervals modified  by the rollback  procedure while undoing
+     the original modifications.
+
+(3)  Call after_journal_manager_$flush_transaction,  to flush all
+     after images produced by  the transaction being rolled back,
+     including  the   after  images  produced   by  the  rollback
+     procedure.
+
+(4)  Call    before_journal_manager_$write_rolled_back_mark,   to
+     write a mark in the  before journal used by the transaction,
+     indicating that the transaction has been rolled back and how
+     far it has been rolled back.
+
+(4a) Call before_journal_manager_$write_aborted_mark,  to write a
+     mark  in  the  before   journal  used  by  the  transaction,
+     indicating that the transaction has been aborted.  This step
+     is  taken instead  of step 4  if the  transaction manager is
+     rolling back the transactiom in order to abort it.
+
+(5)  Call  lock_manager_$unlock_all, to  unlock all  locks set by
+     the transaction, or the portion  of it, that has been rolled
+     back.
+
+What     we     are     interested    in,     here,     is    the
+before_journal_manager_$rollback  procedure,  which does  most of
+the  work,  and  which  will  be  referred  to  as  the "rollback
+procedure" in the remainder of this memo.
+
+
+Multics Technical Bulletin                                MTB-568
+DM: Rollback
+
+2.1 Summary of what the rollback procedure does
+
+     The  rollback  procedure  reads all  before  journal records
+produced by the transaction, in reverse chronological order, from
+the last record to the begin  mark record (or the checkpoint mark
+record specified by the caller).  Each time it reads a record, it
+performs the appropriate action to  undo what the transaction had
+done.   In  order to  undo  the modifications  made to  a control
+interval of a protected file, the rollback procedure has to write
+again  in  this  control interval.   It  does so  by  calling the
+special  entry  point  file_manager_$unput,  which  restores  the
+control  interval   to  its  original  value,   and  causes  this
+modification  made  by rollback  to be  journalized in  the After
+Journal associated  with the file  it writes into.   After images
+produced  during the  rollback logically cancel  out the original
+after images produced while the  transaction was in progress.  No
+Before Images are produced during rollback.
+
+2.2 Environment of the rollback procedure
+
+     The rollback  procedure may be executed  by the process that
+was executing  the transaction, or by  the Data Management Daemon
+process,  a daemon  process associated  with the  data management
+system.  While this function is performed, other transactions may
+be in  progress concurrently.  Several transactions  may be being
+rolled back concurrently, by several processes.
+
+     In  order to  work properly, the  rollback procedure expects
+all tables  used by the file,  transaction, before journal, after
+journal and lock managers to be in a consistent state.
+
+2.3 File identification
+
+     Each  Before  Image  record  was produced  by  a transaction
+before modifying  a file and  contains the identification  of the
+file in two  forms:  the file opening id and  the file unique id.
+When the rollback is performed  by the process that was executing
+the  transaction, the  file opening  id is  used by  the rollback
+procedure to refer to the file when calling the file manager.
+
+     However,  when  the  rollback  is  performed  by  the daemon
+process,  the  file  opening  id  cannot  be  used,  since  it is
+
+
+MTB-568                                Multics Technical Bulletin
+                                                     DM: Rollback
+
+meaningful only  in the original process.   Instead, the file uid
+is used  to search a  uid to pathname conversion  table, in which
+all protected  files are registered,  for as long as  they may be
+needed by  the rollback mechanism.   This table is  maintained by
+the open primitive  of the file manager; it is  needed to be able
+to rollback and it must be  as safe as the Before Journal itself.
+Ideally,  it should  be implemented  as an  Index in  a protected
+file, whose modifications are  journalized in "well known" before
+and after journals; in the  first release, it will be implemented
+as a  segment in virtual  memory, carefully modified  and flushed
+after each modification.
+
+2.4 How the rollback procedure does its job
+
+The calling sequence of the rollback procedure is:
+
+call before_journal_manager_$rollback
+                            (txn_id, txn_ix, checkpoint_no, code)
+
+where  txn_id  is the  transaction  id of  the transaction  to be
+rolled back, txn_ix is the index  in the transaction table of the
+entry   assigned  to   the  transaction,   checkpoint_no  is  the
+checkpoint number at which the  rollback is supposed to stop, and
+code is  a standard system  error code.  The major  steps of this
+rollback procedure can be described as follows:
+
+(1)  Locate  the bj_txte  info structure  for the  transaction to
+     rollback.  This  structure is an entry  in the bj_txt table,
+     and   contains   before  journal   information   about  this
+     transaction.
+
+(2)  Get the  bj_oid and the  bj_uid from the  bj_txte info.  The
+     bj_oid  must be  validated against  the bj_uid  to determine
+     whether  or  not it  can be  used by  the process  doing the
+     rollback to reference the before journal.  When the rollback
+     is done  by the Data  Management Daemon process,  the bj_oid
+     will be  found invalid, because  it belongs to  the original
+     process.
+
+     In any event, when the bj_oid  is not bound to bj_uid in the
+     process  doing  the rollback,  this  process must  acquire a
+     valid  one.   It does  so by  using the  bj_uid to  find the
+     pathname of  the before journal,  in the system  table which
+     contains  the  list of  all  before journals  opened  in the
+     system.  With this pathname, it opens the journal and enters
+     the bj_oid in the bj_txte info.
+
+
+Multics Technical Bulletin                                MTB-568
+DM: Rollback
+
+(3)  Get the  record id of  the last record stored  in the before
+     journal by the transaction, from the bj_txte info.
+
+(4)  Flush the before journal up to this last record to guarantee
+     that all records necessary for  rolling back are in the file
+     in which the journal is written,  and none of them are still
+     in  the  main  memory  buffer  used  by  the  before journal
+     manager.
+
+(5)  Read the last record produced by the transaction by calling:
+
+          call bj_storage_get (bj_oid, record_id,....)
+
+     If  the  last  record  produced  by  the  transaction  is  a
+     committed  or  aborted mark,  return  a status  code  to the
+     caller, indicating  that the transaction  has been committed
+     or aborted,  and that it  cannot be rolled  back.  This case
+     may  occur  if the  process  executing the  transaction lost
+     control while the transaction was being committed, after the
+     commit mark was logically written  in the journal but before
+     the  transaction manager  could be informed  that the commit
+     mark was physically on disk.
+
+(6)  Analyse the record  just read from the journal  and take the
+     appropriate action, according to its type:
+
+     (a)  If it  is a "before_image" record,  use its contents to
+          undo the modification it is supposed to undo; then read
+          the previous record produced by the transaction in this
+          journal and  go back to step  (6):  "Analyse the record
+          just read...".
+
+          In order to undo  the modification associated with this
+          before image record, the rollback procedure has to call
+          the  file manager  to write  in some  control interval.
+          The identification  of the file is  found in the before
+          image  record  in  the  form of  the  file_oid  and the
+          file_uid.  The file_oid must  be validated to make sure
+          it is bound  to the file_uid.  If the  rollback is done
+          by  the  Data Management  Daemon process,  the file_oid
+          will, in  general, be invalid and  the file_oid for the
+          file in  the daemon process  must be used  when calling
+          the file manager to write in the control interval.
+
+
+MTB-568                                Multics Technical Bulletin
+                                                     DM: Rollback
+
+          In the event that this file  is not open in the process
+          that  does  the rollback,  it  has to  be  opened:  the
+          file_uid is  found in the  before image; it  is used to
+          search the  table containing the list  of all protected
+          files open in the system (or that were open at the time
+          of  the crash,  as explained  in the  next section), in
+          order to  determine the pathname of  the file; then the
+          pathname is used to open the file, and the new file_oid
+          is used  instead of the  file_oid stored in  the before
+          image.
+
+          The rollback procedure can now call the file manager to
+          write the appropriate portions of the control interval,
+          with the understanding that it is a rollback action and
+          therefore no  before image must be  taken, but an after
+          image must  be taken, like for  any other modification,
+          in order  to cancel out  the after image  produced when
+          the modification was done by the transaction itself.  A
+          special entry point  file_manager_$unput is provided by
+          the file manager, for rolling back modifications.
+
+          To take an after image,  the file manager must call the
+          after  journal  manager with  the  aj_oid of  the after
+          journal.  It  can find the  pathname and aj_uid  of the
+          after journal in the  file attributes stored in control
+          interval zero of the file.  If the after journal is not
+          open in the process doing the rollback, it must be open
+          and  the  aj_oid obtained  is  then used  in subsequent
+          references to this after journal.
+
+     (b)  If it  is a "rollback_handler" record,  the name of the
+          procedure to be called is extracted from the record, an
+          entry  variable  is initialized  to  the value  of this
+          entry point and the entry point is called, with the bit
+          representation of  the input data it  expects to do its
+          job; this bit string is  also extracted from the before
+          journal record.  When the handler returns, the previous
+          record  produced  by  the  transaction  in  the  before
+          journal is read and control is transferred back to step
+          (6):  "Analyse the record just read...".
+
+     (c)  If it is a "committed" or  an "aborted" mark, this is a
+          system  error, unless  this record  is the  last record
+          produced  by  the transaction,  as explained  above, in
+          step 5.
+
+
+Multics Technical Bulletin                                MTB-568
+DM: Rollback
+
+     (d)  If it  is a "rolled_back"  mark, it indicates  that the
+          transaction has been rolled back up to a checkpoint, or
+          up to  the beginning.  This mark  contains a pointer to
+          the record up to which the transaction has already been
+          rolled back.
+
+          So, when encountering a  rolled_back mark, the rollback
+          procedure  skips  all  the previous  records  that were
+          already used in a  previous rollback, and goes directly
+          to  the checkpoint  record where  the previous rollback
+          stopped.  Thus,  it reads the record  pointed to by the
+          rolled_back record and goes back to step (6):  "Analyse
+          the record just read...".
+
+     (e)  If it is a "checkpoint"  mark and its checkpoint number
+          is  greater  than the  checkpoint  number at  which the
+          rollback procedure  is supposed to stop,  then read the
+          previous record produced by the transaction and go back
+          to step (6):  "Analyse the record just read...".
+
+     (f)  If it is  a "begin" mark or a  "checkpoint" mark with a
+          checkpoint  number  equal to  the checkpoint  number at
+          which  the rollback  procedure is supposed  to stop, no
+          more record  need to be  read, and control  goes to the
+          next step.   (The begin mark is  equivalent to the mark
+          for checkpoint 0).
+
+(7)  Remember,   in   the   bj_txte  info   structure   for  this
+     transaction, the record id of the last record read, which is
+     either a  begin mark or  a checkpoint mark.   This record id
+     will be  stored later in the  rolled_back record, indicating
+     that the rollback has been physically completed.  Now return
+     to the caller, i.e., the transaction manager.
+
+As explained earlier, the transaction  manager must now flush all
+control  intervals that  have been modified  during the rollback,
+flush all after journal records produced during the rollback, and
+wait  for   all  I/O's  to  complete.    Finally,  it  appends  a
+rolled_back mark  at the end  of the before  journal, flushes the
+mark and waits for it to be physically on disk.
+
+
+MTB-568                                Multics Technical Bulletin
+                                                     DM: Rollback
+
+3 ROLLING BACK AFTER CRASH
+
+     As described  in MTB-564, the  system will guarantee  that a
+modification made to a CI of a protected file is never written to
+disk before its before image is physically on disk.  As a result,
+it will be  possible to rollback after any  system crash, whether
+or  not ESD  was successful,  provided no  data was  damaged by a
+media failure.   A complete description  of the recovery  after a
+system crash can  be found in MTB-603:  "Data  Management - Crash
+Recovery".
+
+3.1 Invoking the rollback_after_crash
+
+     After the  Multics system has been  initialized, the Multics
+initializer process  logs in the Data  Management Daemon process.
+This Daemon  is responsible for initializing  the Data Management
+System, but  before doing so,  it finds out  if some transactions
+were left  unfinished in the previous  Multics system invocation,
+in which case it rolls them back.
+
+     If  the system  crashed with ESD  successfully executed, all
+information  contained   in  the  various  tables   used  by  the
+transaction  manager,  before   journal  manager,  after  journal
+manager, file manager, lock manager  has been written to disk and
+could  be used  by the  Data Management  Daemon.  If  ESD failed,
+these  tables cannot  be trusted and  the Daemon  process must be
+able  to  recover  without  them.  The  description  that follows
+assumes that these tables are  lost.  Some of the steps described
+here  might  be  skipped  or  simplified  when  these  tables are
+available, if  one decided to  take advantage of  that knowledge.
+In the current  implementation, no table is assumed  to be valid,
+regardless of whether  or not ESD was successful,  except for the
+uid-pathname tables maintained by the file and journal managers.
+
+3.2 Finding all Journals and Files
+
+     The first thing the Daemon process  has to do is to find out
+what  journals  were in  use at  the  time of  the crash,  and to
+prepare them again for its own  use.  The "open" primitive of the
+before journal manager maintains a table containing the pathnames
+and  uids  of all  before  journals opened  in the  system, i.e.,
+opened  in at  least one  process.  This  table is  flushed after
+every modification and is available after a system crash, even if
+ESD  fails.   The  Daemon  knows  the  pathname  of  the  segment
+containing the table; it initiates it, and opens, for itself, all
+
+
+Multics Technical Bulletin                                MTB-568
+DM: Rollback
+
+before  journals that  are listed  in the  table, by  calling the
+before      journal      manager     special      entry     point
+"$open_all_after_crash".
+
+     A similar  table, maintained by the  "open" primitive of the
+after  journal manager,  contains the  pathnames and  uids of all
+after journals that  were opened in the system.   The Daemon uses
+it to  open, for itself,  all after journals that  were opened at
+the time of the crash.
+
+     A  third table,  maintained by  the "open"  primitive of the
+file manager,  contains the pathnames  and uids of  all protected
+files that  were opened in the  system at the time  of the crash.
+The Daemon process initiates this table but does not open all the
+files  listed in  it.  The table  will be used  during the actual
+rollback,  to  convert file  uid's  found in  before  images into
+pathnames.
+
+     These three tables are supposed to always be consistent, and
+available after a crash even  when ESD fails.  They are necessary
+to  rollback after  a system  crash, and must  be as  safe as the
+journals themselves.
+
+3.3 Finding the end of each before journal
+
+     For  each  before journal,  the  Daemon must  find  the last
+record  physically  written in  the  journal, and  such  that all
+records produced before it are also physically on disk.
+
+     Assuming  that  the before  journal  manager tables  are not
+available, one  has to find  the end of the  before journal using
+the fact that the journal  is written sequentially, and that each
+control interval contains the time at which it was written in the
+journal.   The header  of the before  journal, stored  in CI zero
+contains  the  first CI  number  and the  last  CI number  of the
+journal.   A search  on the  time stored  in each  CI is  used to
+determine  the most  recently written  CI of  the journal.  Then,
+within this CI, the last  logical record is located.  The storage
+manager  module  of  the  before  journal  manager  provides  the
+appropriate services  for the Daemon  process to find  the end of
+each before journal.
+
+
+MTB-568                                Multics Technical Bulletin
+                                                     DM: Rollback
+
+3.4 Finding the end of each after journal
+
+     For each after journal, the Daemon must find the last record
+physically written in the journal and such that all after journal
+records produced  before it are  also physically in  the journal.
+If  the  after  journal is  on  disk,  a method  similar  to that
+described  for  the before  journal  can be  used.  If  the after
+journal is on tape, the end of  the tape has to be found, and the
+tape  positioned  to the  end.   The after  journal  manager will
+provide  a  utility procedure  to do  just that,  and it  will be
+called  by  the Daemon  process  to find  the  end of  each after
+journal.
+
+3.5 Phasing before and after journals
+
+     The  strategy  that has  been chosen  for the  after journal
+manager when rolling forward is  to post every single after image
+found in the after journal, without trying to determine if it was
+produced by a committed or an aborted transaction.  This strategy
+requires  "taking after  images during rollback"  as explained in
+the description of the rollback procedure.
+
+     However, this is not quite sufficient.  Since the before and
+after  journals  are not  phased during  normal operation,  it is
+possible that an  after image be physically written  in the after
+journal  before  the  corresponding  before  image  is physically
+written in the before journal.  After  a crash, it is possible to
+have after  images in the  after journal which do  not have their
+before  image counterpart  in the  before journal.   Taking after
+images  during  rollback_after_crash would  not cancel  out these
+after images.
+
+     GCOS  solves this  problem by  phasing the  before and after
+journals during normal operation to guarantee that this situation
+cannot occur.  It is difficult to use the same method in Multics.
+Instead,  we  let after  images and  before images  be physically
+journalized without trying to phase  them.  After a system crash,
+the ends of all journals are examined and analysed, and all after
+images that  have no before  image are eliminated  from the after
+journals.   A detailed  description of  how this  is done  can be
+found in MTB-569:  "DM:  Phasing before and after journals".  The
+after journal manager provides a procedure to do this job and the
+Daemon  calls this  procedure to "cleanup"  the end  of all after
+journals.
+
+
+Multics Technical Bulletin                                MTB-568
+DM: Rollback
+
+3.6 Finding all unfinished transactions
+
+     Each before  journal contains before images  of finished and
+unfinished transactions.  The only information  one has so far is
+the record  id of the  last record for each  journal.  By reading
+the before journal in reverse  chronological order, from the most
+recent to  the least recent  record, it is  possible to determine
+which transactions have been committed  or aborted, and which one
+were still  in progress at  the time of the  crash; while reading
+the before  journal in reverse  order, one can build  the list of
+all  unfinished  transactions, with  the  record id  of  the last
+record produced by each of them.
+
+     Reading  the  entire  before   journal  to  find  out  which
+transactions  were in  progress is a  long operation  in terms of
+real  time  it  takes  to  rollback  after  crash.   A  number of
+alternatives are  available to find all  transactions in progress
+without having to  read the entire journal.  They  all consist of
+writing historical information in the journal, showing that, at a
+particular point  in time, only N  transactions were in progress.
+When reaching that point while reading the journal backwards, the
+rollback_after_crash  procedure can  start a count  down until it
+finds the corresponding N begin  marks.  The more frequently this
+historical information  is stored, the sooner  the count down can
+be started, making the search shorter.  One could:
+
+(1) Store periodically  in the header of  each before journal the
+    number of  transactions in progress  in this journal  and the
+    time of this observation, or
+
+(2) Maintain for  each before journal a  count of transactions in
+    progress by incrementing this  count at each write_begin_mark
+    operation  and decrementing  it at  each write_committed_mark
+    and write_aborted_mark operations.  Store  this count in each
+    begin, committed and aborted record, or
+
+(3) Store this count in every before journal record.
+
+The current implementation uses method number (3).
+
+
+MTB-568                                Multics Technical Bulletin
+                                                     DM: Rollback
+
+3.7 Rolling back all unfinished transactions
+
+     Now we have the list of all transactions in progress and the
+record  id  of the  last  record produced  by  each of  them.  In
+addition, we know that the after journals have been cleaned up of
+any after  image that had  no before image  counterpart.  Rolling
+back these transactions can start safely.
+
+     The rollback procedure described in the previous section can
+be used  to rollback these unfinished  transactions one after the
+other, if  it is provided  with the environment  it expects; that
+is, all  tables used by  the transaction manager,  before journal
+manager,  after journal  manager, file manager,  and lock manager
+must be initialized to give the rollback procedure the impression
+it  is called  during normal  operation.  This  technique will be
+used instead of writing another rollback procedure.
+
+     It  is  also  possible  to use  the  transaction  manager to
+rollback   or   abort   each   transaction;   this   would  cause
+"rolled_back"  or  "aborted" marks  to be  written in  the before
+journal,  after  all  appropriate flushing  operations  have been
+done.   Since  the checkpoint  facility  is not  provided  in the
+current  system implementation,  all unfinished  transactions are
+aborted.   Rolling  back  all  transactions can  be  described as
+follows:
+
+(1) Initialize  all  tables showing  that  N transactions  are in
+    progress.
+
+(2) For  each  transaction  in  progress,  call  the  transaction
+    manager to abort the transaction, as if it were during normal
+    system operation.
+
+3.8 Cleaning up
+
+     After  all  transactions  have   been  aborted,  all  before
+journals,  after  journals  and  protected files  that  have been
+opened  by  the Daemon  to  do its  rollback  task are  closed by
+calling  the "close"  primitives of  the before  journal manager,
+after journal manager and file manager.
+
+
+Multics Technical Bulletin                                MTB-568
+DM: Rollback
+
+3.9 Accepting users again
+
+     The  Daemon process  now enables the  Data Management System
+for all users, by renaming  to the appropriate name the directory
+in  which  the various  tables  reside.  Then  it goes  to sleep,
+waiting for a request to execute (See MTB-603 and MTB-604).
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

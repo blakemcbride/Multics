@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : A mechanism for managing extended objects.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Extended Objects    MULTICS TECHNICAL BULLETIN            MTB-615
+
+Date:     6 March 1983
+
+From:     Jay Pattin
+
+To:       MTB Distribution
+
+Subject:  A mechanism for managing extended objects
+
+                             ABSTRACT
+
+     This  MTB describes  a mechanism  for manipulating "Extended
+Objects"  in  the  file  system.   The  mechanism  provides fully
+general  support for  common operations,  and can  be extended to
+handle arbitrary user-defined objects without any system changes.
+
+Comments on this MTB should be directed to the author
+
+     by Multics mail to:
+
+          Pattin.PDO on MIT
+          Pattin.Multics on System-M
+
+     or to the Forum meeting:
+
+          &gt;udd&gt;Multics&gt;Pattin&gt;meetings&gt;Extended_Objects        on
+          System-M
+
+________________________________________
+
+Multics  Project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project.
+
+
+Extended Objects                                          MTB-615
+
+                           INTRODUCTION
+
+     A few  examples of the  extended objects which  require such
+manipulations  are mailboxes,  message segments,  forum meetings,
+and  the MSFs  which will be  used to implement  databases in the
+first Data  Management implementation.  Today,  these are handled
+in   ad-hoc   and  incompatible   ways:   special   commands  and
+subroutines,  and special-case  code in  standard system commands
+and subroutines.
+
+     The  reason for  these special  cases is  twofold:  (1) most
+extended objects exist in an  inner ring, where normal hcs_ calls
+from the user ring cannot touch  them, and (2) some validation is
+usually  necessary   before  the  operation   can  be  performed.
+Additionally,  when  an  extended  object uses  the  extended ACL
+mechanism, the standard ACL commands cannot currently be used.
+
+                          THE MECHANISM
+
+     The basic mechanism depends on the extended objects having a
+specific  suffix which  identifies their  object type.   All such
+objects  in  the  standard  system have  defined  suffixes today:
+.mbx,  .ms, .forum,  etc.  For  each type  of object,  there is a
+program  called  suffix_XXX_,  where  XXX is  the  suffix  of the
+object.  The  entrypoints in suffix_XXX_  mimic the corresponding
+hcs_ entries.   Additionally, suffix_XXX_ contains  an entrypoint
+to verify that a given storage system object is of that type, and
+also an entry that returns information about the object type.
+
+     The  file  system  commands  will   be  changed  to  call  a
+subroutine  called object_type_  where they  now call  hcs_.  The
+object_type_ module  will look for an  owning suffix_XXX_ routine
+and  call  it.   If  no  suffix_XXX_  can  be  found,  or  if the
+suffix_XXX_ entrypoint  rejected the object, the  hcs_ entry will
+be called.
+
+     Unfortunately, Data Management Files are not distinguishable
+by  having a  known suffix.   However, the  implementation of the
+suffix  mechanism  has  only   one  module,  object_type_,  which
+determines  the type  of an  object based  on its  suffix.  It is
+quite simple to modify this module to determine whether or not an
+object is a DM file if no  suffix_XXX_ module can be found for an
+object.
+
+     The  suffix_XXX_  subroutine  for   an  object  should  have
+entrypoints for  all the operations is  can support.  The planned
+operations are validate, copy,  delete, chname, (get set)_switch,
+(get  set)_max_length, set_bit_count,  and ACL  manipulation.  In
+
+
+Extended Objects                                          MTB-615
+
+addition,  suffix_info  and  list_switches  entrypoints  will  be
+provided to return information about the object type.
+
+                          Name Changing
+
+     Name  changing is  simple.  The standard  rename command and
+the  copy_names_ and  nd_handler_ subroutines will  be changed to
+call object_type_$chname_file instead of hcs_$chname_file.  There
+should be no need to modify other callers of hcs_$chname_file.
+
+                         Deleting Objects
+
+     For deletion, modifying the  delete_$path subroutine to call
+object_type_$delentry_file  instead of  hcs_$delentry_file should
+be  sufficient.   The  dl_handler_  program  will  need  to  call
+object_type_  to retrieve  and set the  values of  the safety and
+copy switches.  All extended objects will be treated as segments,
+thus delete_dir will not delete a forum meeting even though it is
+a directory, but delete will.
+
+                        Branch Attributes
+
+     Changing the rest of the  branch attibutes, such as switches
+(safety, copy, damaged, etc.), the  max_length, and the bit count
+is  also  simple.  The  copy/move, set_bit_count,  switch_on, and
+switch_off  commands and  the copy_seg_ subroutine  can be easily
+changed to call object_type_ instead  of hcs_.  There seems to be
+no  need  to  change  other programs  which  currently  set these
+attributes.   Also,  it should  not  be necessary  to  update the
+obsolete  switch  commands  which  were replaced  by  the swn/swf
+commands.
+
+     Because  extended  objects  may  wish  to  define  their own
+switches    which   should    be   accessible    by   using   the
+switch_on/switch_off commands, those commands  will be changed to
+set  switches by  calling object_type_$set_switch.   This routine
+will  return  error_table_$argerr  if  the  named  switch  is not
+supported for the object.  The commands will be changed to detect
+that  code and  give a better  error message.   However, the same
+restriction about  using starnames with the  set_acl command (See
+below) may want to be  enforced when a non-standard switchname is
+used.
+
+                    Copying And Moving Objects
+
+     Copying,   and   by   implication   moving,   is  difficult.
+Basically,  the  copy_seg_ subroutine  will  be changed  to first
+check for name duplication on  the target and call nd_handler_ if
+appropriate.   Thus,  suffix_XXX_  entries  never  have  to  call
+nd_handler_.  Then  it will call object_type_$copy.   The guts of
+the  current  copy_seg_, the  part  that creates  the  target and
+
+
+Extended Objects                                          MTB-615
+
+copies the contents, will be accessible as copy_seg_$copy_seg_raw
+and will be called by object_type_ if no suffix_XXX_ is found.
+
+     Copying  names  and acls  is  already taken  care of  by the
+modifications  to copy_names_  and copy_acl_.   Changing the copy
+and move commands to  change branch attributes using object_type_
+instead of  hcs_ completes the effort.   The copy_dir_ subroutine
+should be changed  to refuse to move directories  that are really
+extended objects - DM Files for example.
+
+     Because  a user  may wish  to force  the command  to use the
+standard hcs_ entries (See  "Avoiding object_type_" below), a new
+entrypoint  into   copy_seg_  is  needed  which   will  not  call
+object_type_.  In order to  stop the proliferation of entrypoints
+in copy_seg_ which differ in meaning by the values of switches, a
+new copy_ entry into copy_seg_ will  be written which takes a set
+of flags (much like delete_).
+
+                         ACL Manipulation
+
+     ACL  manipulation  is  also  a  touchy  area.   The proposed
+solution is predicated on two  conditions:  1) objects either use
+ACLs, or they use extended ACLs  - it is never meaningful for the
+user to specify both; and 2)  DM files do not use extended ACL's.
+These  conditions allow  us to  modify the  existing ACL commands
+(set_acl, delete_acl,  and list_acl) to cope  with extended ACLs.
+In all of these commands, the  way directories and MSFs which are
+not extended objects are handled will not be changed.
+
+     The  delete_acl  command  need   only  be  modified  to  use
+object_type_$delete_acl_entries             instead            of
+hcs_$delete_acl_entries.  The list_acl command can be modified to
+use  object_type_$list_acl, and  to show either  ACLs or extended
+ACLs   as    appropriate   (as   determined   by    a   call   to
+object_type_$suffix_info).
+
+     The  set_acl  command  is  tricky.  While  it  is  simple to
+determine whether or not an object is an extended object, the use
+of starnames  can obscure the user's  intent.  However, since all
+objects which use extended ACLs have suffixes (This is the reason
+for  restricting  DM  files  to  the  standard  rew  terms.), the
+following rules can be developed.
+
+     If a  starname is given,  and its last  component contains a
+     star convention character ('*'  or '?'), then assume regular
+     ACLs are intended  and do not attempt to  change the ACL for
+     extended  objects.  If  the last component  contains no star
+     characters, then use the results of object_type_$suffix_info
+     to determine how to proceed.   If a suffix_XXX_ is found for
+     a  starname,  then only  operate  on objects  owned  by that
+     module.
+
+
+Extended Objects                                          MTB-615
+
+I  believe that  this rule is  not too difficult  to document and
+have people  understand, and the  fact that "sa  Pattin.mbx" will
+work is certainly worth a little explaining.
+
+     Both the  list_acl command and the  set_acl command will use
+the  segment_acl  structure  in  calls to  object_type_.   If the
+object uses extended ACLs, the set_acl command will not touch the
+word  of  standard  modes,  this  is  the  responsibility  of the
+suffix_XXX_ routine.  The list_acl command will never look at the
+standard modes  - if -force_no_type is  specified, hcs_ is called
+instead.
+
+     In  order to  make the command  interface a  little bit more
+understandable, a -type control argument  can be added to specify
+what type of objects are to be affected.  The command line:
+          sa ** -type mbx aow *
+would be exactly equivalent to the command line:
+          sa **.mbx aow *
+
+An exception would occur when  the type is dm_file (dmf), because
+these are not identifiable by virtue of a suffix.  Specifying one
+of the  branch-type control arguments  (-dr, -sm, -msf,  or -dmf)
+when using  extended objects, regardless  of whether or  not they
+use extended acls, is an error.  These arguments may be used with
+extended  objects  when  the -force_no_type  control  argument is
+given.
+
+                   The list and status commands
+
+     As a further modification, the status command can be changed
+to  obtain  information  through  object_type_.   Currently, that
+information is the type name, the effective mode, max length, and
+switch values.   Also, the list  command can be  changed to group
+objects by  types (headings for "Mailboxes"  and "Forum Meetings"
+as   well  as   "Segments"  and   "Directories"),  and   to  show
+type-specific data,  such as extended  ACLs.  This should  not be
+the default behavior as there is considerable expense involved.
+
+     The  status   command  should  be  modified   to  report  on
+information   specific   to  an   object  type.    For  instance,
+records-used for a mailbox could be the number of messages in the
+mailbox.   This requires  considerable design  and implementation
+work and is therefore being left  as the subject for a later MTB.
+It  will probably  be merged  in with  Benson Margulies' fs_info_
+subroutine.
+
+                          Miscellaneous
+
+     Modifications to some utility  commands and active functions
+are  needed.  Two  new keywords to  the "exists"  command will be
+added:
+
+
+Extended Objects                                          MTB-615
+
+          exists type FOO
+
+will return true iff a suffix_FOO_$validate can be found, and
+
+          exists object FOO STARNAME
+
+will  return  true iff  a suffix_FOO_$validate  can be  found and
+there  is  an  object  matching STARNAME  that  is  of  type FOO.
+Presumbly, the Data Management group will add new keywords for DM
+files.
+
+     A -type TYPE  control argument will be added  to the entries
+and files commands to return the names of files of that type in a
+directory.  TYPE is used as a  suffix, so "files ** -type foo" is
+exactly equivalent to "files **.foo -type foo".
+
+                    The suffix_XXX_ Subroutine
+
+     The suffix_XXX_ subroutine for a  particular object may be a
+gate,  or  it  may  be  a  user  ring  program  which  calls  the
+appropriate gates.   It must not have  additional entrypoints not
+used  by  the  standard   mechanism,  since  additional  standard
+entrypoints may be defined in the  future; indeed, it may need to
+be a standalone program in order to ensure that other entrypoints
+in its  bound segment do  not conflict either.   If an entrypoint
+(such as  chname_file) is not  found in suffix_XXX_,  the calling
+program  (normally object_type_)  will try using  the normal hcs_
+entrypoint instead.
+
+     It is  the responsibility of suffix_XXX_  to ensure that the
+object it  is told to operate  on is, in fact,  the right type of
+object  (rather than  just a  random segment  named foo.mbx).  If
+suffix_XXX_  returns  error_table_$not_seg_type, the  normal hcs_
+operation should be tried instead.
+
+     Initially,  each suffix_XXX_  subroutine should  contain the
+following entrypoints:
+
+         add_acl_entries               list_acl
+         chname_file                   list_switches
+         copy                          replace_acl
+         delentry_file                 set_bit_count
+         delete_acl_entries            set_switch
+         get_max_length                set_max_length
+         get_switch                    suffix_info
+         get_user_access_modes         validate
+
+     All   of   the  entries   except  copy,   (set  get)_switch,
+list_switches,  suffix_info, and  validate are  indentical to the
+corresponding  hcs_ entry.   The copy  entrypoint takes  the same
+
+
+Extended Objects                                          MTB-615
+
+arguments  as   copy_seg_  except  for   the  caller_name,  since
+copy_seg_   itself   will  be   calling   nd_handler_.   Detailed
+descriptions  of  the  other  entrypoints  are  provided  in  the
+Appendix.  Basically,  the set and get_switch  entrypoints take a
+switch  name and  either return  a value  or change  the value as
+appropriate.  The validate entrypoint  takes a directory name and
+an entryname and  returns an error code of 0  if the object is of
+the correct type, or error_table_$not_seg_type if it is not.  The
+suffix_info entrypoint returns  various generic information about
+the  object  type, such  as  its name  (singular and  plural) and
+whether it uses regular ACLs or extended ACLs.  The list_switches
+entry is  used to return  the names of switches  supported by the
+object type.
+
+                   THE OBJECT_TYPE_ SUBROUTINE
+
+     A mechanism  which makes it  easier to write  programs using
+the suffix_XXX_ entrypoints is this:  an object_type_ subroutine,
+which   has   entrypoints  corresponding   to  all   the  defined
+suffix_XXX_  entrypoints, and  would try  to find,  and call, the
+suffix_XXX_  entry  first,  and,  failing  that,  would  call the
+appropriate file_manager_ entrypoint if the  object is a DM file,
+and would  otherwise call the hcs_  entry instead.  The algorithm
+used inside  object_type_ to determine  what entry to  call is as
+follows:
+
+  1) If the entry name does not contain a ".", go to step 5.
+
+  2) Call  hcs_$make_entry  looking  for suffix_XXX_$&lt;operation&gt;.
+     If this call fails, go to step 5.
+
+  3) Call the entry constructed in step 2.
+
+  4) If   the   error   code   returned   in   step   3   is  not
+     error_table_$not_seg_type,  we  are   finished.   Return  to
+     caller.
+
+  5) Now,  determine  if  the  entry   is  a  DM  file.   Calling
+     file_manager_ is  expensive, so do cheap  tests first.  Call
+     hcs_$get_dir_ring_brackets  and  hcs_$status_minf.   If  the
+     entry is not an MSF, or it  if does not have the proper ring
+     brackets for DM files, go to step 7.
+
+  6) Call  the  appropriate  file  manager entry  point.   If the
+     return  code  is  not  error_table_$not_seg_type,  return to
+     caller.
+
+  7) Call the appropriate hcs_ entry and return to caller.
+
+
+Extended Objects                                          MTB-615
+
+     Note that determining the type  of an object is not trivial.
+Entrynames   with  suffixes   require  at   least  one   call  to
+hcs_$make_entry.    If   no  suffix_XXX_   can  be   found,  then
+determining  whether  or not  the  object is  a  DM file  is also
+expensive.  In  addition to making  it a little  simpler to write
+delete,  rename,  and  so  forth,  object_type_  would  also have
+another advantage:  it could be  hard-coded to know about certain
+suffixes, and call things like  suffix_mbx_ (which it KNOWS to be
+in   the    system)   through   links,    rather   than   calling
+hcs_$make_entry, making it a little faster.
+
+     The object_type_$suffix_info  and object_type_$list_switches
+entrypoints are slightly different from their counterparts in the
+suffix_XXX_  modules.  The  suffix_info entry  takes a directory,
+entryname,  and  a  code  so  that it  can  1)  figure  out which
+suffix_XXX_ to call,  and 2) handle the case  where the object is
+not owned  by a suffix_XXX_.  The  list_switches entrypoint takes
+an entryname and a code for similar reasons.  It does not take an
+entryname because it always returns an error if no suffix_XXX_ is
+found.   As  an  additional  utility,  an object_type_$make_entry
+subroutine  is  provided to  create  an entry  variable  given an
+entryname and an entrypoint name ("list_acl" for example).
+
+                      AVOIDING OBJECT_TYPE_
+
+     There  are times  when calling object_type_  is probably not
+the  right thing  to do.   For instance,  when copying  a damaged
+mailbox from ring-1 comamnd level.   For this purpose, all of the
+modified file system commands  will take a -force_no_type (-fcnt)
+control  argument  which will  cause  the commands  to  call hcs_
+instead  of  object_type_.  This  can be  used with  the list_acl
+command  to  display  the  real ACL  on  an  object,  which would
+otherwise  be un-obtainable.   As a  gratuitous modification, "la
+-force_no_type" will also list the  ACL on MSF directories rather
+than calling msf_manager_.
+
+     The alert reader may have  noticed that not all commands get
+to decide whether or not hcs_ of object_type_ gets called.  Thus,
+the copy_, delete_, and nd_handler_  routines must be told to not
+call    object_type_.     copy_,    copy_dir_,    delete_,    and
+nd_handler_$switches (MCR pending) will  take a switch which says
+whether or not to call hcs_.
+
+                             BENEFITS
+
+     The  three  major  benefits  of  this  mechanism  are:   (1)
+centralization  of  the  code  to  handle  extended  objects, (2)
+
+
+Extended Objects                                          MTB-615
+
+elimination  (or at  least desupport) of  a wide  set of existing
+tools  which  behave inconsistently,  and  (3) easy  extension to
+arbitrary user applications.
+
+     The  suffix_XXX_ mechanism  makes it very  easy to implement
+trivial secure applications using  rings.  For instance, it would
+be quite simple to implement  acs segments as inner ring objects,
+and this would  eliminate the problems we have  today which could
+result from someone  writing data into an acs  segment if the max
+length was accidentally not set.
+
+     By  eliminating  the special  purpose commands  (mbrn, mbsa,
+fapt, and so forth), a large  body of code is eliminated, and the
+interfaces are made consistent for all types of objects.  No more
+complaints  about how  mbsa ought  to implement  -replace, and so
+forth.
+
+                           APPLICATIONS
+
+     There  are numerous  applications for  this mechanism.  Some
+which  come to  mind are  listed below;  in addition,  users have
+created  this  sort  of  thing  in  the  past  (the  Multics/Cray
+connection  has  some examples,  Olin  thinks) and  will  want to
+again.
+
+     mailboxes, message segments
+          Presently,  we have  a plethora  of silly  commands for
+          these  extended  ACLs.   They  could  be  readily  made
+          obsolete  with this  mechanism, with only  a minimum of
+          work (on  top of implementing  the commands themselves,
+          which  are  desirable  for other  reasons)  required to
+          implement  the  appropriate suffix_mbx_  and suffix_ms_
+          subroutines.
+
+     forum meetings
+          Today,       we       have       forum_add_participant,
+          forum_add_project,  forum_make_public,  and  so  forth.
+          They behave  differently from normal  ACL commands, for
+          no particular  reason save that this  was how they were
+          implemented.  We  also have no way  to rename meetings,
+          and we cannot delete meetings except with forum_delete.
+          All  this would  be solved  by using  extended ACLs and
+          suffix_XXX_.
+
+     logical volume access control segments
+          A lot of effort has gone  into figuring out some way of
+          mapping the three available letters ("R", "E", and "W")
+          into  sensible  modes   ("executive" ??)   for  logical
+          volumes.   It   would  seem  much   more  sensible  and
+
+
+Extended Objects                                          MTB-615
+
+          extensible to  use extended ACLs, which  put the entire
+          character set at your disposal.
+
+     RCP (and others) acs segments
+          The  same  argument  applies   as  for  logical  volume
+          segments.  Additionally, thr multi-ring RCP environment
+          would benefit considerably from not being misled by the
+          ways  the normal  rew modes  change in  relation to the
+          segment's  ring  brackets and  your  current validation
+          level.  Additionally,  if acs segments  were managed in
+          ring  one, it  would remove  the present  ability for a
+          user to write into one which didn't have its max length
+          set properly; indeed, it  would make it straightforward
+          to insure that the max length was always set properly.
+
+                          WORK REQUIRED
+
+     Most  of the  work for  this has  been done.   The following
+modules   have   been  modified   (or   written):   acl_commands_
+(replacement  for   set_acl),  rename,  delete,   delete_,  copy,
+copy_acl_, copy_names_, copy_seg_,  dl_handler_, entries, exists,
+nd_handler_,     set_bit_count,     set_max_length,    switch_on,
+object_type_, status, suffix_mbx,  suffix_ms_, and suffix_forum_.
+The list and copy_dir (copy_dir_) commands have not been touched.
+
+     The  interface to  the file_manager_  for DM  Files is being
+written  by Steve  Herbst.  The necessary  inner_ring support for
+the mailbox  and message segment  primitives is being  written by
+Gary Palter.
+
+
+Extended Objects                                          MTB-615
+
+                     SUBROUTINE DESCRIPTIONS
+
+NAME:  copy_
+
+Function:   Copies  storage   system  objects.   This  subroutine
+replaces the copy_seg_ subroutine.
+
+Usage:
+
+     dcl copy_  entry (char  (*), char  (*), char  (*), char (*),
+          char (*), bit (36) aligned,  bit (1) aligned, fixed bin
+          (35));
+
+     call copy_     (source_dir,     source_name,     target_dir,
+          target_name,   caller_name,   switches,   error_switch,
+          code);
+
+where
+
+source_dir                    (Input)
+     is  the name  of the  directory containing  the entry  to be
+     copied.
+
+source_name                   (Input)
+     is the name of the entry to be copies.
+
+target_dir                    (Input)
+     is  the name  of the  directory in which  the copy  is to be
+     created.
+
+target_name                   (Input)
+     is the entry name of the copy.
+
+caller_name                   (Input)
+     is the name of the caller  of copy_.  This string is used in
+     calls to nd_handler_.
+
+switches                      (Input)
+     is  a   string  of  switches  described   by  the  following
+     structure, which is declared in copy_options.incl.pl1.  This
+     should  be passed  as an argument  by using  the PL/1 string
+     builtin (string (copy_options)).
+
+         dcl 1 copy_options            aligned,
+             2 brief                   bit (1) unaligned,
+             2 no_name_dup             bit (1) unaligned,
+             2 raw                     bit (1) unaligned,
+             2 mbz                     bit (33) unaligned;
+
+
+Extended Objects                                          MTB-615
+
+    where
+
+    brief
+         is turned on to prevent  messages of the form "Bit count
+         inconsistent with current length."  from being printed.
+
+    no_name_dup
+         is  turned on  to prevent nd_handler_  from being called
+         when the target segment already exists.
+
+    raw
+         is turned on to prevent the object_type_ subroutine from
+         being used.  If this switch is on, all calls wil be made
+         through hcs_.
+
+error_switch                  (Output)
+     In the event of an error, this  switch is set to "0"b if the
+     error  occurred  on the  source,  and to  "1"b if  the error
+     occurred on the target.
+
+code
+     is a standard storage system error code.
+
+                  ______________________________
+
+Name:  suffix_XXX_$get_switch
+
+Function:  Returns  the value of  a storage system  switch for an
+entry.
+
+Usage:
+
+     dcl suffix_XXX_$get_switch entry  (char (*), char  (*), char
+          (*), bit (1) aligned, fixed bin (35));
+
+     call suffix_XXX_$get_switch       (dirname,       entryname,
+          switch_name, value, code);
+
+where
+
+dirname                       (Input)
+     is the pathname of the containing directory.
+
+entryname                     (Input)
+     is the name of the entry.
+
+switch_name                   (Input)
+     is the name of the switch  whose value is desired.  This may
+
+
+Extended Objects                                          MTB-615
+
+     be   one   of  "copy",   "complete_volume_dump",  "damaged",
+     "incremental_volume_dump", "safety",  "synchronized", or any
+     switch defined by the extended object type.
+
+value                         (Output)
+     is the value of the requested switch.
+
+code                          (Output)
+     is   a   standard  error   code.   It   should  be   set  to
+     error_table_$argerr if switch_name is invalid.
+
+                  ______________________________
+
+Name:  suffix_XXX_$set_switch
+
+Function:   Sets  the value  of  a storage  system switch  for an
+entry.
+
+Usage:
+
+     dcl suffix_XXX_$set_switch entry  (char (*), char  (*), char
+          (*), bit (1) aligned, fixed bin (35));
+
+     call suffix_XXX_$set_switch       (dirname,       entryname,
+          switch_name, value, code);
+
+where
+
+dirname                       (Input)
+     is the pathname of the containing directory.
+
+entryname                     (Input)
+     is the name of the entry.
+
+switch_name                   (Input)
+     is the  name of the switch  whose value is to  be set.  This
+     may  be  one of  "copy",  "complete_volume_dump", "damaged",
+     "incremental_volume_dump", "safety",  "synchronized", or any
+     switch defined by the extended object type.
+
+value                         (Input)
+     is the value the switch is to be set to.
+
+code                          (Output)
+     is   a   standard  error   code.   It   should  be   set  to
+     error_table_$argerr if switch_name is invalid.
+
+
+Extended Objects                                          MTB-615
+
+                  ______________________________
+
+Name:  suffix_XXX_$suffix_info
+
+Function:  Returns information about an extended object type.
+
+Usage:
+
+     dcl suffix_XXX_$suffix_info entry (ptr);
+
+     call suffix_XXX_$suffix_info (suffix_info_ptr);
+
+where
+
+suffix_info_ptr               (Input)
+     is a pointer to the following info structure, defined in the
+     include file suffix_info.incl.pl1.
+
+     dcl 1 suffix_info             aligned,
+         2 version                 char (8),
+         2 type_name               char (32),
+         2 plural_name             char (32),
+         2 flags                   unaligned,
+           3 standard_object       bit (1) unaligned,
+           3 extended_acl          bit (1) unaligned,
+           3 has_switches          bit (1) unaligned,
+           3 mbz1                  bit (33) unaligned,
+         2 modes                   char (36),
+         2 max_mode_len            fixed bin;
+
+where
+
+version
+     is  the version  of this structure.   This should  be set to
+     SUFFIX_INFO_VERSION_1, which is also declared in the include
+     file.
+
+type_name
+     is the singular name of the object type (e.g.  "mailbox").
+
+plural_name
+     is the plural name of the object type (e.g.  "mailboxes").
+
+standard_object
+     is set by object_type_ when  no suffix_XXX_ can be found for
+     the entryname.
+
+extended_acl
+     is  a switch  telling whether  or not  the object  type uses
+
+
+Extended Objects                                          MTB-615
+
+     standard  or  extended ACLs.   The switch  should be  on for
+     extended ACLs, and off otherwise.
+
+has_switches
+     is  on  if the  object  type supports  the  (get set)_switch
+     entries.
+
+modes
+     is  a string  containing the  extended modes  for the object
+     type.  This string contains  one character for each extended
+     mode  bit.   The position  of  the character  in  the string
+     indicates which bit in the ACL represents that mode.
+
+max_mode_len
+     is the  maximum number of  modes on a single  object of this
+     type.  This is used by the list_acl command for formatting.
+
+Notes:    When   object_type_$suffix_info   is   called   and  no
+suffix_XXX_$suffix_info can be found,  the structure is filled in
+by  object_type_  as follows:   standard object  is set  to "1"b,
+extended_acl and  has_switches are set to  "0"b, and max_mode_len
+to 3.  If entryname is  not a starname, type_name and plural_name
+are  set  to  whichever  of  "Segment(s)",  "Directory(ies)",  or
+"Multi-Segment  File(s)" is  appropriate (links  are chased), and
+modes is set to "rew" or "sma" as appropriate.
+
+                  ______________________________
+
+Name:  suffix_XXX_$list_switches
+
+Function:   Returns a  list of  switches supported  by the object
+type.
+
+Usage:
+
+     dcl suffix_XXX_$list_switches entry (ptr, ptr);
+
+     call suffix_XXX_$list_switches (area_ptr, switch_list_ptr);
+
+where
+
+area_ptr                      (Input)
+     is a  pointer to an  area where the return  structure may be
+     allocated.
+
+
+Extended Objects                                          MTB-615
+
+switch_list_ptr               (Output)
+     is  a  pointer  to  the switch_list  structure,  declared in
+     suffix_info.incl.pl1 and described below.
+
+     dcl 1 switch_list             aligned,
+         2 version                 char (8),
+         2 switch_count            fixed bin,
+         2 switch_name_count       fixed bin,
+         2 switches                (switch_list.switch_count),
+           3 name_index            fixed bin,
+           3 name_count            fixed bin,
+           3 default_value         bit (1) aligned,
+           3 mbz1                  bit (36) aligned,
+         2 names                   (switch_list.switch_name_count)
+                                   char (32);
+
+where
+
+version
+     is  the version  of this structure.   This should  be set to
+     SWITCH_LIST_VERSION_1, which is also declared in the include
+     file.
+
+switch_count
+     is the number of switches defined for this object type.
+
+switch_name_count
+     is the total number of names  of the switches - a switch can
+     have multiple names.
+
+name_index
+     is the  index into the switch_list.names  array of the first
+     name for this switch.
+
+name_count
+     is the number of names for  this switch.  The names for this
+     switch are located in switch_list.names (name_index) through
+     switch_list.names (name_index + name_count - 1).
+
+default_value
+     is the  default setting for  this switch when  the object is
+     created.
+
+names
+     is the array of switch names.
+
+                  ______________________________
+
+Name:  object_type_$make_entry
+
+
+Extended Objects                                          MTB-615
+
+Function:    constructs   an  entry   variable  to   a  specified
+suffix_XXX_ subroutine entry for a specified object.
+
+Usage:
+
+     dcl object_type_$make_entry  entry  (char   (*),  char  (*),
+          entry, fixed bin (35));
+
+     call object_type_$make_entry      (entryname,     operation,
+          entry_to_call, code);
+
+where
+
+entryname                     (Input)
+     is  the entryname  of the  object for  which the suffix_XXX_
+     entry is to be made.
+
+operation                     (Input)
+     is the entrypoint name of the entry to be constructed.
+
+entry_to_call                 (Output)
+     is the entry variable constructed.
+
+code                          (Output)
+     is a standard error code.
+
+Notes:  If code  is non-zero, then the value  of entry_to_call is
+not  set.  Otherwise,  entry_to_call contains an  entry value for
+suffix_XXX_$operation, where XXX is the suffix of entryname.
+
+                  ______________________________
+
+Name:  object_type_$validate
+
+Function:   Verifies  that  a  storage system  object  is  of the
+correct type and does not merely have a name of the correct type.
+
+Usage:
+
+     dcl object_type_$validate entry  (char (*), char  (*), fixed
+          bin (35));
+
+     call object_type_$validate (dirname, entryname, code);
+
+where
+
+
+Extended Objects                                          MTB-615
+
+dirname                       (Input)
+     is the pathname of the containing directory.
+
+entryname                     (Input)
+     is the entryname of the object whose type is in question.
+
+code                          (Output)
+     is a standard error code.  It will either be 0 if the object
+     is of  the correct type, or  error_table_$not_seg_type if it
+     is  not  of the  correct type  or if  no suffix_XXX_  can be
+     found.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

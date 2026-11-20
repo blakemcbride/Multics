@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-558</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-558: Data Management: Lock Management Functional Design.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-558
+DM: Lock Manager Design
+
+To:       Distribution
+
+From:     John J. Bongiovanni
+
+Date:     06/27/84  (Original date unknown)
+
+Subject:  Data Management: Lock Management Functional Design
+
+1 INTRODUCTION
+
+This  MTB  contains the  functional  design which  implements the
+concurrency  control  described  in  MTB-514,  "Data  Management:
+Concurrency  Overview",  A.  Bensoussan.   The  functional design
+means  the  description of  the lock  management subsystem  as it
+would appear to a user of the subsystem.  As used throughout this
+document,  a   user  of  the  subsystem   is  a  Data  Management
+application  programmer or  the designer of  another subsystem in
+the Data  Management Architecture which  uses Concurrency Control
+(e.g.,   the  Container   Manager).   The   description  of  Lock
+Management is  at the level  of design.  That  is, all interfaces
+are  described  generally  in   terms  of  their  functions,  the
+information  they  need to  accomplish  their functions,  and the
+information  they  return.   Precise  calling  sequences  are not
+defined; these will be the subject of a later MTB on the detailed
+design of Lock Management.
+
+Following  a   statement  of  functional   objectives,  this  MTB
+describes  a  functional  decomposition of  Lock  Management into
+three  levels:  supervisor  support, per-system  lock management,
+and  per-transaction (or  per-process) lock  management.  In this
+decomposition, the functions of each level are described briefly.
+Following   this,   lock   objects  are   discussed,   and  their
+relationship to  the lock identifier  used by Lock  Management is
+defined.   Next,  a  functional  description  of  each  level  is
+presented.   For  a given  level,  this description  includes all
+functions performed by that level which are invoked directly by a
+user of that level, the parameters required by each function, and
+the  action perfomed  by each  function.  Finally,  an example is
+constructed  to  illustrate  the  use of  lock  management  by an
+applications programmer.
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+MTB-558                                Multics Technical Bulletin
+                                          DM: Lock Manager Design
+
+Send comments on this MTB by one of the following means:
+
+     By Multics Mail, on MIT or System M:
+        Bongiovanni.Multics
+
+     By Telephone:
+        HVN 261-9314 or (617)-492-9314
+
+
+
+                            CONTENTS
+
+                                                         Page
+
+                 1 Introduction . . . . . . . . . . . .     i
+                 2 Functional Objectives  . . . . . . .     1
+                 3 Functional Decomposition . . . . . .     2
+                    3.1 Supervisor Support  . . . . . .     3
+                    3.2 Per-System Lock Management  . .     3
+                    3.3 Per-Process Lock Management . .     4
+                 4 Lock Identifier  . . . . . . . . . .     4
+                 5 Functional Description - Supervisor
+                  Support . . . . . . . . . . . . . . .     5
+                    5.1 Services Provided . . . . . . .     5
+                    5.2 Implementation Notes  . . . . .     6
+                 6 Per-System Lock Support  . . . . . .     6
+                    6.1 Static Decision Tables  . . . .     6
+                    6.2 Data Structures . . . . . . . .     7
+                    6.3 Services  . . . . . . . . . . .     8
+                    6.4 Implementation Notes  . . . . .    11
+                 7 Per-Process Lock Support . . . . . .    11
+                    7.1 Static Decision Tables  . . . .    11
+                    7.2 Data Structures . . . . . . . .    13
+                    7.3 Services  . . . . . . . . . . .    13
+                    7.4 Implementation Notes  . . . . .    16
+                 8 Example  . . . . . . . . . . . . . .    16
+
+Multics Technical Bulletin                                MTB-558
+DM: Lock Manager Design
+
+2 FUNCTIONAL OBJECTIVES
+
+The  objective  of the  Lock  Manager is  to  provide Concurrency
+Control in  the manner described in  MTB-514, referenced earlier.
+That is,  an application availing  itself of the  services of the
+Lock  Manager  has  established   one  or  more  non-intersecting
+hierarchical structures for accessing data, and follows a locking
+protocol  with  respect to  this  hierarchy.  The  nature  of the
+hierarchy is  not meaningful to  the Lock Manager,  but a typical
+hierarchy might be the following:
+
+          Data Base =&gt; File =&gt; Record =&gt; Field
+
+An  hierarchical  structure can  be viewed  as an  inverted tree,
+where each  element of the tree  has at most one  parent, and one
+element of the tree has no parent.  An application may access any
+number of  such trees, but  they must be  non-intersecting in the
+sense that any object of interest  may belong to at most one such
+tree.   The  locking  protocol  which  must  be  followed  by the
+applications programmer is as follows:
+
+      1.  Associated  with  each  object  of  interest  (i.e., an
+          object   which  may   be  read   or  modified   by  the
+          applications program) is a unique element of the tree.
+
+      2.  Associated with  each element of the  tree (and, hence,
+          with  each  object  of   interest)  is  a  unique  lock
+          identifier, constructed according to rules given below.
+
+      3.  Each element  of the tree  may be locked in  one of the
+          following modes:
+
+               S - Share
+
+               X - Exclusive
+
+               IS - Intend Share
+
+               IX - Intend Exclusive
+
+               SIX - Share with Intend Exclusive
+
+          These modes are described  fully in MTB-514, referenced
+          earlier.  For most applications  using the Lock Manager
+          described herein, only S and X modes are relevant.  The
+          remaining modes are used  internally by Lock Management
+          to  implement the  hierarchical protocols  described in
+          the  referenced  MTB  in  a manner  transparent  to the
+          applications programmer.   They are available  for more
+          sophisticated applications, however.
+
+
+MTB-558                                Multics Technical Bulletin
+                                          DM: Lock Manager Design
+
+      4.  Prior   to   reading   an  object   of   interest,  the
+          corresponding  element  in a  hierarchy must  have been
+          locked in  S, SIX, or  X mode; or  at least one  of its
+          parents must have been locked in S, SIX, or X mode.
+
+      5.  Prior   to  modifying   an  object   of  interest,  the
+          corresponding  element  an a  hierarchy must  have been
+          locked in X  mode, or at least one  of its parents must
+          have been locked in X mode.
+
+      6.  Accesses to objects within  an application instance are
+          grouped  into  sets   of  consecutive  accesses  called
+          transactions.   Transactions  are atomic  in  the sense
+          that all  modifications to objects from  within a given
+          transaction  occur  (as  viewed  by  other applications
+          accessing the same set of  objects) at the same time or
+          not at all.  This concept  is defined in greater detail
+          in  MTB-512, "Data  Management:  Transaction Management
+          Overview".  All locks acquired during a transaction are
+          held  until the  end of  the transaction  (the Commit),
+          when  they are  released as  a unit.   If a transaction
+          aborts, modifications  made to objects  from within the
+          transaction are backed-out to  a previous point, either
+          the  beginning   of  the  transaction   or  an  earlier
+          Checkpoint   (refer   to  MTB-513,   "Data  Management:
+          Recovery Management Overview" for a description of this
+          process).   Similarly,  if  a  transaction  aborts, all
+          locks  acquired  since  a  previous  point  (either the
+          beginning of the transaction  or an earlier Checkpoint)
+          are released as a unit.
+
+Following  this  protocol,  an  applications  programmer  can  do
+locking very simply, by locking objects in S mode before reading,
+and  locking object  in X  mode before  writing.  If  larger lock
+granularity is desired, a node of  a hierarchy can be locked in S
+mode  before  reading  any   objects  belonging  to  the  subtree
+represented by  that node; similarly,  a node can be  locked in X
+mode before modifying any objects belonging to the subtree.
+
+3 FUNCTIONAL DECOMPOSITION
+
+Lock  Management consists  of three  levels:  supervisor support,
+per-system lock management,  and per-transaction lock management.
+The  general  functions  of  each  level  are  described  in this
+section.
+
+
+Multics Technical Bulletin                                MTB-558
+DM: Lock Manager Design
+
+3.1 Supervisor Support
+
+The   supervisor   will   provide  primitives   to   control  the
+synchronization  of  processes (representing  transactions) which
+are  competing  for  locks.   These  primitive  functions  are as
+follows:
+
+       o  Suspend a process which is waiting for a lock currently
+          held by another process in an incompatible mode.
+
+       o  Reactivate a process which had  been waiting for a lock
+          which is now available to it.
+
+       o  Allow a process to specify  a time-out value when it is
+          suspended.  If  it has not been  reactivated within the
+          time specified, it will be reactivated automatically by
+          the Supervisor.
+
+       o  The supervisor  will have no knowledge  of either locks
+          or transactions.  The above functions will be requested
+          explicitly by  the per-system lock  management routines
+          when a process requests a lock or releases a lock.
+
+3.2 Per-System Lock Management
+
+The  routines at  this level will  maintain the  knowledge of all
+locks held by  any transaction in the system.   They will perform
+the following functions:
+
+       o  Handle requests from higher  level routines for locking
+          specified  objects in  specified modes.   This includes
+          validating the access of  the requesting process to the
+          object.  Conflict with locks held by other processes to
+          the specified object is checked.  If none is found, the
+          lock is assigned.  Otherwise,  the requestor is made to
+          wait for the lock.
+
+       o  Maintain  lists  of  all  locks currently  held  by any
+          process.   The   data  maintained  includes   the  lock
+          identifier, the process  and transaction identifiers of
+          all lockers, and the corresponding lock mode for each.
+
+       o  Maintain queues of processes waiting for locks.
+
+       o  Direct  the  supervisor in  synchronization.   That is,
+          when  a lock  becomes available,  the routines  at this
+          level select  a waiting process, award  the lock to the
+          waiting  process, and  direct the  supervisor to remove
+          the process from the suspended state.
+
+
+MTB-558                                Multics Technical Bulletin
+                                          DM: Lock Manager Design
+
+       o  When a process must wait  for a lock, determine whether
+          deadlock  exists.   If  it  does,  signal  this  to the
+          process  to trigger  rollback to  the beginning  of the
+          transaction or to a Checkpoint.
+
+       o  Maintain  per-process  lists   of  locks  acquired  and
+          checkpoints.   These  lists are  used to  release locks
+          when the recovery  management routines reqeust back-out
+          to a Checkpoint.
+
+3.3 Per-Process Lock Management
+
+These  routines maintain  the hierarchical locking  protocol in a
+manner invisible to the application programmer.  They perform the
+following functions:
+
+       o  Maintain cognizance of the locking hierarchy.
+
+       o  Handle  requests  for  locks  to  specific  objects  in
+          specific modes.  When such a request is received, these
+          routines  maintain  the hierarchical  locking protocol.
+          For  example,  no object  is locked  in S  mode without
+          first locking some parent in S, X, IS, IX, or X mode.
+
+       o  When  a lock  request is received,  these routines lock
+          the minimum number of  objects necessary to satisfy the
+          request.  For example, if a lock is requested in S mode
+          for an object whose parent is already locked in S mode,
+          no locking is done.
+
+       o  Maintain  lists of  locks acquired  by this transaction
+          and  Checkpoints.   These  lists are  used  to back-out
+          locks acquired since a prior Checkpoint, when requested
+          to do so by Recovery Management routines.
+
+4 LOCK IDENTIFIER
+
+To  all  levels of  lock management,  an object  to be  locked is
+specified by means of an  object identifier.  The purpose of this
+identifier  is to  specify the object  in a manner  common to all
+users who might lock that object.  Since arbitrary objects may be
+locked,  the assignment  of identifiers  is largely  a convention
+established by the designer of the applications system.  However,
+the  lock management  routines must  be able  to verify  that the
+requester  is  allowed to  hold  a given  lock.   If a  user were
+allowed to  pass an arbitrary, unvalidated  lock identifier, user
+data security  could be compromised.  To  preclude this, the lock
+
+
+Multics Technical Bulletin                                MTB-558
+DM: Lock Manager Design
+
+identifier is composed of two parts, as follows:
+
+  o  A  logical  identifier  of  a  file  known  to  the  system.
+     Initially, this is a file  in the Storage System.  After the
+     implementation of large files, either  a file in the Storage
+     System or a large file is  acceptable.  This file is used to
+     validate the requestor's access to the object represented by
+     the lock  identifier, for the purposes  of locking only.  It
+     is used  only for this  purpose.  The object  represented by
+     the  lock  identifier  need  have no  relation  to  the file
+     chosen.
+
+  o  A string  of bits which  is not interpreted  semantically by
+     lock management.  This string  serves to identify the object
+     uniquely among those whose identifier is related to the same
+     file.  The semantics of this string are at the discretion of
+     the  applications  system designer,  subject to  the obvious
+     constraint that  each object which  might be locked  must be
+     identifier uniquely.
+
+An  example  of constructing  Lock  Identifiers is  given  in the
+section "Example", below.
+
+5 FUNCTIONAL DESCRIPTION - SUPERVISOR SUPPORT
+
+5.1 Services Provided
+
+The  following  services will  be provided  by the  supervisor to
+support lock management:
+
+     Suspend -      allows  a  process to  suspend activity  at a
+                    control  point until  another process directs
+                    that it be reactivated.
+
+     Reactivate -   a  facility  for  one process  to  activate a
+                    suspended process at  the control point where
+                    it was suspended.
+
+     Time-Out -     specify  a  time  interval  after  which  the
+                    process  will  be  reactivated automatically,
+                    even  if  no other  process has  directed its
+                    reactivation.  This can be a parameter to the
+                    Supervisor call to suspend the process, or it
+                    can be a separate facility.
+
+
+MTB-558                                Multics Technical Bulletin
+                                          DM: Lock Manager Design
+
+5.2 Implementation Notes
+
+Several  facilities  exist  within the  current  Supervisor which
+could be used for this  purpose, possibly with some modification.
+These  facilities are  IPC (Block/Wakeup)  and Event Wait/Notify.
+The  choice  of  a  suitable facility  depends  on  the following
+considerations:
+
+       o  Performance - Event Wait/Notify is more responsive than
+          IPC for individual interactions.
+
+       o  System Impact - Event  Wait/Notify is considerably more
+          expensive in resources than IPC.
+
+       o  Race Conditions - IPC is race-free, when used properly.
+          Event Wait/Notify requires the development of race-free
+          protocols.
+
+These  points  must  be  considered in  the  design  of  the lock
+manager.  The choice  is not relevant in the  present context, as
+the Supervisor interface  is not visible to the  user of the lock
+manager.
+
+6 PER-SYSTEM LOCK SUPPORT
+
+6.1 Static Decision Tables
+
+The   following  decision   tables  describe   various  important
+functions of the Per-System Lock Management Routines:
+
+1.  Conflict Matrix
+
+This matrix is used to determine  whether a requested lock may be
+granted for  a specified object.   A lock may be  granted only if
+there  is no  conflict (conflict value  = N) with  with any other
+process holding a lock to the same object.
+
+
+Multics Technical Bulletin                                MTB-558
+DM: Lock Manager Design
+
+               Lock Mode Held by Other Process
+
+                Null  S    X    IS   IX   SIX
+               +----+----+----+----+----+----+
+           S   | N  | N  | Y  | N  | Y  | Y  |
+               +----+----+----+----+----+----+
+Mode       X   | N  | Y  | Y  | Y  | Y  | Y  |
+               +----+----+----+----+----+----+
+Requested  IS  | N  | N  | Y  | N  | N  | N  |
+               +----+----+----+----+----+----+
+           IX  | N  | Y  | Y  | N  | N  | Y  |
+               +----+----+----+----+----+----+
+           SIX | N  | Y  | Y  | N  | Y  | N  |
+               +----+----+----+----+----+----+
+
+2.  Lock Conversion Matrix
+
+This matrix is used to  determine the effective mode requested by
+a process to an object.  This  mode depends on the mode requested
+and on the mode of the lock currently held by that process to the
+object (if any).
+
+               Current Mode Held
+
+                Null  S    X    IS   IX   SIX
+               +----+----+----+----+----+----+
+           S   | S  | S  | X  | S  | SIX| SIX|
+               +----+----+----+----+----+----+
+Mode       X   | X  | X  | X  | X  | X  | X  |
+               +----+----+----+----+----+----+
+Requested  IS  | IS | S  | X  | IS | IX | SIX|
+               +----+----+----+----+----+----+
+           IX  | IX | SIX| X  | IX | IX | SIX|
+               +----+----+----+----+----+----+
+           SIX | SIX| SIX| X  | SIX| SIX| SIX|
+               +----+----+----+----+----+----+
+
+6.2 Data Structures
+
+The  following data  structures are maintained  by the Per-System
+Lock Management Routines.
+
+1.  Global Lock Table
+
+This table has one entry for  each object currently locked by any
+process.  Each entry contains the following data:
+
+       o  A  list of  all processes  currently holding  a lock to
+          this object, and the mode of each lock.
+
+
+MTB-558                                Multics Technical Bulletin
+                                          DM: Lock Manager Design
+
+       o  A list of all processes  waiting for this lock, and the
+          effective mode requested by each.
+
+Note that a process can be in both of these lists.  An example of
+this case is a process which owns  a lock in S mode to an object,
+requests a lock  in X mode to the same  object, but cannot obtain
+the  lock immediately  because another process  owns a  lock in S
+mode to the object.
+
+2.  Per-Process Lock Tables
+
+The following data will be  maintained for each process which has
+invoked the Per-System Lock Management routines:
+
+A list of actions requested by the process since the beginning of
+the  current transaction,  in order  of request.   The actions of
+interest are the following:
+
+       o  Locks  granted;  for  each,  the granted  mode  and the
+          previous mode.
+
+       o  Checkpoints, with the Checkpoint Identifier of each.
+
+6.3 Services
+
+The  following  services  are  provided  by  the  Per-System Lock
+Management routines.  For each  service, the information required
+by that service is presented, along with a general description of
+the service.
+
+1.  Lock Object
+
+This service is called to  lock a single object.  The information
+required  is  the  lock  identifier, the  mode  requested,  and a
+time-out  value.   The  information  returned  is  a  status code
+indicating  successful lock  acquisition and the  current mode of
+lock held to the object.
+
+The function performed is as follows:
+
+       o  Validate  the process'  access to the  lock object.  If
+          insufficient access, return an error status code.
+
+       o  Determine  the  effective  mode requested  to  the lock
+          object, using the current mode, the mode requested, and
+          the Lock  Conversion matrix.  If the  effective mode is
+          identical  to  the  current  mode, then  return  with a
+          successful status code.
+
+
+Multics Technical Bulletin                                MTB-558
+DM: Lock Manager Design
+
+       o  Check for  conflict with all  other processes currently
+          holding a  lock to the same  object, using the Conflict
+          Matrix.
+
+       o  If conflict  is found and the  time-out is zero, return
+          with an error code.
+
+       o  If  a  conflict  is  found and  the  time-out  value is
+          non-zero, determine  whether a deadlock  would occur if
+          this process were to wait for the lock.  If no deadlock
+          would result, enter the process and effective mode into
+          the list of processes waiting for the lock and call the
+          Supervisor to suspend the process.  Supply the time-out
+          value to the Supervisor  appropriately.  On return from
+          the  Supervisor,  attempt  to  lock  the  object again,
+          adjusting the time-out value for the time elapsed since
+          the original call.  If  a deadlock would result, signal
+          this  to the  process.  As  a parameter  in the signal,
+          pass the  identifier of the latest  Checkpoint to which
+          the  process  can  roll-back  in  order  to  break  the
+          deadlock.
+
+       o  If no conflict is found,  either add the process to the
+          list  of  lock  holders  (with the  effective  mode) or
+          change the the mode of the lock for this process is the
+          list,   as  appropriate.    Append  an   entry  to  the
+          per-process   action   list,    indicating   the   lock
+          identifier, previous mode, and effective mode.
+
+2.  Unlock All
+
+This service unlocks all locks acquired by this process.  It does
+this by  scanning the list  of locks acquired  in the per-process
+table for this process  in reverse-chronological order.  For each
+lock found in the table, unlock it as follows:
+
+       o  If this process does not own the lock, ignore it.
+
+       o  Otherwise, remove this process from the list of locking
+          processes associated with the lock object.
+
+       o  For  each  process  waiting   for  this  lock,  do  the
+          following:
+
+            -  Check  for  conflict  with  all  processes holding
+               locks on the object,  except for the process being
+               examined, using the Conflict Matrix.
+
+
+MTB-558                                Multics Technical Bulletin
+                                          DM: Lock Manager Design
+
+             - If  there is  no conflict,  award the  lock to the
+               process and reactivate the process.
+
+3.  Checkpoint
+
+This  service  is  called  by  the  Recovery  Management routines
+following completion  of a Checkpoint.   The information required
+is  the  Checkpoint  identifier.   The  Checkpoint  is  noted  by
+appending  the  Checkpoint identifier  to the  per-process action
+list.  No other action is taken.
+
+4.  Unlock to Checkpoint
+
+This  service  is  called  by  the  Recovery  Management routines
+following a data  roll-back to a Checkpoint.  Its  function is to
+release  all  locks  acquired  since  that  Checkpoint.   To this
+service, a Checkpoint can be the beginning of a transaction.  The
+information   required   is  the   Checkpoint   identifier.   The
+information returned is a list  of locks released; for each lock,
+the lock  identifier, prior lock  mode, and current  lock mode is
+indicated.  This service examines  the per-process action list in
+reverse-chronological  sequence  until it  reaches  the specified
+Checkpoint identifier.  For each lock found on this list, it does
+the following:
+
+       o  Change  the mode  of the lock  for this  process in the
+          Global Lock Table to the previous mode.
+
+       o  For  each  process  waiting   for  this  lock,  do  the
+          following
+
+            -  Check  for  conflict  with  all  processes holding
+               locks on the object,  except for the process being
+               examined, using the Conflict Matrix.
+
+            -  If  there is  no conflict,  award the  lock to the
+               process and reactivate the process.
+
+       o  Remove the entry from the per-process action list.
+
+5.  Status
+
+This service  returns to the  caller information on  locks owned.
+This information includes what locks are owned and in what modes.
+Queries against specific locks will also be supported.
+
+6.  Privileged Services
+
+The following  services will be provided  for suitably privileged
+users and routines:
+
+
+Multics Technical Bulletin                                MTB-558
+DM: Lock Manager Design
+
+       o  Extended Status  - returns information on  all locks in
+          the system.
+
+       o  Manipulate Single  Lock - allows a  lock to be unlocked
+          or marked out-of-service.  This  service is intended to
+          allow an administrator or salvaging routines to correct
+          unusual unforseen circumstances.   To ensure integrity,
+          a non-privileged process will  not be allowed to unlock
+          a single lock.
+
+       o  Adopt Locks - allows a  process to adopt all locks held
+          by a  specified process.  This service  is intended for
+          recovery   routines   activated  by   abnormal  process
+          termination,  which  are  performing  recovery  for the
+          terminated process.
+
+6.4 Implementation Notes
+
+The   Per-System   Lock    Management   routines   require   some
+synchronization mechanism to protect  the integrity of the global
+lock  management tables.   A single  lock-like object  to protect
+these  tables  is  probably  adequate.   This  mechanism, however
+implemented,  will   not  use  the   Lock  Management  mechanisms
+described here.  Instead, more primitive mechanisms will be used.
+
+A  salvager  will be  required  to validate  the  lock management
+tables  following  a system  crash, since  the crash  could occur
+while  the Per-System  Lock Manager  was modifying  these tables.
+This salvager will be invisible to users of the Lock Manager, but
+will interface with the Recovery Manager.
+
+The  deadlock detection/resolution  mechanism described  above is
+rather   crude,  but   it  is   believed  adequate   for  initial
+implementation.  The design is based on the premise that deadlock
+is  a  rare  event,  and that  more  intelligent  selection  of a
+lock/process pair  to pre-empt is not  useful.  Should this prove
+not to be  the case in practice, more  intelligent mechanisms can
+be  designed.   The  mechanism  for   one  process  to  signal  a
+pre-emption to another process exists (viz., IPS signals).  Users
+of the  Lock Manager would handle  such a pre-emption identically
+to a deadlock signalled from within the same process.
+
+
+MTB-558                                Multics Technical Bulletin
+                                          DM: Lock Manager Design
+
+7 PER-PROCESS LOCK SUPPORT
+
+7.1 Static Decision Tables
+
+The following tables describe  important functions of Per-Process
+Lock Support.
+
+1.  Parent Transform
+
+This transform  is used to  determine the lock  mode required for
+all ancestors in the lock hierarchy  prior to obtaining a lock on
+the child.  Note  that the mode indicated is  the mode which must
+be  requested for  the ancestor lock  objects.  The  mode of lock
+actually  held may  be different,  depedning on  the mode already
+held  on the  ancestor objects (reference  the Conversion Matrix,
+above).
+
+          Requested        Mode
+          Mode for         Required for
+          Child            All Ancestors
+
+          S                IS
+          X                IX
+          IS               IS
+          IX               IX
+          SIX              IX
+
+This  transform has  the property  that Parent  Transform (Parent
+Transform (M)) = Parent Transform (M) for any lock mode M.
+
+2.  Need-to-Lock Matrix
+
+This  matrix  is used  to  determine whether  it is  necessary to
+obtain a lock for a lock  object, given the requested mode of the
+lock  for  the object  and the  modes of  locks held  by ancestor
+objects.  It is not necessary to  obtain the lock if the value of
+this matrix is N for any ancestor of the object.
+
+
+Multics Technical Bulletin                                MTB-558
+DM: Lock Manager Design
+
+                    Mode of Ancestor
+
+                  S    X    IS   IX   SIX
+                +----+----+----+----+----+
+            S   | N  | N  | Y  | Y  | N  |
+                +----+----+----+----+----+
+            X   | Y  | N  | Y  | Y  | Y  |
+                +----+----+----+----+----+
+ Mode       IS  | N  | N  | Y  | Y  | N  |
+                +----+----+----+----+----+
+ Requested  IX  | Y  | N  | Y  | Y  | Y  |
+                +----+----+----+----+----+
+            SIX | Y  | N  | Y  | Y  | N  |
+                +----+----+----+----+----+
+
+7.2 Data Structures
+
+The following  data structures are maintained  by the Per-Process
+Lock Management Routines:
+
+1.  Lock Hierarchy
+
+This is a list of pairs  of the form (Child, Parent), where Child
+and Parent  are both lock  identifiers, and the  pair defines the
+obvious  relationship between  the lock  identifiers in  the lock
+hierarchy.
+
+2.  Lock List
+
+A  list of  lock identifiers of  objects currently  locked by the
+process, and the mode held for each.
+
+7.3 Services
+
+The  following  are  services  provided by  the  Per-Process Lock
+Management routines.
+
+1.  Define Hierarchy
+
+This service is used to define a parent-child relationship in the
+lock hierarchy.  The information required is the lock identifiers
+of  the  two  objects  concerned.   This  service  validates  the
+information  provided, and  enters it into  the hierarchy tables.
+The rules for using this service are as follows:
+
+       o  Before calling this service  for a (Child, Parent) pair
+          of lock identifiers, the  Parent must have been defined
+          as a Child in a previous call.  This is not required if
+
+
+MTB-558                                Multics Technical Bulletin
+                                          DM: Lock Manager Design
+
+          the Parent  is Null (i.e.,  the Child lock  object is a
+          root object in the locking hierarchy).
+
+       o  No non-root object may be locked in any mode unless its
+          parent has  been defined as  a Child in a  call to this
+          service.   A root  object is  an object  in the locking
+          hierarchy which has a null parent.
+
+       o  No object may  have more than one parent  object in the
+          lock hierarchy.
+
+2.  Lock Object
+
+This service locks  a specified object in a  specified mode.  The
+information required  is the lock  identifier of the  object, the
+lock identifier  of the parent  of the object (this  may be Null,
+but only for a root object), the mode requested for a lock, and a
+time-out value  indicating how long  the process should  wait for
+the lock.  The  information returned by this service  is a status
+code  indicating  successful locking,  and the  mode of  the lock
+acquired.   The  mode acquired  can  be different  from  the mode
+requested in two cases.  First, it may be unnecessary to lock the
+object  because of  a lock currently  held on an  ancestor of the
+lock in the locking hierarchy.  Second, the process may currently
+hold a  lock on the  object, necessitating a  different lock than
+requested.  An example of the latter  is the case where a process
+holds  an S  lock on an  object and  requests an IX  lock on that
+object.  The object will then be locked in SIX mode, as indicated
+by the Lock Conversion Matrix, above.
+
+The functions performed by this service are as follows:
+
+       o  If the object is a  root object (null parent), validate
+          that it  is not defined in  the hierarchy as otherwise.
+          Then acquire the lock, as described below.
+
+       o  If  the  object is  not  a root  object, walk  the lock
+          hierarchy from  the root for this  object to the parent
+          of this object,  in that order.  The goal  of this walk
+          is  to acquire  a lock in  mode Transform  (M) for each
+          ancestor object, where M is  the mode requested for the
+          object.    For  each   ancestor  encountered,   do  the
+          following:
+
+            -  If M'  is the mode  of the lock  currently held on
+               the  ancestor,  then  no  additional  lock  on the
+               ancestor is required in the case that
+
+                    Conversion Matrix (Transform (M), M') = M
+
+
+Multics Technical Bulletin                                MTB-558
+DM: Lock Manager Design
+
+            -  Otherwise, acquire  a lock on  the ancestor object
+               in mode
+
+                    Conversion Matrix (Transform (M), M')
+
+            -  If any ancestor  is found with a lock  in mode M',
+               and the value of
+
+                    Need-to-Lock (M, M')
+
+               is N, then no further action is required.  In this
+               circumstance, the Per-Process Lock Manager returns
+               to  its called  with a successful  status code and
+               null mode.
+
+       o  A lock is acquired as follows:
+
+            -  If M' is  the mode of the lock  currently held for
+               the  object  (this  may  be Null),  return  to the
+               immediate caller with a successful status mode and
+               M' mode  if Conversion Matrix (M,  M') = M' (i.e.,
+               lock is already held in the required state).
+
+            -  Otherwise,  call  the  Per-System  Lock Management
+               routines to  obtain a lock for  the object in mode
+               Conversion  Matrix (M,  M').  When  these routines
+               return,  pass  the  status  code  returned  to the
+               immediate caller.
+
+The rule mentioned above is  enforced here--namely, that before a
+lock can be requested of any  non-root object, the parent of that
+object  (and  hence all  ancestors  of that  object) in  the lock
+hierarchy must have been defined by  means of calls to the Define
+Hierarchy service.
+
+3.  Unlock All
+
+This service unlocks all locks currently held by the process.  It
+purges  its  lock  tables  of all  entries,  and  then  calls the
+Per-System Lock  Management routines to unlock  all locks held by
+the process.
+
+4.  Checkpoint
+
+This service notes that a  Checkpoint has occurred.  It is called
+by Recovery Management following completion of a Checkpoint.  The
+information provided is the  Checkpoint identifier.  This service
+merely passes  the information to the  Per-System Lock Management
+Routines by calling the Per-System Checkpoint service.
+
+
+MTB-558                                Multics Technical Bulletin
+                                          DM: Lock Manager Design
+
+5.  Unlock to Checkpoint
+
+This  service  unlocks  all  locks  acquired  since  a  specified
+checkpoint.  It calls the  Per-System Lock Management routines to
+unlock these locks, and it uses the returned set of actions taken
+to adjust its tables.
+
+7.4 Implementation Notes
+
+The  Need-to-Lock  Matrix and  the  logic which  uses it  are not
+strictly  necessary, but  have been  included for  efficiency, as
+employing  this  logic  reduces  calls  to  the  Per-System  Lock
+Manager.  An alternative method would be for the Per-Process Lock
+Manager to do the following when a lock on an object is requested
+in  mode M.   Beginning at  the root,  lock each  ancestor of the
+object in the mode Parent Transform  (M), from root to the parent
+of the  object, in that  order; then lock  the object in  mode M.
+The  method described  above depends critically  on the following
+attributes of  the locking strategy.   First, that all  locks are
+held until the end of a  transaction, when they are released as a
+unit.  Second, when a transaction is rolled-back to a Checkpoint,
+all locks released  are released as a unit.   If these attributes
+are altered, the method described above will not work.
+
+The  Transform described  above is  the weakest  of several valid
+transforms.  A stronger valid transform  requires IX mode for all
+ancestors,  under  the  assumption that  a  lock in  X  mode will
+probably  be required  of the object  at some  point.  The method
+described  above  works for  either  transform, and,  indeed, for
+several  others.   The  choice  of a  transform  is  based  on an
+intuition about likely lock scenarios.  It could be tuned easily,
+based  on experience.   Indeed, different transforms  could be in
+effect for different data bases, users, or transactions.
+
+8 EXAMPLE
+
+The following example illustrates  how the Lock Manager described
+above  might   be  used  to  control   concurrency  on  a  simple
+application.  Suppose the following hierarchy is established:
+
+          Data Base =&gt; File =&gt; Record =&gt; Field
+
+The following assignment of lock identifiers is possible:
+
+       o  Each lock identifier is of the  form (A, B, C), where A
+          is  the logical  identifer of a  file, and B  and C are
+          integers (i.e.,  the bit string which  forms the second
+          part of the generic Lock Identifier described above has
+
+
+Multics Technical Bulletin                                MTB-558
+DM: Lock Manager Design
+
+          been divided into two numeric fields).
+
+       o  The lock identifier associated with  a Data Base is (D,
+          0, 0),  where D is a  canonical control file associated
+          with the  data base.  It  is assumed that  this control
+          file contains no data.
+
+       o  Assuming  that each  file is  implemented as  a Multics
+          multi-segment file, the lock identifier associated with
+          a file is (F, 0, 0),  where F is the first component of
+          the multi-segment file.
+
+       o  The lock identifier for a record  is (F, R, 0), where F
+          is  the first  component of  the multi-segment  file in
+          which  the record  resides, and R  is the  index of the
+          record in that file.
+
+       o  The lock identifier  for a field is (F,  R, B), where F
+          is  the first  component of  the multi-segment  file in
+          which the record resides, R  is the index of the record
+          to which the  field belongs in that file,  and B is the
+          bit offset of the field within the record.
+
+If the application is such  that the functional unit of operation
+is a field within a record, and hence the typical lock request is
+for a field, then the following operations are required:
+
+       o  When a Data  Base is opened, define the  Data Base lock
+          identifier with Null Parent.
+
+       o  When a File is opened,  define the File lock identifier
+          with  the appropriate  Data Base  lock identifier  as a
+          parent.
+
+       o  When  a  Record  is  accessed, define  the  Record lock
+          identifier with the appropriate File lock identifier as
+          a parent.
+
+       o  Before reading  the contents of a  Field, obtain a lock
+          with mode S on the identifier representing the Field.
+
+       o  Before writing  the contents of a  Field, obtain a lock
+          with mode X on the identifier representing the Field.
+
+An intelligently designed application  could use the lock manager
+to  greater  advantage,  as  the  following  example illustrates.
+Suppose that in the above  example, the record accessing routines
+knew whether the record requested was going to be modified (e.g.,
+the semantics  of the application required  update to be declared
+when accessing the record).   The record accessing routines could
+
+
+MTB-558                                Multics Technical Bulletin
+                                          DM: Lock Manager Design
+
+then lock  the identifier associated  with the record in  IX or X
+mode at the time the record is accessed.  Locking the record in X
+mode implicitly obtains X mode locks  on all of the fields in the
+record.   Locking the  record in  IX mode  prevents the potential
+conflict which would occur if the  field to be updated were first
+locked in S mode, and then in  X mode.  In this case, the lock on
+the  record (and  also on  the file and  the data  base) would be
+upgraded from IS to IX.  Acquiring  the lock on the record in the
+mode ultimately  required can prevent roll-backs  due to deadlock
+later.
+
+This  example  is intentionally  simple  to illustrate  the basic
+interaction  with the  Lock Manager.   It assumes,  for instance,
+that  the information  needed to  access a  Data Base,  File, and
+Record  never  changes, and  hence  there are  no  locks required
+merely to find a particular Record.  If this is not the case, the
+example could  be extended with  a locking hierarchy  on the data
+structures  needed  to locate  individual records  (indices, hash
+tables, etc.).
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

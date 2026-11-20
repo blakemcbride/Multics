@@ -1,0 +1,1274 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Restructuring Directory Control.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  MULTICS TECHNICAL BULLETIN 681-01                          page 1
+
+  To:       Distribution
+
+  From:     Keith Loepere
+
+  Date:     November 21, 1984
+
+  Subject:  Restructuring Directory Control
+
+       As  a  part of  the  B2 effort,  directory control  is being
+  restructured.  The major justification  for this restructuring is
+  to centralize the security related software within ring zero.  In
+  particular,  access  checking  and  security auditing  are  to be
+  centralized.   This  revision of  MTB  681 describes  the efforts |
+  taken in this direction for MR11.                                 |
+
+       This  MTB  describes  the  MR10.2  structuring  of directory |
+  control  along with  problems that occur  largely as  a result of |
+  this  structuring.  The  MR11 structure  of directory  control is |
+  then  described,  along with  new  error code  censoring policies
+  introduced and  other incompatible features of  this design.  The
+  finale  concerns itself  with unsolved  problems within directory
+  control.
+
+       This  MTB assumes  that the  reader understands  many of the
+  concepts found within directory control.
+
+       Comments on this MTB should be sent to the author:
+
+            Keith Loepere (Loepere.Multics)
+
+       or via the B2 forum.
+
+  _________________________________________________________________
+
+  Multics  Project  internal  working  documentation.   Not  to  be
+  reproduced or distributed outside the Multics Project.
+
+
+
+  PREFACE
+
+       As  a  result  of the  B2  evaluation effort,  a  variety of
+  problems  with the  file system  (mostly directory  control) have
+  been discovered.  These problems consist of a collection of bugs,
+  plus  a  lack of  consistency  in our  enforcement of  our access
+  model,  as  well as  a lack  of consistency  within our  model of
+  access control.   These problems need to  be addressed to various
+  degrees  to  meet  the  B2  requirements.   Our  answer  to these
+  problems  within the  file system  are being  met in  a series of
+  phases.
+
+       The  first  phase consisted  of an  analysis of  the current
+  behavior of the primitives within the file system.  This analysis
+  was done to  determine the set of access  checks performed by the
+  various file system  primitives and the manner by  which they are
+  performed.   The  current  structuring  of  the  file  system was
+  discovered.  The current access model  is now known.  The results
+  of  the first  phase (as well  as the changes  resulting from the
+  work  described  by this  MTB)  will appear  in an  upcoming File
+  System SDN.
+
+|      The second phase was described in the first revision of this
+| MTB  (and  is  also  included  in  this  revision).   It involves
+  centralizing the  access checking software  within directory con-
+  trol.  This is being done to  ensure that access checks are being
+  done  correctly  and  with  proper auditing  of  attempted access
+  violations.   The access  checks currently performed  by the file
+  system  are  not being  changed,  except in  those cases  where a
+  primitive  failed  to  perform  its  access  check.   Within this
+  process, various  bugs, as well  as a design error  in our policy
+  toward error code censoring, will be fixed.
+
+|      The third phase involves adding support to directory control
+| to not only  audit attempted access violations but  also to audit
+| successful accesses.   Also, all access  computations within ring
+| zero were checked  for validity.  The result of  this third phase
+| is described in this MTB.  (In particular, it is described by the
+| material within change bars.)
+
+       The last  phase of directory  control restructuring involves
+  creating a consistent access model  (or, at least, a more consis-
+  tent access model).   The system would then be  converted to work
+  within  this  model.  This  pass  through the  system  would also
+| include  fixing  more  bugs  within  directory  control  and  its
+| interfaces.  It is unknown when, if ever, this will be done.
+
+|      The  goal the  directory control restructuring  effort is to
+| provide a platform that will enable us to more easily express our
+  current  access  policy and  more easily  demonstrate that  it is
+  enforced.  This platform will also  make it easier (from the file
+  system side) to  change to a more consistent  access model in the
+  future.
+
+
+
+  INTRODUCTION
+
+       Directory control  is that portion  of the system  that con-
+  cerns  itself  with the  structuring of  the storage  system into
+  directories and segments and controlling access to those objects.
+  It  lies logically  above segment  and page  control, using their
+  facilities to access the contents  of directories as if they were
+  normal segments.   (Directory control is not  strictly above seg-
+  ment control, of course, since segment control does thread aste's
+  together relative  to the hierarchy structure.   (That is to say,
+  segment  control  knows  the difference  between  directories and
+  segments.)   Segment  control  also  has  a  path  into directory |
+  control  to  determine  the  SDW  access  control  fields  of the |
+  segments segment  control controls.  This  path includes auditing |
+  of successful accesses to  segments.)  Directory control contains |
+  the  security mechanism  for the file  system.  Directory control |
+  lies under address and name space management, in that this latter
+  subsystem uses directory control to  find and determine access to
+  objects.  (Again, directory control is not strictly under address
+  and name  space management in  that directory control  must bring
+  various directories into the user's address space to use them for
+  its own purposes (such as when walking down the hierarchy or when
+  chasing links).  These extra directories enter the user's address
+  space but not  strictly the user's name space.   A description of
+  this area appears later in this MTB.)
+
+       For  the sake  of convenience,  if not  perfect accuracy, in
+  this MTB I will refer to the combination of directory control and
+  address and name space management  as the file system.  (The file
+  system will  be considered to  sit on top of  the storage system,
+  which  consists  of  page  control,  segment  control  and volume
+  management.)  As  such, the program  that is called  to perform a
+  function  within  the file  system,  such as  creating  a branch,
+  changing  an  ACL, etc.,  will be  referred to  as a  file system
+  primitive.   The  function it  performs is  called a  file system
+  function.
+
+       A  program  internal to  directory  control that  performs a
+  support function for the file  system primitives will be referred
+  to  as  a directory  control primitive.   Thus, the  program that
+  finds  a directory  or the  program that  audits attempted access
+  violations will be called a directory control primitive.
+
+       A  file system  primitive, then, does  its job  by calling a
+  series  of directory  control primitives,  as well  as performing
+  some operations internal to itself.
+
+       The  directory  control  functions  that  will  be described
+  within this  MTB follow.  It  is a directory  control function to
+  locate directories and specific entries within those directories.
+  Another function is to determine  the user's access (normally the
+  effective  access)  to  the  directory  or  entry  at  hand.  The
+  auditing of  successful accesses to file  system objects, as well |
+
+
+
+| as  attempted  access violations,  if  necessary, is  a directory
+| control  function.   (In this  MTB, the  phrase "audit  an event"
+| means that a determination is made as to whether an audit message
+| is to be generated to describe  the event.  Only if this determi-
+| nation is positive  will an actual audit message  be added to the
+| security audit log.)  After these directory control functions are
+  performed, the  various file system primitives  can perform their
+  function on  the directory or  the directory entry.   These three
+  directory control functions:
+
+            1) directory (or directory entry) finding
+            2) access checking
+            3) auditing
+
+  are common to  all file system functions.  I  will refer to these
+  directory control functions as  the three basic directory control
+  functions.  They are the main subject of this MTB.
+
+  CURRENT STRUCTURING OF DIRECTORY CONTROL
+
+|      The file system currently (MR10.2) consists of a set of file
+| system primitives  that implement the various  functions that the
+| file system  performs (ACL listing, "attribute"  setting, and the
+| like).  The three basic directory control functions are performed
+  by a  group of programs  (the directory control  primitives) that
+  are external  to, and called  by, the file  system primitives.  A
+  simplified  description of  the current operation  of the modules
+  that perform the three basic directory control functions follows.
+
+  Directory and Entry Finding
+
+       The function of finding a  directory (and having address and
+  name  space  management  bring  it  into  the  address  space) is
+  performed by  the directory control  primitive find_dirsegno.  It
+  takes a pathname and returns  the segment number of the directory
+  as the directory's identity in the address space.  In the process
+  of  finding the  directory, find_dirsegno  brings the directories
+  superior to the target directory into the user's address space (a
+  requirement  for proper  process operation).   find_dirsegno also
+  handles  the  case where  the desired  pathname contains  a link;
+  encountering a  link forces find_dirsegno  to find the  target of
+  the  link and  then search for  the remaining entry  names in the
+  pathname.  Note  that find_dirsegno is  responsible for detecting
+  attempts to  reference an AIM  protected directory (one  to which
+  the user fails a read_allowed_ test).
+
+       Searching for entries within a directory is performed by the
+  directory control primitive find_entry.  find_entry makes certain
+  validity checks on a directory  entry, including checking for the
+  object being "security out of service".
+
+
+
+       Both find_entry  and find_dirsegno are not  called in normal
+  cases by the file system primitives.  Most file system primitives
+  call the directory control  primitive find_ to locate directories
+  and directory entries.  find_$dir basically consists of a call to
+  find_dirsegno.  find_$entry is basically  a call to find_dirsegno
+  followed  by  a call  to find_entry.   find_$branch is  the usual
+  directory  control  primitive called  by  most user  visible file
+  system primitives.   This directory control primitive  is the one
+  that chases  links.  It also  consists of calls  to find_dirsegno
+  and  find_entry.   However,  if  the directory  entry  located by
+  find_entry  describes a  link, find_$branch will  proceed to find
+  the target of the link, and  continue to chase such links until a
+  target is found.   (Links in the directory portion  of a pathname
+  are chased by find_dirsegno.)
+
+       Another way to find a directory is provided by the directory
+  control primitives uid_path_util$find and uid_path_util$find_dir.
+  These  entries are  used mostly  by master  directory control, to
+  find a directory or entry given a uid path.
+
+  Access Checking
+
+       A   normal   file   system  primitive   starts   by  calling
+  find_$branch  or  find_$entry to  locate  the directory  entry in
+  question, depending on whether link chasing was specified or not.
+  (Programs   that   manipulate   an   entire   directory,   star_,
+  list_inacl_all, etc., call find_$dir.)  The file system primitive
+  then makes a series of access checks, using the directory control
+  primitives  fs_get or  access_mode to  compute the  access.  Each
+  file  system primitive  performs its own  access checks, checking
+  for access of  whatever kind it wants on  the object in question,
+  its parent, its parent's parent, etc.
+
+  Auditing
+
+       If an access violation was  attempted, an audit message must
+  be  generated.  Also,  the file  system primitive  must determine
+  what error  code to return to  the user, so as  to not return too
+  much information  to the user  via this error  code.  (This error
+  code     is     normally     error_table_$incorrect_access     or
+  error_table_$no_info.)  This process is referred to as error code
+  censoring.   A  discussion  of  the  implications  of  error code
+  censoring  appears later  in this  MTB.  Auditing  and error code
+  censoring are integral functions  both performed by the directory
+  control primitive dir_control_error.  Successful accesses to file |
+  system objects are not currently audited.                         |
+
+
+
+  CURRENT ACCESS MODEL (SIMPLIFIED)
+
+       In the way of background, the properties of an object within
+  the  file  system are  considered  to come  in  three categories.
+  These are the "status", "attributes" and "contents" of an object.
+
+       The "contents" of a segment is the set of machine words that
+  make up the segment.  We also sometimes consider the bit count of
+  a  segment  to  be a  "contents"  property of  the  segment.  The
+  "contents" of a directory are the list of names within it and the
+  initial  ACLs  of  the  directory  (this  data  being  physically
+| contained within the directory).  Certain vtoc resident pieces of
+| information  about   a  directory  are   considered  as  contents
+| properties:   the quota  and time-record product.   The bit count
+  (msf  component  indicator)  of  a  directory  is  also sometimes
+  considered a  "contents" property of the  directory.  A user must
+  possess specific access on the object itself to attempt to affect
+  a "contents" property of the object.  The access that is required
+  on the object  is a function of the type  of file system function
+  being performed.
+
+       The  "status" properties  of an object  are those properties
+  that are considered as "belonging" to the parent directory of the
+  object  (as  opposed  to  belonging to,  or  requiring particular
+  access on, the  object).  These properties are the  names and the
+  ACL of  the object.  A  user must possess specific  access on the
+  parent  directory of  an object to  attempt to  affect a "status"
+  property  of  the object.   The  access that  is required  on the
+  parent is  a function of  the type of file  system function being
+  performed.
+
+       The  "attributes"  properties  of  an  object  are basically
+  everything  else;  that  is,  the ring  brackets,  safety switch,
+  maximum length,  etc.  A user can  either possess specific access
+  to  the parent  directory of  an object  or can  possess specific
+  access to that object (one or the  other or both must be true) to
+  attempt to  affect an "attributes"  property of the  object.  The
+  access  that is  required on  the object  or on  the parent  is a
+  function of the type of file system function being performed.
+
+       The complete description of our access model (the entire set
+  of access  checks within ring  zero) will appear  in the upcoming
+  File System SDN.
+
+  PROBLEMS WITH THE CURRENT STRUCTURING
+
+       The  biggest  problem with  the  current structuring  of the
+  basic  directory control  primitives is  that their  execution is
+  dependent on their  being called by the file  system primitive in
+  question.   The finding  of directories and  directory entries is
+  fine (except for the implications of directories appearing in the
+
+
+
+  address space,  discussed later).  It is  the other two functions
+  that cause the problem.
+
+       Since  each  file  system  primitive  makes  its  own access
+  checks, there is  no guarantee that a file  system primitive will
+  even perform a check.  If it does make a check, this check is not
+  necessarily performed in a similar  way to the check performed by
+  other file system primitives that perform similar functions.
+
+       Also, since the auditing  and error code censoring functions
+  are  performed  by  a  separate directory  control  primitive, no
+  guarantee exists that these functions will be performed.
+
+       Add to the  above the fact that the  basic directory control
+  primitives are  rather cryptic in internal  operation.  Also, the
+  logic involved  in calling the directory  control primitives from
+  within  the various  file system  primitives is  too involved and
+  complex.
+
+       A variety  of other bugs  exist in the  current structuring,
+  some of  which will be  discussed later when  discussing implica-
+  tions of the new structuring.
+
+  THE NEW STRUCTURING
+
+       The new structuring is very  simple.  The three basic direc-
+  tory  control  functions  are  combined into  one  module, called
+  dc_find (directory control find).
+
+       dc_find     performs    the     functions    of    directory
+  finding/directory  entry  look   up,  access  checking,  security
+  auditing   and   error  code   censoring   all  in   one  module.
+  Structurally, it performs basically the  same functions as in the
+  old  structuring.   Indeed,   find_,  find_entry,  find_dirsegno,
+  dir_control_error   and  uid_path_util   (entrypoints  $find  and
+  $find_dir)  are  all  internal routines  within  dc_find.  (These
+  modules are all completely  rewritten, of course.  The interfaces
+  to the functions performed by these internal routines are changed
+  to make them compatible with the overall scheme of things.)
+
+       The various entrypoints to dc_find correspond to the differ-
+  ent types of functions performed within the file system.  Some of
+  the  entries  locate  directories  while  some  locate  directory
+  entries.  Each entrypoint  has its own set of  access checks that
+  it performs  appropriate to the  type of file  system function on
+  whose behalf  the entrypoint was called.   All entrypoints locate
+  objects  in a  consistent way, check  the access  in a consistent
+  way, audit successful accesses and attempted access violations in |
+  a consistent way, etc.                                            |
+
+       If  dc_find  determines  an attempted  access  violation, it
+  returns  a null  pointer for  the directory  (or directory entry)
+
+
+
+  pointer, after having audited the attempted access violation.  An
+| error code will be returned.   If access is allowed, dc_find will
+| audit  this event  and return  the desired  pointer.  The pointer
+  will always point into a locked directory.
+
+       The basic design decision for  dc_find is that no entrypoint
+  should accept as an argument  information as to what access check
+  is to be performed.  This information is imbedded in the identity
+  of  the  entrypoint called.   Each  file system  primitive should
+  simply call  the dc_find entrypoint that  corresponds to the type
+  of function being performed.
+
+       No file  system primitive should make  its own access check.
+| All  access checking  should be  done by  dc_find.  Likewise, all
+| successful  accesses and  attempted access  violations are  to be
+  censored and audited by dc_find.  None of the functions performed
+  by the internal routines within dc_find  are to be visible to any
+  file  system primitive  so that we  can guarantee  that the three
+  basic directory control functions are performed in all cases.
+
+       What this  means is that  all access checks  within the file
+  system can  be identified easily  (they are all  within dc_find).
+  Also, it is easy to see what access check is performed by a given
+  file  system   primitive  simply  by  looking   at  what  dc_find
+  entrypoints it  calls; an analysis  of the program's  code is not
+  necessary.
+
+|      The  access computations  within the  file system  have been
+| centralized.   Any  user ring  request for  access modes  must go
+| through  dc_find.  A  new routine  has been  created for internal
+| access computations within directory  control.  All access compu-
+| tations within the file system  were examined to determine if any
+| violate the new directory control structuring.
+
+|      Finally, all  entrances to the file  system were examined to
+| ensure that all entrances that  operate upon a file system object
+| pass through dc_find for validation.
+
+  INTRODUCTION TO THE ENTRIES IN DC_FIND
+
+       The  entrypoints  of dc_find  can be  grouped into  two main
+  groups.   The first  group is given  the "name"  (pathname or uid
+  path)  of a  directory.  dc_find is  to return a  pointer to this
+  directory, having made the appropriate access checks.  The second
+  group is  given the "name"  (pathname, uid path or  pointer) of a
+  file system  object (directory, segment or  link).  dc_find is to
+  return a  pointer to the  directory entry for  the object, having
+  made  the  appropriate  access   checks.   The  first  group  has
+  entrypoints whose names start with  the prefix "dir_"; the second
+  group has  entrypoints whose names start  with the prefix "obj_".
+  What follows this prefix is some mnemonic describing the function
+
+
+
+  for  which  this  dc_find  entrypoint applies  (what  file system
+  function has this type of access check).
+
+       Each of the above two  groups can be further subdivided.  An
+  entrypoint  that expects  to be given  a uid path  has the suffix
+  "_uid"  in its  name; an entrypoint  that expects a  pointer to a
+  segment has the  suffix "_ptr" in its name;  an entrypoint having
+  neither of these suffixes in  its name expects an ASCII pathname.
+  By  default,  dc_find uses  the  user's effective  access  to the
+  target when checking access.  For those (rare) functions that are
+  based on raw (ACL only)  access, the entrypoint name will contain
+  the suffix "_raw".  Privileged  functions that don't check access
+  at all  (almost always the  target of an  hphcs_ entrypoint) have
+  the  suffix "_priv"  in the entrypoint  name.  Note  that not all
+  combinations of these suffixes exist.
+
+       If "read"  appears in an entrypoint  name, the entrypoint is
+  normally concerned with getting  a property.  The entrypoint will
+  return  a pointer  to a  directory (or  directory entry)  that is
+  locked for reading.  "write" will appear in entrypoint names when
+  a  property  is  to be  set;  the  directory will  be  locked for
+  writing.  Corresponding access checks will be made for the "read"
+  versus "write" entrypoints.
+
+       Thus, "dir_read" is the entrypoint called when a file system
+  primitive wishes to find a  pointer to a directory whose contents
+  are to be  read.  "dir_write" is called when  the contents are to
+  be modified.  If a file system primitive wishes to have a pointer
+  to a directory entry whose  "attribute" properties are to be read
+  and    where    a    pointer    to   the    target    is   known,
+  "obj_attributes_read_ptr" would be the entrypoint used.
+
+       The access checks  performed by dc_find are the  same in all
+  cases as they were in the  old structuring, except for those file
+  system primitives that incorrectly had no access check before.
+
+  CLASSES OF ENTRIES IN DC_FIND
+
+       Given the  above, the classes of  entrypoints within dc_find
+  follow.   The most  common entrypoints  will be  discussed first,
+  followed by  the more obscure (special)  entrypoints.  The choice
+  of  the  various entrypoints  (each  implying a  specific  set of
+  access checks) corresponds to the  set of access checks currently
+  performed within the  file system.  A later phase  of the B2 work
+  will involve making these more consistent and meaningful.
+
+       The     various     entrypoints      are     declared     in
+  dc_find_dcls.incl.pl1.
+
+
+
+  Main Entrypoints
+
+       "dir_read",  "dir_write"  and  "dir_salvage"  are  the major
+  entrypoints  concerned   with  accessing  an   entire  directory.
+  "dir_salvage" is obviously used by  the directory salvager; it is
+  special in the manner by  which it locks a directory.  "dir_read"
+  and  "dir_write" are  used when  looking at  the "contents"  of a
+  directory.  "dir_read" requires "s" access on the target directo-
+  ry; "dir_write" requires "m" access.
+
+       "obj_status_read" and  "obj_status_write" are used  when the
+  "status" properties of an object  are being examined.  The "read"
+  version  requires  "s" access  to  the containing  directory; the
+| "write"  version requires  "m" access.   An exception  to this is
+| that  access  related  "status"  properties  (ACL,  AIM  and ring
+| brackets)  need to  be audited as  access modification operations
+| instead  of   as  object  modification   operations.   Thus,  the
+| entrypoint   "obj_access_write"   exists   for   changing  access
+| properties.
+
+       "obj_attributes_read"  and  "obj_attributes_write"  are used
+  when the  "attributes" properties of an  object are desired.  The
+  read version  requires "s" access on  the containing directory or
+  non-null access  on the object.   The write version  requires "m"
+  access on  the containing directory  or "w" access (or  "m" for a
+  directory) on the object.
+
+       "obj_status_attributes_read"     is      a     hybrid     of
+  "obj_status_read" and  "obj_attributes_read" used by  the status_
+  and status_long file system primitives.  It is used when both the
+  "status" and the "attributes" properties are desired and when the
+  calling  primitive can  deal with a  partial lack  of access.  It
+  differs from "obj_attributes_read" when  "s" access is missing on
+  the  parent directory.   In this  case, it  returns the directory
+  entry  pointer  anyway, audits  the partial  lack of  access, and
+  returns  error_table_$no_s_permission.   The calling  file system
+  primitive must honor this error  code and not return any "status"
+  properties to  the user ring.   This error code  must be returned
+  (or factored into the returned error code) to the user ring.
+
+  Specialized Entrypoints
+
+       The other entrypoints are  each designed for particular file
+  system  functions  whose  access  checks are  different  from the
+  above.
+
+       The   entry   "dir_for_append"    (used   by   append)   and
+  "dir_for_retrieve_append" (used by the  volume retriever and seg-
+  ment  adopter to  append on behalf  of someone else)  are used to
+  find  a directory  into which an  object is to  be appended.  The
+  access requirement is "a" access on the directory.
+
+
+
+       "obj_delete" is called when deleting an object.  It requires |
+  "m"  access on  the parent.   It exists  basically so  that audit |
+  messages correctly record this particular event.                  |
+
+       "obj_bc_delta_write"    (change    the   bit    count)   and
+  "obj_bc_write" (set the bit count) are used when changing/setting
+  the  bit  count.   Their  access check  is  unusual.   The access
+  requirement for  changing/setting the bit  count on a  segment is
+  "w" access on the segment.  The access requirement for increasing
+  the bit count on a directory  is "a" access on the directory; the
+  access requirement for decreasing the bit count on a directory is
+  "m" access  on the directory.  The  directory access requirements
+  result from an attempt to enforce the model of the bit count on a
+  directory being the msf component count.
+
+       The entries  used for the initiate  file system function are
+  "obj_initiate"  and   "obj_initiate_for_linker_dp".   The  access |
+  requirement  is  non-null  access  on  the  target  object.   The |
+  "_for_linker_dp"  version is  used by  the dynamic  linker search |
+  facility  (fs_search);  it  accepts  a directory  pointer  and an
+  entryname instead of a pathname.  The "_raw" versions of initiate
+  specifically allow  searching through AIM  protected directories,
+  thus allowing  the initiation of any  directory or the initiation
+  of any  segment for which  the user has  any access via  the ACL.
+  The  "_raw"   version  is  used   by  system_privilege_$initiate, |
+  providing this gate with the ability to violate rings and AIM.    |
+
+       The  opposite  of "obj_initiate"  is  "obj_terminate".  This |
+  entry  exists primarily  so that  the audit  message records this |
+  event.  The only access requirement  is that dictated by the name |
+  lookup policy, described later in this MTB.                       |
+
+       "obj_truncate" is  used when truncating a  segment.  This is
+  considered  as affecting  a "contents"  property.  It  is special
+  cased in that this entry does  not audit an access violation when
+  attempting  to  truncate  a  segment  whose  copy  switch  is on.
+  (Normally, an attempt to write into  a segment to which a process
+  lacks write  permission generates an audited  fault.  However, if
+  the copy  switch for the segment  is on, no audit  occurs and the
+  user ring condition handler replaces, within the address space, a
+  copy of the segment in  the process directory.  Thus, if truncate
+  were purely a user ring function performed by zeroing the ends of
+  segments,  a truncate  of a  segment to  which the  process lacks
+  write  permission  but whose  copy  switch is  on  would properly
+  truncate  the segment.   This special  casing within  hardcore is
+  respecting  this model.   However, since  hardcore can't truncate
+  the original, nor  does it wish to create the  copy for the user,
+  the user does receive an error,  but no audit.  This operation is
+  in keeping with the current system behavior.)
+
+       The entrypoint "dir_initiate" is used when bringing a direc- |
+  tory explicitly into the address space (as opposed to implicitly, |
+  through  directory  searches).   It  is called  when  the process |
+
+
+
+| simply needs  to find a directory  but in no way  operate upon it
+| (such as when setting a  directory as the working directory).  It
+  exists  to enforce  the name lookup  policy described  in a later
+  section of this MTB.
+
+       When quota is  to be moved from a parent  directory to a son
+  directory, "dir_move_quota" is used.  This operation requires "m"
+  access  on  the  parent  directory  and  "m"  access  on  the son
+  directory.   To  perform this  move of  quota, the  normal access
+  rules  applying to  directory modifications are  followed in that
+  the  authorization of  the process  must be  equal to  the access
+  class of the parent directory.  This  entry is special in that it
+  allows the son directory (but no  other directory in the path) to
+  have an access class that is greater than that of its parent.
+
+       "dir_reclassify" is used by  the reclassify_node file system
+  function (reclassify a directory  and its contents).  It requires
+  raw "m" access on the parent and raw "sm" access on the target.
+
+       "obj_reclassify" is  used by the  reclassify_seg file system
+  function.  Access requirement is raw "m" on the parent.
+
+       The volume retriever uses "obj_volume_retrieve" when actual-
+  ly  retrieving  data into  a  segment or  directory.   The access
+  requirements are  "rw"/"sm" on the  target or "sm"  on the parent
+  directory.  Note that this is another access check made on behalf
+  of another user.
+
+|      Segment control's  interface to directory  control is though
+| the "seg_fault" entrypoint.  This entrypoint  is used only when a
+| segment  (not  a directory)  is being  connected to  the process.
+| This entrypoint determines the  SDW access control fields.  Also,
+| this entrypoint audits the resolution of this seg_fault.
+
+|      The entrypoint "obj_modes" is  used by fs_get when returning
+| the process' access modes to  an object within the address space.
+| The  rules are  that the  process is  allowed to  know its access
+| modes  on any  object within its  address space as  long as those
+| modes are nonnull or as long as the process has "s" access on the
+| parent of the object.
+
+|      The    get_defname_   function    uses   "obj_linkage_ring".
+| get_defname_ allows the lookup of  definitions for any object for
+| which the process is within the execute bracket.  This entrypoint
+| translates a user  ring supplied pointer to a  segment (one which
+| lies within the execute bracket  of the object) and translates it
+| into a pointer  within the read bracket of  the object.  The user
+| must possess effective "e" access to the segment.
+
+       The last entrypoints do  not return directories or directory
+  entries.  "link_target" is used by get_link_target to chase links
+  and find the identity of the target (existent or not).
+
+
+
+       Finally, "finished" is provided to help clean up after calls *
+  to dc_find.
+
+  IMPROVEMENTS
+
+       As mentioned  above, the get_link_target  function is fixed.
+  (That is,  it will return  the pathname of  the target of  a link
+  even if the target is non-existent.)
+
+       The  security  policy  allowed  user's  to  read "attribute"
+  properties  when they  lacked "s"  access on  the parent  but had
+  non-null access  to an object.  Due  to a bug, this  did not work
+  when the user had null access on both the parent and the parent's
+  parent.   This has  been fixed.   As a  result, the  problem with
+  hcs_$get_ring_brackets  that  is preventing  installation  of the
+  message segment/mailbox software goes away.
+
+       The  performance  of  directory finding  has  been improved.
+  This is because  the function was converted from  a recursive one
+  to  an  iterative  one  (fixing  a  fatal  process  error problem
+  occurring  in  certain  link chasing  scenarios).   Other (minor)
+  performance  improvements are  expected now that  the three basic
+  directory control functions are all  performed in one module, and
+  performed by "quick" blocks at that.
+
+       dc_find has paths through it  to support access checking and |
+  auditing on behalf of another user.  (This is used currently only
+  by  the  volume retriever  and  the segment  adopter.)   As such, |
+  auditable events requested by another user will now be audited.   |
+
+       A fix  has been made  to pathname associative  memory opera-
+  tions related to upgraded directories.
+
+  NEW ERROR CODE CENSORING POLICY
+
+       A  portion  of  Multics'  access  control  policy  is  being
+  changed.  This has a variety of implications.
+
+  Name Lookup Policy
+
+       The portion  of the access  control policy being  changed is
+  that  which  deals  with  the  situation  where  the  file system
+  function a user requests is not performed.  There are two reasons
+  (relative to this discussion) why a function that is requested is
+  not done.  The first is that  the user lacks sufficient access to
+  perform  the  function.  The  second is  that the  target doesn't
+  exist.
+
+       The  old policy  stated (implicitly)  that the  existence or
+  non-existence  of an  object was not  privileged information, but
+
+
+
+  that the access existing on  an object was privileged information
+  (this latter part is still true).   As such, an attempt to access
+  a non-existent  object always (except for  crossing directory AIM
+  boundaries) returned error_table_$noentry,  regardless of whether
+  the  user   had  access  (by   some  measure)  to   know  of  the
+  non-existence of the object.  In  those cases when the object did
+  exist but the user lacked access,  the error message the user was
+  allowed to see  depended on the user's ability  to see the user's
+  access.   This  depended on  the  user's access  to  the parent's
+  parent.
+
+       The new policy states that the existence or non-existence of
+  an object is  privileged information in as much  as that the list
+  of names  that appear in  a directory (and  the (nearly infinite)
+  list  of  names that  do not  appear in  a directory)  are access
+  controlled information.   A user is allowed  to see the existence
+  of an object  in a directory (that is, to  look up the name) only
+  if the  user has access to  the object (which allows  the user to
+  operate  on  it)  or  if  the user  has  non-null  access  on the
+  directory that would hold the  object.  (Having "s" access on the
+  parent directory  allows the user  to explicitly see  the object;
+  "m"  allows operating  upon it;  "a" allows  attempting to append
+  another   occurrence   of   the   name,  allowing   a   test  for
+  error_table_$namedup.)   This  new policy  is a  more restrictive
+  policy that supersedes the old policy.
+
+       The difference between the old policy and the new appears in
+  basically  two  places.  First,  when  the user  attempts  a file
+  system function on an object,  has insufficient access to perform
+  it,  has null  access on  the parent  but non-null  access on the
+  parent's   parent,   the   old   policy   would   have   returned
+  error_table_$incorrect_access  ("Incorrect  access  to  directory
+  containing    entry.").     The    new    policy    will   return
+  error_table_$no_info ("Insufficient access to return any informa-
+  tion.").  Second,  when the user refers  to a non-existent object
+  in a directory in which the  user has null access, the old policy
+  would have  returned error_table_$noentry whereas  the new policy
+  will return error_table_$no_info.
+
+       The single case  in which error_table_$incorrect_access will
+  be replaced by error_table_$no_info is not expected to be notice-
+  able to anyone.  However,  the case where error_table_$noentry is
+  replaced by  error_table_$no_info is expected to  be more notice-
+  able.  In  particular, user ring programs  before could depend on
+  the presence of error_table_$noentry to provide the indication of
+  the non-existence of  an object.  It is no  longer possible to be
+  assured of the non-existence of an object.
+
+  Implications
+
+       A subtle change  occurs in the case of  append.  For the new
+  policy to  be handled consistently,  the policy, when  applied to
+
+
+
+  append,  states  that attempting  to  append an  object  within a
+  directory corresponds  to attempting to ask  the existence of the
+  object  within  the  directory.   Thus, attempting  to  append an
+  object in a  directory to which the user  has null access returns
+  error_table_$no_info, whereas the old  policy might have returned
+  error_table_$incorrect_access or error_table_$namedup.
+
+       Attempting  to look  up a name  in a directory  is an access
+  controllable function.  We must audit failures to look up a name.
+  Failures  to  look up  a  name include:   finding that  a desired
+  object  doesn't  exist; finding  that a  directory in  a pathname
+  doesn't exist; finding that a directory in a pathname is really a
+  segment;  finding  that the  target  of an  append  function does
+  exist;  finding  that  the  link  target of  a  set  of  links is
+  non-existent but the user lacks access in what would be the final
+  target  directory to  see the  non-existence.  Since  failures to
+  look up a name occur reasonably  often (the user mis-types a file
+  name, the user tries to create something already existing, etc.),
+  this would have  a severe effect.  So, we  only audit attempts to
+  look up  a name that  fail in those  cases where the  user is not
+  allowed  to know  if the  name exists or  not (those  in which we
+  return error_table_$no_info).
+
+       A  few  file system  functions are  restricted by  this name
+  lookup policy.   For example, terminate_file now  only allows the
+  termination of a segment by  pathname for those segments that are
+  visible by  this policy.  The other  functions restricted by this
+  policy are listed under "Directory Lookup" below.
+
+  Dynamic Linker Interface
+
+       Even  this simple  rule about  auditing name  lookups has an
+  exception, though.  In normal system operation, we expect to have
+  name  lookup  failures occurring  rarely  in comparison  to those
+  cases where the  name lookup succeeds.  The failures  would be in
+  the  error  paths  of  operations.  As  such,  we  are relatively
+  uninterested  in the  decrease in performance  resulting from the
+  check to see if we should return error_table_$no_info.  There is,
+  however,  a place  in the  system that  expects to  generate name
+  lookup failures:   the dynamic linker.   We could not  tolerate a
+  performance loss there.  However,  the dynamic linker's access to
+  the  three   basic  directory  control   functions  (from  within
+  fs_search) is to initiate$initiate_seg_count (for which it is the
+  only  caller)  which  calls  dc_find$initiate_for_linker_dp  (for |
+  which it  is the only  caller).  Because of  this, an arrangement |
+  has  been  made  between  dc_find$initiate_for_linker_dp  and its |
+  caller.  This  one entrypoint does  not make a check  when a name |
+  failure occurs to see if error_table_$no_info should be returned.
+  Instead, it  always returns error_table_$no_info  (unless it suc-
+  ceeds  in  finding  the object  and  the access  checks  pass, of
+  course).   This  event  is  not audited.   This  has  no security
+  implications since  we are passing  out less information  than we
+
+
+
+  would if we  made the check, not more.   Also, the dynamic linker
+  doesn't  care (except  for cases  of error_table_$moderr)  why it
+  couldn't initiate an  object, so it doesn't care  about this lack
+  of information.
+
+  Directory Lookup
+
+       Consider the  case where a directory  in a supplied pathname
+  doesn't  exist.  The  old policy  mapped the error_table_$noentry
+  returned    in   looking    for   the    named   directory   into
+  error_table_$no_dir ("Some  directory in path  specified does not
+  exist.").   The new  policy will  return error_table_$no_dir only
+  when the user has access to see that the directory doesn't exist;
+  otherwise  the  user  will  get  error_table_$no_info.   This may
+  surprise some people.
+
+       Also  consider the  case of setting  your working directory.
+  The old policy  would allow you to change  your working directory
+  to any directory (except  for crossing AIM boundaries).  However,
+  this action would tell you whether the target existed or not, and
+  whether it was a directory or not.  This cannot be allowed.  Some
+  access check is required.  A reasonable, but too restrictive one,
+  would  be that  you must have  "s" access on  the directory being
+  set.  A  less restrictive check,  the one that was  chosen, is to
+  allow a user  to set the working directory  to any directory that
+  the user is  allowed to see (non-null access  on the directory or
+  non-null access on  its parent).  This is simply  the name lookup
+  error censoring policy from above.
+
+       This access check  on the target of a  set working directory
+  function also extends to adding a directory to your search rules.
+  It also  applies to setting  your home directory (such  as on the
+  login line).  Setting the home  directory to one which fails this
+  check cannot  be checked by the  Initializer.  Instead, your home
+  directory (as a character string) will be set to the given value,
+  whether the directory exists or  not.  However, an attempt to set
+  your  working directory  to this value  at process  start up will
+  fail.
+
+| SUCCESSFUL ACCESS AUDITING
+
+|      As  a  part  of  fulfilling the  B2  requirements, directory
+| control will have  the capability of providing an  audit trail of
+| all successful accesses to  file system objects.  This capability
+| is being implemented within dc_find.
+
+|      dc_find is the obvious place for successful access auditing.
+| Since all requests placed upon  the file system must pass through
+| dc_find,  and  dc_find  determines   the  validity  of  all  such
+| requests, it follows that dc_find  forms a centralized point that
+| is  aware  of all  file  system operations  being  attempted.  By
+
+
+
+  having  dc_find perform  the successful  access auditing,  we are |
+  assured that all file system operations will be properly audited. |
+
+       When dc_find determines that a file system request is valid, |
+  it  will  perform  the  necessary functions  for  auditing before |
+  returning  the  desired  entry  or directory  pointers.   It will |
+  perform these operations with the directories locked, since entry |
+  pointers are  needed by the  auditing module.  dc_find  will call |
+  access_audit_$check_XXX    and    access_audit_$log_XXX    in   a |
+  centralized place  within itself.  The audit  message will always |
+  refer to  the intended target  of the operation  desired, not the |
+  parent or the parent's parent, etc.  Note that access_audit_ will |
+  also be used, within this same centralized place, to generate the |
+  audit messages  for attempted access  violations.  These messages |
+  will now also refer to the target only.                           |
+
+  Auditable Events                                                  |
+
+       The list of auditable events, along with the degree to which |
+  they are identified  in the audit message, is  given below.  As a |
+  reminder,  each audited  event includes an  encoded access opera- |
+  tion.  The encoded operation,  for file system objects, specifies |
+  whether the  event is a  read, modify or  modify_access operation |
+  and whether it applies to the  "contents" of the object or to the |
+  attributes  ("status" or  "attribute" properties)  of the object. |
+  An  operation  code field  shows  the type  of  operation (object |
+  creation,  object  reading, etc.).   For modify  or modify_access |
+  operations,  the detailed  operation field in  the encoded access |
+  operation  provides  the  details  of  the  properties  that were |
+  modified.                                                         |
+
+  OBJECT CREATION                                                   |
+
+       The creation  of a file  system object (directory,  entry or |
+  link) is  audited distinctly as  an object creation.   This event |
+  forms  the single  exception to the  above rule  stating that all |
+  audit  messages  refer  to  the target  of  the  operation.  This |
+  exception  exists  because  at  the time  that  append  access is |
+  granted by dc_find, the object does not yet exist.  So, the audit |
+  message  will refer  to the  directory into  which the  object is |
+  being appended, plus a comment giving the name of the new object. |
+  The module "append"  itself will later add an  audit message that |
+  refers to this new object, so that its uid, etc.  are recorded.   |
+
+       (One  might  say  that  the  above  exception  suggests that |
+  auditing of  successful accesses should be  performed by the file |
+  system primitives once they complete an operation.  However, this |
+  decentralizes the auditing support,  which is undesirable.  Also, |
+  since  a file  system primitive may  start an  operation, but not |
+  finish it (and  therefore omit the audit message),  it is best to |
+  audit when  it is decided  that a file system  operation is being |
+
+
+
+| started  (access  was granted).   Even if  we didn't  audit until
+| operations  were completed,  then object deletion  would be stuck
+| trying to generate an audit message to a now non-existent object.
+| So, we are stuck having an exception somewhere; append is it.)
+
+|      So,  the creation  of an  object generates  two audits.  The
+| first audit has an operation code of fs_obj_contents_mod (modifi-
+| cation of the contents of an object), describing the modification
+| of the parent  to show the creation of  the directory entry.  The
+| detail field shows  that this is an object  creation.  The second
+| audit has an operation code of fs_obj_create (modification of the
+| attributes of the object).
+
+| OBJECT DELETION
+
+|      The  deletion of  a file  system object  is audited  with an
+| operation code  of fs_obj_delete (modification  of the attributes
+| of the object).
+
+| OBJECT INITIATION
+
+|      The  addition  of a  segment  to the  address space  by user
+| direction  is  considered  as  an object  initiation.   Also, the
+| addition  of  a  directory  by command,  as  the  current working
+| directory  or as  a directory  within the  search rules,  is also
+| considered as a object initiation.  These events are audited with
+| the operation code fs_obj_initiate  (reading of the attributes of
+| the  object).   The implicit  addition  of a  directory  into the
+| address space when locating an  object is not audited, except for
+| violations of the name lookup policy.
+
+| OBJECT TERMINATION
+
+|      The explicit termination of a segment from the address space
+| is  audited with  an operation code  of fs_obj_terminate (reading
+| the attributes of an object).
+
+| SEGMENT CONTENTS REFERENCES
+
+|      References  to  the contents  of a  segment are  detected by
+| seg_fault.  The access maintenance  mechanism within hardcore has
+| been  revised so  that seg_fault  (actually dc_find$seg_fault) is
+| the only keeper and updater of  sdw access fields.  An audit will
+| occur  at  seg_fault time  only  if the  access being  granted is
+| different  from the  previously granted access.   This will avoid
+| multiple audits as  a segment is promoted through  aste pools, or
+| multiply  activated   and  deactivated.   Note   that  the  first
+| seg_fault to  a segment will  always audit.  The  audit will have
+| the  operation  code of  fs_obj_contents_read unless  the granted
+
+
+
+  access  includes  write  permission;  in this  case  the  code is |
+  fs_obj_contents_mod.                                              |
+
+  DIRECTORY CONTENTS REFERENCES                                     |
+
+       References to read the contents  of a directory (IACLS, name |
+  list, quota) will be  audited with the fs_obj_contents_read code. |
+  Modifications  of   these  properties  will  have   the  code  of |
+  fs_obj_contents_mod,  with a  detail field providing  the list of |
+  properties modified.                                              |
+
+  READING OBJECT PROPERTIES                                         |
+
+       Attempts  to  read any  arbitrary  set of  properties  of an |
+  object  will  be  audited  with  the  fs_obj_prop_read  code.  No |
+  special code exists to distinguish the reading of "status" versus |
+  "attribute" properties.                                           |
+
+  MODIFYING OBJECT PROPERTIES                                       |
+
+       The  modification of  object properties  is broken  down for |
+  greater resolution.  The operation codes are fs_obj_attr_mod (for |
+  "attribute"   properties),    fs_obj_status_mod   (for   "status" |
+  properties)  and fs_obj_access_mod  (for modifications  of access |
+  related properties (ACL, AIM and rings)).  The detail field names |
+  the set of properties modified.                                   |
+
+  PROBLEMS AND FUTURE WORK
+
+       More work can always be done.  As the file system primitives
+  are being  updated to call the  new directory control primitives,
+  they are  being neatened in  some minor ways  (arranging declara-
+  tions,  formatting,  etc.).  It  would  be desirable,  though, to
+  really  straighten them  up; that  is, make  their variable names
+  meaningful, make them more structured, etc.  I hope to do some of
+  this if I get a chance.
+
+  Towards a Security Kernel
+
+       Although I don't intend to suggest that we attempt to really
+  create a "security kernel" for  Multics, there are some things we
+  can do.  This directory control restructuring is a first step.    |
+
+       The modules  that previously constituted  the hardcore bound |
+  segments     of    bound_file_system,     bound_priv_procs    and |
+  bound_system_faults  were  rearranged to  form bound_dir_control, |
+  bound_file_system  and  bound_segment_control.  bound_dir_control |
+  contains  the security  related portions  of the  file system (as |
+
+
+
+| well  as  the  primitives  that directly  operate  upon directory
+| structures).  bound_file_system  contains the file  system primi-
+| tives.   Some day  we may break  this down further,  when we have
+| support  for restricting  which bound  segments can  operate upon
+| security related objects.
+
+  Towards a Consistent Access Model
+
+       dc_find  currently  concerns  itself  only  with  the access
+  checks described  above.  In particular, it  only concerns itself
+  with access checks that are currently considered to be auditable.
+  These checks are not the  only checks made, though.  When setting
+  the safety switch, for example, the checks that dc_find make ("m"
+  access required  on the containing  directory) are followed  by a
+  check (within the file system primitive  set) to be sure that the
+  user's  validation  level  is  within the  write  bracket  of the
+  object.  (Note that the user need not have any specific access to
+  the object (via the ACL); the  user only need be within the write
+  bracket of the object.  This validation  level check is not to be
+  confused  with  the factoring  in  of the  validation  level when
+  computing the user's effective access to the containing directory
+  when  making  the  "m"  access  check  within  dc_find.)   If the
+  validation  level  is  not  within  the  write  bracket,  this is
+  currently  considered to  be a  simple argument  style error, the
+  user gets error_table_$bad_ring_brackets, and no audit occurs.  A
+  question exists as to whether this should be audited.  Aside from
+  whether it should be audited,  though, having this check external
+  to dc_find,  again, means that  it may not  be applied uniformly.
+  Currently, this type of check  is applied very non-uniformly.  As
+  such,  until a  more consistent access  model is made,  it is not
+  possible to consider moving such checks into dc_find.
+
+       This brings  up the subject of  creating a consistent access
+  model.  This would be a good idea but it would be hard to migrate
+  the software to it.  A consistent  access model would be one that
+  had  uniform  policy statements  that  applied to  the validation
+  level check, made above.  It  would also create a consistent view
+  of the classes of properties (however many there would have to be
+  to be consistent) and the accesses required to manipulate them.
+
+       Consider the  case of the  bit count.  When  setting the bit
+  count,  it is  considered a  "contents" property.   When reading,
+  though,  it  is  considered  an "attributes"  property.   This is
+  inconsistent.   To  make it  consistent,  we would  have  to make
+  reading the bit  count be a "contents" property  access; that is,
+| it would require nonnull access on  the object itself to read it.
+  This  sounds like  an easy,  harmless change.   However, it would
+  affect status_$minf  (as well as  probably others).  status_$minf
+  returns the  type of an  object, as well  as its bit  count.  The
+  type of an  object is an "attributes" property;  the bit count is
+  properly  a "contents"  property.  status_$minf,  then, becomes a
+  mixed property type function just like status_$status_long.  That
+
+
+
+  is,  different  access checks  would apply  to the  two different
+  return  values.   If  the  user had  "s"  access  on  an object's
+  containing directory but did not have  "r" access (or "s") on the
+  object, the user would be allowed to see the type but not the bit
+  count.   The user  would be  given error_table_$moderr  (and this
+  audited).  There are countless user  ring programs that would not
+  cope with this  error code.  Thus, it would be  hard to change to
+  this consistency.  Also, this change would require that the star_ |
+  function used by the list command would have to check for nonnull |
+  access  on every  object it  lists.  This  would have undesirable |
+  performance implications.                                         |
+
+  Error Code Mis-filtering
+
+       Another problem that exists  is that various system commands
+  (and I must  imagine, user programs) know the  set of error codes
+  that  used to  be returned and  exactly when  they were returned.
+  The  old  directory  control   structuring  returned  a  somewhat
+  inconsistent  set  of  codes.   Various commands  knew  that, and
+  filtered the codes to suit the  author's own beliefs of what were
+  more meaningful  error messages.  Now  that the error  codes have
+  been made  consistent (relative to  name lookup and  access ques-
+  tions),  some commands  may mis-interpret the  returned codes and
+  end  up confusing  users.  A pass  needs to be  made sometime for
+  commands  that  attempt  to  interpret  their  own  meaning  into
+  hardcore's returned error codes.
+
+  Problems with Names
+
+       There is a  place in the system in which  we do not properly
+  enforce access  control on the  names of an object.   When a user
+  succeeds  in initiating  an object,  the name  by which  the user
+  initiated the  object is clearly information  the user is allowed
+  to  know.   Even if  the user  does  not have  "s" access  on the
+  containing  directory  (normally needed  to see  the names  of an
+  object),  the user  is allowed to  know this name  (the user must
+  have been told  this name by someone).  The  problem is that this
+  pathname  is not  remembered (except in  the pathname associative
+  memory and possibly as a reference  name on the object); only the
+  fact that this object exists  in the address space is remembered.
+  If the user asks for the pathname of this object at a later time,
+  the user may be given the  primary name (and possibly the primary
+  names of  some of the  directories in the  pathname, depending on
+  the state of  the pathname associative memory).  In  this way, we
+  are not enforcing access control in that we are giving the user a
+  name (the primary  name) which the user did  not necessarily know
+  before.   We currently  are saying  that the  primary name  of an
+  object is an "attributes" property.
+
+       The  last   existing  problem  I  will   cover  is  that  of
+  directories appearing in the  user's address space.  This problem
+
+
+
+  was discussed before  in the literature so I  won't discuss it in
+  great  depth.   The  problem  is  that, to  walk  down  a  set of
+  directories to find an object,  these directories must be brought
+  into  (and stay  within) the  user's address  space.  This occurs
+  even if  the user lacks  access to the directories.   If the user
+  does  possess  access  to  the  target,  it  is  okay  for  these
+  directories to appear in the  user's address space since the user
+  clearly knows  that they exist  (by virtue of  the user's knowing
+  the existence  of the final  target).  However, if  the user does
+  not possess  access, dc_find will  not bring the  target into the
+  address  space, thereby  not informing  the user  of the possible
+  existence of  the target; but,  the directories in  the path will
+  come  into  the address  space.   It is  virtually  impossible to
+  imagine  a scheme  that would perfectly  clean these  up, or that
+  would prevent the  user from setting up the  environment so as to
+  be  able  to sense  how  many directories  came into  the address
+  space.   So,  we are  stuck with  no  way to  keep the  user from
+  testing the existence of directories.  This is one of the reasons
+  why  we  now audit  failures  to look  up  names; it  helps catch
+  someone probing for the names of directories.
+
+|      An attempt was made some time ago to implement a scheme that
+| would  hide these  directories from the  user.  Part  of the plan
+| involved the  notion of detectable  versus undetectable segments.
+| A segment was  to be detectable in only  certain rings (those not
+| greater  than the  segment's highest detectable  ring (hdr)).  In
+| this  scheme, it  was possible for  a directory to  appear in the
+| address  space more  than once  to hide  its detectability.  This
+| scheme was never fully implemented (and would not have completely
+| solved the problem).  The notion of  hdr is being deleted in this
+| installation, as well as the notion of segment detectability.
+
+  SUMMARY
+
+       The new dc_find directory control  primitive is the start of
+  improving  the hardcore  interfaces to  users and  processes.  It
+  provides  our  first  attempt  at  creating  a  consistent access
+  control  model  and  providing  a  way  that  allows  us  to feel
+  confident that this model is being enforced.  However, the reader
+  should stay tuned for the announcement of more work to be done.
+
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Data Management: The Daemon Process.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+     
+     MULTICS TECHNICAL BULLETIN                    MTB-604
+     
+     
+     
+     
+     To: Distribution
+     
+     From: Michael A. Pandolf
+     
+     Date: 01/27/83
+     
+     Subject: Data Management: The Daemon Process
+     
+     
+     
+     
+     1.  Abstract
+     
+     This  document describes the functions of and interfaces to
+     the  process  that  will be chartered with safeguarding the
+     integrety of the Multics data management system.
+     
+     
+     
+     Send comments on this MTB by one of the following means:
+     
+          By Multics Mail, on MIT or System M to:
+             Pandolf.Multics
+     
+          By Posted Mail to:
+             Michael A. Pandolf
+             Honeywell Information Systems, Inc.
+             575 Technology Square
+             Cambridge, Massachusetts  02139
+     
+          By Telephone at:
+             (HVN) 261-9391 or (617) 492-9391.
+     
+     
+     
+     
+     
+     
+     
+     
+     
+     
+     
+     
+     
+     ___________________________________________________________
+     Multics  Project internal working documentation.  Not to be
+     distributed outside the Multics Project.
+     
+     
+     
+     
+          01/27/83                               page 1
+     
+
+     MTB-604
+     
+     
+     2.   Defining  the  Need  for  a  Daemon  Process  in  Data
+          Management
+     
+     2.1 Issues
+     
+     There  is  a  necessary overhead associated with the use of
+     the  Multics  Data  Management  System  (Multics  DMS).  By
+     overhead,  it  is  meant  that  there exist functions to be
+     performed  under the aegis of the DMS that are not directly
+     related  to the manipulation of data records, the shuffling
+     of control intervals between media, or the saving of before
+     and  after  images  of changes made to data.  Whereas these
+     overhead  functions  must be performed within a process, it
+     is  not  immediately clear which of the processes using the
+     DMS is to perform the function.  One example of an overhead
+     function  is  DMS initialization.  This can be performed by
+     the  first process to reference data management and find it
+     not  initialized,  by  the  Initializer at Multics bootload
+     time,  or  by  a  process  assigned  to  babysit  the  DMS.
+     Considering  that  the  current trend is to ease the job of
+     the  Initializer  by  moving  some  of  its  tasks to other
+     processes, it will not be asked to concern itself with data
+     management.   Choosing  between  the  remaining two options
+     depends on the following criteria.
+     
+     2.2 Access
+     
+     At  an  arbitrary  time a process using the Multics DMS may
+     terminate.   It  is possible that the data this process was
+     manipulating at its termination was left in an inconsistent
+     state.   Although  other  processes  using the DMS have the
+     ability  to  clean  up  after  the  dead process, issues of
+     access  control  arise.   Protected data bases will rely on
+     the  standard Multics access control list for discretionary
+     access  enforcement.   This access control must be bypassed
+     in  a  non  trivial  manner  if  a random DMS process is to
+     recover  an  orphaned  transaction.   An obvious and easily
+     understandable  mechanism  for dead process recovery can be
+     embodied in the use of a designated process with widespread
+     access to handle all data base recoveries for the system.
+     
+     2.3 Processing Overhead
+     
+     Recovery  of  a  transaction  started by a now dead process
+     will  usually  require a rollback of the transaction, which
+     is  not  a  trivial  operation.   An arbitrary process that
+     decides  to  rollback the transaction of a dead process may
+     incur  more processing time from the rollback than from its
+     own  transaction.   The  real  time  response will likewise
+     suffer.   By  isolating  the  recovery in a single process,
+     transactions that happen upon the disabled transaction will
+     not pay in processing time for its recovery.
+     
+     
+          page 2                               01/27/83
+     
+
+                                                   MTB-604
+     
+     
+     
+     2.4 Cost of Overhead
+     
+     In addition to slowing down processes that are handling the
+     data  base  recovery,  a processing cost is charged against
+     the altruistic process that decides to perform the recovery
+     As  in  the processing overhead, this cost may be orders of
+     magnitude  greater than the cost of the transaction proper.
+     If  this  cost  were  delegated to a separate process, this
+     process   could   determine  who  the  owner  of  the  dead
+     transaction  was  and charge the cost of the transaction to
+     it;  at least the live process would not be charged for the
+     rollback, either directly or indirectly.
+     
+     3.  Functions of the Data Management Daemon Process
+     
+     3.1 Initialization
+     
+     Initialization of a DMS invocation must be completed before
+     the  DMS  system  is  used  by  any process.  Ideally, this
+     initialization   should  be  part  of  the  Multics  system
+     startup.   A  DMS  specific daemon ought to be logged in by
+     the  Initializer  as  early  as possible.  This daemon will
+     verify  that  all previous invocations of the DMS have been
+     properly  shut  down, build new system tables, and open the
+     DMS  for  system  use.   Upon successful completion of this
+     task,  the process will wait for recovery requests from the
+     processes using the DMS.
+     
+     For  those  sites using AIM, there must be an invocation of
+     the  DMS  for  each  AIM  class  that  wishes  to  use data
+     management.   This  implies  that  there will be a separate
+     daemon  logged  in  for  a  DMS at each AIM classification.
+     Descriptions  of the relationships between data management,
+     its  initialization and AIM can be found in two other MTBs:
+     Data  Management:  System  Structure  (number 592) and Data
+     Management: Crash Recovery (number 603).
+     
+     3.2 Shutdown
+     
+     By  design,  a  new  invocation  of the DMS cannot commence
+     until  all  previous  invocations  have  been properly shut
+     down.  Proper shutdown implies that all transactions within
+     an  invocation  have  ceased:  all  data  management before
+     journals and protected files are in a consistent state, not
+     needing  recovery.   This shutdown can be performed as late
+     as  the next DMS initialization or (hopefully as the normal
+     case) at some time before Multics itself shuts down.
+     
+     In   the  usual  case,  a  request  to  shutdown  the  data
+     management   system  will  entail  the  transmission  of  a
+     shutdown  signal  from  the Initializer process to the data
+     
+     
+          01/27/83                               page 3
+     
+
+     MTB-604
+     
+     
+     management  daemon  process  early  in the Multics shutdown
+     cycle.   A  mechanism  also  exists  for  the  operator  to
+     shutdown the data management system by issuing a command to
+     the  daemon  process.   In either case, the daemon ought to
+     remain  logged in to wait until the whole of the DMS enters
+     a  quiescent  state.   Since this may take an indeterminate
+     amount  of  time,  the daemon should be logged out with all
+     other  daemons  when  Multics  is in its shutdown cycle, or
+     after  a  twenty  minute  wait  when  shutdown  by explicit
+     operator command.
+     
+     3.3 Process Recovery
+     
+     It is expected that the bulk of daemon processing time will
+     be   used   to  recover  from  the  effects  of  a  process
+     terminating   while   it  was  within  the  confines  of  a
+     transaction.   This  recovery may involve a rollback of the
+     dead  process's  transaction.  At the least, it will entail
+     the removal of the process's registration information found
+     in  various  data management system tables.  A mechanism to
+     signal  the  daemon  whereby  the Multics answering service
+     will  wake  the  daemon  up  at  each  instance  of process
+     termination  shall  be  employed.   At  this time, the data
+     management daemon will scan the appropriate tables, looking
+     for  the  process  that  was  just terminated.  If the dead
+     process is found, system tables will be cleaned up.
+     
+     Two   scenarios   within  the  dynamic  operation  of  data
+     management  that  require  daemon  intervention  have  been
+     identified: the discovery that a lock in the lock manager's
+     table  is held by a dead process, and the refusal of before
+     journal manager to record a "mark" in a journal because the
+     journal  is  full.   In  the  context  of  the  former, the
+     discovered  lock  and  all  other  locks  held  by the dead
+     process  should  be  freed,  in  addition  to  the required
+     cleanup  of a now inactive transaction.  In the latter, the
+     situation is slightly more complex.  Internal to the DMS, a
+     full  before  journal  is  an  expected, though bothersome,
+     event.  Based on the hunch that the journal is full because
+     that  part  of the journal from where more storage space is
+     obtained   is  occupied  by  "marks"  of  a  dead  process'
+     transaction,  we  ask the daemon to verify this hypothesis,
+     and  wait  for  a  confirming reply that indicates that the
+     space is now free.  The implication here is that the daemon
+     finds  a  dead  process  owning  the space, adjusts the the
+     orphaned  transaction  and  informs  the signalling process
+     that  it  may proceed.  If the space is not owned by a dead
+     process,  a  subsequent  attempt  at writing the new "mark"
+     will still fail: the before journal is indeed full, and the
+     process  atempting  to  write  into  the  journal  will  be
+     informed of the journal's state.
+     
+     
+     
+          page 4                               01/27/83
+     
+
+                                                   MTB-604
+     
+     
+     4.  Software Support
+     
+     4.1 The Daemon Process
+     
+     4.1.1 Processing Environment
+     
+     The  personid of the daemon that is assigned to oversee the
+     DMS  is  appropriately, "Data_Management".  This process is
+     assigned  to  the "Daemon" project, seeing that it does not
+     require the broad access privileges of a SysDaemon.
+     
+     In  order  to  create the daemon environment, three modules
+     are  used: dmsd_overseer_, dmsd_listener_ and dmsd_logger_.
+     The    module    dmsd_overseer_    has   two   entrypoints:
+     dmsd_overseer_  and  test.   The  former  is intended to be
+     called  from  initialize_process_  and  the  latter from an
+     external   procedure   (or   carefully   from  the  command
+     processor).    When  using  the  test  entrypoint,  a  test
+     directory   must   be   supplied.   Called  through  either
+     entrypoint,        dmsd_overseer_        itself       calls
+     dmsd_listener_$listen   in   the   same  way  the  standard
+     process_overseer_    calls    listen_.    Unlike   listen_,
+     dmsd_listener_  does not wait for command lines; rather, it
+     waits  for  user-signalled events.  A built-in timer exists
+     for  the daemon to periodically garbage collect the various
+     system tables.
+     
+     A special command level intermediary is used to prevent the
+     data  management  daemon  from reaching a standard listener
+     level,   which  would  actually  have  no  meaning  in  its
+     environment.  The intermediary allows three actions: start,
+     stop   and   logout.   These  actions  reenter  the  daemon
+     listener,  shutdown  the  DMS,  and  log  the  daemon  out,
+     respectively.   In the test mode, three additional commands
+     are permitted: probe, debug and listen.
+     
+     All  output generated by the daemon while under the control
+     of  either  the  overseer  or listener is channeled through
+     dmsd_logger_.   Two  entrypoints are provided to substitute
+     for  ioa_ and com_err_.  These are named named "output" and
+     "error",  respectively.   These entrypoints differ from the
+     ones  that  they  replace  in  that they require a severity
+     level  as  an  argument  immediately  preceeding  the  ioa_
+     control  string.   This  new  argument serves to direct the
+     message  to  a  particular  destination,  either  to a data
+     management  system  log or to the daemon user_i/o switch or
+     both (see section 5.3.3 for more information).
+     
+     4.1.2 Reponding to User Action Requests
+     
+     There is no program separate from those mentioned above for
+     receiving  a  request  from a data management user process.
+     
+     
+          01/27/83                               page 5
+     
+
+     MTB-604
+     
+     
+     The  listener loop in the procedure dmsd_listener_ contains
+     all the necessary logic to wait for, decode, and act upon a
+     data  management system specific wakeup.  A list of allowed
+     actions,  which are mapped into IPC messages, is maintained
+     in  the data segment dm_request_action_.  Upon decoding the
+     IPC  message into an action code and its defined arguments,
+     the  listener  calls  an  internal  procedure to handle the
+     request,  and  continues  with the listener loop.  A common
+     function  of one of these internal procedures is to extract
+     all  interesting information from the IPC event and forward
+     this   data   to   an   external   procedure,   usually   a
+     transaction_manager_ entrypoint.
+     
+     4.2 The User Process
+     
+     4.2.1 Limitations
+     
+     Procedures  within  the data management system that perform
+     privileged functions (e.g., adopt a transaction not started
+     by this process) verify that the process executing the code
+     is  the  data  management supervisor process.  Therefore, a
+     user  process  cannot shut the data management system down,
+     cannot  adopt  an  arbitrary  transaction,  etc.  A process
+     wishing  to  perform  any of these priviledged actions must
+     send  the  data  management daemon a message requesting the
+     action.
+     
+     4.2.2 Interface to the Daemon
+     
+     The  lowest  level  interface to the daemon process that is
+     available  to  a  user  process  is, of course, hcs_$wakeup
+     itself.   In  order to provide an easier method for sending
+     the  daemon a request, a procedure named "dm_send_request_"
+     is  provided.   A  user  process  program need only call an
+     entrypoint  that  reflects  the desired action, passing the
+     required  parameters.   Other  details  of  the  wakeup are
+     handled by the sending procedure.
+     
+     While  realizing that the call to dm_send_request_ will ask
+     of  the  DMS  daemon  a specific favor, it follows that the
+     portion  of  code  that  decides to wake the daemon up must
+     have the intelligence to determine exactly what is required
+     of  the  daemon, if anything at all is needed.  In order to
+     localize  this  intelligence,  an arbitrary data management
+     support   routine  should  not  include  code  to  use  the
+     dm_send_request_  interface;  rather, a call should be made
+     to  transaction_manager_  at  some  to-be-named  entry.  It
+     becomes   the  responsibility  of  transaction_manager_  to
+     decide  on  the  correct  daemon  request.   The  code that
+     decides   which  action  the  daemon  should  perform  will
+     therefore be localized for ease of maintenance.
+     
+     
+     
+          page 6                               01/27/83
+     
+
+                                                   MTB-604
+     
+     
+     5.  Subroutine interfaces
+     
+     5.1 dmsd_overseer_
+     
+     Function:
+     
+          Sets  up  the environment in which the data management
+          daemon will run.
+     
+     Usage:
+     
+          dcl  dmsd_overseer_ entry (ptr, bit (1) aligned,
+               char (*) varying);
+          call dmsd_overseer_ (ptr_ptr, call_std_listener_sw,
+               initial_command_line);
+     
+     or
+     
+          dcl  dmsd_overseer_$test entry (char (*));
+          call dmsd_overseer_$test (test_dir);
+     
+     where
+     
+          pit_ptr
+          
+               is  a pointer to the process initialization table
+               (Input).
+          
+          call_std_listener_sw
+               is  a  flag  to  indicate  whether  the  standard
+               Multics   listener   should   be   called   after
+               dmsd_overseer_ returns (Output).
+               
+          initial_command_line
+               is  the  initial command line to be passed to the
+               Multics listener if the call_std_listener_sw flag
+               is on (Output).
+               
+          test_dir
+               is  a  directory  path  name  used  to  create an
+               invocation of the data management system (Input).
+               
+     5.2 dmsd_listener_
+     
+     Function:
+     
+          Enters  a  loop  in  which the process will go blocked
+          awaiting  requests for data management system recovery
+          from other processes.
+     
+     Usage:
+     
+     
+     
+          01/27/83                               page 7
+     
+
+     MTB-604
+     
+     
+          dcl  dmsd_listener_$listen entry ();
+     
+          call dmsd_listener_$listen ();
+     
+     5.3 dmsd_logger_
+     
+     5.3.1 dmsd_logger_$output
+     
+     Function:
+     
+          Forwards  output  from  the daemon process to either a
+          log or to the daemon process output switch, or both.
+     
+     Usage:
+     
+          dcl  dmsd_logger_$output entry () options (variable);
+          call dmsd_logger_$output (severity, control_string,
+               arg1_, ... , argn_);
+     
+     5.3.2 dmsd_logger_$error
+     
+     Function:
+     
+          Forwards  error  output  from  the  daemon  process to
+          either a log or to the com_err_ subroutine, or both.
+     
+     Usage:
+     
+          dcl  dmsd_logger_$error entry () options (variable);
+          call dmsd_logger_$error (severity, code, caller,
+               control_string, arg1_, ... , argn_);
+     
+     5.3.3 Arguments
+     
+     The following arguments are used by dmsd_logger_:
+     
+          severity
+               is a required fixed binary value that ranges from
+               zero  to four.  A severity of zero indicates that
+               the message should be logged only.  A code of one
+               or  two  indicates  that  the  message  should be
+               logged  and  forwarded and that a fatal error has
+               occurred  in  the  daemon process.  A severity of
+               three indicates that the message should be logged
+               and forwarded.  A severity of four indicates that
+               the message should be printed only.  These values
+               are available via symbolic names from the include
+               file dms_daemon_sv_codes.incl.pl1.  (Input).
+     
+          code
+               is  a  required fixed binary (35) standard system
+               status code (Input).
+     
+     
+          page 8                               01/27/83
+     
+
+                                                   MTB-604
+     
+     
+     
+          caller
+               is  a  required  character (*) value equal to the
+               name of the program calling dmsd_logger_ (Input).
+               
+          control_string
+               is an optional ioa_ control string (Input).
+     
+          arg1_  through  argn_
+               are  values  which  will  be substituted into the
+               control string, according to ioa_ processing.
+            
+     5.3.4 Notes
+     
+     During  standard  operation,  the  log  is found in the AIM
+     directory  as  segment  "dm_system_log".  It can be read by
+     using the print_log tool.
+     
+     5.4 dm_send_request_
+     
+     5.4.1 dm_send_request_$adjust_tdt_entry
+     
+     Function:
+     
+          Sends  a  wakeup to the data management daemon for the
+          purpose  of  adjusting  the  status  of  a  single DMS
+          transaction.
+          
+     Usage:
+          
+          dcl  dm_send_request_$adjust_tdt_entry entry (bit (36)
+               aligned, fixed bin, fixed bin (35));
+          call dm_send_request_$adjust_tdt_entry
+               (transaction_id, transaction_index, code);
+          
+     
+     5.4.2 dm_send_request_$adjust_tdt
+     
+     Function:
+          
+          Sends  a  wakeup to the data management daemon for the
+          purpose of updating the entries in the DMS transaction
+          table.
+     
+     Usage:
+          
+          dcl  dm_send_request_$adjust_tdt entry
+               (fixed bin (35));
+          call dm_send_request_$adjust_tdt (code);
+          
+     5.4.3 dm_send_request_$adjust_process_id
+          
+     
+     
+          01/27/83                               page 9
+     
+
+     MTB-604
+     
+     
+     Function:
+          
+          Sends  a  wakeup to the data management daemon for the
+          purpose  of removing any effects a dead process has on
+          data management.
+          
+     Usage:
+          
+          dcl  dm_send_request_$adjust_process_id entry
+               (bit (36), fixed bin (35));
+          call dm_send_request_$adjust_process_id (process_id,
+               code);
+          
+     5.4.4 dm_send_request_$shutdown
+          
+     Function:
+          
+          Sends  a  wakeup to the data management daemon for the
+          purpose   of   preventing  further  transactions  from
+          commencing.
+          
+     Usage:
+          
+          dcl  dm_send_request_$shutdown entry (fixed bin (35));
+          call dm_send_request_$shutdown (code);
+          
+     5.4.5 Arguments
+     
+     The following arguments are required by dmsd_send_request_:
+          
+     transaction_id
+          is an aligned bit (36) transaction identifier (Input).
+     
+     transaction_index
+          is a fixed binary index into the DMS transaction table
+          of  the  transaction  with  identifier  transaction_id
+          (Input).
+     
+     process_id
+          is a bit (36) process identifier (Input).
+     
+     code
+          is  a  fixed  bin  (35)  standard  system  status code
+          (Output).
+     
+     5.4.6 Notes:
+     
+     Additional entrypoints will be added to dm_send_request_ as
+     needed by demand in the future.
+     
+     
+     
+     
+     
+          page 10                               01/27/83
+     
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

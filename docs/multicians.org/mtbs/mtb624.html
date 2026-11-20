@@ -1,0 +1,1909 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : analyze_multics: A Multics address space.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  MULTICS TECHNICAL BULLETIN                                MTB-624
+
+  To:       MTB Distribution
+
+  From:     Bonnie Braun, et al.
+
+  Date:     06/23/83
+
+  Subject:  analyze_multics: A Multics address space
+            translator/analyzer.
+
+                             - ABSTRACT -
+
+     The contents of  this MTB outlines a tool  intended to be used
+  for  the  analysis  of  a  Multics  address  space.   This  tool,
+  analyze_multics,  is intended  to replace  ol_dump and  ifd.  Its
+  current capabilities are restricted to the perusal of FDUMPs, but
+  we  intend to  extend its  capabilities to  both 'dead'  and live
+  processes.  This will be the subject of a future MTB.
+
+            Comments should be sent to the authors:
+
+            via Forum:
+               &gt;udd&gt;sm&gt;rlc&gt;mtgs&gt;azm
+
+            via Multics Mail On System M:
+               To:  Braun.Multics
+
+  ________________________________________
+
+  Multics  Project  internal  working  documentation.   Not  to  be
+  reproduced or distributed outside the Multics Project.
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+     INTRODUCTION:
+
+        There are two dump analyzers  available on Multics, as well
+     as  some unknown  number of  private tools  used for  the same
+     purpose.  Each fills a need, or  at least filled a need at one
+     time.   However,  they  are  not  robust  enough  to  meet the
+     current, much  less future, needs of  the user and development
+     communities.   In  addition, ol_dump  and  ifd are  not easily
+     maintained  nor  are  their capabilities  extended  with ease.
+     Therefore,  the  need  for  a  common  address  space analyzer
+     exists.   This  analyzer  should  exceed  the  capabilities of
+     ol_dump, have the symbolism of  ifd, be capable of translating
+     and  analyzing any  properly structured  address space  and be
+     easily extensible  to meet the needs  of individual developers
+     and Site SA's.
+
+     This   MTB   will   address   the   current   capabilities  of
+     analyze_multics  (FDUMPs)  and  it  will  be  updated,  as the
+     capability  of  analyze_multics to  deal  with other  forms of
+     address spaces, is expanded.  It is not unreasonable to extend
+     analyze_multics to multiplexers but this concept is left for a
+     later MTB.
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+     OVERVIEW:
+
+        In  order  to   achieve  versatility,  maintainability  and
+     extensibility,  analyze_multics  will  use subsystem_utilities
+     (ssu_).   The  use  of  ssu_  makes  the  offering  of  active
+     functions, exec_coms and user extensions easy.
+
+        A translation  table will be  maintained that will  map the
+     address  space  to  be  analyzed.   If  data  for  analysis is
+     retrieved from the address space by this translation table, by
+     definition  the address  space is composed  of segments, there
+     will  be  a one  to  one correspondence  of table  entries and
+     segments that need to be looked  at.  This implies a two level
+     concept:  An  inner level to  manage the translation  table as
+     well as retrieve  the data; and an outer  level to perform the
+     analysis.  By replacing the inner level, dependent on the type
+     of  address  space, 'live'  and  'dead' processes  as  well as
+     FDUMPs may  be analyzed.  Each address  space selected will be
+     considered  as a  translation.  Multiple  translations, of any
+     combination,   will   be  supported   in  one   invocation  of
+     analyze_multics.   The number  of translations  allowed in one
+     invocation  is limited  only by  the amount  of quota  for the
+     process directory.
+
+        An  analyzer  should be  as  independent of  system release
+     changes as  possible.  The method chosen  to achieve this goal
+     was to  use symbolic addresses  to retrieve or  translate data
+     whenever possible.  This convention  is followed internally as
+     well  as at  the user interface  level.  All  requests use the
+     same   utility  to   convert  symbolic   addresses,  providing
+     consistency from  request to request.  This  symbolism will be
+     referred to as a "pointer value" or "virtual address" and will
+     be defined in the documentation section.
+
+        Analyze_multics  will  provide  11  (8  'standard'  pointer
+     registers, plus one  for the current stack frame,  one for the
+     current  machine  condition pointer  and  one for  the current
+     linkage section) temporary pointer registers.  These registers
+     are  intended to  provide the  user of  analyze_multics with a
+     mechanism  to simulate  the pointer  registers in  the current
+     Multics  processor to  make perusal  of an  address space less
+     cumbersome.   These 'registers'  may be  set to  represent any
+     valid  virtual address  by user  request.  The  primary intent
+     here  is  to  increase  the  level  of  symbolism  offered  by
+     analyze_multics.  In addition to these temporary pointers, the |
+     user can define names for his own temporary pointers.          |
+
+        Analyze_multics will offer a means of displaying an address
+     space  as   a  PL/I  structure.   However,   this  feature  is
+     restricted to system defined structures.
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+     DOCUMENTATION:
+
+     analyze_multics, azm
+
+     Syntax:  analyze_multics {-control_args}
+
+     Function:  Invoke a subsystem that will permit the scanning of
+           a Multics address space for analysis.
+
+     Control arguments:
+
+     -abbrev, -ab
+*          enables abbreviation expansion of request lines.
+     -no_abbrev, -nab
+           does not enable abbreviation expansion of request lines.
+           (Default)
+     -no_prompt
+           suppresses the  prompt for request lines  in the request
+           loop.
+     -no_start_up, -nsu
+           specifies  that no  startup exec_com is  to be executed.
+           (Default)
+     -profile PATH, -pf PATH
+           specifies  the  pathname  of  the  profile  to  use  for
+           abbreviation expansion.   The suffix "profile"  is added
+           if necessary.  This control argument implies -abbrev.
+     -prompt STR
+           sets the request loop prompt to STR.  The default is the
+           ioa_ STR:
+                      ^/azm^[ (^d)^]:^2x
+     -request STR, -rq STR
+           executes  STR as  a analyze_multics  request line before
+           entering the request loop.
+|    -select_dump NAME, -sld NAME
+|          Where  NAME  is  the dump  number  or the  path  name of
+|          component zero (0)  of the FDUMP.  A path  name and dump
+|          number combined is also acceptable, for example:
+|             azm -sld &gt;dumps&gt;old_dumps&gt;173
+|          would mean  ERF 173 in &gt;dumps&gt;old_dumps.   NAME can also
+|          be  the  control  argument  '-last' which  will  get the
+|          latest, or  most current FDUMP in  the dump directory or
+|          '-first' which gets the oldest fdump.
+     -start_up, -su
+           specifies  that  the exec_com  'start_up.azmec' is  to be
+           executed  upon  invocation   of  analyze_multics.   This
+           start_up  exec_com is  first searched for  in the user's
+           home  directory,  then in  the user's  project directory
+           &gt;udd&gt;Project_id, and last in  &gt;site.  The first exec_com
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+           found is used.
+     -quit
+           Exit analyze_mulitcs after execution of other arguments.
+           Can be used for such commands as:
+             analyze_multics -erf XXX -why -quit
+           which  displays  the immediate  cause  of the  FDUMP and
+           exits.
+     -why
+           Causes  analyze_multics   to  attempt  to   display  the
+           immediate cause of the FDUMP.  This is equivalent to the
+           why request.
+
+     Notes:    analyze_multics  uses   the  standard   search  list
+     mechanism to locate FDUMPs.   If analyze_multics does not find
+     a "dumps" search  list, it will create one,  placing &gt;dumps in
+     the search  list as the  default.  If additional  search paths
+     are  desired the  "add_search_path" command should  be used to
+     define them.
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+      Virtual Address Constructs
+
+      Accessing  data  requires  some  pointer value  to  define an
+      address  space.   The  generation  of  the  pointer  value is
+      performed by  resolving a virtual  address (VIRTUAL-ADDR).  A
+      VIRTUAL-ADDR  consist of  two parts,  a segment  number and a
+      word offset.
+
+      analyze_multics   will   resolve   VIRTUAL-ADDR's   from  the
+      following types of information:
+
+      Symbols:
+          a  symbol is  defined as  a symbolic  name for  a segment
+          number  and an  offset that  can be  resolved by  data in
+          definitions_.   (ie:   sst$ptl  can  be  resolved  to the
+          correct  segment  number  and  offset of  the  page table
+          lock.)
+
+      Segment name:
+          a segment  name can be  resolved in many ways  but it can
+          only provide  one part of  the virtual address,  azm will
+          use 0 as the default offset for this pointer value.  (ie:
+          tc_data would be resolved to SEGNO|0)
+
+      Segment number:
+          a segment number needs no resolution but a default action
+          needs  to  be taken  for  the offset.   default  0.  (ie:
+          SEGNO|0).
+
+      Segment name/number and offset:
+          the VIRTUAL-ADDR  in this case  can be a  segment name or
+          segment number and an  OCTAL offset.  (ie:  the construct
+          of pds|20 would be translated to SEGNO|20 or dseg|5 would
+          be 0|5).  The  notation "|" and "$" MUST  be used without
+          spaces (e.g., 244|0 or sst$cmp).
+
+      Temporary pointers:
+|         analyze_multics keeps a set  of 11 temporary pointers per
+|         translation.  A  translation is one  complete entity such
+|         as an  "FDUMP".  These pointers  can be set  with the set
+|         request (ex:   set %sp 230|100).   All temporary pointers
+|         are  prefixed  with  a  percent (%)  sign.   They  can be
+|         referenced by other requests  as another type of "symbol"
+|         in a  VIRTUAL-ADDR expression, after they  have been set.
+|         If not set, these pointers are invalid.
+
+|         In addition to the temporary pointers above, the user can
+|         define  his own  temporary pointers via  the set request.
+|         Any name beginning with a "%"  can be used as the name of
+|         a virtual  pointer (ex:  set %bad_astep  16|0).  Up to 20
+|         user-defined names can be defined at one time.
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      Offset operators:
+          The  operators  "+N"  and "-N"  immediately  preceding an
+          octal  number, or  VIRTUAL-ADDR construct can  be used to
+          alter  the  offset of  a  virtual address.   N  is number
+          interpreted in octal.  No  spaces are allowed between the
+          operator and  the N.  For  example, sst$ptl +30  would be
+          resolved to be  the SEGNO for sst_seg with  the offset of
+          ptl plus 30 octal locations, sst$ptl+30 is also valid).
+
+      Indirection:
+          A VIRTUAL-ADDR  can imply indirection,  the indirect word
+          may be used as an ITS pair  if it is valid ITS word pair,
+          if  not the  upper half  of the  word will  be used.  The
+          following  VIRTUAL-ADDR  construct  is  used  to  specify
+          indirection (sst$cmp,*).
+
+      The format of an indirect pointer value is:
+            segno|offset,*       segname|offset,*       symbol,*
+            temp_ptr,*           temp_ptr|offset,*
+      Examples of indirection:
+            17|230,*        sst|230,*              sst$cmp,*+2
+            sp,*            sp|230,*
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+      DESCRIPTION OF REQUESTS:
+          These  are  grouped  into  two  categories,  a)  requests
+          particular to the analyze_multics subsystem and b) a list
+          of  requests relating  to the  subsytem environment.  The
+          documentation for these general requests will be obtained
+          from the ssu documentation  in the Programmer's Reference
+          Manual and included in the final azm documentation.
+
+      ANALYZE_MULTICS REQUESTS:
+
+      absolute_address, absadr
+
+      Syntax:  absadr VIRTUAL-ADDR
+
+      Syntax as an active request:
+            [absadr VIRTUAL-ADDR]
+
+      Function:   Translates  a  'virtual address'  to  an absolute
+            memory address.
+
+      Arguments:
+
+      VIRTUAL-ADDR
+            May be a segment number, name or symbolic address (e.g.
+            64, prds,  prds$am_data).  Do a  'help virtual_address'
+            for    more   detailed    information   on   acceptable
+            virtual-address constructs.
+
+      Example of active request usage:
+
+            !  display_absolute [absadr sst$cmp] 2
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      add_request_table, arqt
+
+      Syntax:  arqt PATH {-control_args}
+
+      Function:  Adds a  user defined request table in  the list of
+            request   tables   being   searched   by   the  current
+            analyze_multics invocation.
+
+      Arguments:
+
+      PATH
+            is  the path  name of  the request  table to  be added.
+            This  request  table must  be  consistent for  use with
+            subsystem  utility.   See   the  section  on  subsystem
+            request language  in the Programmer's  Reference Manual
+            for request table structure.
+      -after STR, -af STR
+            specifies  that  the  new request  table  be positioned
+            after  the  request table  entry  denoted by  STR.  See
+            Notes below.
+      -before STR, -be STR
+            specifies  that  the  new request  table  be positioned
+            before  the request  table entry  denoted by  STR.  See
+            Notes below.
+      -first, -ft
+            specifies that the request table  be added as the first
+            entry in the request table list.
+      -last, -lt
+            specifies that  the request table be  added as the last
+            entry in the request table list.  (Default)
+
+      Notes:  STR can be either the pathname or the index number of |
+            the request  table entry found  in the current  list of |
+            request tables (see list_request_tables request).       |
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+      apply, ap
+
+      Syntax:  apply VIRTUAL-ADDR {RANGE} command_line
+
+      Function:  Extracts  all or part  of a segment,  specified by
+            VIRTUAL-ADDR from the selected  FDUMP and places a copy
+            in a temporary segment.  The new path name is passed as
+            the last argument in the command_line.
+
+      Arguments:
+
+      VIRTUAL-ADDR
+            May be a segment number, name or symbolic address (e.g.
+            64, prds,  prds$am_data).  Do a  'help virtual_address'
+            for    more   detailed    information   on   acceptable
+            virtual-address constructs.
+      RANGE
+            Specifies the  number of words  in octal to  be copied.
+            The default is the entire segment.
+      command_line
+            any command.
+
+|     Notes:  The offset in the virtual address specifies where the
+|           copying  of the  segment begins.   When only  part of a
+|           segment is  extracted, it goes at  the beginning of the
+|           temporary segment.  For example:
+|                  apply pds$am_data 400 dump_segment
+|           will put  256 (decimal) words  at the beginning  of the
+|           segment.
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      apte                                                          |
+
+      Syntax:  apte {proc_indicator} {-control_args}
+
+      Function:  Displays apte info for  processes in an FDUMP that
+            match the states specified.
+
+      Argument:
+
+      proc_indicator                                                |
+            for specifying  individual processes.  It  can take one |
+            of three forms:                                         |
+               - The decimal index (starting at zero) of a process in|
+                 the FDUMP.                                         |
+               - The octal apte offset of the process.              |
+               - The octal process_id of the process.               |
+      Below are  acceptable control_args  if proc_indicator  is not
+            specified.
+
+      Control Arguments:
+
+      -all, -a                                                      |
+            Displays  apte  info  for  all processes  in  any state |
+            (Default).                                              |
+
+      -blocked, -blk
+            Displays  apte info  for all  processes in  the blocked
+            state.
+
+      -count, -ct                                                   |
+            specifies  the  total number  of processes  meeting the |
+            criteria specified by the  control_args.  With -all, it |
+            gives the counts of each process state.                 |
+
+      -page_tbl_lock, -ptl
+            Displays  apte info  for all  processes marked  as page
+            table locking.
+
+      -ready, -rdy
+            Displays  apte  info  for  all processes  in  the ready
+            state.
+
+      -run
+            Displays  apte info  for all  processes in  the running
+            state.
+
+      -stopped, -stop
+            Displays  apte info  for all  processes in  the stopped
+            state.
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+      -wait
+            Displays  apte info  for all  processes in  the waiting
+            state.
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      associative_memory, am
+
+      Syntax:  am {-control_args}
+
+      Function:  Display SDW and/or PTW Associative Memories.
+
+      Location Control Arguments:                                   |
+
+      -dump                                                         |
+            displays the  "dump" Associative Memories  from the BOS |
+            CPU  at  the  time the  dump  was taken.   This  is the |
+            default.                                                |
+
+      -prds                                                         |
+            displays Associative memories that  have been stored in |
+            the current processes prds.                             |
+
+      Control arguments:
+
+      -all, -a
+            Specifies that ALL entries  in the Associative Memories
+            are to be displayed.  Default  is to display only those
+            entries that are valid (i.e., the full bit is on).
+      -ptw
+            Specifies that only the PTW Associative memories are to
+            be displayed.
+      -pageno PAGENO
+            where  PAGENO is  an octal page  number.  Displays only
+            those entries in the PTW Associative Memories that have
+            a page number that matches the value of PAGENO.
+      -sdw
+            Specifies that only the SDW Associative Memories are to
+            be displayed.
+      -segno SEGNO
+            where SEGNO is an  octal segment number.  Displays only
+            those entries  in the SDW and  PTW Associative Memories
+            that have  a segment number  that matches the  value of
+            SEGNO.  See assoc_mem.incl.pl1.
+
+      Notes:
+            If no control arguments are given, BOTH the SDW and PTW
+            Associative  Memories  are  displayed  for  the  "dump"
+            Associative Memories.
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+|     aste
+
+|     Syntax:  aste segno/segname {-control_args}
+
+      Function:  Displays  page table information.   The default is
+            to display the aste and page table info only.
+
+      Arguments:
+
+      segno/name
+            is the segment number or segment name of interest.
+
+      Control Arguments:
+
+      -aste
+            Displays  active  segment  table  information  for  the
+            selected entry.
+      -at offset, -at virtual-addr
+            Displays  aste info  starting at the  offset or virtual
+            address specified.
+      -brief, -bf
+            Displays everything excluding the page table info.
+      -long, -lg
+            Displays everything which includes the aste, page table
+            and trailer information.
+      -page_table, -pt
+            Displays  page  table   information  for  the  selected
+            segment.
+      -trailer, -tr
+            Displays   trailer   information  about   the  selected
+            segment.
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      clock                                                         |
+
+      Syntax:  clock VALUE {-control_args}                          |
+
+      Function:  Interprets a Multics clock reading in some form.   |
+
+      Arguments:                                                    |
+
+      VALUE                                                         |
+            is the clock reading in one of the following forms:     |
+
+      octal number                                                  |
+            which   must   be  greater   than  262144   decimal  to |
+            distinguish it from a virtual address.                  |
+      decimal number                                                |
+            identified by a trailing decimal point.                 |
+      virtual address                                               |
+
+      Control arguments:                                            |
+
+      -short, -sh                                                   |
+            causes  the upper  20 bits  of the  72 bit  value to be |
+            ignored  (since  there  are programs  which  re-use the |
+            upper halfword of a clock value)                        |
+      -fstime                                                       |
+            causes  a single  word to  be interpreted  (or found at |
+            virtual_address) as a 36 bit file system time value.    |
+      -uid                                                          |
+            causes  a single  word to  be interpreted  (or found at |
+            virtual_address) as  the time represented  by a Multics |
+            unique  ID  string.  This  is  only a  very approximate |
+            value,  since  unique  IDs  are  assigned  sequentially |
+            during  any given  bootload, and  only initialized from |
+            the clock at bootload time.                             |
+
+      Note:  Clock values are  displayed in full long_date_time_ as |
+            MM/DD/YY HH:MM:SS.mmmmmm ZZZ DDD.  The value is printed |
+            in octal if it is outside the 20th century.             |
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+|     configuration_deck, cd
+
+|     Syntax:  cd {card_names} {control_args}
+
+      Function:   displays the  contents of the  config_deck in the
+            selected  FDUMP.  This  request works  exactly like the
+            standard  pcd command,  the only difference  is that it
+            gets the config deck from the FDUMP.
+
+      Arguments:
+
+      card_names
+            are the names of  the particular configuration cards to
+            be displayed.   Up to 32  card names can  be specified.
+            If no card_names are given the the complete config_deck
+            will be printed.
+
+      Control Arguments:
+
+|     -brief, -bf
+|           suppresses the error message when a requested card name
+|           is not found.  (Default)
+|     -exclude FIELD_SPECIFIERS, -ex FIELD_SPECIFIERS
+|           excludes  particular  cards  or card  types  from being
+|           displayed.  One to 14  field specifiers can be supplied
+|           with  each  -exclude  control  argument, and  up  to 16
+|           -exclude  arguments can  be specified.   To be eligible
+|           for  exclusion, a  card must contain  fields that match
+|           all  field   specifiers  supplied  with   any  -exclude
+|           argument.
+|     -long, -lg
+|           prints an  error message when a  requested card name is
+|           not found.
+|     -match FIELD_SPECIFIERS
+|           selects particular cards or card types to be displayed.
+|           One to  14 field specifiers  can be supplied  with each
+|           -match control argument, and  up to 16 -match arguments
+|           can be specified.  To be eligible for selection, a card
+|           must  contain  fields that  match all  field specifiers
+|           supplied with any -match argument.
+
+|     Notes:  Field specifiers can consist of a complete card field
+|           or a  partial field and  an asterisk (*).   An asterisk
+|           matches any part of  any field.  Specifiers for numeric
+|           fields can be given in octal or decimal, but if decimal
+|           they must contain a decimal point.  Asterisks cannot be
+|           specified  in  numeric field  specifiers.   All numeric
+|           field specifiers  are converted to  decimal and matched
+|           against numeric  card fields, which  are also converted
+|           to decimal.  Hence, the  field specifier "1024."  would
+|           match a  card containing the octal  field 2000, and the
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+            field  specifier "1000"  would match  a card containing |
+            the decimal field 512.                                  |
+
+            Note that  all card names must  be specified before the |
+            first  -match or  -exclude argument.   Field specifiers |
+            following  a  -match or  -exclude argument  include all |
+            arguments until the next -match or -exclude argument.   |
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+|     delete_dump, dld
+
+|     Syntax:  dld {NAME} {-control_args}
+
+|     Function:  Deletes the FDUMP specified  by NAME.  The dump to
+|           be  deleted  is found  via the  dump search  list which
+|           defaults to &gt;dumps.
+
+|     Arguments:
+
+|     NAME
+|           is  the ERF  number or  the path  name of  the zero (0)
+|           component  of  the  FDUMP.   It can  also  be  the form
+|           path&gt;35   where   35  is   the  erf   number.   Several
+|           control_args  are  also  acceptable   if  NAME  is  not
+|           specified.
+
+|     Control arguments:
+
+|     -current, -cur
+|           deletes the dump currently being looked at.
+
+|     -first, -ft
+|           deletes the first dump in  the dump directory found via
+|           the dump search list.
+
+|     -last, -lt
+|           deletes  the  last  (most  current)  dump  in  the dump
+|           directory.
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      delete_request_table, drqt
+
+      Syntax:  drqt STR
+
+      Function:  Deletes  a defined request table  from the list of
+            request tables being searched.
+
+      Arguments:
+
+      STR                                                           |
+            can be either  the pathname or the index  number of the |
+            request    table    entry    to    be    deleted   (see |
+            list_request_tables request).                           |
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+|     display, d
+
+|     Syntax:
+|     display VIRTUAL-ADDR {+-EXP} {RANGE} {-mode} {-ctl_args}
+
+|     Function:  displays  a selected portion  of a segment  in the
+|           FDUMP.
+
+|     Function  as  an active  request:  See  'Mode Specifications'
+|           below.
+
+|     Arguments:
+
+*     VIRTUAL-ADDR
+            specifies  the  initial offset  of the  virtual address
+            space to be  dumped.  May be a segment  number, name or
+            symbolic address  (e.g.  64, prds,  prds$am_data).  The
+            entire segment is displayed if  no offset (or RANGE) is
+            given.  Do  a 'help virtual_address'  for more detailed
+            information on acceptable virtual-address constructs.
+      EXP
+            is an expression,  which is either an octal  value or a
+            VIRTUAL-ADDR construct yielding an octal value.
+
+      RANGE
+            specifies the  number of words  to be dumped  in octal.
+            If a range is not specified the default is one word (if
+            the data to be dumped is  an ITS pair two words will be
+            dumped).
+
+      Mode Specifications:
+
+|     -character, -ch, -ascii
+|           displays the selected number of characters in ascii, in
+|           addition to the  octal representation.  Characters that
+|           cannot be printed are represented as periods.  Usage as
+|           an active request is not allowed.
+|     -bcd
+|           displays  the  BCD  representation   of  the  words  in
+|           addition to the octal form.  Usage as an active request
+|           is not allowed.
+|     -ebcdic9
+|           displays the  EBCDIC representation of  each 9-bit byte
+|           in addition to the  octal from.  Characters that cannot
+|           be  printed are  represented as  periods.  Usage  as an
+|           active request is not allowed.
+|     -ebcdic8
+|           displays the  EBCDIC representation of  each eight bits
+|           in addition to the  octal form.  Characters that cannot
+|           be  printed  are  represented  by periods.   If  an odd
+|           number of words is requested  to display, the last four
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+            bits of the last word do not appear in the translation. |
+            Usage as an active request is not allowed.              |
+      -instruction, -inst
+            displays the selected number  of words as instructions.
+            Usage as an active request is not allowed.
+      -no_octal, -noc                                               |
+            excludes the octal representation from being displayed. |
+      -octal, -oc
+            displays  the  selected number  of characters  in octal
+            (Default).  When used as  an active request returns the
+            octal value of the requested address.
+      -ptr, -p
+            displays the selected number of word pairs as pointers.
+            When used as an active  request returns the octal value
+            of the form SEGNO|OFFSET.
+      -pptr, -pp
+            displays   the   selected   number   of   words   as  a
+            packed-pointer.  When used as an active request returns
+            the octal value of the form SEGNO|OFFSET.
+      -pptrx, -ppx
+            displays    the   selected    number   of    words   as
+            packed-pointers  and  expands  the  segno|offset  to  a
+            segment  name.   Usage  as  an  active  request  is not
+            allowed.
+      -ptrx, -px
+            displays the selected number  of word pairs as pointers
+            and expands the segno|offset  to a segment name.  Usage
+            as an active request is not allowed.
+
+      Control Arguments:
+
+      -as  STRUCTURE_NAME
+            This will display the data selected by the VIRTUAL-ADDR
+            as a hardcore PL/I structure defined by STRUCTURE_NAME.
+            The STRUCTURE_NAME is a hardcore SYSTEM defined include
+            file.  Usage as an active request is not allowed.
+      -long, -lg
+            This control argument is  only implemented with the -as
+            control  argument.  It  will display the  format of the
+            data  for  each structure  level  as well  as  the data
+            value.
+
+      Examples:
+            d 75|560 2
+              this would display the two words in seg number 75 starting
+              at offset 560.
+
+            d pds|560 2
+              this would display the two words in the segment named pds
+              starting at offset 560.
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+            d pds$trace
+              this would display one word in the pds segment beginning at
+              the offset specified by $trace.
+
+            dump 244|260 +20 4
+              this would display four words of segment number 244 starting
+              at offset 300 octal.
+
+            d %sp 20
+              this would display 20 octal words starting with the segment
+              and offset defined in the azm internal temporary pointers
+              (see set request).
+
+            d sst$cmp,* +sst$cmesize sst$strsize
+              this will  cause the word  at sst$cmp to be  used as an
+              indirect word, or an indirect pointer if  the resultant
+              address has ITS  modification, to  develop the starting
+              virtual address. The value derived from sst$cmesize will
+              then  be added to  the starting  offset for the 'final'
+              starting address.  The range, or number  of words to be
+              displayed, is  specified by  the value  contained in
+              sst$strsize.
+
+            d sst|2 -as apte
+              That would display the APTE entry at the given offset in
+              the SST as it is defined by apte.incl.pl1.
+
+      Notes:
+            For   more   information  on   developing  VIRTUAL-ADDR
+            constructs refer to virtual_address.info.
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      display_absolute, da                                          |
+
+      Syntax:  da  ABS-ADDR {RANGE} {-mode} {-ctl_args}             |
+
+      Function:   dumps  an absolute  memory  address space  in the |
+            FDUMP.                                                  |
+
+      Function  as  an active  request:  See  'Mode Specifications' |
+            below.                                                  |
+
+      Arguments:                                                    |
+
+      ABS-ADDR                                                      |
+            is the starting absolute memory address, in octal.      |
+
+      RANGE                                                         |
+            specifies the  number of words  to be dumped  in octal. |
+            If a range is not specified the default is one word (if |
+            the data to be dumped is  an ITS pair two words will be |
+            dumped).                                                |
+
+      Mode Specifications:                                          |
+
+      For a description of the mode specifications, see the display |
+            request.                                                |
+
+      -character, -ch, -ascii                                       |
+      -bcd                                                          |
+      -ebcdic9                                                      |
+      -ebcdic8                                                      |
+      -instruction, -inst                                           |
+      -no_octal, -noc                                               |
+      -octal, -oc                                                   |
+      -ptr, -p                                                      |
+      -pptr, -pp                                                    |
+      -pptrx, -ppx                                                  |
+      -ptrx, -px                                                    |
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+|     error_code, err
+
+|     Syntax:  err ERROR_CODE
+
+|     Function:     Interprets   an    error_table_   value.    The
+|           error_table_  is  found via  the hardcore  search list.
+|           This is useful when interpreting argument lists.
+
+|     Arguments:
+
+|     ERROR_CODE
+|           is  a  standard Multics  error code  value.  It  can be
+|           specified   as   an  octal   value,  a   decimal  value
+|           (identified by  a trailing decimal point)  or a virtual
+|           address pointer.
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      events, ev                                                    |
+
+      Syntax:  events {-control_args}                               |
+
+      Function:    Displays   'interesting   events',   in  reverse
+            chronological  order,  from  an  FDUMP.   Those  events
+            considered to be interesting are described in 'notes'.
+
+      Control Arguments:
+
+      -brief, -bf                                                   |
+            displays each event on one line (Default).              |
+      -connects, -con                                               |
+            specifies that connects by device are to be displayed.  |
+      -default_events                                               |
+            specified  the   following  events  to   be  displayed: |
+            traffic control, machine conditions, fim frames, syserr |
+            messages  and  connects.  This  is a  shorthand control |
+            argument (Default).                                     |
+      -disk_queues, -dq                                             |
+            specifies that disk queue events are to be displayed.   |
+      -fim                                                          |
+            displays fim frames in any stack.                       |
+      -last N, -lt N                                                |
+            displays the last N events.                             |
+      -long, -lg                                                    |
+            displays events on one or more lines each.              |
+      -machine_conditions, -mc                                      |
+            displays machine conditions from BOS, prds, pds and the |
+            mc_trace_buf.                                           |
+      -no_connects, -ncon                                           |
+            excludes  device   connects  from  the   events  to  be |
+            displayed.                                              |
+      -no_disk_queues, -ndq                                         |
+            excludes  disk  queue  events  from  the  events  to be |
+            displayed.                                              |
+      -no_fim                                                       |
+            excludes fim frames from the events to be displayed.    |
+      -no_machine_conditions, -nmc                                  |
+            excludes  machine  conditions  from  the  events  to be |
+            displayed.                                              |
+      -no_syserr                                                    |
+            excludes  syserr   messages  from  the   events  to  be |
+            displayed.                                              |
+      -no_traffic_control, -ntc                                     |
+            excludes  traffic control  info from  the events  to be |
+            displayed.                                              |
+      -syserr                                                       |
+            displays  syserr  messages  from  both  syserr_data and |
+            syserr_log.                                             |
+      -time NSECS, -tm NSECS                                        |
+            specifies the time in seconds before the dump was taken |
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+|           when events were 'interesting'.
+|     -traffic_control, -tc
+|           displays traffic control state change time.
+
+|     Notes:  The  following events are  considered as interesting:
+|           Machine  Conditions  (from  BOS,   prds,  pds  and  the
+|           mc_trace_buf),  Traffic  Control   state  change  time,
+|           syserr messages (from both syserr_data and syserr_log),
+|           Fim frames  in any stack,  connects by device  and disk
+|           queues.   The  default action  is  to display  in brief
+|           format, the  last 30 events  excluding disk_queues (eg.
+|           ev -bf -lt 30 -tc -mc -fim -syserr -connects).
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      fdump_components                                              |
+
+      Syntax:  fdump_components {NAME}                              |
+
+      Syntax as an active request:                                  |
+             [fdump_components {NAME}]                              |
+
+      Function:  prints the absolute  pathnames of all the segments |
+            which  are  components of  the  selected FDUMP.   As an |
+            active request it returns the absolute pathnames.       |
+
+      Arguments:                                                    |
+
+      NAME                                                          |
+            is  the ERF  number or  the path  name of  the zero (0) |
+            component  of  the  FDUMP.   It can  also  be  the form |
+            path&gt;35 where 35 is the erf number.                     |
+
+      Notes:   If NAME  is not  specified, the  information for the |
+            current FDUMP  is used.  This can  be used to construct |
+            abbrevs  for  performing storage  system  operations on |
+            fdumps,  such  as  copying   or  access  setting.   For |
+            example:                                                |
+             .ab old_dump do                                        |
+               "e move ([fdump_components &amp;rf1]) &gt;dumps&gt;old&gt;== -bf" |
+             .ab sa_dump do "e set_acl ([fdump_components]) &amp;rf1"   |
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+      frame, fr
+
+      Syntax:
+        fr {VIRTUAL-ADDR | -next | -prev} {-control_arguments}
+
+|     Function:   Displays information  from a  single stack frame.
+|           The  default  displays the  frame name,  entry pointer,
+|           return pointers,  and, if a fim  frame, the fault type,
+|           PPR, and TPR.
+
+      Frame Specifiers:
+
+      VIRTUAL-ADDR
+            Display information for the frame at this address.
+
+       -next, -nx
+            display information for the frame called by the current
+            frame.
+
+       -previous, -prev
+            Display  information  for  the frame  which  called the
+            current frame.
+
+      If a VIRTUAL-ADDR,  -next,  or -previous  are  not specified,
+            information is displayed for the current stack frame.
+
+      Control arguments:
+
+|     -brief, -bf
+|           suppresses   any   information  being   displayed  when
+|           changing stack frames.
+
+      -arguments, -ag
+*           displays the arguments for the stack frame.
+
+|     -handlers
+|           displays  on units  attached to  the frame,  giving the
+|           name of the condition and location of the handler.
+
+|     -long, -lg
+|           displays the  arguments, handlers and an  octal dump of
+|           the stack frame.
+
+|     Notes:   The  frame request  will  automatically set  the %sp
+|           pointer to  the frame currently being  looked at.  If a
+|           fim frame, the %mcp pointer is also set.
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      history_regs, hregs
+
+      Syntax:  hregs {HREGS_specifier} {-control_args}
+      Function:  Displays a composite analysis or octal dump of the
+            processor history  registers.  This request,  hregs, is
+            useful by people who  are knowledgable of the hardware.
+            The  default action  is to  display the  AU, CU  and OU
+            history registers  for the pds in  a threaded order and
+            interpreted format.
+
+      HREGS Specifiers:                                             |
+
+      -condition VIRTUAL-ADDR, -cond VIRTUAL-ADDR                   |
+            displays history registers from  a condition frame, the |
+            location of which is described by VIRTUAL-ADDR.         |
+      -dump                                                         |
+            displays the "dump" history  registers from the BOS CPU |
+            at the time the dump was taken.                         |
+      -pds                                                          |
+            displays the history registers that have been stored in |
+            the current processes pds (Default).                    |
+      VIRTUAL-ADDR
+            displays the history registers that have been stored at
+            the  address  space  specified  by  VIRTUAL-ADDR.   See
+            virtual_address.info.
+
+      Control Arguments:
+
+      -au
+            specifies that only the APU history registers are to be
+            displayed.
+      -cu
+            specifies that only the CU  history registers are to be
+            displayed.
+      -du
+            specifies that only the DU  history registers are to be
+            displayed.
+      -interpret                                                    |
+            Display the  interpreted form of  the history registers |
+            only (Default), or, if -octal is specified, include the |
+            octal representation also.                              |
+      -octal, -oc                                                   |
+            Displays  the octal  values of  history registers only, |
+            or, if -interpret is  also specified, display octal and |
+            interpreted form.  If neither  -octal nor -interpret is |
+            specified,  the  default  action   is  to  display  the |
+            interpreted form only.                                  |
+      -thread                                                       |
+            Attempt  to display  the selected  history registers in |
+            the "correct" order (Default).                          |
+      -no_thread
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+            Display the selected history registers in serial order,
+            without attempting to sort them.
+      -ou
+            specifies that only the OU  history registers are to be
+            displayed.
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      list_dumps, lsd                                               |
+
+      Syntax:  lsd {PATH}                                           |
+
+      Function:  Lists the FDUMP's  in the selected dump directory. |
+            If  PATH  is  not  given,  FDUMPS  from  all  the  dump |
+            directories  specified  in  the dumps  search  list are |
+            listed.                                                 |
+
+      Arguments:                                                    |
+
+      PATH                                                          |
+            specifies PATH as the dump directory to list.           |
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+|     list_processes, lsp
+
+|     Syntax:
+|         lsp {proc_indicator} {-control_argument}
+
+|     Syntax as an active request:
+|         [lsp {proc_indicator} {-control_argument}]
+
+|     Function:  Lists  all known processes in  the selected FDUMP.
+|           As  an  active  request,  it  returns  the  process_ids
+|           meeting the control argument criteria.
+
+|     Argument:
+
+|     proc_indicator
+|           specifies which process to be  listed.  It can take one
+|           of three forms:
+|              - The decimal index (starting at zero) of a process in
+|                the FDUMP.
+|              - The octal apte offset of the process.
+|              - The octal process_id of the process.
+|     Below are  acceptable control_args  if proc_indicator  is not
+|           specified.
+
+|     Control arguments:
+
+|     -all, -a
+|           Lists all processes in the FDUMP (Default).
+
+|     -blocked, -blk
+|           Lists processes marked as blocked.
+
+|     -count, -ct
+|           specifies the number of  processes meeting the criteria
+|           specified by the control_args.  With -all, it gives the
+|           counts of each process state.
+
+|     -current, -cur
+|           Lists the current process.
+
+|     -page_tbl_lock, -ptl
+|           Lists processes marked as page table locking.
+
+|     -ready, -rdy
+|           Lists processes marked as ready.
+
+|     -run
+|           Lists processes marked as running.
+
+|     -stopped, -stop
+|           Lists processes marked as stopped.
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      -wait                                                         |
+            Lists processes marked as waiting.                      |
+
+      Example:                                                      |
+
+            !  do "select_process &amp;1;sdw 0" ([list_processes])      |
+
+            Would display the SDW for DSEG for all processes in the |
+            FDUMP.                                                  |
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+      list_request_tables, lrqt
+
+      Syntax:  lqrt
+
+      Function:  Lists  the request tables currently  in use by the
+            analyze_multics invocation as shown below:
+|           1) &gt;unb&gt;azm_request_table_
+|           2) &gt;dumps&gt;more_azm_requests_
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      machine_conditions, mc
+
+      Syntax:  mc {MC_specifier} {-control_args}
+
+      Function:  Displays all or  parts of Machine Conditions based
+            on the given pointer.
+
+      MC Specifiers:
+
+      -dump                                                         |
+            specifies  the dump  for the  BOS CPU  regs at  time of |
+            dump.                                                   |
+      -pds {STR1}                                                   |
+            where STR1 can be:                                      |
+                 all                                                |
+                 fim                                                |
+                 pgf, page_fault                                    |
+                 sig, signal, signaller                             |
+            and  defaults to 'all' if STR1 is not given.            |
+      -prds {STR2}                                                  |
+            where STR2 can be:                                      |
+                all                                                 |
+                fim                                                 |
+                int, interrupt                                      |
+                sys, system_trouble                                 |
+            and defaults to 'all' if not given.                     |
+      VIRTUAL-ADDR                                                  |
+            is  the virtual  address construct  used to  define the |
+            address   space  containing   Machine  Conditions  (see |
+            virtual_address.info).                                  |
+
+      If none  of the  above are  specified, the  temporary pointer |
+            %mcp  is  used.  If  %mcp  is not  already set,  the mc |
+            request will set it.                                    |
+
+      Control arguments:
+
+      -eis
+            display the EIS Pointers &amp; Lengths (interpreted).
+      -faults, -flt
+            display the fault register.
+      -long, -lg
+            display all elements of the MC.
+      -mc_err
+            display the mc_err data word.
+      -misc
+            display the miscellaneous data (ie:  mc_err, fault reg,
+            time)
+      -octal, -oc
+            display the eis info, scu data, or pointer registers in
+            octal.
+      -pointers {PR_LIST}, -prs {PR_LIST}
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+            display pointer registers selected by PR_LIST {0 -&gt; 7}.
+            If  PR_LIST  is  not  specified, all  the  pointers are
+            displayed.
+      -ppr
+            only display the PSR and IC from the MC.
+      -registers {REG_LIST}, -regs {REG_LIST}
+            display only  the basic OU  registers.  Where REGS_LIST
+            can be any of the following:
+                      x0, x1, x2, x3, x4, x5, x6, x7, a, q all.
+            If REG_LIST is not specified, all of the basic OU registers
+            are displayed.
+      -scu
+*           display only the scu data of the MC.
+      -time, -tm
+            display the MC time.
+      -tpr
+            only display the TSR and the CA from the MC.
+
+|     Note: The default control arguments are:
+|            -eis, -fault, -mc_err, -pointers -scu, -time and -tpr.
+|           The machine_conditions request  will set all azm-defined
+|           temporary  pointers  as seen  in  the machine_condition
+|           frame.
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      page_trace, pgt                                               |
+
+      Syntax:  pgt {-control_arg}                                   |
+
+      Function:  displays  the contents of the  page trace table in
+            the current process data segment (PDS).  The default is
+            to  display the  last 15 trace  entries.  Trace entries
+            are always displayed in reverse chronological order.
+
+      Control Arguments:
+
+      -all, -a
+            specifies that all trace entries are to be displayed.
+      -last N, -lt N                                                |
+            specifies  the number  of trace  entries, where  N is a
+            positive decimal integer, to be displayed.
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+      replace, rp
+
+|     Syntax:  replace segno/segname PATH
+
+|     Function:  Replaces  the segment designated  by segno/segname
+|           in the current translation  table, with another segment
+|           designated by PATH.
+
+|     Arguments:
+
+|     PATH
+|           is the path name of the segment.
+|     segno/segname
+|           the   segment  number   or  segment   name  within  the
+|           translation table to be replaced.  The equal convention
+|           can be used:
+|              replace bound_system_faults [e wd]&gt;=.new
+
+|     Notes:   Both  per-process  and  per-system  segments  can be
+|           replaced.   For example,  if the  pds is  replaced in a
+|           process, it  affects only the  current process, whereas
+|           if  tc_data is  replaced in  a process,  it affects the
+|           whole FDUMP.
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      scus                                                          |
+
+      Syntax:  scus                                                 |
+
+      Function:  Prints the memory address space (in octal) of each
+            scu from the registers saved in the FDUMP.
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+      sdw
+
+      Syntax:  sdw {segno/name} {segno/name}
+
+      Function:  Displays the SDW's in the current processes DSEG.
+
+      Arguments:
+
+      segno/name
+            is the  segment number or name  of interest.  The first
+            is the  starting segment number  and the second  is the
+            ending segment number.  If only  one is given then only
+            one  is  displayed  if  none  are  given  then  all are
+            displayed.
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      search, srh
+
+      Syntax:  search VIRTUAL-ADDR {range} SEARCH_STRING
+
+      Function:   This command  will search  a segment  starting at
+            VIRTUAL-ADDR matching on  SEARCH_STRING.  The search is
+            performed on a 36 bit word boundary.
+
+      Syntax as an active request:                                  |
+               [search VIRTUAL-ADDR {range} SEARCH_STRING]          |
+
+      Function as an active request:  Returns the virtual addresses |
+            matching the criteria specified.                        |
+
+      Arguments:
+
+      VIRTUAL-ADDR
+            is  the pointer  to the  address space  to search.  See
+            virtual_address.info
+      range
+            specifies the  number of words to  be searched from the
+            starting  offset, where  range is an  octal value.  The
+            default is the rest of  segment.  The search is started
+            from VIRTUAL-ADDR.
+      SEARCH_STRING
+            This is a 12 character string representing the 12 octal
+            digits that make  up a machine word (36  bit,3 bits per
+            digit).  This will be used to form both the search data
+            and search  mask, by using  the hyphen (-)  as a "don't |
+            care  character" in  the string.  The  "do care digits" |
+            are octal "0 -&gt; 7".  Any other character is illegal.
+
+      Examples:
+              To search for:                                        |
+              all words in segment 76 that have the last two digits |
+              of 43:                                                |
+
+                 search 76 ----------43                             |
+
+              all words in tc_data where the upper half = 070707    |
+
+                 search tc_data 070707------                        |
+
+              words that  end in 1234  in sst_seg starting  at 1000 |
+              but only searching for 200 octal words                |
+
+                 search sst_seg|1000 200 --------1234               |
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+|             words that start  with 45 and end with  77 starting a
+|             sst_seg$ptl for 100 words
+
+|                search sst_seg$ptl 100 45--------77
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      segment_name, name                                            |
+
+      Syntax:  name [VIRTUAL-ADDR | number]                         |
+
+      Syntax as an active request:                                  |
+               [name number] or [name VIRTUAL-ADDR]                 |
+
+      Function:  Prints the segment name given a virtual address or
+            a segment number.
+
+      Arguments:
+
+      VIRTUAL-ADDR
+            is  the virtual  address construct  used to  define the
+            segment (see virtual_address.info).
+
+      number
+            specifies the  segment number to be  interpreted to its
+            associated name.
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+|     segment_number, number
+
+|     Syntax:  number [VIRTUAL-ADDR | name]
+
+|     Syntax as an active request:
+|              [number name] or [number VIRTUAL-ADDR]
+
+      Function:  Prints  the segment number given  either a virtual
+            address or a segment name.
+
+      Arguments:
+
+      VIRTUAL-ADDR
+            is  the virtual  address construct  used to  define the
+            segment (see virtual_address.info).
+
+      name
+            specifies  the segment  name to  be interpreted  to its
+            associated segment number.
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      select_dump, sld                                              |
+
+      Syntax:  sld {NAME} {-control_args}                           |
+
+      Function:  Selects and translates an FDUMP of a system crash. |
+            Found  via  the  dump  search  list  which  defaults to |
+            &gt;dumps.                                                 |
+
+      Arguments:                                                    |
+
+      NAME                                                          |
+            is  the ERF  number or  the path  name of  the zero (0) |
+            component  of  the  FDUMP.   It can  also  be  the form |
+            path&gt;35   where   35  is   the  erf   number.   Several |
+            control_args  are  also  acceptable   if  NAME  is  not |
+            specified.                                              |
+
+      Control arguments:                                            |
+
+      -first, -ft                                                   |
+            selects the first dump in  the dump directory found via |
+            the dump search list.                                   |
+
+      -last, -lt                                                    |
+            selects  the  last  (most  current)  dump  in  the dump |
+            directory.                                              |
+
+      -next, -nx                                                    |
+            selects the  next dump in the  dump directory.  This is |
+            relative to the dump currently being looked at.         |
+
+      -previous, -prev                                              |
+            selects the previous dump  in the dump directory.  This |
+            is relative to the dump currently being looked at.      |
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+|     select_process, slp
+
+|     Syntax:
+|         slp {proc_indicator} {-control_argument}
+
+|     Function:  selects a process for examination.
+
+|     Argument:
+|     proc_indicator
+|           specifies  which process  to be selected.   It can take
+|           one of three forms:
+|              - The decimal index (starting at zero) of a process in
+|                the FDUMP.
+|              - The octal apte offset of the process.
+|              - The octal process_id of the process.
+|     Several control_args are acceptable  if proc_indicator is not
+|           specified.
+
+|     Control arguments:
+
+|     -brief, -bf
+|           suppresses the message about changing processes.
+|     -cpu  TAG
+|           selects  the  DBR for  the process  running on  the CPU
+|           identified by TAG (where TAG is one character a -&gt; h).
+|     -dbr dbr_value
+|           selects the process defined by the dbr_value.
+|     -long, -lg
+|           prints  a message  announcing the  new process selected
+|           (Default).
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      set
+
+      Syntax:  set PTR_N VIRTUAL-ADDR
+
+      Function:  set a internal  temporary pointer.  These pointers
+            can   then  be   used  as   a  VIRTUAL-ADDR   by  other
+            analyze_multics commands.
+
+      Arguments:
+
+      PTR_N                                                         |
+            specifies   the   name   of   a   'temporary  pointer'. |
+            analyze_multics  provides  8 temporary  pointers  and 3 |
+            special  case  pointers.  These  get  set automatically |
+            when the  machine_conditions, frame, machine_conditions |
+            and why requests are invoked.  They are:                |
+               %pr0     %pr1    %pr2    %pr3                        |
+               %pr4     %pr5    %pr6    %pr7                        |
+               %lp  intended as the linkage pointer for procedure   |
+                    owning current stack frame                      |
+               %mcp intended to be a pointer to the current MCs.    |
+               %sp  intended to be a pointer to the current stack   |
+                    frame.                                          |
+
+            In addition to the above  PTR_Ns, up to 20 user-defined |
+            pointers can be defined (eg.  set s4 234|0).            |
+
+      VIRTUAL-ADDR
+            may be a segment number, name or symbolic address (e.g.
+            64, prds,  prds$am_data).  Do a  'help virtual_address'
+            more    for   detailed    information   on   acceptable
+            virtual-address constructs.
+
+      Examples:
+            set %pr6 240|100    set a temporary ptr named %pr6 (%sp).
+            set %pr7 240             set the temporary ptr %pr7 to the
+                                   base of seg 240 (240|0).
+
+      Notes:
+            The value  of a temporary pointer  can be displayed via
+            the value request.
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+      syserr_log, slog
+
+      Syntax:  syserr_log {-control_args}
+
+|     Function:   Displays  all  or  parts  of  the  syserr_log and
+|           syserr_data  segments  from  the  dump.   It  does  not
+|           examine the  perm_syserr_log.  The default  is to print
+|           the entire log.
+
+|     Control arguments:
+
+|     -action A
+|           where A is  a decimal integer in the range  0 to 9.  If
+|           this  argument is  used, only  messages with  an action
+|           code specified by an A are candidates.
+      -exclude STR1 ...  STRn, -ex STR1 ...  STRn
+            where  STRi are  strings that  are matched  against the
+            log, as  for -match.  Any message  that contains a STRi
+            is not printed.
+      -last N, -lt N
+            where N is a  decimal integer.  This argument specifies
+            that the scan is to start  N messages back from the end
+            of the log.
+*     -match STR1 ...  STRn
+            where STRi  are strings to be  matched against messages
+            in  the log.   Any message  that contains  a STRi  is a
+            candidate to be printed.
+      -expand, -exp
+            specifies that messages that have binary data will have
+            that binary data interpreted.   The format is generally
+*           dependent on the text of the message.
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      stack, sk                                                     |
+
+      Syntax:  sk VIRTUAL-ADDR {-control_arguments}                 |
+
+      Function:  Traces a given stack.
+
+      Arguments:
+
+      VIRTUAL-ADDR
+            is any  segment and offset value  that is acceptable to
+            the dump command.  See virtual_address.info
+
+      Control arguments:
+
+      -arguments, -ag
+            This  will  print the  arguments  for the  stack frames
+            traced.
+      -for N
+            This will cause the tracing  for N stack frames.  If no
+            valid    stack   frames    exist   (stack_begin_ptr   =
+            stack_end_ptr), then a -force is implied.
+      -force, -fc
+            This will force a forward stack trace.  To be used when
+            there   are   no   valid    frames   for   this   stack
+            (stack_begin_ptr = stack_end_ptr).
+      -forward, -fwd
+            will cause the tracing do be done in a forward manner.
+      -handlers                                                     |
+            displays  on units  associated with  each frame, giving |
+            the name of the condition and location of the handler.  |
+      -long, -lg
+            This  will cause  the arguments, handlers  and an octal
+            dump of the stack frames traced.
+
+      Notes:  The  default is to  trace the stack  in reverse order |
+            unless -fc or -fwd  are specified.  If the VIRTUAL-ADDR |
+            has a zero  offset then the trace starts  at the offset |
+            of the first  stack (stack_header.stack_begin_ptr).  If |
+            the VIRTUAL-ADDR  has a non-zero offset  then the trace |
+            is started from that offset in the given stack.  When a |
+            non-zero  offset is  given, a  -force is  implied if no |
+            valid stack frames exist.                               |
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+|     traffic_control_queue, tcq
+
+|     Syntax:  tcq {-control_args}
+
+|     Function:  Displays  process DBR, process  state, process ID,
+|           current  CPU  and USERID  from the  Traffic Controllers
+|           Eligible Queue, as well as  the "process number" in the
+|           FDUMP.   The default  is to  display only  the eligible
+|           queue.
+
+|     Control Arguments:
+
+|     -all
+|           Displays   the  eligible,   realtime,  interactive  and
+|           workclass  queue  entries,   including  the  unthreaded
+|           entries.
+|     -ready, -rdy
+|           Displays   the  eligible,   realtime,  interactive  and
+|           workclass queues, excluding the unthreaded entries.
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      value, v                                                      |
+
+      Syntax:  value {PTR_Ni..PTR_Nn | -all}                        |
+
+      Function:  Displays  the current value  of one or  all of the
+            temporary pointers.
+
+      Arguments:
+
+      PTR_N
+            specifies  which  of the  temporary  pointers is  to be
+            displayed.  Refer to the set  request for a list of the
+            azm defined  pointer names.  User-defined  pointers can
+            also be specified.
+      -all, -a
+            specifies that all of the  pointers are to be displayed
+            (Default).
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+|     verify_associative_memory, vfam
+
+|     Syntax:  vfam {-control_args}
+
+|     Syntax as an active request:  [vfam {-control_args}]
+
+      Function:   Performs a  consistency check  on the Associative
+            Memories stored at the time of a dump by comparing them
+            to the appropriate entries in  the "dump dseg" and page
+            tables.  When used as  an active request returns "true"
+            if any inconsistencies are found, "false" otherwise.
+
+      Control Arguments:
+
+      -ptw
+            restricts  the  verification  to  the  PTW  Associative
+            Memories.
+      -sdw
+            restricts  the  verification  to  the  SDW  Associative
+            Memories.
+
+      Notes:  If no argument is  given BOTH SDW and PTW Associative
+            Memories are checked.
+
+
+  analyze_multics Rev. 1                                    MTB-624
+
+      why
+
+      Syntax:  why
+
+      Function:  The  why request will  try to find  the stack that
+            has    a    call    to    syserr_real$syserr_real    or
+            call_bos$call_bos and set  the temporary pointers, %pr6
+            and %sp, to the stack  frame.  This command will search
+            the  stacks for  a frame  that has  a return_to_ring_0_
+            frame and  set the temporary pointers  from this set of
+            machine conditions that called this entry.
+
+            If the crash was  due to fim_util$check_fault finding a
+            problem, the machine condition CU data is displayed and
+            all  temporary  pointers  are  set  from  these machine
+            conditions.   If this  was an  Execute Fault  then some
+            lock info  is printed an  the process selected  is lock
+            ordered.  (look at PTL first then ASTL)
+
+            If  this dump  was due to  a manual return  to BOS then
+            some pertinent lock info will also be printed.
+
+            Notes:
+            This  request  can also  be  invoked when  an  FDUMP is
+            selected by the command line to invoke analyze_multics.
+            The arguments would be -select_dump NAME -why.
+
+
+  MTB-624                                    analyze_multics Rev. 1
+
+      STANDARD SUBSYSTEM REQUESTS:
+
+      ?
+
+       .
+
+      abbrev, ab
+
+      answer
+
+      do
+
+      execute, e
+
+      exec_com, ec
+
+      help
+
+      if
+
+      list_help, lh
+
+      list_requests, lr
+
+      quit, q
+
+      ready, rdy
+
+      ready_off, rdf
+
+      ready_on, rdn
+
+      subsystem_name
+
+      subsystem_version
+
+      The  standard ".."   escape convention  for executing Multics
+      command lines is also supported.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

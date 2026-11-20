@@ -1,0 +1,1691 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Debug Breakpoint Handling</title>
+    <meta name="description" content="How debug breakpoints were processed by the Multics CPU and software">
+    <meta name="keywords" content="Multics, operating system, timesharing, time sharing, MIT, Project MAC, computer, software, mainframe">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+    <style>
+     .outer {min-width: 200px; max-width: 1000px; width: auto !important; width: 800px; margin: 0px auto;}
+    </style>
+<style>
+  /* --- for this paper --- */
+  h3 { padding-top: 15px; }
+  h4 { padding-top: 10px; font-weight: 400; }
+  div.clear   { clear: both;  }
+  div.code1   { float: right; margin-left: 5px; margin-top:  -1px; background-color: #EEEEEE; }
+  div.code2   { float: right; margin-left: 5px; background-color: #fef8ee; }
+  div.code2a  { float: right; margin-left: 5px; margin-top: -15px; background-color: #fef8ee; }
+  div.image2  { float: right; margin-left: 5px; }
+  table.toc   { background-color: #fef8ee; margin-left: 20px; padding-right: 10px; padding-bottom: 10px; width: 390px; }
+  table.notice2 { float: right; margin-left: 10px;  width: 40%; }
+  td.notice2  { padding-left: 10px; padding-right: 10px; border: solid black; text-align: justify; 
+  font-family: verdana,helvetica,arial,sans-serif; font-size: 80%;}
+  div.marg20  { clear: both; margin-top: 20px;}  
+  div.marg30  { clear: both; margin-top: 30px;}
+  div.marg50  { clear: both; margin-top: 50px;}
+  div.marg70  { clear: both; margin-top: 70px;}
+  pre 	   {font-family: monospace; font-size: 97%; font-weight: bold; background-color: #fef8ee; }
+  pre.code    {font-family: monospace; font-size: 97%; font-weight: bold; background-color: #EEEEEE; }
+  span.code   { font-style: normal; }
+  span.normal { font-weight: normal; }
+  span.input  { color: blue; }
+  span.running{ color: #00A33C; font-weight: bold; }    	 
+  span.term   { font-style: italic; }
+  
+  pre.adjacent{ margin-top: -12px; }
+  ol.adjacent { margin-top: -12px; }
+  ul.adjacent { margin-top: -12px; }
+  .in20       { padding-left: 20px; }
+  .in25       { padding-left: 25px; }
+  .in50       { padding-left: 50px; }
+  .pad10      { padding-top: 10px; }
+  .pad25      { padding-top: 25px; }
+  .pad30      { padding-top: 30px; }
+  .pad50      { padding-top: 50px; }
+  .pad70      { padding-top: 70px; }
+  
+  p.h3        { padding-left: 20px; font-weight: bold;   padding-top: -20px; margin-top: 0px; margin-bottom: 0px; }
+  p.h4	   { padding-left: 30px; font-weight: normal; padding-top: -25px; margin-top: 0px; margin-bottom: 0px; }
+
+  p.notes     { margin-left: 40px; }
+  ol.notes    { font-style: italic; margin-top: -10px; margin-left: 40px; }
+  ul.notes    { font-style: italic; margin-top: -10px; margin-left: 40px; }
+</style>
+  </head>
+  <body>
+    <div class="outer">
+      <div class="headbar">
+	<div class="headbar2">
+	  <span class="headinglogo"><a href="../multics.html"><img src="../mulimg/multics-redblack50x50.gif" alt="multics logo" height="25" width="25"></a></span>
+	  <span class="headingmult"><a href="../multics.html">Multics</a></span>
+	  <span class="headingdate"><br><a href="../changes.html">13 Feb 2017</a></span>
+          <div class="h1holder"><h1>Debug Breakpoint Handling</h1></div>
+	</div>
+      </div>
+<!-- ================ menus 2024-07-15 16:19 generated from gen-menubar.htmt ================ -->
+<div class="redmenubar" id="main-nav" role="navigation" aria-label="Main">
+  <nav>
+  <ul id="nav">
+    <li>
+      <a href="../index.html">Home</a>
+    </li>
+    <li>
+      <a href="../history.html" title="History of Multics">History&nbsp;&nbsp;&nbsp;&raquo;&nbsp;&nbsp;</a>
+  <ul>
+    <li>
+      <a href="../features.html" title="Features of the system">Features</a>
+  </li>
+  <li>
+    <a href="../myths.html" title="Incorrect statements about Multics found on the web">Myths</a>
+  </li>
+  <li>
+    <a href="../project-mac.html" title="History of MIT Project MAC">Project MAC</a>
+  </li>
+  <li>
+    <a href="../chrono.html" title="List of Multics related events in time order">Dates</a>
+  </li>
+  <li>
+    <a href="../mgloss.html" title="Multics terms, concepts, and jargon">Glossary</a>
+  </li>
+  <li>
+    <a href="../mhp.html" title="Multics History Project">History Proj</a>
+  </li>
+  <li>
+    <a href="../corby-letter.html" title="Letter from Corby in 2000">Last site</a>
+      </li>
+    </ul>
+    <div class="clr"></div>
+  </li>
+  <li>
+    <a href="../multicians.html" title="People who contributed to Multics">People&nbsp;&nbsp;&nbsp;&raquo;&nbsp;&nbsp;</a>
+  <ul>
+    <li>
+      <a href="../multics-stories.html" title="Stories about Multics">Stories</a>
+  </li>
+  <li>
+    <a href="../people-pictures.html" title="Pictures of Multicians">People Pictures</a>
+  </li>
+  <li>
+    <a href="../multics-humor.html" title="Jokes about Multics">Humor</a>
+  </li>
+  <li>
+    <a href="../memorabilia.html" title="Trinkets, T-shirts, and Ties">Memorabilia</a>
+      </li>
+    </ul>
+    <div class="clr"></div>
+  </li>
+  <li>
+    <a href="../biblio.html" title="Information available online">Library&nbsp;&nbsp;&nbsp;&raquo;&nbsp;&nbsp;</a>
+  <ul>
+    <li>
+      <a href="../papers.html" title="Classic papers about Multics available on the Web">Papers</a>
+  </li>
+  <li>
+    <a href="../articles.html" title="Technical articles">Articles</a>
+  </li>
+  <li>
+    <a href="../devdoc.html" title="Development document series">Dev Docs</a>
+  </li>
+  <li>
+    <a href="../multics-source.html" title="Index to source code modules on this site">Source</a>
+  </li>
+  <li>
+    <a href="../simulator.html" title="Multics Simulator">Simulator</a>
+      </li>
+    </ul>
+    <div class="clr"></div>
+  </li>
+  <li>
+    <a href="../sites.html" title="Where Multics was used">Sites&nbsp;&nbsp;&nbsp;&raquo;&nbsp;&nbsp;</a>
+  <ul>
+    <li>
+      <a href="../site-timeline.html" title="Chart of site history">Site Timeline</a>
+  </li>
+  <li>
+    <a href="../site-afdsc.html" title="US Air Force Data Services Center, Pentagon, Washington DC">AFDSC</a>
+  </li>
+  <li>
+    <a href="../site-asea.html" title="ASEA, V&auml;ster&aring;s, Sweden">ASEA</a>
+  </li>
+  <li>
+    <a href="../site-avon.html" title="Avon Universities Computing Centre, Bristol, England">Avon</a>
+  </li>
+  <li>
+    <a href="../site-bellcan.html" title="Bell Canada, 2 sites">Bell Canada</a>
+  </li>
+  <li>
+    <a href="../site-cisl.html" title="Honeywell Cambridge Information Systems Laboratory, Cambridge MA">CISL</a>
+  </li>
+  <li>
+    <a href="../site-cno.html" title="Honeywell Corporate Network Operations, Minneapolis MN">CNO</a>
+  </li>
+  <li>
+    <a href="../site-dndh.html" title="Canadian Department of National Defence, Halifax NS">DND-H</a>
+  </li>
+  <li>
+    <a href="../site-dockmaster.html" title="US National Security Agency, Linthicum MD">DOCKMASTER</a>
+  </li>
+  <li>
+    <a href="../site-ford.html" title="Ford Motor Company, Detroit, MI">FORD</a>
+  </li>
+  <li>
+    <a href="../site-gm.html" title="General Motors Corporate, Detroit, MI">GM</a>
+  </li>
+  <li>
+    <a href="../site-mainz.html" title="Johannes Gutenberg Universitaet, Mainz, Germany">Mainz</a>
+  </li>
+  <li>
+    <a href="../site-mit.html" title="Massachusetts Institute of Technology, Cambridge, MA">MIT</a>
+  </li>
+  <li>
+    <a href="../site-nwgs.html" title="US Navy Naval War Games system, 4 sites">NWGS</a>
+  </li>
+  <li>
+    <a href="../site-ou.html" title="Oakland University, Rochester MI">OU</a>
+  </li>
+  <li>
+    <a href="../site-prha.html" title="Puerto Rican Highway Authority, San Juan, PR">PRHA</a>
+  </li>
+  <li>
+    <a href="../site-radc.html" title="Rome Air Development Center, Griffiss AFB, Rome NY">RADC</a>
+  </li>
+  <li>
+    <a href="../site-rae.html" title="Royal Aircraft Establishment, Farnborough, Hampshire, England">RAE</a>
+  </li>
+  <li>
+    <a href="../site-stc.html" title="Standard Telephones and Cables, New Southgate, London, England">STC</a>
+  </li>
+  <li>
+    <a href="../site-sysm.html" title="Honeywell System M, Phoenix AZ">System-M</a>
+  </li>
+  <li>
+    <a href="../vanderschooten/index.html" title="Bull Systeme X, Louveciennes, France">Systeme X</a>
+  </li>
+  <li>
+    <a href="../site-uc.html" title="University of Calgary, Calgary, Alberta, Canada">UC/ACTC</a>
+  </li>
+  <li>
+    <a href="../site-usgs.html" title="US Geological Survey, 3 sites">USGS</a>
+  </li>
+  <li>
+    <a href="../site-usl.html" title="University of Southwestern Louisiana, Lafayette LA">USL</a>
+  </li>
+  <li>
+    <a href="../site-vpi.html" title="Virginia Polytechnic Institute, Blacksburg, VA">VPI</a>
+      </li>
+    </ul>
+    <div class="clr"></div>
+  </li>
+  <li>
+    <a href="../about-multics.html" title="About the web site">About&nbsp;&nbsp;&nbsp;&raquo;&nbsp;&nbsp;</a>
+  <ul>
+    <li>
+      <a href="../changes.html" title="Reverse chronological list of website changes this year">Changes</a>
+  </li>
+  <li>
+    <a href="../multics-news.html" title="Current Multics events">News</a>
+  </li>
+  <li>
+    <a href="../mult-links.html" title="Links to other sites on the Web relevant to Multics">Links</a>
+  </li>
+  <li>
+    <a href="../multics-images.html" title="Thumbnails of images on the site">Image Gallery</a>
+  </li>
+  <li>
+    <a href="../sitemap.html" title="Site Map">Site Map</a>
+        </li>
+      </ul>
+      <div class="clr"></div>
+    </li>
+  </ul>
+  </nav>
+  <!-- ================ red magnifying glass ================ -->
+  <a href="../gsearch.html" style="float:right;" target="_blank"><img src="../mulimg/mg2.gif" width="25" height="25" alt="search" title="search multicians.org"></a>
+</div> <!-- redmenubar -->
+<!-- ================ alt menubar for iphone, thanks erik ================ -->
+<div class="altmenubar" id="alt-main-nav" role="navigation" aria-label="Main">
+  <nav>
+    <div id="menuToggle">
+      <!-- A fake / hidden checkbox is used as click receiver, so you can use the :checked selector on it. -->
+      <input type="checkbox" id="switchmenus">
+      <!-- instead of a hamburger. -->
+      <a href="../gsearch.html" target="_blank"><img src="mulimg/mg2.gif" width="25" height="25" alt="search" title="search multicians.org" style="float:right; display:inline;"></a>
+      <label for="switchmenus" class="altmenuword">&nbsp;MENU</label>
+      <!-- Abbreviated menu for small screens. Does not link to all the sites. -->
+      <div class="peekaboo">
+	<span>
+	<br><a href="../history.html">History</a>:
+	    <a href="../features.html">Features</a> |
+	    <a href="../myths.html">Myths</a> |
+	    <a href="../project-mac.html">Project MAC</a> |
+	    <a href="../chrono.html">Dates</a> |
+	    <a href="../mgloss.html">Glossary</a> |
+	    <a href="../mhp.html">History Proj</a> |
+	    <a href="../corby-letter.html">Last site</a> |
+	<br><a href="../multicians.html">People</a>:
+	    <a href="../multics-stories.html">Stories</a> |
+	    <a href="../people-pictures.html">People Pictures</a> |
+	    <a href="../multics-humor.html">Humor</a> |
+	    <a href="../memorabilia.html">Memorabilia</a> |
+	<br><a href="../biblio.html">Library</a>:
+	    <a href="../papers.html">Papers</a> |
+	    <a href="../articles.html">Articles</a> |
+	    <a href="../devdoc.html">Dev Docs</a> |
+	    <a href="../multics-source.html">Source</a> |
+	    <a href="../simulator.html">Simulator</a> |
+	<br><a href="../sites.html">Sites</a>:
+	    <a href="../site-timeline.html">Site Timeline</a> |
+	<br><a href="../about-multics.html">About</a>:
+	    <a href="../changes.html">Changes</a> |
+	    <a href="../multics-news.html">News</a> |
+	    <a href="../mult-links.html">Links</a> |
+	    <a href="../multics-images.html">Image Gallery</a> |
+	    <a href="../sitemap.html">Site Map</a> |
+        </span>
+      </div>
+    </div>
+  </nav>
+</div>
+<!-- ================ end menus ================ -->
+	
+      <div class="main">
+<p class="author">
+  <a href="../multicians.html#Dixon" title="Multician: System (HIS): Library tools; Marketing Education (HIS); System (PMDC): TRCoord, video system, date/time, admin, dump analysis, software design &amp; coding, auditing, security audits of kernel; DPS8M Simulator.">Gary Dixon</a>
+</p>
+
+<div class="clear">   
+ <h3>Introduction</h3>
+ <p>
+   This article shows how Multics mechanisms for <a href="../mgs.html#segmentation" title="glossary: Division of a process&#39;s virtual memory into a vector...">segmentation</a>, kernel and user <a href="../mgr.html#ring" title="glossary: Concentric level of privilege of user/supervisor distinction. Although now...">rings</a> of execution, and
+   execution <a href="../mgs.html#stack" title="glossary: Multics has a stack segment for the stack of...">stacks</a> cooperate to implement <span class="code">debug</span> breakpoints in a secure,
+   efficient, and extensible fashion.
+   Another article describes the <a href="../exec-env.html" title="The execution environment for Multics programs. Hardware architectural support and system conventions. ">Multics Execution Environment</a> in more detail.
+ </p>   
+ <p> Specifically, this article analyzes how the <span class="cmd">debug</span> command uses a 
+     <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=184#page=184" title="184 of AL39.pdf" target="_blank" rel="noopener">Master Mode Entry 2 <span class=cmd>mme2</span> instruction</a></span>
+     to implement a breakpoint in an <a href="../exec-env.html#tag6" title="The execution environment for Multics programs. Hardware architectural support and system conventions. ">object segment</a>.
+     Executing this instruction causes a MME2 fault in the running program, which invokes
+     the <span class="code">debug</span> command, permitting in-depth investigation of the suspended program.
+ </p>
+ <p> The analysis grew from a shorter summary of this topic, assembled to help <a href="../multicians.html#Anthony" title="Multician: DPS8M Simulator">Charles Anthony</a> in repairing
+     the <a href="https://github.com/charlesUnixPro/dps8m" title="new window: https://github.com/charlesUnixPro/dps8m" target="_blank" rel="noopener"><span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"> dps8m simulator</span></a>&apos;s handling of the Restore Control Unit
+     <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=202#page=202" title="202 of AL39.pdf" target="_blank" rel="noopener"><span class=cmd>rcu</span> instruction</a></span>. 
+     Mapping of a user program fault onto a condition signaled in the program&apos;s ring of execution
+     may be of interest to other readers.  It is used for several fault types (overflow, divide check, mme, mme1,
+     mme2, mme3).
+ </p>
+</div>   
+
+<div class="marg50">
+ <div class="notice2">
+  <table class="notice2"><tr><td class="notice2">
+   <p> NOTE:  Several links in this analysis open the Processor Manual (AL39), and jump to a specific page
+       in the PDF file.
+   </p>
+   <p> The <b>Google Chrome</b> browser does the best job of handling each download.  It
+       opens to the correct page; and subsequent links to other pages reuse the AL39 document in the browser&apos;s cache.
+   </p>
+   <p> As this analysis is published, other browsers have flaws in this mechanism.
+   </p>    
+   <ul class="adjacent">    
+     <li> <b>Firefox</b> opens to the correct page.  But subsequent links download the manual again.
+     <li> <b>Safari, Microsoft Edge,</b> and <b>Microsoft Internet Explorer</b> open to the first
+       	  page of the PDF file.  Subsequent links download the manual again.
+   </ul>
+  </td></tr></table>    
+ </div>
+     	
+ <table class="toc"> <tr> <td style="font-size: 110%;">
+  <h2 class="in50">Contents</h2>
+  <p  class="h3"> A Simple Program
+  <p  class="h4"> Output from this Program
+  <p  class="h4"> Object Code
+  <p  class="h3"> Debugging the Program
+  <p  class="h4"> Setting a Breakpoint
+  <p  class="h4"> Execution at a Breakpoint
+  <p  class="h3"> Ring 0: Breakpoint Instruction Generates a Fault
+  <p  class="h4"> Executing a Breakpoint Instruction
+  <p  class="h4"> Fault Cycle
+  <p  class="h4"> Fault and Interrupt Vectors
+  <p  class="h4"> Fault Cycle for MME2
+  <p  class="h4"> Ring 0 Fault Handler: fim$signal_entry
+  <p  class="h4"> Ring 0 Exit Routine: signaller
+  <p  class="h4"> Preparing to Call the Outer Ring Signal Mechanism
+  <p  class="h3"> User Ring: Breakpoint as a Condition
+  <p  class="h4"> Support Routine: return_to_ring_0_ - return_to_ring_n_ Label
+  <p  class="h4"> Support Routine: signal_
+  <p  class="h4"> Support Routine: sct_manager_
+  <p  class="h3"> Handler for the Breakpoint
+  <p  class="h4"> Support Routine: debug$mme2_fault
+  <p  class="h4"> Restarting Execution at the Breakpoint
+  <p  class="h4"> After Debug Handles the Breakpoint
+  <p  class="h4"> Support Routine: return_to_ring_0_ - Primary Entrypoint
+  <p  class="h3"> Return to Ring 0
+  <p  class="h4"> Ring 0 Entrance Routine: restart_fault
+  <p  class="h4"> Validating User Ring Control Unit Data
+  <p  class="h4"> Restarting the Verified Machine Conditions
+  <p  class="h3"> User Ring: Program Continues Execution
+ </td></tr></table>
+</div>
+
+<div class="marg70">
+ <div class="code1">
+  <pre class="code">
+  COMPILATION LISTING OF SEGMENT hello
+  Compiled by: Multics PL/I Compiler,
+  	       Release 33e, of October 6, 1992
+  Compiled at: Arrakis
+  Compiled on: 01/28/17  1126.7 mst Sat
+      Options: table list
+
+   1 hello:    proc;
+   2
+   3   dcl  ioa_$nnl entry() options(variable);
+   4
+   5           call ioa_$nnl("Hello,");
+   6
+   7           call ioa_$nnl(" world!^/");
+   8
+   9           end hello;
+  </pre>
+  <img alt="Text Width Spacer" src="TextWidthSpacer.jpg">
+ </div>
+
+ <h3>A Simple Program</h3>
+
+ <p> This analysis begins as a thought experiment, with creation of a user program in which
+     a <span class="cmd">debug</span> breakpoint can be set. To keep things simple, we&apos;ll use a
+     &quot;Hello, world!&quot; program.  The PL/I compiler listing shows source line numbers for this
+     program.
+ </p>
+ <p> The program is modified from its simplest form to permit setting a breakpoint between output of &quot;Hello,&quot;
+     and &quot; world!&quot;.  This will give visual confirmation of: where the breakpoint is set; when it is actually
+     reached; and when the program ends.
+ </p>
+</div>
+
+<div class="clear">
+ <h4>Output from this Program</h4>
+
+ <div class="code2a">
+  <pre>  <span class="input">hello</span>
+  Hello, world!
+  r 07:53 0.032 0
+  </pre>
+  <img alt="Text Width Spacer" src="TextWidthSpacer.jpg">
+ </div>
+
+ <p> Just the line &quot;Hello, world!&quot; is expected as output when no breakpoint is set.
+     Input lines are shown in <span class="input">blue</span> font.
+ </p>
+</div>
+
+<div class="clear">
+ <h4>Object Code</h4>
+ <p> This analysis uses the <span class="cmd">debug</span> command to set a breakpoint in source line 7 of the
+     program.  Code generated by PL/I is shown in this compiler listing fragment.  In the PL/I listing,
+     instruction operands are given in decimal.  For example, at instruction location 000027, the operand of the
+     <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=97#page=97" title="97 of AL39.pdf" target="_blank" rel="noopener"><span class=cmd>ldaq</span> instruction</a></span>
+     is an offset of <span class="code">-19</span> words from the current instruction
+     counter <span class="code">ic</span>.  We shall see that the <span class="cmd">debug</span> command
+     displays such operands in octal, rather than decimal.
+ </p>
+
+ <pre class="code">
+                                                     STATEMENT 1 ON LINE 7
+	    call ioa_$nnl(" world!^/");
+
+  000027  aa   777755 2370 04   ldaq      -19,ic     000004 = 040167157162 154144041136
+  000030  aa  6 00102 7571 00   staq      pr6|66
+  000031  aa   057000 2350 03   lda       24064,du
+  000032  aa  6 00104 7551 00   sta       pr6|68
+  000033  aa  6 00102 3521 00   epp2      pr6|66
+  000034  aa  6 00112 2521 00   spri2     pr6|74
+  000035  aa   777743 3520 04   epp2      -29,ic     000000 = 524000000011
+  000036  aa  6 00114 2521 00   spri2     pr6|76
+  000037  aa  6 00110 6211 00   eax1      pr6|72
+  000040  aa   004000 4310 07   fld       2048,dl
+  000041  aa  6 00044 3701 20   epp4      pr6|36,&ast;
+  000042  la  4 00012 3521 20   epp2      pr4|10,&ast;   ioa_$nnl
+  000043  aa  0 00622 7001 00   tsx0      pr0|402    call_ext_out_desc
+ </pre>
+</div>
+
+<div class="marg50">
+ <h3>Debugging the Program</h3>
+ <p> The analysis continues by using <span class="cmd">debug</span> to set a breakpoint
+     in the <span class="code">hello</span> program.
+</div>
+
+<div class="marg30">
+ <h4>Setting a Breakpoint</h4>
+ <p> The following
+   <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AG92-06B_multicsCmds_Nov87.pdf#page=274#page=274" title="274 of AG92-06B_multicsCmds_Nov87.pdf" target="_blank" rel="noopener"><span class=cmd>debug</span></a></span>
+   command and debugging requests:
+ </p>
+ <ul class="adjacent">
+     <li> display the source at line 7 of the hello.pl1 program file; and
+     <li> set a breakpoint at the second instruction of line 7 in the hello object segment.
+ </ul>
+
+ <pre>
+
+  <span class="input">debug
+  /hello/&amp;a7,s</span>
+  call ioa_$nnl(" world!^/");
+  <span class="input">,i3</span>
+  LINE NUMBER 7
+      27    777755 2370 04     ldaq      -23,ic      000004 = 040167157162 154144041136
+      30   6 00102 7571 00     staq      pr6|102
+      31    057000 2350 03     lda       57000,du
+  <span class="input">+1&lt;</span>
+  Break   1  set at  hello|30 (line 7)  At instruction:
+      30   6 00102 7571 00     staq      pr6|102
+ </pre>
+</div>
+
+<div class="clear">
+ <div class="image2">
+      <img alt="Breakmap" src="Breakmap_break1.jpg" width="160" height="131">
+ </div>
+
+ <p> Debug sets a breakpoint in object code by saving the instruction at the breakpoint location in a per-user
+     segment called the <span class="term">breakmap</span><sup>1</sup>.
+ </p>
+ <ol class="notes">
+     <li> The debug breakmap segment is stored at: <span class="code">[homedir]>[user name].breaks </span>
+ </ol>
+
+ <p> The <span class="code">.bl</span> request lists all the breakpoints saved in the breakmap for the selected object
+     segment.
+ </p>
+
+ <pre>
+
+  <span class="input">.bl</span>
+  Break   1  set at  hello|30 (line 7)  At instruction:
+      30   6 00102 7571 00     staq      pr6|102
+ </pre>
+</div>
+
+<div class="marg20">
+ <div class="image2">
+      <img alt="Object segment: hello" src="hello_break1.jpg" width="124" height="133">
+ </div>
+
+ <p> After a breakpoint is set, the program location now contains a
+     <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=184#page=184" title="184 of AL39.pdf" target="_blank" rel="noopener">Master Mode Entry 2 <span class=cmd>mme2</span> instruction</a></span>,
+     with an operand set to the break number.
+     When executed, this instruction causes an event that results in signalling the mme2 condition.
+ </p>
+
+ <pre>
+
+  <span class="input">-1,i3</span>
+  LINE NUMBER 7
+      27    777755 2370 04     ldaq      -23,ic      000004 = 040167157162 154144041136
+      30       000001 0040 00  mme2      1
+      31    057000 2350 03     lda       57000,du
+  <span class="input">.q</span>
+  r 07:53 0.149 0
+ </pre>
+</div>
+
+<div class="marg30">
+ <h4>Execution at a Breakpoint</h4>
+
+ <div class="code2">
+  <pre>
+  <span class="input">hello</span>
+  Hello,Break  1  at line 7  of  hello  -  at  367|30
+  </pre>
+  <img alt="Text Width Spacer" src="TextWidthSpacer.jpg">
+ </div>
+
+ <p>  When a breakpoint is set, running the hello program encounters the breakpoint.
+      The <span class="cmd">debug</span> on-unit for the mme2 condition accepts debugging requests.
+ </p>
+</div>
+
+<div class="clear">
+ <div class="code2">
+  <pre style="margin-bottom: 0px;">
+  <span class="input">.t</span>
+
+  DEPTH         NAME                   CONDITION
+
+      0    initialize_process_|704
+      1    listen_|34522
+      2    abbrev_processor|14103
+      3    command_processor_|2101
+      4    hello|30                    mme2
+  </pre>
+  <img alt="Text Width Spacer" src="TextWidthSpacer.jpg">
+ </div>
+
+ <p> A stack trace request shows the hello command being invoked, with execution stopped
+     at <span class="code">hello|30</span> with a mme2 condition.
+ </p>
+</div>
+
+<div class="clear">
+ <div class="code2">
+  <pre style="margin-top: 0px; color: DimGray;">
+      5    return_to_ring_0_|0
+      6    signal_|10017
+      7    sct_manager_$call_handler|11461
+      8    mme2_fault_handler_|3756
+      9    mme2_fault|6622
+     10    db_parse|14311
+  </pre>
+  <img alt="Text Width Spacer" src="TextWidthSpacer.jpg">
+ </div>
+
+ <p> However, the routines that signal the mme2 condition and invoke <span class="cmd">debug</span> also have
+     frames on the stack.  These support routine stack frames are shown in
+     <span style="color: DimGray;">gray</span>
+     here, because they are usually omitted from the debug stack trace.  This focuses user attention on the program that
+     reached a breakpoint.  Later sections of this analysis reveal how these support routines are invoked by
+     execution of the <span class="code">mme2</span> instruction.
+ </p>
+
+</div>
+
+<div class="clear">
+ <div class="code2">
+  <pre>
+  <span class="input">.c</span>
+   world!
+  r 12:11 0.116 1
+  </pre>
+  <img alt="Text Width Spacer" src="TextWidthSpacer.jpg">
+ </div>
+
+ <p> A continue request tells debug to restart program execution; the original instruction at the breakpoint is executed,
+     followed by remaining code in the hello object, which outputs the second part of hello&apos;s output line.  When the
+     program ends, Multics displays a standard ready line.
+ </p>
+ <p> Note that the breakpoint mme2 instruction remains in the object segment until explicitly reset by the user,
+     or until program source is recompiled.  Thus, subsequent program invocations repeat the scenario outlined here.
+</div>
+
+<div class="marg50">
+ <h3>Ring 0: Breakpoint Instruction Generates a Fault</h3>
+
+ <div class="image2">
+      <img alt="Stack 4 Before Breakpoint" src="stack4_before_break.jpg" width="184" height="166">
+ </div>
+ <div class="image2">
+      <img alt="Object segment: hello" src="hello_break1_ic30.jpg" width="124" height="133"><br>
+      <img alt="Breakmap" src="Breakmap_break1.jpg" width="160" height="131">
+ </div>
+
+ <p>
+   To learn how a breakpoint interrupts execution of its containing program, start with the components
+   introduced above.
+ </p>
+ <ul>
+  <li> Object segment for the program, compiled with the -table option, in which a <span class="cmd">debug</span>
+       breakpoint (the <span class="code">mme2</span> instruction) has been set.  The
+       <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=33#page=33" title="33 of AL39.pdf" target="_blank" rel="noopener">Procedure Pointer Register <span class=cmd>PPR</span></a></span>
+       points to the currently-running instruction, which is
+       the breakpoint instruction.  It is shown in <span class="running">bold green</span> text.
+  <li> Stack frame for the running program.  The stack_4 segment begins with a stack_header structure; and
+       grows as frames for new programs are pushed onto the bottom of the stack segment.  Stack Pointer
+       Register <span class="code">pr6</span> points to the frame for the running program.  This running
+       frame may grow or shrink as the program changes its set of variables and temporary storage.  The
+       running frame is highlighted in <span class="running">green</span>.
+  <li> The user&apos;s breakmap segment contains information about breakpoints set in programs, including
+       the instruction originally at each breakpoint location.
+ </ul>
+</div>
+
+<div class="marg30">
+ <h4>Executing a Breakpoint Instruction</h4>
+ <p> When the running program executes the <span class="code">mme2</span> instruction, it causes a MME2 fault
+     event to occur.  The processor suspends execution of the program running in the user ring, and begins a
+     Fault Cycle in ring 0.
+ </p>
+</div>
+
+<div class="marg50">
+ <h4>Fault Cycle</h4>
+ <p> The
+     <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=11#page=11" title="11 of AL39.pdf" target="_blank" rel="noopener">Control Unit</a></span>
+     is the section of the processor that oversees the flow of instruction executions.
+     Two sorts of events can temporarily suspend program execution and redirect the flow to other instructions:
+     <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=9#page=9" title="9 of AL39.pdf" target="_blank" rel="noopener">faults and interrupts</a></span>.
+     When such events occur, the processor begins a
+     <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=320#page=320" title="320 of AL39.pdf" target="_blank" rel="noopener">Fault Cycle</a></span>
+     to redirect instruction execution.  For a MME2 fault at <span class="code">hello|30</span>, or for
+     other faults and interrupts, the Fault Cycle includes the following:
+ </p>
+</div>
+
+<div class="clear">
+ <div class="image2">
+      <img alt="Fault Cycle: step one" src="faultCycle_1.jpg" width="380" height="171">
+ </div>
+
+ <ul class="adjacent">
+  <li class="pad70">
+       Safe-Store
+       <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=71#page=71" title="71 of AL39.pdf" target="_blank" rel="noopener">Control Unit Data</a></span>
+       into program-invisible holding registers.  This records the point of execution at which the fault or
+       interrupt began.  The <span class="code">scu</span> instruction copies data from these holding registers into memory.
+ </ul>
+</div>
+
+<div class="clear">
+ <div class="image2">
+      <img alt="Fault Cycle: remaining steps" src="faultCycle_2.jpg" width="380" height="171">
+ </div>
+
+ <ul>
+   <li> Temporarily enter the addressing mode:
+        <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=10#page=10" title="10 of AL39.pdf" target="_blank" rel="noopener">absolute mode</a></span>,
+        and the instruction mode: privileged mode.
+   <li> Force current ring of execution to ring 0 (Multics kernel).
+   <li> Generate the absolute address of the fault vector entry for the event type that has occurred.
+   <li> Force into the instruction register an Execute Double
+        <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=182#page=182" title="182 of AL39.pdf" target="_blank" rel="noopener"><span class=cmd>xed</span> instruction</a></span>
+        whose operand is this generated address.
+   <li> Execute this instruction.
+ </ul>
+</div>
+
+<div class="marg50">
+ <h4>Fault and Interrupt Vectors</h4>
+
+ <div class="image2">
+      <img alt="Interrupt and Fault Vector Arrays" src="vectorArrays.jpg" width="180" height="274">
+ </div>
+
+ <p> The Fault Cycle references a fault or interrupt vector entry specific to the particular fault or interrupt
+     that has occurred.  Such entries are defined in
+     the Multics fault vector structure<sup>1</sup>, which holds several arrays containing:
+ </p>
+ <ul class="adjacent">
+   <li> interrupt vector entries for 32 interrupt types;
+   <li> fault vector entries for 32 fault types;
+   <li> 32 pointers: the handlers for each type of interrupt;
+   <li> 32 pointers: the control unit storage location used for each interrupt type;
+   <li> 32 pointers: the handlers for each type of fault; and
+   <li> 32 pointers: the control unit storage location used for each fault type.
+ </ul>
+ <ol class="notes">
+   <li> The array of interrupt vector entries always begins at absolute memory address 0.  The architecture allows
+        the array of fault vector entries to begin at any even location elsewhere in the first page of memory.
+   	(Location of fault vector entries is specified in the Fault Vector switches on the
+  	processor configuration panel.)
+	For Multics, the fault entries and other pointer arrays immediately follow the interrupt vector entries, as shown
+   	in <a href="fault_vector.incl.pl1.txt">fault_vector.incl.pl1</a>.
+ </ol>
+</div>
+
+<div class="clear">
+ <p class="pad25">
+   Each interrupt or fault vector entry is a pair of instructions to be invoked by the Execute Double
+   (<span class="code">xed</span>) instruction generated by the Fault Cycle.  For Multics vector entries:
+ </p>
+ <ul class="adjacent">
+   <li> Instruction 1 is a Store Control Unit
+	<span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=204#page=204" title="204 of AL39.pdf" target="_blank" rel="noopener"><span class=cmd>scu</span> instruction</a></span>.
+	Control Unit Data is stored at the address given in
+	the instruction.  For Multics, this address indirects through
+	one of the interrupt or fault scu data pointers stored in the fault vector arrays.  Use of such ITS
+	(Indirect-through-Segment) pointer changes processor execution from absolute mode to
+	<span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=10#page=10" title="10 of AL39.pdf" target="_blank" rel="noopener">append mode</a></span>
+	for the <span class="code">scu</span> instruction, and for subsequent instructions.  Storing indirectly through
+	an in-memory pointer avoids changing any Pointer Register to point to a storage location.  (The pointer registers
+	in use at time of fault have not been saved, as yet.)
+   <li class="pad10"> Instruction 2 is a transfer
+        <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=167#page=167" title="167 of AL39.pdf" target="_blank" rel="noopener"><span class=cmd>tra</span> instruction</a></span>
+        to a fault handler.  The transfer address also indirects
+	through one of the interrupt or fault handler pointers specific to the fault or interrupt type.
+	These interrupt and fault handler pointers are stored in the fault vector arrays.  Again, the transfer avoids
+	changing any Pointer Register to specify the transfer location.
+ </ul>
+</div>
+
+<div class="marg30">
+ <div class="image2">
+      <img alt="Text Width Spacer" src="TextWidthSpacer.jpg" width="471">
+      <img alt="First instruction of MME2 fault vector." src="mme2_scuCopy.jpg" width="471" height="406">
+ </div>
+
+ <h4>Fault Cycle for MME2</h4>
+ <p> When the hello program executes the breakpoint <span class="code">mme2</span> instruction, that instruction starts a
+     MME2 fault cycle.  The MME2 fault has a
+     <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=321#page=321" title="321 of AL39.pdf" target="_blank" rel="noopener">fault number of 21</a></span>.
+     Its fault vector entry is at address 152<sup>1</sup>.  The <span class="code">xed</span>
+     instruction executes the pair of instructions in that fault vector.
+ </p>
+ <ol class="notes">
+   <li> By definition, the
+        <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=184#page=184" title="184 of AL39.pdf" target="_blank" rel="noopener">Master Mode Entry 2 (<span class=code>mme2</span>) instruction</a></span>
+        uses the vector entry located at:
+	<span class="code">FAULT_VECTOR|52</span>.  This is an absolute address in
+	the first page of memory.  The FAULT_VECTOR switches in the processor configuration panel specify an
+	address of 100<sub>8</sub>.  Thus, the MME2 fault vector entry is located at absolute address: 152<sub>8</sub>.
+ </ol>
+ <p> The fault vector entry begins with an <span class="code">scu</span> instruction, which copies the Safe-Stored
+     Control Unit Data to the location given in the scu data ptr for the MME2 fault:
+     <span class="code">pds$signal_data.scu</span><sup>2</sup>.   The Process Data Segment
+     <span class="code">pds</span> is a per-process, ring 0 segment created in the process directory.  Its
+     pages are wired in memory while its owning process is running on the processor.
+ </p>
+ <ol class="notes" start="2">
+   <li> Since the MME2 fault was started by the process running on this processor, it is
+	appropriate to store data about the fault in the process&apos;s <span class="code">pds</span> segment.
+	The <span class="code">signal_data</span> entry is structured as a standard set of machine conditions
+	(<span class="code">mc</span>), as shown in <a href="mc.incl.pl1.txt">mc.incl.pl1</a>.
+	Thus, <span class="code">pds$signal_data.scu</span> is a reference to the <span class="code">mc.scu</span>
+	structure element at the <span class="code">pds$signal_data</span> location.
+ </ol>
+</div>
+
+<div class="clear">
+ <div class="image2">
+      <img alt="Text Width Spacer" src="TextWidthSpacer.jpg" width="471">
+      <img alt="Second instructions of MME2 fault vector." src="mme2_tra.jpg" width="415" height="169">
+ </div>
+
+ <p class="pad50">
+  The <span class="code">xed</span> execution continues with the second instruction of the MME2 fault vector
+  entry, which transfers to the ring 0 handler for this fault.
+  The fault handler ptr for MME2 points to <span class="code">fim$signal_entry</span>, an entrypoint in the
+  Fault Interceptor Module.
+ </p>
+</div>
+
+<div class="marg50">
+ <p> At this point in handling the MME2 fault, only three instructions have been executed:
+ </p>
+ <ol class="adjacent">
+   <li> The <span class="code">xed</span> instruction generated by the processor at the end of the Fault Cycle.
+   <li> The two instructions it executes from the fault vector entry:
+   <ol type="a">
+     <li> The <span class="code">scu</span> instruction to save the safe-stored Control Unit Data in memory.
+     <li> The <span class="code">tra</span> instruction to entry the MME2 fault handler.
+   </ol>
+ </ol>
+ <p> None of these instructions has changed, nor depends upon, any pointer register or register of any kind.
+     All program-visible registers still contain data they held when the fault occurred.
+ </p>
+</div>
+
+<div class="marg30">
+ <h4>Ring 0 Fault Handler: fim$signal_entry</h4>
+
+ <p> The ring 0 Fault Interceptor Module: <a href="fim.alm.txt"><span class="cmd">fim.alm</span></a><sup>1</sup> is a ring 0, kernel
+     segment whose pages are wired in memory.  This prevents taking a page fault while processing another type
+     of fault. 
+     The fim operates in privileged instruction mode, with interrupts inhibited<sup>2</sup> to prevent I/O
+     interrupts and other low-priority faults from interrupting its handling of the fault or interrupt.
+ </p>
+ <ol class="notes">
+   <li> To review the code in <a href="fim.alm.txt"><span class="cmd">fim.alm</span></a>, you will also need the ALM version of the
+        machine conditions structure, <a href="mc.incl.alm.txt">mc.incl.alm</a>.
+   </li>
+   <li> Interrupts and certain low-priority faults are recognized only at specific times during the
+	execution of an instruction pair. If, at these times, bit 28 in the instruction word is set ON, the trap
+	is inhibited and program execution continues. The interrupt or fault signal is saved for future
+	recognition and is reset only when the trap occurs.
+   </li>
+ </ol>
+ <p> The fim defines several fault handler<sup>3</sup> entrypoints.  Most of these provide similar services, but
+     store data for different groups of faults in distinct locations.  The MME2 fault is one of a group of
+     faults that are handled directly in the faulting ring of execution.  The fault event is converted to a
+     condition that is signaled in this faulting ring<sup>4</sup>.
+     The <span class="code">fim$signal_entry</span> handles such faults. 
+ </p>
+ <ol class="notes" start="3">
+   <li> Modules other than fim.alm manage expected kernel faults (e.g., page faults)
+	needing special handling; and unexpected faults (e.g., execute faults) that may stop system operation.
+	No further mention is made of these other fault handlers.
+   <li> Most often, the faulting ring of execution is the user ring.  But it might also be one the of rings
+	between the user ring and ring 0, if code in such ring experiences a fault or interrupt.
+ </ol>
+</div>
+
+ <div class="image2">
+      <img alt="fim$signal_entry saving registers" src="fim_copyRegs.jpg" width="330" height="396">
+ </div>
+<div>
+ <p> The first operation performed by the handler saves register contents as they were at the time of the fault.
+     These are stored in the <span class="code">pds$signal_data</span> (adjacent to the Control Unit Data
+     saved by <span class="code">scu</span> instruction).  The handler begins with a Store Pointer Registers as ITS Pairs
+     <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=175#page=175" title="175 of AL39.pdf" target="_blank" rel="noopener"><span class=cmd>spri</span> instruction</a></span>.
+     It continues with a Store Registers
+     <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=100#page=100" title="100 of AL39.pdf" target="_blank" rel="noopener"><span class=cmd>sreg</span> instruction</a></span>.
+     The handler can now use these registers for its own purposes.<sup>5</sup>
+ </p>
+ <ol class="notes" start="5">
+   <li> <span class="code">fim</span> also saves other information in the machine conditions and elsewhere, not called out specifically
+    	to shorten this analysis.
+ </ol>
+
+ <p> Next, the handler uses the fault number, stored in the Control Unit Data
+     at <span class="code">mc.scu.fi_num</span>, to access an internal array of fault information (at
+     <span class="code">fim</span>&apos;s <span class="code">fault_table:</span> label).  This table:
+ </p>
+ <ul class="adjacent">
+   <li> Identifies the code path to follow within <span class="cmd">fim.alm</span> for the fault.  MME2 faults branch to the
+	<span class="code">call_signaller</span> label.
+   <li> Specifies whether the fault event must appear in the security audit log.  MME2 faults are not audited.
+   <li> Specifies the condition name to use when signalling this event in the outer ring.  MME2 fault is
+	mapped onto the condition name: mme2.
+ </ul>
+
+ <p> The <span class="code">fim$signal_entry</span> call_signaller code path ends fault handling by:
+     storing the condition name at <span class="code">pds$condition_name</span>; and
+     transferring to <span class="code">signaller$signaller</span>, to complete handling of the MME2 fault.
+ </p>
+
+ <p> Notice that <span class="code">fim</span> performs a simple set of operations: reading from static data tables, and storing data in
+     permanent segments.  It does nothing that requires temporary storage, and thereby avoids creating
+     (pushing) a stack frame onto any kernel stack segment.
+ </p>
+</div>
+
+<div class="marg30">
+ <h4>Ring 0 Exit Routine: signaller</h4>
+ <p> The <span class="code">fim</span> handler captured machine conditions at the time of the MME2 fault, and chose a condition name to
+     be signaled when reporting the fault event in the outer ring.  The next step is to actually signal that
+     condition on the stack of the faulting program, which is usually an outer ring stack.
+     The ring 0 <span class="code">signaller.alm</span> segment<sup>1</sup>
+     performs this operation.
+ </p>
+ <ol class="notes">
+   <li> The <a href="signaller.alm.txt"><span class="code">signaller.alm</span></a>
+	source code references include files:
+	<ul>
+	  <li> <a href="signaller_stack.incl.alm.txt"><span class="code">signaller_stack.incl.alm</span></a>:
+	       describes the layout of the stack frame which signaller pushes onto the outer ring stack.
+	  <li> <a href="stack_frame.incl.alm.txt"><span class="code">stack_frame.incl.alm</span></a> and
+	       <a href="stack_frame.incl.pl1.txt"><span class="code">stack_frame.incl.pl1</span></a>:
+	       describes standard information included at the start of every stack frame.
+	  <li> <a href="stack_header.incl.alm.txt"><span class="code">stack_header.incl.alm</span></a>:
+	       describes the standard information placed at the beginning of each stack.  signaller uses
+	       several header items to invoke the outer ring signal mechanism (which can differ for each ring).
+	</ul>
+ </ol>
+
+ <p> <span class="code">signaller</span> is a ring 0 segment that operates in privileged instruction mode,
+     with interrupts inhibited to prevent I/O interrupts and other low-priority faults from interrupting its
+     extended handling of the fault. 
+ </p>
+
+ <p> <span class="code">signaller$signaller</span> performs checks for different user environments when
+     selecting the stack on which to signal the condition.
+ </p>
+ <ul>
+   <li> Did the fault occur in the signaller or restart_fault programs?  If so, terminate the process
+	because the signaller&apos;s code is unexpectedly causing a fault.
+   <li> Was the user program running in
+	<span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=10#page=10" title="10 of AL39.pdf" target="_blank" rel="noopener">BAR mode</a></span>
+	when the fault occurred?  If so, construct a stack frame pointer using stack_header.bar_mode_sp
+	(stack frame which called the program running in BAR mode).  If the BAR mode stack frame is not the
+	last stack frame, then the stack is corrupt; terminate the process.  Otherwise, signal on the stack
+	given in the fault&apos;s machine conditions (<span class="code">mc.prs(6)</span>).
+   <li> Does Control Unit Data show a ring number of the faulting program equal to the ring number in the machine
+	conditions stack pointer?  If not, signal the condition on the stack of the faulting program&apos;s ring number:
+	<span class="code">pds$stacks(program_ring)</span>.  Normally, signal on the stack given in the
+	fault&apos;s machine conditions (<span class="code">mc.prs(6)</span>).
+ </ul>
+ <p> For a MME2 fault caused by a <span class="cmd">debug</span> breakpoint, the selected stack is most
+     likely the stack for the user&apos;s login ring.  That is the ring containing object segments in which
+     breakpoints can be set.
+ </p>
+</div>
+
+<div class="marg30">
+ <h4>Preparing to Call the Outer Ring Signal Mechanism</h4>
+
+ <p> Having decided on which stack to signal the condition, the signaller
+     creates a new stack frame at the end of this stack<sup>1</sup>.
+ </p>
+ <ol class="notes">
+   <li> I mistakenly thought the signaller creating a new frame at the end of an outer ring stack was
+	called a <b>crawlout</b> operation.
+	It differs from a crawlout in several ways.  But its similarity to a crawlout led
+	Bernie Greenberg to christen this ring-0-signalling-in-outer-ring mechanism as a <b>walkout</b> from
+	ring 0.
+ </ol>
+</div>
+
+<div class="clear">
+ <div class="image2">
+      <img alt="signaller pushes frame onto outer ring stack" src="signaller_walkout.jpg" width="387" height="497">
+ </div>
+
+ <p> At this point, signaller is running in ring 0 without a stack frame.  There are no active frames on any stack
+     for this process.  The diagram shows the frame for hello highlighted in
+     <span style="color: orange;">orange</span>, because execution of the program owning that stack frame was
+     suspended by the MME2 fault.
+ </p>
+
+ <p> When signaller creates the new stack frame on the selected stack, it sets the Stack
+     Pointer Register <span class="code">pr6</span> pointing to that frame.  It assigns ownership of the frame
+     to the program entrypoint <span class="code">return_to_ring_0_$return_to_ring_0_</span>.<sup>2,3,4</sup>
+ </p>
+ <ol class="notes" start="2">
+   <li> return_to_ring_0_ is a segment with ring brackets of 0,7,7 (writable in ring 0, but
+	executable in any ring).  That allows it to own a frame on stack_4.
+   <li> <a href="return_to_ring_0_.alm.txt"><span class="code">return_to_ring_0_.alm</span></a> is a small ALM
+	program available for your review.
+   <li> Stack frame ownership is assigned by setting <span class="code">stack_frame.entry_ptr</span>
+	and <span class="code">stack_frame.return_ptr</span> both to the
+	<span class="code">return_to_ring_0_$return_to_ring_0_</span> entrypoint.
+ </ol>
+
+ <p> Signaller then copies machine conditions for the fault into the new stack frame.
+ </p>
+ <ul class="adjacent">
+   <li> Gets one of 116 slots<sup>5</sup> in the <span class="code">pds$mc_save_ptr</span> array.
+   <li> Copies Control Unit and EIS restart data<sup>6</sup> from the fault machine conditions
+	in <span class="code">pds$signal_data</span> to this save slot.  Stores a unique SCU index value
+	in the saved Control Unit data.
+   <li> Copies the entire fault machine conditions from <span class="code">pds$signal_data</span> into the
+	new stack frame.  Stores the same unique SCU index value into <span class="code">mc.fim_temp</span><sup>7</sup>.
+ </ul>
+ <ol class="notes" start=5>
+   <li> The number of <span class="code">pds$mc_save_ptr</span> slots is limited to
+	116, because the <span class="code">pds</span> structure plus 116 slots just fills
+	the smallest segment size (4K words of storage).
+   <li> EIS (Extended Instruction Set) restart data includes internal pointer and length values used
+	within the Control Unit when executing an EIS instruction.  This data is needed to restart an EIS
+	instruction (such as copy of a long character string) faulting in the middle of instruction
+	execution.  (For example, it records how many characters have been copied so far, with pointers to
+	the uncopied data locations.)
+   <li> If the machine conditions are restarted, the SCU index value allows comparison of the saved
+	Control Unit data with the machine conditions being restarted from the outer ring.  (More
+	on this later.)  Signaller also adds a cleanup on-unit to the new stack frame.  This
+	on-unit, at <span class="code">restart_fault|1</span>, frees the machine condition
+	slot in the <span class="code">pds$mc_save_ptr</span> array
+	if <span class="code">return_to_ring_0_</span>&apos;s stack frame is released (rather than
+	being returned to).
+ </ol>
+
+ <p> Signaller also copies the name of the condition to be signaled from
+     <span class="code">pds$condition_name</span> into the new stack frame.
+ </p>
+
+ <p> Signaller constructs an argument list to pass the saved information to the outer ring signal
+     mechanism.  The call is of the form:
+ </p>
+ <pre class="code">
+
+       call signal_( condition_name, mc_ptr, null, null );
+ </pre>
+
+ <p> Signaller loads a pointer to this argument list into the Argument List
+     Pointer Register <span class="code">pr0</span>.  Signaller loads a pointer to the outer ring signal
+     program from the outer ring stack header <span class="code">stack_header.signal_ptr</span>
+     into <span class="code">pr3</span>.
+ </p>
+
+ <p> Finally, signaller constructs an outer-ring pointer to the external label:
+     <span class="code">return_to_ring_0_$return_to_ring_n_</span>.
+     Then it &quot;returns&quot; through this pointer, using a Return Control Double
+     <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=163#page=163" title="163 of AL39.pdf" target="_blank" rel="noopener"><span class=cmd>rtcd</span> instruction</a></span>.
+ </p>
+</div>
+
+<div class="marg50">
+ <h3>User Ring: Breakpoint as a Condition</h3>
+
+ <p> Returning to the original ring of execution, a mme2 condition is signaled to indicate that execution
+     has reached the program breakpoint.
+ </p>
+</div>
+
+<div class="marg30">
+ <a id="return_to_ring_n_">
+ <h4>Support Routine: return_to_ring_0_ - return_to_ring_n_ Label</h4></a>
+ <div class="image2">
+      <img alt="Stack for return_to_ring_0_" src="stack_for_return_to_ring_0_.jpg" width="184" height="191">
+ </div>
+
+ <p> Code in <span class="code">return_to_ring_0_</span><sup>1</sup> is now running in the outer ring.
+     The current Stack Frame Pointer (<span class="code">pr6</span>) points to its stack frame, just created by signaller.
+     Therefore, that stack frame is shown in <span style="color: green;">green</span>.
+ </p>
+ <ol class="notes" start="2">
+   <li> <a href="return_to_ring_0_.alm.txt"><span class="code">return_to_ring_0_.alm</span></a> is a small ALM
+	program available for your review.
+ </ol>
+
+ <p> Interrupts and low priority faults are no longer inhibited.  So any pending interrupts or faults (e.g.,
+     ring alarm faults) that arose while running in ring 0 code can now occur.
+ </p>
+
+ <p> Code at the <span class="code">return_to_ring_n_</span> label consists of
+     only four instructions:
+ </p>
+ <pre class="code">
+
+     nop
+     nop
+     nop
+     callsp bb|0
+ </pre>
+
+ <p> The three <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=186#page=186" title="186 of AL39.pdf" target="_blank" rel="noopener"><span class=cmd>nop</span> instructions</a></span>
+     give the processor an opportunity to process any pending
+     interrupts or low-priority faults delayed while running in ring 0 with interrupts inhibited.
+ </p>
+
+ <p> Officially, the <span class="code">callsp</span> instruction is known as a
+     <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=162#page=162" title="162 of AL39.pdf" target="_blank" rel="noopener"><span class=cmd>call6</span> instruction</a></span>.
+     Its operand <span class="code">bb|0</span> is an ALM
+     synonym for <span class="code">pr3|0</span>, which contains the outer ring signal_ptr
+     value.  <span class="code">call6</span> references <span class="code">pr6</span>, which correctly
+     points to the <span class="code">return_to_ring_0_</span> stack frame.  And signaller loaded the
+     Argument List Pointer Register (<span class="code">pr0</span>) for this call with the address of the
+     arg_list constructed in this stack frame (shown in the diagram above).
+ </p>
+
+ <p> This call invokes the outer ring signal mechanism.
+ </p>
+</div>
+
+<div class="marg30">
+ <h4>Support Routine: signal_</h4>
+
+ <div class="image2">
+      <img alt="Stack 4 invoking signal_" src="stack4_signal_.jpg" width="271" height="214">
+ </div>
+
+ <p> In the user ring, <span class="code">stack_header.signal_ptr</span> points to
+     the <span class="code">signal_</span><sup>1</sup> program.  This program supports two kinds of condition
+     handlers.  The normal handler is an on-unit attached to the stack frame of a running program.  This
+     on-unit is active only while the stack frame appears on the stack.
+ </p>
+ <ol class="notes">
+   <li> The <a href="signal_.pl1.txt"><span class="code">signal_.pl1</span></a> program source is available
+	for review.  Only the first 23 lines following the <span class="code">ARG(0):</span> label are
+	pertinent to this analysis.  They show invocation of the <span class="code">sct_manager_$call_handler.</span>
+ </ol>
+
+ <p> However, <span class="cmd">debug</span> must implement breakpoints set in a program when debug is no
+     longer running.  For example, breakpoints set in a program should be handled if some program failure
+     triggers creation of a new process.  The user reinvokes the program being debugged from a command,
+     without restarting <span class="cmd">debug</span>.
+ </p>
+
+ <p> For such cases, <span class="code">signal_</span> supports a less-used type of condition handler called
+     a <b>static handler</b>.
+     Before searching for a normal condition on-unit, <span class="code">signal_</span>
+     calls <span class="code">sct_manager_$call_handler</span>, asking it to invoke any static handler for the
+     condition being signaled.  It passes the following information:
+ </p>
+ <pre class="code">
+
+       call sct_manager_$call_handler( mc_ptr, condition_name, ..., continue);
+ </pre>
+
+ <p>
+     If <span class="code">sct_manager_$call_handler</span> can handle the condition, it sets continue=&quot;0&quot;b
+     to stop further signalling.
+ </p>
+</div>
+
+<div class="marg50">
+ <div class="image2">
+      <img alt="Stack 4 invoking System Condition Table Manager" src="stack4_sct_manager_.jpg" width="304" height="356">
+ </div>
+
+ <h4>Support Routine: sct_manager_</h4>
+ <p> The <span class="code">sct_manager_</span><sup>1</sup> looks in the <b>System Condition Table (SCT)</b>
+     for static handlers.  The SCT for a ring is located just after the
+     declared <span class="code">stack_header</span> structure in the Stack Header region (first page) of the
+     stack segment.  The <span class="code">stack_header.sct_ptr</span> points to the SCT.
+ </p>
+ <ol class="notes">
+   <li> The <a href="sct_manager_.pl1.txt"><span class="code">sct_manager_.pl1</span></a> is available for
+	review.  It matches <span class="code">mc.fcode</span> values against SCT index constants defined
+	in <a href="static_handlers.incl.pl1.txt"><span class="code">static_handlers.incl.pl1</span></a>.
+ </ol>
+
+ <p> For each possible value of <span class="code">mc.fcode</span> (the machine conditions fault
+     code), a handler slot is reserved in the SCT.  For MME2, the fault code is 21.
+     <span class="code">sct_handler(21)</span> points
+     to <span class="code">process_overseer_$mme2_fault_handler_</span>.  This entry was added to the SCT by
+     <span class="code">initialize_process_</span> when the process was created.
+ </p>
+
+ <p> <span class="code">sct_manager_</span> calls the static handler, with all of its arguments.  It permits
+     the handler to decide how to set the continue argument.<sup>2</sup>
+ </p>
+ <ol class="notes" start="2">
+   <li> If no static handler is found for a given fault code, then <span class="code">sct_manager_</span>
+	sets the continue flag to &quot;1&quot;b, and returns to let <span class="code">signal_</span> continue
+	searching for an on-unit.
+ </ol>
+</div>
+
+<div class="marg50">
+ <h3>Handler for the Breakpoint</h3>
+
+ <p> The <span class="cmd">debug</span> break handling entrypoint is invoked to accept debugging requests.</p>
+</div>
+
+<div class="marg30">
+ <h4>Support Routine: debug$mme2_fault</h4>
+
+ <div class="image2">
+      <img alt="Breakmap" src="Breakmap_break1.jpg" width="160" height="131" class="in20"><br>
+      <img alt="Object segment: hello" src="hello_break1_ic30.jpg" width="124" height="133" class="in50">
+ </div>
+ <div class="image2">
+      <img alt="Stack 4 invoking mme2 Handler" src="stack4_debug_mme2.jpg" width="271" height="287">
+ </div>
+
+ <p> <span class="code">process_overseer_$mme2_fault_handler_</span> is a proxy handler that actually calls the
+     <span class="code">debug$mme2_fault</span> static handler.  It passes all incoming arguments to the debug
+     handler.
+ </p>
+
+ <p> <span class="code">debug$mme2_fault</span><sup>1</sup> is called with a pointer to the machine conditions
+     captured for the MME2 fault.  These are the machine conditions placed in
+     the <span class="code">return_to_ring_0_</span> stack frame
+     by <span class="code">signaller</span>.  <span class="cmd">debug</span> uses them to locate the
+     breakpoint that executed the <span class="code">mme2</span> instruction, and to find that breakpoint
+     entry in the breakmap.
+ </p>
+ <ol class="notes">
+   <li> Source for the <span class="code">debug$mme2_fault</span> entrypoint may be reviewed in
+	<a href="debug.pl1.txt"><span class="code">debug.pl1</span></a>, starting at
+	the <span class="code">mme2_fault:</span> entrypoint label.
+ </ol>
+
+ <p> It calls <span class="code">db_parse</span><sup>2</sup> to parse incoming debug request lines from the user:
+     requests to trace the stack, set or reset breakpoints, continue execution after a breakpoint is hit, etc.
+     For a <span class="code">.c</span> request, it calls <span class="code">db_break$restart</span> to
+     continue execution from the point at which it was suspended by the current breakpoint.
+ </p>
+ <ol class="notes" start="2">
+   <li> Operations of <span class="code">db_parse</span> are not pertinent to this analysis, so source
+	for this module has not been provided for review.
+ </ol>
+</div>
+
+<div class="marg30">
+ <h4>Restarting Execution at the Breakpoint</h4>
+
+ <p> <span class="code">db_break$restart</span><sup>1</sup> handles restarting of execution when continuing
+     from a <span class="cmd">debug</span> breakpoint.
+ </p>
+ <ol class="notes">
+   <li> Source for the <span class="code">db_break$restart</span> entrypoint is available for review in
+	<a href="db_break.pl1.txt"><span class="code">db_break.pl1</span></a>, at
+	the <span class="code">restart:</span> label.
+	<ul>
+ 	  <li> <span class="code">db_break.pl1</span> makes extensive references to the machine conditions
+	       and Control Unit Data in <a href="mc.incl.pl1.txt"><span class="code">mc.incl.pl1</span></a>.
+	</ul>
+ </ol>
+</div>
+
+<div class="clear">
+ <div class="image2">
+      <img alt="Executing Original Instruction from Breakpoint" src="stack4_db_break.jpg" width="488" height="415">
+ </div>
+
+ <p> When continuing from a regular breakpoint that is still set, <span class="code">db_break$restart</span>
+     wants to continue from the breakpoint by executing:
+ </p>
+ <ul class="adjacent">
+   <li> the original instruction at the breakpoint; followed by
+   <li> subsequent instructions in the <span class="code">hello</span> object segment.
+ </ul>
+
+ <p> But the <span class="code">mme2</span> instruction still remains at that breakpoint location in the object segment,
+     ready to break during a future execution of this <span class="code">hello</span> code path.
+ </p>
+
+ <p> To execute the instruction originally at the breakpoint, <span class="code">db_break$restart</span>
+     replaces the <span class="code">mme2</span> instruction at <span class="code">mc.scu.even_inst</span>
+     with the original instruction from the breakmap entry.<sup>2,3,4</sup>
+ </p>
+ <ol class="notes" start="2">
+   <li> <span class="code">debug$mme2_fault</span> was called with an
+	mc_ptr argument, pointing to the <span class="code">mc</span> structure placed in
+	<span class="code">return_to_ring_0_</span>&apos;s stack frame.  This
+     	mc_ptr was passed as an argument to <span class="code">db_break$restart</span>.
+   <li> If a breakpoint has just been set at the location immediately following the current breakpoint,
+        then a <span class="code">mme2</span> for this new breakpoint must be placed in <span class="code">scu.odd_inst</span>.
+     	The Control Unit fetches a pair of instruction words at a time.  Without this extra step, the original
+     	instruction (rather than the just-set breakpoint) would appear in the saved machine conditions.
+   <li> <span class="code">db_break$restart</span> also zeros three fields in Control Unit Data, for reasons
+	not documented in the code.
+	<ul>
+	  <li> <span class="code">scu.apu.xsf</span>;
+	  <li> <span class="code">scu.word3</span> (the entire word); and
+	  <li> <span class="code">scu.cu.its</span>.
+	</ul>
+	Two of these changes are in Control Unit words which restart_fault
+	says may not be changed.  Thus, this zeroing no longer appears to have any impact.  And yet the
+	execution is restarted successfully at the faulting location.
+ </ol>
+
+ <p> <span class="code">db_break$restart</span> then returns to the <span class="code">restart_fault:</span>
+     action in <span class="code">debug$mme2_fault</span>.
+ </p>
+</div>
+
+<div class="marg30">
+ <div class="image2">
+      <img alt="Stack running signal_." src="stack4_signal_.jpg" width="271" height="214">
+ </div>
+
+ <h4>After Debug Handles the Breakpoint</h4>
+
+ <p> Upon return from <span class="code">db_break$restart</span>,
+     the <span class="code">debug$mme2_fault</span> static handler returns to its caller, the proxy static
+     handler.
+ </p>
+ <p> The proxy handler, <span class="code">process_overseer_$mme2_fault_handler_</span>, sets
+     its <span class="code">continue</span> parameter to &quot;0&quot;b, telling <span class="code">signal_</span> the
+     mme2 condition has been handled.  It then returns to its caller.
+ </p>
+ <p> The <span class="code">sct_manager_$call_handler</span> that invoked the static handler now returns to
+     its caller.
+ </p>
+ <p> <span class="code">signal_</span>, seeing <span class="code">continue</span>=&quot;0&quot;b,
+     returns to its caller.
+ </p>
+</div>
+
+<div class="marg50">
+ <div class="image2">
+      <img alt="Stack 4 running return_to_ring_0_" src="stack4_return_to_ring_0_.jpg" width="271" height="278">
+ </div>
+
+ <h4>Support Routine: return_to_ring_0_ - Primary Entrypoint</h4>
+ <p> In <a href="#return_to_ring_n_" target="_self"><i>Support Routine: return_to_ring_0_ - return_to_ring_n_ Label</i></a>
+     (see above), <span class="code">signaller</span> exited ring 0 by doing a <span class="code">rtcd</span>
+     instruction to the <span class="code">return_to_ring_0_$return_to_ring_n_</span><sup>1</sup> label.
+     Code at that external label called the outer ring <span class="code">signal_</span> program.
+ </p>
+ <ol class="notes">
+   <li> <a href="return_to_ring_0_.alm.txt"><span class="code">return_to_ring_0_.alm</span></a> is a small ALM
+	program available for your review.
+ </ol>
+
+ <p> But signaller set the owner of the stack frame to the primary entrypoint:
+     <span class="code">return_to_ring_0_$return_to_ring_0_</span>.
+     It also set the <span class="code">stack_frame.return_ptr</span> to this same code location.
+     Thus, when <span class="code">signal_</span> returns, the return operator transfers to this code.
+
+ <p> Primary entrypoint code is:
+ </p>
+ <pre class="code">
+
+  return_to_ring_0_:
+	  callsp	restart_fault_ptr,&ast;	call into ring zero
+
+	  even
+  restart_fault_ptr:
+	  its	75|0
+ </pre>
+
+ <p> <span class="code">restart_fault_ptr</span><sup>2</sup> points to
+     the <span class="code">restart_fault|0</span> entrypoint in segment 75<sub>8</sub>.
+ </p>
+ <ol class="notes" start="2">
+   <li> Source for <span class="code">return_to_ring_0_.alm</span>
+	shows <span class="code">restart_fault_ptr</span>: as the label of an ITS pointer defined in the
+	text section of program, initialized to a null pointer value (<span class="code">-1|1</span>).
+	However, <span class="code">initialize_faults</span> sets this pointer
+	to <span class="code">addr(restart_fault$)</span> (the PL/I equivalent
+	of <span class="code">restart_fault|0</span>) when the kernel is loaded during system
+     	initialization.  Since the loaded kernel segments are part of every process, all processes use
+     	the <span class="code">restart_fault|0</span> value.
+ </ol>
+</div>
+
+<div class="marg50">
+ <h3>Return to Ring 0</h3>
+
+ <p> The kernel must validate the machine conditions to be restarted.  If acceptable, it restarts execution
+     based upon the registers and instructions in those machine conditions.
+</div>
+
+<div class="marg30">
+ <h4>Ring 0 Entrance Routine: restart_fault</h4>
+
+ <p> <span class="code">restart_fault</span><sup>1</sup> is a gate into ring 0,<sup>2</sup> with ring brackets: 0,0,7.
+     Like all gate segments, the first section of code is a transfer vector with an entry for each of the
+     permitted gate entrypoints.
+     The two entrypoints are:
+ </p>
+ <pre class="code">
+
+  000000  tra restart_entry
+  000001  tra cleanup_entry
+ </pre>
+ <ol class="notes">
+   <li> Source for <span class="code">restart_fault</span> is available for review
+	in <a href="restart_fault.alm.txt"><span class="code">restart_fault.alm</span></a>.  Also needed
+	are:
+	<ul>
+ 	  <li> <a href="mc.incl.alm.txt">mc.incl.alm</a>: the ALM version of the machine conditions structure.
+	  <li> <a href="mc.incl.pl1.txt">mc.incl.pl1</a>: the PL/I version of the machine conditions structure.
+	</ul>
+   <li> While <span class="code">restart_fault</span> code is structured like a gate, and stored in a
+	hardcore segment with gate ring brackets, it differs from normal gates (such
+	as <span class="code">hcs_</span>) in one important
+	aspect.  <span class="code">restart_fault</span> has no entry in the file system.  It is part of
+	the Multics kernel, loaded by system initialization, and activated as a segment in every process.
+	Since it has no file system entry, it cannot be called symbolically from a source program; without
+	a file system entry, there is no way to snap (convert) the symbolic entrypoint name referenced in a
+	program to an entry variable.
+ </ol>
+
+ <p> <span class="code">restart_fault</span> operates with interrupts inhibited to prevent I/O
+     interrupts and other low-priority faults from interrupting its restarting of faulting code.
+ </p>
+
+ <p> <span class="code">restart_fault</span> is co-framer (along with signaller) of storage
+     in <span class="code">return_to_ring_0_</span>&apos;s stack frame.  It knows
+     the layout of the automatic variables in that stack frame; in particular, it uses the machine conditions
+     (<span class="code">mc</span>) structure located in this stack frame.  And while signaller creates the
+     stack frame, restart_fault removes it if the fault is restarted.<sup>3</sup>
+ </p>
+ <ol class="notes" start="3">
+   <li> If the faulting program is aborted using the <span class="cmd">release</span> command, then the
+	stack unwinder program removes the <span class="code">return_to_ring_0_</span> frame from the
+	stack, after invoking its associated cleanup on-unit.  Earlier, it was noted that signaller defined
+	this on-unit as <span class="code">restart_fault|1</span>, which invokes the cleanup_entry in this
+	gate.
+ </ol>
+</div>
+
+<div class="marg30">
+ <h4>Validating User Ring Control Unit Data</h4>
+
+ <div class="image2">
+      <img alt="restart_fault|0: Validating CU Data" src="restart_fault.jpg" width="386" height="411">
+ </div>
+
+ <p> <span class="cmd">restart_fault</span>&apos;s restart_entry code
+     prepares for a possible restart as follows:
+ </p>
+ <ul class="adjacent">
+   <li> Copy the machine conditions from the <span class="code">return_to_ring_0_</span> stack frame
+	to <span class="code">pds$signal_data</span>.  This storage is protected in ring 0, and wired in
+	memory to avoid page faults while restarting from the fault.
+	<ul>
+	  <li> The Pointer Registers are copied individually, to ensure that Addressing Unit pointer
+	       segment and ring number validation gets applied when copying the pointers between rings.
+	</ul>
+   <li> Find the machine conditions in <span class="code">pds$mc_save_area</span> matching the unique SCU
+	index from the copied machine conditions.
+   <li> Compare the <span class="code">mc.scu</span> data copied from the outer ring with data saved by
+	<span class="code">signaller</span> at the time of the fault.
+ </ul>
+
+ <p> The outer ring can make changes to the
+     <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=71#page=71" title="71 of AL39.pdf" target="_blank" rel="noopener">Control Unit Data</a></span>
+     to correct the cause of the fault, and request ring 0 to then restart using this corrected instruction
+     data.  <span class="code">restart_fault</span> must ensure these changes:
+ </p>
+ <ul>
+   <li> Request restart for fault conditions that are possible to restart.  (Some fault conditions are not restartable.)
+   <li> Do not change from the original ring of execution, or segment containing the faulting execution point.
+	The location within the executing segment (<span class="code">mc.scu.ic</span>, the Instruction
+	Counter field of Control Unit Data, word 4) may change.
+   <li> Do not change the segment or ring number of any address referenced in the Temporary Pointer
+	Register (<span class="code">tpr</span>).  The offset value in this register
+	(<span class="code">mc.scu.ca</span>, the Computed Address field of the Control Unit Data, word 5)
+	may change.
+ </ul>
+
+ <p> Therefore, <span class="code">restart_fault</span> imposes the following restrictions on the Control Unit
+     Data to be restarted.
+ </p>
+ <ul>
+   <li> Is the copied Control Unit Data exactly equal to the saved data?
+	<ul>
+ 	  <li> They may be totally equal unless the mid-instruction fault (MIF) flag is on, and the fault is an
+	       Illegal Procedure (IPR) fault.
+	</ul>
+	(For MME2 fault, <span class="cmd">debug</span> has changed some of the data.)
+   <li> If the two Control Unit Data images differ:
+	<ul>
+	  <li> Is this a restartable mid-instruction fault?
+	       <ul>
+	         <li> <span class="code">scu.ir.mif</span> (mid-instruction fault) must be &quot;0&quot;b; or
+	         <li> both <span class="code">scu.cu.IF</span> (fault occurred during instruction fetch)
+	 	      and <span class="code">scu.cu.RFI</span> (refetch instruction) must be &quot;1&quot;b.
+	       </ul>
+	      (For MME2 fault, all of these flags = &quot;0&quot;b.)
+	  <li> Is this a non-recoverable fault?
+	       <ul>
+	          <li> Verify that <span class="code">scu.if.parm</span> (parity mode) is &quot;0&quot;b.
+	          <li> Verify that <span class="code">scu.if.abs</span> (running in absolute mode) is &quot;0&quot;b.
+	       </ul>
+	       (For MME2 fault, these flags are both clear.)
+ 	  <li> Is this an attempt to change the ring or segment of execution?
+	       <ul>
+	         <li> Verify there are no changes in the words 0-3 of Control Unit Data.  (Words 4-7 may differ.)
+	       </ul>
+	       (For MME2 fault, there are none.  <span class="cmd">debug</span> changes were made in words
+	       6 and 7.)
+	</ul>
+	The process is terminated if any of these tests fail.
+ </ul>
+</div>
+
+<div class="marg30">
+ <h4>Restarting the Verified Machine Conditions</h4>
+
+ <p> After verification, <span class="code">restart_fault</span> continues:
+ </p>
+ <ul>
+   <li> If an overflow fault occurred, clear the affected <span class="code">mc.scu.indicators</span>, in
+	case the restart encounters another overflow situation.
+   <li> Copy the EIS restart data saved from the fault
+	into <span class="code">pds$signal_data.eis_info</span>.  The user ring may not change this data.
+   <li> Pop (remove) the <span class="code">return_to_ring_0_</span> stack frame from the outer ring stack.
+ </ul>
+</div>
+
+<div class="clear">
+ <div class="image2">
+      <img alt="restart_fault restores registers" src="restart_fault_restoreRegs.jpg" width="384" height="399">
+ </div>
+
+ <p class="pad70"> It uses information in the copied machine conditions to restart execution where the fault occurred.  This
+     begins with restoring registers, in reverse order of usefulness (because restart_fault is using pointer
+     registers to access the machine conditions).
+ </p>
+
+ <p> So index registers, A, Q, etc. are restored first, using an
+     <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=99#page=99" title="99 of AL39.pdf" target="_blank" rel="noopener"><span class=cmd>lreg</span> instruction</a></span>.
+     Then pointer registers are restored, using an
+     <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=173#page=173" title="173 of AL39.pdf" target="_blank" rel="noopener"><span class=cmd>lpri</span> instruction</a></span>.
+ </p>
+</div>
+
+<div class="marg50" style="padding-top: 40px;">
+ <div class="image2" style="padding-top: 20px;">
+      <img alt="restart_fault restores Control Unit" src="restart_fault_rcu.jpg" width="384" height="365">
+ </div>
+
+ <p> Execute a Restore Control Unit
+     <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=202#page=202" title="202 of AL39.pdf" target="_blank" rel="noopener"><span class=cmd>rcu</span> instruction</a></span>
+     to load the verified, possibly modified Control
+     Unit Data from <span class="code">mc.scu</span> to the processor Control Unit internal
+     registers.  This restarts execution of the faulting program in its original ring of execution.
+ </p>
+
+ <p> It is important to note that the <span class="code">rcu</span> instruction, may only be used when running
+     in <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AL39.pdf#page=9#page=9" title="9 of AL39.pdf" target="_blank" rel="noopener">privileged mode</a></span>.
+     Attempting to restore damaged or malicious Control Unit Data could:
+ </p>
+ <ul class="adjacent">
+   <li> Change addressing and privilege modes of operation.
+   <li> Cause the CPU to stop all processing (hang or lockup).
+   <li> Transfer to arbitrary locations in arbitrary rings of execution.
+   <li> Read or store data at any location in memory.
+ </ul>
+ <p> Therefore, its use is restricted to the ring 0 kernel software.
+ </p>
+
+ <p> <span class="cmd">debug</span> does modify the machine conditions to run the original instruction at the
+     breakpoint, which it copied from the breakmap into <span class="code">mc.scu.even_inst</span>.
+ </p>
+
+ <p> When the machine conditions are restarted, the <span class="code">hello</span> program continues
+     execution with the original instruction that was at the breakpoint, followed by the remaining
+     instructions in the program.<sup>1</sup>
+ </p>
+
+ <ol class="notes">
+   <li>
+     <p> Note that the Control Unit reads instructions from memory 2-words at a time, starting with an even
+     	 location.  Since most instructions fill one word, this means two instructions may be present in the
+     	 Control Unit Data.  The breakpoint examined here was at an even location.  So
+     	 the <span class="code">mme2</span> instruction and the <span class="code">lda</span> that followed it
+     	 were in the Control Unit when the fault occurred.
+     </p>
+
+     <p> When restarting from the machine conditions altered by <span class="cmd">debug</span>, debug replaced
+	 the <span class="code">mme2</span> instruction causing the fault with the
+	 original <span class="code">staq</span> instruction in the <span class="code">mc.scu.even_inst</span>.
+	 It left the <span class="code">lda</span> untouched in <span class="code">mc.scu.odd_inst</span>.  Thus,
+	 execution continued with: the two instructions loaded from machine conditions into the Control Unit;
+	 followed by remaining instructions starting at <span class="code">hello|32</span>.
+     </p>
+ </ol>
+</div>
+
+<div class="marg50">
+ <div class="image2">
+      <img alt="Stack 4 Before Breakpoint" src="stack4_before_break.jpg" width="184" height="166">
+ </div>
+ <div class="image2">
+      <img alt="Object segment: hello" src="hello_break1_ic31.jpg" width="124" height="133"><br>
+      <img alt="Breakmap" src="Breakmap_break1.jpg" width="160" height="131">
+ </div>
+
+ <h3>User Ring: Program Continues Execution</h3>
+
+ <p> As the <span class="code">hello</span> program continues execution, note that the breakpoint remains set
+     in the object segment.  The next traversal of this code path will also stop at the breakpoint.
+ </p>
+
+ <p> The breakpoint remains in the object segment until:
+   it is reset via the <span class="code">debug .br</span> request;
+   or until the source is recompiled.
+ </p>
+</div>
+
+<div class="marg70">
+ <p class="pad30">&nbsp;</p>
+ <p class="dochist">
+  Original 08 Feb 2017 GCD
+ </p>
+</div>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+	      <nav id="footer-nav" aria-label="Footer">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+              </nav>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

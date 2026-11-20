@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : New warn software.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  MULTICS TECHNICAL BULLETIN                              MTB747-05
+
+  To:       MTB Distribution
+
+  From:     Edward C. Brunelle
+
+  Date:     May 7, 1987
+
+  Subject:  New warn software
+
+                 -----------------------------------
+
+  This MTB describes  a set of proposed Answering  Service and user
+  changes to improve the operation  of blast messages (the operator
+  "warn" command) and the bump-for-inactivity feature of Multics.
+
+  These  changes are required  because of interference  between the
+  current warn facility and the video  system and the fact that the
+  current warn facility does not work with DSA connections.
+
+  The  warn  facility  changes,  in  turn,  makes  it  necessary to
+  consider   changes  to  the   Answering  Service  to   allow  the
+  bump-for-inactivity feature that logs users out for inactivity to
+  continue unaffected.
+
+  Revision 4 is a major change and  there are no change bars All of
+  the proposed inactivity mechanism  documentation has been removed
+  since it is no longer required.
+
+  Revision 5 is for the change  in philosophy for the output of the |
+  warning  message  to  the  user.   Instead  of  trying to use the |
+  message_facility to  output the message, the  system message will |
+  always be displayed directly on the user_i/o switch.
+                                                                    |
+                 -----------------------------------                |
+                                                                    |
+  Comments should be sent to the author:                            |
+                                                                    |
+  via Multics Forum:                                                |
+     &gt;udd&gt;dsa&gt;meetings&gt;dsaimp.forum                                 |
+  via Multics Mail:                                                 |
+     Brunelle -at System-M                                          |
+                                                                    |
+  via Telephone:                                                    |
+     (HVN) 862-3595, or (602) 862-3595                              |
+
+  _________________________________________________________________
+
+  Multics project  internal documentation; not to  be reproduced or
+  distributed outside the Multics project without permission of the
+  Director of MDC.
+
+
+  MTB747-05                 New warn software &amp; inactivity handling
+
+|
+|
+|
+|
+|
+|
+|
+|                              CONTENTS
+|
+|
+|                                                          Page
+|
+|    1:  Introduction  . . . . . . . . . . . . . . . . . . . . .   1
+|    2:  Blast Mechanism . . . . . . . . . . . . . . . . . . . .   2
+|    2.1:  Current blast mechanism . . . . . . . . . . . . . . .   2
+|    2.2:  Proposed blast mechanism  . . . . . . . . . . . . . .   2
+|    2.2.1:  Sending the message . . . . . . . . . . . . . . . .   2
+|    2.2.2:  Receiving the message . . . . . . . . . . . . . . .   3
+     2.3:  The EOP Problem . . . . . . . . . . . . . . . . . . .   4
+     3:  Inactivity problem  . . . . . . . . . . . . . . . . . .   5
+     3.1:  Current inactivity mechanism  . . . . . . . . . . . .   5
+     3.2:  Problems with this mechanism  . . . . . . . . . . . .   5
+     3.3:  Problem resolution  . . . . . . . . . . . . . . . . .   6
+     3.4:  New inactivity event message  . . . . . . . . . . . .   6
+     Appendix A:  Documentation  . . . . . . . . . . . . . . . .   8
+        send_system_message_ . . . . . . . . . . . . . . . . . .   9
+        system_message_handler_  . . . . . . . . . . . . . . . .  12
+
+
+  New warn software &amp; inactivity handling                 MTB747-05
+
+  1:  INTRODUCTION
+
+  The chain of reasoning that led to this proposal is as follows:
+
+  1.   Blast messages currently do not work properly with the video
+       system.  They  write output directly to  the user's terminal
+       I/O channel without regard for its current state.  They also
+       do  not   work  over  Multics  Network   Architecture  (MNA)
+       channels.  Compatibility with video  system and MNA requires
+       cooperation on the part of the recipient's process.
+
+  2.   The bump-for-inactivity warning on  the user's terminal is a
+       form of  blast message.  If the  user's process participates
+       in receiving and printing the message, the act of responding
+       to an inactivity warning will in itself cause the process to
+       be  active once  again and  the bump  will automatically  be
+       cancelled.
+
+  This MTB describes
+
+  o    a new  mechanism for blast  messages, one that  operates for
+       DSA channels and with the video system,
+
+  o    and a  new mechanism for inactivity  timeouts that continues
+       the  current  practice  of  using  the  Answering  Service's
+       evaluation  of whether  a process  is active  yet allows the
+       Answering  Service   to  get  around  the   problem  of  the
+       inactivity  blast  message  response  altering  the activity
+       state of the process.
+
+
+  MTB747-05                 New warn software &amp; inactivity handling
+
+  2:  BLAST MECHANISM
+
+  The  blast mechanism is  a means in  which the Answering  Service
+  sends  a message  to one  or  more  users on  the system.   These
+  messages  may be  operator  initiated  (generated by  the "blast"
+  command),  or  system  initiated  (generated  by  the  inactivity
+  mechanism).
+
+  2.1:  Current blast mechanism
+
+  Currently, the Answering Service  gets the recipient's channel id
+  from  the User  Table Entry  (UTE) in  one of  its system  tables
+  (answer_table,  absentee_user_table   or  daemon_user_table)  and
+  writes  output directly on  that channel via  hcs_$tty_force.  As
+  mentioned above, there are two problems associated with this:
+
+  o    It destroys the user's terminal display.
+
+  o    For a  user logged in through MNA  (specifically DSA), there
+       is no physical channel to  use for the hcs_$tty_force.  Thus
+       the user would get none of these messages.
+
+  2.2:  Proposed blast mechanism
+
+  The proposed method instead sends  a message via the User Message
+  Facility (user_message_),  accompanied by a new  IPS signal named
+  system_message_.  The recipient's process  handles this signal by
+  calling user_message_ to read the message and then outputting the
+  text on the terminal.
+
+  Two new subroutines  will be added to the system.   On the sender
+  side  (in  this   case,  Initializer.SysDaemon),  the  subroutine
+  send_system_message_  sends the message  and the IPS  wakeup.  On
+  the   receiver   side,    system_message_handler_   handles   the
+  system_message_  condition.   Both  programs  are  documented  in
+  Appendix A.
+
+  2.2.1:  SENDING THE MESSAGE
+
+  The caller  of send_system_message_ passes  a pointer to  the new
+  structure  system_message,  declared  in  the  new  include  file
+  system_message.incl.pl1.   One  element  of  this  structure is a
+  type,    which    may     be    SYSTEM_MESSAGE_TYPE_AS_WARN    or
+  SYSTEM_MESSAGE_TYPE_AS_INACTIVITY  for this  application but  can
+  specify  other types  if  send_system_message_  is ever  used for
+  other applications requiring system messages to be sent to users.
+  For  example, the  facility  is  appropriate for  Data Management
+  shutdown warnings.
+
+
+  New warn software &amp; inactivity handling                 MTB747-05
+
+  The         send_system_message_         subroutine         calls
+  as_user_message_$priv_add_message to add the  message to the User
+  Message  database and  then calls  hphcs_$ips_wakeup to  send the
+  system_message_ signal to the recipient.
+
+  2.2.2:  RECEIVING THE MESSAGE
+
+  Processes  will  now  have   an  additional  static  handler  for
+  system_message_ that calls  system_message_handler_.  This static
+  handler is established by  initialize_process_ for user processes
+  and by sc_init_ for the Initializer process.
+
+  The        system_message_handler_        subroutine        calls
+  user_message_$read_message repeatedly to read all messages in the
+  User Message  database that are  addressed to the  user.  It will
+  output  the text portion  of each message  to the users  terminal |
+  through the user_i/o switch.
+
+  It  was  originally  proposed  to  use  the  message_facility_ to |
+  display the message  text to the user but this  had to be changed |
+  due to the following problems:                                    |
+
+  o    If more than one user was listening to the mailbox, only the |
+       latest user would get the message.  If that user was not the |
+       idle user, the message would never be seen.                  |
+
+  o    There  was  no  simple  way  to  make  sure  the message was |
+       displayed  before  the  user  went  blocked.   Normally, the |
+       message  facility  only  becomes  active  when  the  user is |
+       blocked.  In our  case, it was required that  the message be |
+       displayed immediately to support the inactivity part of this |
+       proposal.
+
+  The system_message_handler_ subroutine is designed to potentially
+  handle other types of system message besides blast and inactivity
+  blast messages.  It currently  recognizes three types, inactivity
+  blast  messages,  blast  messages  and  Data  Management shutdown
+  warnings.  (The latter type is  reserved for future use when Data
+  Management  is changed  to call  send_system_message_.)  The type
+  indicator is included in the event message.
+
+  As  it does  currently, the  Answering Service  will continue  to
+  format   blast   messages   using   the   ioa_   control   string
+  as_error_table_$warn_msg:
+
+            ******** &lt;DATE-TIME&gt;
+            From Operator:  &lt;TEXT&gt;
+            ********
+
+
+  MTB747-05                 New warn software &amp; inactivity handling
+
+  2.3:  The EOP Problem
+
+  There  is an  additional problem  caused by  the change  to use a
+  conventional  call to  iox_ rather  than hcs_$tty_force  to print
+  blast  messages:  User processes  running under the  video system
+  will no  longer see system  messages when stopped  at the "More?"
+  prompt.
+
+  This problem already exists  for non-video processes.  Output fed
+  to ring-0 tty_ (even  by hphcs_$tty_write_force) cannot appear on
+  the  terminal while  ring 0's  output buffer  still contains some
+  pending characters.  If  ring 0 is interrupted at an  End of Page
+  (EOP)  break, it cannot  print the rest  of its buffer  until the
+  user  hits RETURN  in response  to the  EOP break.   Therefore, a
+  blast message cannot appear on the terminal until some time after
+  the user responds to EOP by hitting RETURN.
+
+  When a process using video is stopped at a "More?"  prompt, it is
+  stopped  inside the  video system.   The ring-0  output buffer is
+  empty.  Therefore, the call  to hphcs_$tty_write_force is able to
+  write  the message  immediately on   the terminal;  and it  does,
+  splattering it all over the screen.
+
+  Once  blast  messages  are  changed  to use send_system_message_,
+  video processes will no longer print them when stopped at "More?"
+  prompts.  Blast  messages will also  continue to not  work at EOP
+  breaks in non-video processes.
+
+  To   restore   correct   operation   for   video  processes,  the
+  system_message_handler_ can make explicit  calls to window_io_ to
+  print the  incoming message followed by  another "More?"  prompt.
+  This  change should  be contingent  upon deciding  whether it  is
+  worthwhile to  fix the video  case when the  non-video case would
+  require extensive  tty_ changes in order to  work correctly.  The
+  problem will not be resolved in this MTB.
+
+
+  New warn software &amp; inactivity handling                 MTB747-05
+
+  3:  INACTIVITY PROBLEM
+
+  The inactivity mechanism is a means by which the system can purge
+  itself of users which have had no activity during a site-settable
+  time period.  This purging accomplishes two goals:
+
+  o    It   potentially  saves   users  from   incurring  excessive
+       connection charges.
+
+  o    It  frees up  resources on  the system  for currently active
+       users.
+
+  3.1:  Current inactivity mechanism
+
+  The  current  inactivity  mechanism  has  the  Answering  Service
+  perform a check on each process  as part of its accounting update
+  cycle which  occurs at a site-definable  interval (update_time in
+  installation_parms,  normally  set  to  15  minutes).   It  calls
+  hphcs_$process_status  to obtain the  time that the  process last
+  called pxss$block.
+
+  If  this time  is earlier  than the  current time  by more than a
+  certain  default increment (inactive_time  in installation_parms,
+  normally  set to  60 minutes),  the Answering  Service warns  the
+  process of its inactivity by  calling astty_$tty_force to write a
+  message  directly on the  process' I/O channel.   It also sets  a
+  timer to go off after  a site-definable interval (warning_time in
+  installation_parms, normally set to 5 minutes).
+
+  When the timer  goes off, Answering Service checks to  see if the
+  user  has had any  new activity.  If  not, the Answering  Service
+  logs the process out.
+
+  3.2:  Problems with this mechanism
+
+  Since using  a process' I/O channel directly  interferes with the
+  video  system and  MNA connected   processes have  no direct  I/O
+  channel, inactivity warnings will now  be sent by calling the new
+  send_system_message_.   This change   alone, however,  breaks the
+  inactivity mechanism  because the receiving process  must wake up
+  to respond  to the system  message and this  new activity cancels
+  the bump.  This problem will be solved by a change in how process
+  inactivity is detected.
+
+
+  MTB747-05                 New warn software &amp; inactivity handling
+
+  3.3:  Problem resolution
+
+  The  solution   to  this  dilemma  is   cooperation  between  the
+  system_message_handler_ and Answering Service.
+
+  A   new  message   type  will   be  defined   for  the   handler:
+  SYSTEM_MESSAGE_TYPE_AS_INACTIVITY.  The handler will special case
+| this  type of  message by  doing the  following before completing
+* it's activities:
+
+  o    the handler  will send an  "inacrcvd" event message  back to
+       the Initializer using the process' termination event channel
+       stored in the PIT to let  it know that the user has received
+       all messages.
+
+  When the  Initializer receives this "inacrcvd"  event message, it
+  will cancel the current timeout  scheduled to check for activity.
+  A new timer will  be set for installation_parms.warning_time from
+  the time the "inacrcvd" event message was received from the user.
+  If  no "inacrcvd" event  message is received  from the user,  the
+  original timer will be used.
+
+  When the warning_time timer goes  off, the Initializer will check
+  for any process  activity which has occurred.  If  none is found,
+  the process will be bumped.
+
+  This way,  the inactivity check timer  will be based on  the time
+  after the system message was  processed and ignore that time used
+  by processing the  system message.  In the worst  case, this will
+  do nothing more than leave extra inactive users on the system.
+
+  In addition, the Initializer will be  changed in the code used to
+  check if the process can  be unbumped.  Currently it compares the
+  block state  time of the  process to the  value of inactive_time.
+  It will be changed to use warning_time.
+
+  The  inactivity mechanism  will operate  as currently implemented
+  for disconnected processes, and absentee  and daemon users.  If a
+  disconnected  process  is  sent  an  inactivity  warning  and the
+  process is  not reconnected before the  warning_time grace period
+  expires, the process is bumped.  Absentees are bumped if inactive
+  for  more than inactive_time  with no warning_time  grace period.
+  Daemons are not bumped for inactivity.
+
+  3.4:  New inactivity event message
+
+  We  are defining  a new   user event  message for  the inactivity
+  received event message.   It is "inacrcvd" (as_data_$signal_types
+  #12).
+
+
+  New warn software &amp; inactivity handling                 MTB747-05
+
+  For  the record,  up to  19 user  event messages  can be defined.
+  Events  1-11 are currently  used, 12-14 are  used but defined  as
+  obsolete and 15-19 are free.                                      *
+
+
+  MTB747-05                 New warn software &amp; inactivity handling
+
+  APPENDIX A:  DOCUMENTATION
+
+  The following pages document the new system message subroutines.
+
+
+  ____________________                         ____________________
+
+  send_system_message_                         send_system_message_
+  ____________________                         ____________________
+
+  NAME: SEND_SYSTEM_MESSAGE_
+
+  ENTRY:  SEND_SYSTEM_MESSAGE_$SEND_SYSTEM_MESSAGE_
+
+  This  entry  point,  which  requires  access  to  hphcs_, sends a
+  message to a specified process accompanied by the system_message_
+  IPS signal.  Processes have  a static handler for system_message_
+  that invokes system_message_handler_.
+
+  USAGE
+
+  dcl send_system_message_ entry (bit (36) aligned, fixed bin, ptr,
+       fixed bin (35));
+
+  call send_system_message_ (recipient_process_id,
+       recipient_initial_ring, message_ptr, code);
+
+  ARGUMENTS
+
+  recipient_process_id
+     is the process id of the recipient.  (Input)
+
+  recipient_initial_ring
+     is the  initial (login) ring number of  the recipient process.
+     (Input)
+
+  message_ptr
+     is  a pointer to  an allocated copy  of one of  the structures
+     warn_system_message,        inactivity_system_message       or
+     dm_shut_system_message,   declared   in   the   include   file
+     system_message.incl.pl1.     Operator   warn    messages   use
+     warn_system_message   and  set   the  type   field  equal   to
+     SYSTEM_MESSAGE_TYPE_AS_WARN.     Inactivity    messages    use
+     inactivity_system_message  and  set  the  type  field equal to
+     SYSTEM_MESSAGE_TYPE_AS_INACTIVITY.   The  other  structure  is
+     available for future use by Data Management.  (Input)
+
+
+  ____________________                         ____________________
+
+  send_system_message_                         send_system_message_
+  ____________________                         ____________________
+
+  NOTES
+
+  The structures for warn messages are as follows:
+
+    dcl 1 system_message_header aligned based,
+       2 version char (8),
+       2 type fixed bin,
+       2 type_version char (8);
+
+    dcl 1 warn_system_message aligned based,
+       2 header aligned like system_message_header,
+       2 caller char (64),
+       2 text_len fixed bin (21),
+       2 text char (system_message_text_len
+            refer (warn_system_message.text_len));
+
+    dcl 1 inactivy_system_message aligned based,
+       2 header aligned like system_message_header,
+       2 caller char (64),
+       2 text_len fixed bin (21),
+       2 text char (system_message_text_len
+            refer (inactivy_system_message.text_len));
+
+  STRUCTURE ELEMENTS
+
+  version
+     is equal to SYSTEM_MESSAGE_VERSION_1.
+
+  type
+     is    equal    to    SYSTEM_MESSAGE_TYPE_AS_WARN    for    the
+     warn_system_message and  SYSTEM_MESSAGE_TYPE_AS_INACTIVITY for
+     the inactivity_system_message.
+
+  type_version
+     is     equal    to    SYSTEM_MESSAGE_AS_WARN_V1     for    the
+     warn_system_message  and  SYSTEM_MESSAGE_AS_INACTIVITY_V1  for
+     the inactivity_system_message.
+
+  caller
+     is the name of the caller, to be prefixed to the message text:
+
+               CALLER:  TEXT
+
+     If caller is "", only the  text is printed.  This is common to
+     all system messages.
+
+  text_len
+     is  the number  of characters  in the  message text.   This is
+     common to all system messages.
+
+
+  ____________________                         ____________________
+
+  send_system_message_                         send_system_message_
+  ____________________                         ____________________
+
+  text
+     is  the text  of the  message.  This  is common  to all system
+     messages.
+
+  The inactivity  message is merely  another type of  warn message.
+  It is  defined as a unique  type so that the  message handler can
+  accurately determine that special  action is required in response
+  to it.
+
+
+  _______________________                   _______________________
+
+  system_message_handler_                   system_message_handler_
+  _______________________                   _______________________
+
+  NAME: SYSTEM_MESSAGE_HANDLER_
+
+  ENTRY:  SYSTEM_MESSAGE_HANDLER_$SYSTEM_MESSAGE_HANDLER_
+
+  This   subroutine  handles   the  system_message_   condition  by
+  outputting  any previously  unprocessed messages  which have been
+  sent to the user by  send_system_message_.  Processes will have a
+  static handler that calls this subroutine.
+
+  USAGE
+
+  dcl system_message_handler_ entry ();
+  dcl sct_manager_$set entry (fixed bin, entry, fixed bin (35));
+
+  %include static_handlers;
+
+  call sct_manager_$set (system_message_sct_index,
+       system_message_handler_, code);
+
+  NOTES
+
+* The system_message_handler_ will output the message to the user
+| outputting the text portion of each message to the users terminal
+  directly through the user_i/o switch.
+
+| The handler will special case any inactivity_system_messages by
+| sending an "inacrcvd" event message back to the Initializer,
+| using the process' termination event channel stored in the PIT,
+| to let the Initializer know that the user has received all system
+  messages.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

@@ -1,0 +1,112 @@
+/* DISPLAY_DESCRIPTOR - Program to unpack and print the contents of a Multics argument descriptor.
+   Written 730209 by PG
+   Modified 771028 by PG to handle packed decimal & unsigned
+*/
+
+display_descriptor:
+     procedure ();
+
+/* automatic */
+
+declare (i,k,n) fixed binary,
+        (code,ndims,size,scale,type) fixed binary,
+        packed bit(1) aligned,
+        o fixed binary(35),
+        p pointer;
+
+/* based */
+
+declare   descriptor char(k) unaligned based(p);
+
+/* builtin */
+
+declare   (addr, hbound) builtin;
+
+/* entries */
+
+declare (com_err_,ioa_) entry options(variable);
+declare decode_descriptor_ entry(pointer, fixed binary, fixed binary, bit(1) aligned, fixed binary, fixed binary,
+        fixed binary);
+declare cv_oct_check_ entry(character(*) unaligned, fixed binary) returns(fixed binary(35));
+declare cu_$arg_count entry(fixed binary);
+declare cu_$arg_ptr entry(fixed binary, pointer, fixed binary, fixed binary);
+
+/* internal static */
+
+declare descriptor_name (0:45) char (32) varying internal static initial (
+          /* 0 */   "invalid type 0",
+          "real fixed binary short", "real fixed binary long",
+          "real float binary short", "real float binary long",
+          "complex fixed binary short", "complex fixed binary long",
+          "complex float binary short", "complex float binary long",
+          "real fixed decimal", "real float decimal",
+          "complex fixed decimal", "complex float decimal",
+          "pointer", "offset", "label", "entry", "structure", "area",
+          "bit string", "varying bit string", "character string", "varying character string",
+          /* 23 */  "file",
+          /* 24 */  "char picture",
+          /* 25 */  "real fixed picture",
+          /* 26 */  "cplx fixed picture",
+          /* 27 */  "real float picture",
+          /* 28 */  "cplx float picture",
+          /* 29 */  "real fixed dec ls overp",
+          /* 30 */  "real fixed dec ts overp",
+          /* 31 */  "cplx fixed dec ls overp",
+          /* 32 */  "cplx fixed dec ts overp",
+          /* 33 */  "real fixed bin short uns",
+          /* 34 */  "real fixed bin long uns",
+          /* 35 */  "real fixed dec uns",
+          /* 36 */  "real fixed dec ts",
+          /* 37 */  "cplx fixed dec ts",
+          /* 38 */  "real fixed dec uns 4bit",
+          /* 39 */  "real fixed dec ts 4bit",
+          /* 40 */  "cplx fixed dec ts 4bit",
+          /* 41 */  "real fixed dec ls 4bit",
+          /* 42 */  "real float dec 4bit",
+          /* 43 */  "cplx fixed dec ls 4bit",
+          /* 44 */  "cplx float dec 4bit",
+          /* 45 */  "packed ptr");
+
+          call cu_$arg_count(n);
+          if n = 0
+          then do;
+                    call com_err_ (0, "display_descriptor", "Usage: display_descriptor desc1 {desc2 ...}");
+                    return;
+               end;
+
+          do i = 1 to n;
+
+                    call cu_$arg_ptr(i,p,k,code);
+                    if code ^= 0
+                    then do;
+                              call com_err_(code,"display_descriptor","");
+                              return;
+                         end;
+
+                    if length (descriptor) ^= 12
+                    then do;
+                              call com_err_ (0, "display_descriptor", "descriptor must be exactly 12 octal digits: ^a",
+descriptor);
+                              go to next;
+                         end;
+
+                    o = cv_oct_check_(descriptor, code);
+                    if code ^= 0
+                    then do;
+                              call com_err_(0,"display_descriptor","descriptor must be in octal: ^a",descriptor);
+                              go to next;
+                         end;
+
+                    call decode_descriptor_ (addr (o), 0, type, packed, ndims, size, scale);
+
+                    if type > hbound (descriptor_name, 1)
+                    then call ioa_ ("^a: type ^d, packed=""^1b""b, # dimensions=^d, size=^d, scale=^d",
+                              descriptor, type, packed, ndims, size, scale);
+                    else call ioa_ ("^a: ^a, packed=""^1b""b, # dimensions=^d, size=^d, scale=^d",
+                              descriptor, descriptor_name (type), packed, ndims, size, scale);
+next:
+          end;
+
+          return;
+
+     end;

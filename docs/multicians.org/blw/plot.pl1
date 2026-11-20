@@ -1,0 +1,156 @@
+plot1:    proc(nhl_,nsbh_,nvl_,nsbv_);
+
+dcl       (nhl_,nsbh_,nvl_,nsbv_) fixed bin;
+
+          /* global storage for plot */
+
+dcl (     nhl       init(5),            /* number horizontal lines */
+          nsbh      init(5),            /* number spaces between horizontal lines */
+          nvl       init(5),            /* number vertical lines */
+          nsbv      init(10),           /* number spaces between vertical lines */
+          h         init(26),           /* h = nhl * nsbh + 1 */
+          v         init(51))           /* v = nvl * nsbv + 1 */
+                              fixed bin int static;
+
+dcl       (xmax,xmin,ymax,ymin,dx,dy) float bin int static;
+
+dcl       no_image bit(1) aligned init("1"b) int static;
+
+dcl       fmtx char(12) varying int static init("^10.3f"),
+          fmty char(12) varying int static init("^10.3f ^a");
+
+dcl       (ioa_,ioa_$rsnnl) ext entry options (variable),
+          bindec$vs entry(fixed bin) returns(char(12) varying);
+
+          nhl = nhl_;
+          nsbh = nsbh_;
+          nvl = nvl_;
+          nsbv = nsbv_;
+
+          h = nhl * nsbh + 1;
+          v = nvl * nsbv + 1;
+
+          fmtx = "^" || bindec$vs(nsbv) || ".3f";
+          fmty = fmtx || " ^a";
+
+          no_image = "1"b;
+
+          return;
+
+plot2:    entry(image_pt_,xmax_,xmin_,ymax_,ymin_);
+
+dcl       image_pt_ ptr,
+          (xmax_,xmin_,ymax_,ymin_) float bin;
+
+dcl       image(h) char(v) aligned based(p),
+          (i,j,k) fixed bin,
+          (p,image_pt int static init(null)) ptr;
+
+          p, image_pt = image_pt_;
+
+          k = 1;
+          do i = 1 to nvl;
+               substr(image(1),k,1) = "+";
+               substr(image(2),k,1) = "|";
+               k = k + 1;
+
+               do j = 1 to nsbv - 1;
+                    substr(image(1),k,1) = "-";
+                    substr(image(2),k,1) = " ";
+                    k = k + 1;
+                    end;
+
+               end;
+
+          substr(image(1),k,1) = "+";
+          substr(image(2),k,1) = "|";
+
+          k = 1;
+          do i = 1 to nhl;
+               if k ^= 1 then image(k) = image(1);
+               k = k + 1;
+
+               do j = 1 to nsbh - 1;
+                    if k ^= 2 then image(k) = image(2);
+                    k = k + 1;
+                    end;
+
+               end;
+
+          image(k) = image(1);
+
+          xmax = xmax_;
+          xmin = xmin_;
+          ymax = ymax_;
+          ymin = ymin_;
+
+          dx = xmax - xmin;
+          dy = ymax - ymin;
+
+          no_image = "0"b;
+
+          return;
+
+plot3:    entry(c,x,y);
+
+dcl       c aligned char(1),
+          (x,y) float bin;
+
+          if no_image
+          then do;
+no:            call ioa_("plot: No image available.");
+               return;
+               end;
+
+          if x < xmin then goto done;
+          if x > xmax then goto done;
+          if y < ymin then goto done;
+          if y > ymax then goto done;
+
+          p = image_pt;
+
+          j = (v-1)*((x-xmin)/dx)+1;
+          i = (h-1)*((y-ymin)/dy)+1;
+
+          substr(image(i),j,1) = c;
+
+done:     return;
+
+plot4:    entry;
+
+dcl       abscissa char(120) aligned,
+          (x1,y1,ddx,ddy) float,
+          rets char(20),
+          retl fixed bin;
+
+          if no_image then goto no;
+
+          p = image_pt;
+
+          ddx = nsbv*dx/(v-1);
+          ddy = nsbh*dy/(h-1);
+
+
+          y1 = ymax;
+          do k = h by -1 to 1;
+               if mod(k,nsbh) ^= 1 then call ioa_("^vx ^a",nsbv,image(k));
+               else do;
+                    call ioa_(fmty,y1,image(k));
+                    y1 = y1 - ddy;
+                    end;
+               end;
+
+          abscissa = "";
+          x1 = xmin;
+          i = 6;
+
+          do k = 1 to nvl+1;
+               call ioa_$rsnnl(fmtx,rets,retl,x1);
+               substr(abscissa,i,nsbv) = substr(rets,1,retl);
+               x1 = x1 + ddx;
+               i = i + nsbv;
+               end;
+
+          call ioa_(abscissa);
+
+          end;

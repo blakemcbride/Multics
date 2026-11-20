@@ -1,0 +1,1294 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : HASP Workstation Console Support.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  MULTICS TECHNICAL BULLETIN                              MTB703-02
+
+  To:       MTB Distribution
+
+  From:     Art Beattie
+
+  Date:     August 10, 1987
+
+  Subject:  HASP Workstation Console Support
+
+                 -----------------------------------
+
+  To satisfy a customer requirement, HASP workstation consoles must
+  be  supported.   This  MTB  describes  changes  to  the Answering
+  Service and  HASP software to  allow the use  of HASP workstation
+  consoles  to  enter  the  operator  commands  needed  to  run the
+  workstation.
+
+                 -----------------------------------
+
+  Revisions:
+  Rev 00) 1985 February 28:  Jim Homan, W.  Olin Sibert
+          Original issue.
+  Rev 01) 1987 March 23:  Art Beattie
+          Change use of operator subchannel to login service rather
+          than  mc  service.   Drop  operator  command ACS control.
+          Modify  environment  to  rely  more  on standard supplied
+          mechanisms.    Drop  sc_info   and  send_operator_command
+          commands.
+  Rev 02) August 10, 1987:  Art Beattie                             |
+          Add cdt.incl.pl1, dump_cdt_.pl1, and cdt_mgr_.pl1 to list |
+          of modules  to be changed.  Add  -no_block control attach |
+          option        to       hasp_workstation_.pl1.         Add |
+          assign_to_user_process  and  detach_user_process  control |
+          orders  to  hasp_workstation_.pl1.   Describe  changes to |
+          modes operation processing in hasp_workstation_.pl1.      |
+
+  Comments  should  be  sent  to  Art  Beattie  via Multics mail to
+  Beattie at System-M.
+
+  _________________________________________________________________
+
+  Multics project  internal documentation; not to  be reproduced or
+  distributed outside the Multics project without permission of the
+  Director of MDC.
+
+
+  MTB703-02                                 HASP WS Console Support
+
+                               CONTENTS
+
+                                                           Page
+
+     1:  Introduction  . . . . . . . . . . . . . . . . . . . .     1
+     2:  Tasks . . . . . . . . . . . . . . . . . . . . . . . .     2
+     3:  Implementation Details  . . . . . . . . . . . . . . .     4
+     3.1:  Change AS to support login service on HASP              4
+      subchannel . . . . . . . . . . . . . . . . . . . . . . .
+     3.1.1:  Modules Affected  . . . . . . . . . . . . . . . .     4
+|    3.1.1.1:  New HASP_OPR Line Type (line_types.incl.pl1 and     4
+|     as_mcs_mpx_.pl1) . . . . . . . . . . . . . . . . . . . .
+     3.1.1.2:  Changes to as_hasp_mpx_.pl1 . . . . . . . . . .     4
+     3.1.1.3:  Changes to astty_.pl1 . . . . . . . . . . . . .     5
+     3.1.1.4:  Changes to lg_ctl_.pl1  . . . . . . . . . . . .     5
+|    3.1.1.5:  Changes to cdt.incl.pl1, cdt_mgr_.pl1 and           5
+|     dump_cdt_.pl1  . . . . . . . . . . . . . . . . . . . . .
+     3.1.2:  Testing . . . . . . . . . . . . . . . . . . . . .     5
+     3.1.3:  Documentation Changes . . . . . . . . . . . . . .     6
+     3.2:  Add hasp_stream_ IO Module  . . . . . . . . . . . .     8
+     3.2.1:  Modules Affected  . . . . . . . . . . . . . . . .     8
+     3.2.2:  Testing . . . . . . . . . . . . . . . . . . . . .     8
+     3.2.3:  Documentation Changes . . . . . . . . . . . . . .     8
+     3.3:  Change the hasp_workstation_ I/O module . . . . . .    12
+     3.3.1:  Modules Affected  . . . . . . . . . . . . . . . .    14
+     3.3.2:  Testing . . . . . . . . . . . . . . . . . . . . .    14
+     3.3.3:  Documentation Changes . . . . . . . . . . . . . .    14
+     3.4:  Dynamic I/O Daemon Line Specification . . . . . . .    16
+     3.4.1:  Modules Affected  . . . . . . . . . . . . . . . .    16
+     3.4.2:  Testing . . . . . . . . . . . . . . . . . . . . .    16
+     3.4.3:  Documentation Changes . . . . . . . . . . . . . .    16
+     3.5:  I/O Daemon Logout On Hangup . . . . . . . . . . . .    18
+     3.5.1:  Modules Affected  . . . . . . . . . . . . . . . .    18
+     3.5.2:  Testing . . . . . . . . . . . . . . . . . . . . .    18
+     3.5.3:  Documentation Changes . . . . . . . . . . . . . .    18
+     3.6:  Additional Documentation  . . . . . . . . . . . . .    19
+
+
+  HASP WS Console Support                                 MTB703-02
+
+  1:  INTRODUCTION
+
+  Ford  is buying a  Multics system to  serve as a  Cray front-end.
+  They will have many users wishing to connect HASP workstations to
+  this  Multics system,  and Honeywell  has agreed  to improve  the
+  functionality  of HASP  workstations by  allowing the  use of the
+  workstation's console to run the workstation.
+
+  Most  remote  workstations  can  be  configured  as  a Type I RJE
+  station.  This  is where a  single daemon services  more than one
+  device  and  is  controlled  from  an  operator  console  on  the
+  workstation.  The operator identifies the  station to the host by
+  using  the  station  command  containing  the  station  ident and
+  password.
+
+  HASP workstations  are treated as  Type II (no  input device) RJE
+  stations and all commands to run the station must be entered by a
+  system operator.  This situation has  led most sites to install a
+  login terminal near the HASP workstation and cobble together some
+  means of allowing restricted operator  commands to be sent to the
+  Initializer from the login terminal.
+
+  Running a  HASP workstation consists of  identifying the station,
+  logging in any daemon processes that are needed, sending commands
+  to  those  daemons,  displaying  messages  from  the daemons, and
+  logging out  the daemons.  In  addition, the I/O  Daemon software
+  must allow dialup HASP workstations,  so that a given workstation
+  may connect to any one of several communication lines and a given
+  communication line may accept connections from any one of several
+  workstations.  As a convenience when using dialup workstations, a
+  way is  needed to force a  daemon to be automatically  logged out
+  when the slave line that it is using hangs up.
+
+  To  allow  the  use  of  the  HASP  workstation  console, several
+  specialized mechanisms were considered  that could be implemented
+  without system modifications.
+
+  One  proposal was  to configure  the operator  subchannel for  mc
+  service.   This involved setting  up a mechanism  for controlling
+  access to each system operator command so that the remote station
+  operator didn't  have control over the  central system.  Standard
+  operator  authentication  would  have  been  used  to  verify the
+  station's  identity  and  use  of  a  subset  of  system operator
+  commands.   This  required  changes  to  the  message coordinator
+  software  in order  to converse  with another  IO module  than it
+  normally does.
+
+  An alternate proposal is to configure the operator subchannel for
+  login  service.   The  system  administrator  can  set  up a user
+  environment  to login  on this  channel (protected  by login  ACS
+  checking  if selected).   This user  environment uses  the MR11.0
+  features  that  allow  control  of  daemons  from privileged user
+
+
+  MTB703-02                                 HASP WS Console Support
+
+  processes  using the   send_daemon_command.  This  feature allows
+  privileged  users  to  login/logout,  reply  and  quit  a  daemon
+  process.   This puts  these users  in a  more limited environment
+  than  if the  channel were  allowed to  be a  message coordinator
+  terminal.   The send_daemon_command  only allows  these users  an
+  environment similar to remote operators of Type I stations.
+
+  Other security  features of the system (limited  subsystem or lss
+  command environment  and the project_start_up_  process overseer)
+  can be used to insure that the process using the operator console
+  on the  workstation operates in a known  and secured environment.
+  The lss command environment enables administrators to define what
+  subset of commands a user may use and receives its input from the
+  results of the abbrev facility if  turned on.  The abbrev and lss
+  facilities can be used to tailor the operator environment to meet
+  the site's needs.
+
+  The  user   process  for  controlling  the   workstation  can  be
+  registered in  the system PNT much  as a Type I  station would be
+  except that the  PNT would have a regular password  rather than a
+  network  password.   The   project_start_up_  overseer  with  its
+  project_start_up.ec can  be used to initialize  all the necessary
+  daemons to service each device at the remote workstation.  An LSS
+  can be  set up to only  allow certain commands to  be executed by
+  the operator.   The abbrev facility and the  exec_com command can
+  be used  to make the operator  interface look like what  a Type I
+  remote station operator would see  using any other remote station
+  facility.
+
+  The second approach is the one being proposed for MR12.1.
+
+  2:  TASKS
+
+  The work to be done is broken up into the following tasks.
+
+  1) Change  answering service (as_hasp_mpx_,  as_mcs_mpx_, astty_,
+| cdt.incl.pl1,    cdt_mgr_.pl1,    dump_cdt_.pl1,    lg_ctl_   and
+  line_types.incl.pl1)  to  be  able  to  communicate  to  the HASP
+  workstation operator subchannel as  a login service channel using
+  the hasp_stream_ I/O module.
+
+  2) Add a hasp_stream_  I/O module that would allow  stream I/O to
+  be  done on  HASP subchannels  by changing  stream I/O operations
+  into   record   I/O   operations   that   are   passed   to   the
+  hasp_workstation_ I/O module.
+
+  3) Change  the hasp_workstation_  I/O module  to support  all the
+  functions of tty_ that are used by the answering service.
+
+
+  HASP WS Console Support                                 MTB703-02
+
+  4) Change the I/O daemon  software to allow dynamic specification
+  of the  communications line to  be used for  a Type II  (no input
+  device) RJE station.
+
+  5) Change  the  I/O  daemon  software  to  optionally  logout the
+  attaching process when an I/O switch attached to a communications
+  line is hung up.
+
+
+  MTB703-02                                 HASP WS Console Support
+  Change AS to support login service on HASP subchannel.
+
+  3:  IMPLEMENTATION DETAILS
+
+  Implementation details of each of the defined tasks follows.
+
+  3.1:  Change AS to support login service on HASP subchannel
+
+  Allow the .opr subchannel to  be configured for login service.  A
+  user process can then be attached  to this channel to control the
+  daemons that service the remote workstation.  The environment can
+  be tailored  using the various standard facilities  of the system
+  (limited subsystem, abbrev,  exec_coms, send_daemon_command, etc)
+  to allow as much control or access as the site requires.
+
+  3.1.1:  MODULES AFFECTED
+
+  Changes  to  several  modules  are  required  to  allow  the .opr
+  subchannel to be a login channel.
+
+| 3.1.1.1:  New HASP_OPR Line Type (line_types.incl.pl1 and
+| as_mcs_mpx_.pl1)
+
+  The  answering  service  is  going  to  have  to check each login
+  channel  for this  new configuration  in order  to setup  special
+  attachments and  handle the login  sequence.  A new  line type of
+  HASP_OPR   is  defined   to  keep   the  checking   of  this  new
+  configuration  efficient.  The  line_types.incl.pl1 segment  will
+  have to be changed and eventually require all referencing modules
+  to be recompiled.  The  as_mcs_mpx_$mcs_cv_cmf entry will need be
+  changed  to  disallow  the  use  of  this  line  type for all FNP
+  channels.
+
+  3.1.1.2:  Changes to as_hasp_mpx_.pl1
+
+  The as_hasp_mpx_.pl1 module is changed to allow login service for
+  .opr subchannels when the multiplexer is loaded.  It will use the
+  line type, the multiplexer type and the ".opr" subchannel name to
+  set  a bit  in the  CDTE (cdte.use_iocb)  which will  be used  by
+  astty_  as the  only test  to  see  if it  uses the  current tty_
+  interfaces to handle the login sequence or to use hasp_stream_.
+
+  The hasp_cv_cmf entry point will  only allow .opr channels to use
+  the new line  type.  This is called by the  cv_cmf command when a
+  hasp  multiplexer  is  encounted  in   the  CMF  to  verify  that
+  configuration criteria particular to HASP multiplexers are met.
+
+
+  HASP WS Console Support                                 MTB703-02
+  Change AS to support login service on HASP subchannel.
+
+  3.1.1.3:  Changes to astty_.pl1
+
+  The astty_.pl1 module is changed to create an IOCB to attach/open
+  the subchannel using the hasp_stream_ I/O module when it sees the
+  cdte.use_iocb flag on.  The attach description would be
+
+     hasp_stream_  -target  hasp_workstation_  -device  teleprinter
+        -comm hasp -tty ^a -suppress_dial_manager
+
+  It  will only be  able to set  up an IOCB  for the HASP  operator
+  subchannel.  The packed  pointer to the IOCB will be  kept in the
+  CDTE (currently pad4).
+
+  All  entries in astty_  will have to  be modified to  examine the
+  cdte.use_iocb flag to  determine if it will use  the current tty_
+  interface or the IOCB style  interface to handle the interactions
+  that occur during logins.
+
+  The tty_force entry  to astty_ will be mapped  into the tty_write
+  entry.   It  is  not  currently  felt  that  the  extra effort to
+  implement  a force  write  facility  in hasp_stream_  (changes to
+  hphcs_.alm, hasp_mpx, priv_hasp_mpx) is warranted at this time.
+
+  3.1.1.4:  Changes to lg_ctl_.pl1
+
+  The lg_ctl_.pl1 module will look for the new line type to set the
+  ute.outer_module to hasp_stream_.  This will be copied later into
+  pit.outer_module during process initialization and be used to set
+  up the IOCB  for the user process.  The  hasp_stream_ module will
+  have  to   be  set  up  to  transform   the  standard  attachment
+  description   of  "hasp_stream_ -login_channel"   to  an   attach
+  description acceptable to hasp_workstation_.
+
+  3.1.1.5:  Changes to cdt.incl.pl1, cdt_mgr_.pl1 and dump_cdt_.pl1 |
+
+  Add  flag,  "use_iocb",  and   pointer,  "iocbp",  to  cdt  entry |
+  declaration  for use by  above modules.  Change  dump_cdt_.pl1 to |
+  display these values;  display pointer value only if  flag is on. |
+  The cdt_mgr_.pl1 is changed to  reset the "use_iocb" flag and set |
+  the pointer value  to null when the init entry  is called (during |
+  system initialization).                                           |
+
+  3.1.2:  TESTING
+
+  Testing of these changes would be  done by attempting to login to
+  the system as a normal  user using the HASP workstation simulator
+  and the hhoc  (hasp_host_operator_command).  The HASP workstation
+
+
+  MTB703-02                                 HASP WS Console Support
+  Change AS to support login service on HASP subchannel.
+
+  simulator  would be  looped  back  into another  HASP multiplexer
+  which would be set up as a HASP host.
+
+  3.1.3:  DOCUMENTATION CHANGES
+
+  CC75-02:
+
+      Page 4-6, list of line types
+
+          HASP_OPR used to identify a hasp subchannel for
+                         operator login
+
+  GB60-00:  Multics HASP Service and Utility Manual
+
+      Page 2-2; change the sentence
+
+          An operator's  console must also be  configured, although
+          the  central  system  operator  must  enter  all commands
+          needed to control the I/O daemons driving the devices.
+
+      to
+
+          The workstation may be operated in one of two ways,
+
+           1) All  control of  the daemons  comes from  the central
+              operator.
+
+           2) Control can  come from the operator's  console on the
+              workstation device.  This is  done by configuring the
+              ".opr"  subchannel for  login service  and setting up
+              the  environment of  the user  that logs  in on  this
+              subchannel to  have control of the  daemons using the
+              send_daemon_command.     See   the    AK50   (Multics
+              Administration   Procedures)   Manual,   section   on
+              "Securing  Privileged  Daemons"  for  information  on
+              setting this feature up.
+
+      Page  2-3; Add  a new   paragraph above  the "Major  Channel"
+      heading.
+
+          If the  remote workstation operator  is to be  allowed to
+          login from the console on the workstation, the definition
+          of a.h014.opr must be specified as shown;
+
+
+  HASP WS Console Support                                 MTB703-02
+  Change AS to support login service on HASP subchannel.
+
+          name: a.h014.opr;     /* entry for operator's console */
+           service: login;
+           line_type: HASP_OPR;
+
+      Page 3-2; Replace  the paragraph at the top of  the page with
+      the following;
+
+          Configure each device of a workstation as a separate Type
+          II I/O  daemon.  The HASP software will  only support one
+          device  per  daemon  for  performance  reasons.   A  HASP
+          workstation  has only  one console  although it  may have
+          several  devices.   The  IO  daemon  software limits each
+          daemon  to one console  or none at  all.  Thus a  Type II
+          workstation is  configured on a  dedicated communications
+          line as a predefined  station.  The workstation cannot be
+          identified  directly by  a login  or signon  sequence for
+          each daemon.  The syntax  of the iod_tables requires that
+          a Type II station  definition specify exactly its channel
+          in  the  line  statement;  ie,  no  Line  statements  are
+          associated with Type II stations.
+
+          If it is desired, a mechanism  can be set up to allow the
+          line specification  to be modified without  compiling the
+          iod_tables.  The  iod_set_line command (described  in the
+          GB64 manual) can be used to change the iod_working_tables
+          directly so  that when the  daemons login and  attach the
+          devices, they will use  the new line specification.  This
+          can be done in the system admin.ec by the system operator
+          "x" function,  or by setting  up a mechanism  in the user
+          environment.  A suggested mechanism is described later.
+
+
+  MTB703-02                                 HASP WS Console Support
+  Add hasp_stream_ I/O Module
+
+  3.2:  Add hasp_stream_ IO Module
+
+  Add a hasp_stream_  I/O module that would allow stream  I/O to be
+  done on  HASP subchannels by changing stream  I/O operations into
+  record  I/O operations that  are passed to  the hasp_workstation_
+  I/O module.
+
+  This I/O module will  borrow from hasp_host_operators_console the
+  code for converting hasp_workstation_ record format to and from a
+  stream   format.   It   will  handle   the  get_line_timeout  and
+  get_chars_timeout   control   orders   by   converting   them  to
+  read_record_timeout  control orders  for hasp_workstation_.   The
+  put_chars_timeout   control  order   will  be   converted  to   a
+  write_record_timeout  control  order  for  hasp_workstation_.  It
+  will pass all other control  orders and modes operations directly
+  through to hasp_workstation_.
+
+  If   the  opr   subchannel  is    set  up   for  login   service,
+  initialize_process_  will use   pit.outer_module to  formulate an
+  attach description for user_i/o as follows;
+
+     call iox_$attach (iox_$user_io,
+       pit.outer_module || " -login_channel", null, code);
+
+  The -login_channel control option would cause hasp_stream_ to set
+  up the attachment description  as if initialize_process_ had used
+  the following call;
+
+   call iox_$attach_name (iocb_name,
+    "hasp_stream_ -target hasp_workstation_ -device teleprinter
+     -comm hasp -tty -login_channel -suppress_dial_manager",
+    null, code);
+
+  3.2.1:  MODULES AFFECTED
+
+  hasp_stream_ will be a new independent module.
+
+  3.2.2:  TESTING
+
+  The hasp_stream_ I/O  module will be tested by  connecting a HASP
+  workstation line on an FNP to a  HASP host line on an FNP and use
+  hasp_host_operator_command  to  exchange  messages  over  the opr
+  subchannels of the looped-back lines.
+
+
+  HASP WS Console Support                                 MTB703-02
+  Add hasp_stream_ I/O Module
+
+  3.2.3:  DOCUMENTATION CHANGES
+
+  Add  the  following  documentation  to  AG93  and  GB60  for  the
+  hasp_stream_ I/O module.  Create &gt;doc&gt;info&gt;hasp_stream_.info from
+  the following documentation.
+
+  01/30/85 hasp_stream_
+
+  Syntax for attach description:
+       hasp_stream_ {switch_name} {-control_args}
+
+  Function:  The hasp_stream_ I/O module  attaches an I/O switch to
+  a target I/O switch so that stream I/O operations on the attached
+  switch  are translated  into HASP  record I/O  operations on  the
+  target switch.  In this way a program that uses stream I/O can do
+  I/O to and from HASP multiplexer subchannels.
+
+  Entry  points in this  module are not  called directly by  users;
+  rather the module is accessed through the I/O system.
+
+  Arguments:
+  switch_name
+     is the name of the target I/O switch.  It need not be attached
+     when this  attachment is made.   It must be  a switch attached
+     using either the hasp_host_  or hasp_workstation_ I/O modules.
+     If this argument is omitted, the -target control argument must
+     be present.
+
+  Control arguments:
+  -login_channel
+     specifies  that   hasp_stream_  should  be   attached  through
+     hasp_workstation_  to the  login channel  associated with  the
+     process.    hasp_steam_   makes    the   attachment   of   the
+     hasp_workstation_   I/O  module   itself,  using   the  attach
+     description:
+
+     "hasp_workstation_    -device teleprinter   -comm hasp    -tty
+     -login_channel -suppress_dial_manager"
+
+  -target attach_descrip
+     specifies  the attachment of  a uniquely named  target switch.
+     This  control   argument  must  occur  if  and   only  if  the
+     switch_name  argument is  omitted, and   it must  be the  last
+     control  argument  in  the  attach  description,  if  present.
+     attach_descrip  must specify  an attachment  using either  the
+     hasp_host_ or hasp_workstation_ I/O modules.
+
+
+  MTB703-02                                 HASP WS Console Support
+  Add hasp_stream_ I/O Module
+
+  List of opening modes:
+  stream_input
+     The   target   I/O   switch    must   be   either   open   for
+     sequential_input,   open   for   sequential_input_output,   or
+     attached  and closed.   In the   last case,  it is  opened for
+     sequential_input.  Each record read  from the target switch is
+     transformed into a stream of bytes that are transmitted to the
+     calling program by the get_line and get_chars operations.  The
+     read_record  operation is  used to  read the  records from the
+     target switch.
+
+  stream_output
+     The   target   I/O   switch    must   be   either   open   for
+     sequential_output,   open   for   sequential_input_output,  or
+     attached  and closed.   In the   last case,  it is  opened for
+     sequential_output.   The  stream  of   bytes  written  to  the
+     attached switch by the put_chars operation is transformed into
+     a sequence of records that are written to the target switch by
+     use of the write_record operation.
+
+  stream_input_output
+     The   target   I/O   switch    must   be   either   open   for
+     sequential_input_output, or attached and  closed.  In the last
+     case, it is opened for sequential_input_output.  The stream of
+     bytes  written  to  the   attached  switch  by  the  put_chars
+     operation is  transformed into a sequence of  records that are
+     written  to  the  target  switch  by  use  of the write_record
+     operation.   Each  record  read  from  the  target  switch  is
+     transformed into a stream of bytes that are transmitted to the
+     calling program by the get_line and get_chars operations.  The
+     read_record  operation is  used to  read the  records from the
+     target switch.
+
+  Notes  on transformations:   The transformation  from HASP record
+  format (described by  terminal_io_record.incl.pl1) to stream form
+  on  input can  be described  in terms  of taking  records from  a
+  record switch and giving bytes  to a stream switch, and similarly
+  for stream to HASP record format on output.
+
+  Input
+     A record is  read from the target switch,  a newline character
+     is appended, and the resulting string is returned.
+
+  Output
+     If  the  string  furnished  to  put_chars  does  not  end in a
+     newline, one is added.  The  string of characters furnished in
+     a  put_chars call  is divided  into lines  ending with newline
+     characters.  For each line,  the newline character is removed,
+
+
+  HASP WS Console Support                                 MTB703-02
+  Add hasp_stream_ I/O Module
+
+     any non-ASCII or control  characters are translated into ASCII
+     spaces, and the line is written as an output record.
+
+  Close operation:  The I/O module  closes the target switch if and
+  only if the I/O module opened it.
+
+  Detach operation:   The I/O module detaches the  target switch if
+  and only  if the I/O module  attached it via the  -target control
+  argument.
+
+  Control  operation:  The  get_chars_timeout and  get_line_timeout
+  control   operations  are  handled   by  converting  them   to  a
+  read_record_timeout control order on  the target I/O switch.  The
+  put_chars_timeout    control   order     is   converted    to   a
+  write_record_timeout  control order  on the  target switch.   All
+  other control orders  are passed along to the I/O  module for the
+  target switch.
+
+  Modes operation:  The modes operation  is passed along to the I/O
+  module for the target switch.
+
+  Notes  on  I/O  status:   In  addition  to  the  I/O status codes
+  specified  in the  description of   the iox_  subroutine for  the
+  various I/O operations, this I/O module returns codes returned by
+  the target switch I/O module.
+
+
+  MTB703-02                                 HASP WS Console Support
+  Change the hasp_workstation_ I/O module.
+
+  3.3:  Change the hasp_workstation_ I/O module
+
+  The    answering    service    attaches    channels    with   the
+  -suppress_dial_manager  and -hangup_on_detach  control arguments.
+  Hangup on  detach is the  default for hasp_workstation_,  but the
+  -suppress_dial_manager   control  argument   must  be   added  to
+  hasp_workstation_.
+
+| The -no_block control argument is  needed to allow the process to
+| never block  on an IO operation.   This is a requirement  for the
+| Initializer process (waiting for a login line, password, etc).
+
+| Two new control  orders are needed to support  the changes needed
+| to  astty_.pl1;  assign_to_user_process  and detach_user_process.
+| The   assign_to_user_process    is   needed   to    support   the
+| astty_$tty_new_proc  which turns  over  the  channel to  the user
+| process.  The detach_user_process  supports the astty_$tty_detach
+| entry which takes away the channel from the user process.
+
+  A survey of the answering service modules shows that they use the
+  following  tty_ control  orders.  For  each control  order, it is
+  noted here what work if any needs to be done.
+
+   Control Order       Where implemented/Work to be done
+   -----------------   ---------------------------------
+|  accept_printer_off  passed on to Ring 0
+   copy_meters         already implemented in hasp_mpx
+   get_chars_timeout   *must be implemented (as read_record_timeout)
+   get_line_timeout    *must be implemented (as read_record_timeout)
+   get_required_access_class - no implementation needed.
+   hangup              already implemented (passed on to Ring 0)
+   hangup_proc         already implemented in hasp_workstation_
+|  info                passed on to Ring 0
+   line_status         already implemented (passed on to Ring 0)
+   listen              already implemented (passed on to Ring 0)
+   modes               already implemented
+   put_chars_timeout   *must be implemented (as write_record_timeout)
+   printer_on          must be implemented
+   printer_off         must be implemented
+|  quit_disable        passed on to Ring 0
+|  refuse_printer_off  passed on to Ring 0
+   resetread           already implemented in hasp_workstation_
+   resetwrite          already implemented in hasp_workstation_
+   set_event_channel   *must be implemented
+|  set_line_type       must be implemented
+   set_required_access_class - no implementation needed.
+   set_term_type       *must be implemented
+   start               already implemented (passed on to Ring 0)
+   state               *must be implemented
+|  store_id            passed on to Ring 0
+|  terminal_info       passed on to Ring 0
+
+
+  HASP WS Console Support                                 MTB703-02
+  Change the hasp_workstation_ I/O module.
+
+   unmask              passed on to Ring 0                          |
+   write_status        already implemented (passed on to Ring 0)
+   wru                 already implemented (passed on to Ring 0)
+
+  * Implemented already by Olin Sibert.
+
+  The  work to  be done  can be  summarized as  the addition  of 11 |
+  control  orders and  adding the  -hangup_on_detach and  -no_block |
+  control arguments.  For  each of these, the code or  ideas can be |
+  borrowed from  tty_io_.  Note that the  set_event_channel control
+  order must be handled when the switch is attached but not open.
+
+  The   most  difficult   part  of   this  implementation   is  the
+  write_record_timeout  control order.  If  hasp_workstation_ times
+  out during the writing of a  record, it is necessary to make sure
+  that the record is not left half-written in Ring 0, as subsequent
+  records would be merged with it and chaos would result.  To avoid
+  this, a flag is set when a half-written record is left in Ring 0.
+  Before doing any writes,  hasp_workstation_ checks this flag.  If
+  it is set, a resetwrite is done to flush the record from Ring 0.
+
+  The printer_on and printer_off control orders will be implemented
+  so that  a code of 0  is returned.  Since a  stream of characters
+  gets converted  to record IO, the terminal  will separate records
+  with  a CR/LF.   Allowing the  error of "undefined_order_request"
+  will  cause  the  password  mask  to  be  sent to the workstation
+  console  and leave  the next   print position  on the  next line.
+  Therefore, it is a waste of IO to allow it to happen.  This is no
+  different than normal Type I station operation where the password
+  is supplied as an argument in the "station" command line.
+
+  The   get_required_access_class,  set_required_access_class   and
+  set_line_type control  orders are not supported and  will get the
+  undefined_order_request  error  code   from  hasp_mpx.   This  is
+  handled properly in all calls.
+
+  The hasp_workstation_modes  entry only accepted  "non_edited" and |
+  "default"  but did nothing  with them and  no previous value  was |
+  returned.  The  Initializer sends out another set  of modes which |
+  would cause  an error.  Since all modes  operations really didn't |
+  affect anything, the modes operation can be changed to accept all |
+  modes and return  a zero error code along with  not returning any |
+  previous value.                                                   |
+
+  The above changes would only allow  the user process to treat the
+  workstation operator  device as a printing terminal  only (ie, no
+  Emacs or video support).
+
+
+  MTB703-02                                 HASP WS Console Support
+  Change the hasp_workstation_ I/O module.
+
+  3.3.1:  MODULES AFFECTED
+
+  All of the changes are in hasp_workstation_.
+
+  3.3.2:  TESTING
+
+  The  modifications   to  hasp_workstation_  will  be   tested  by
+  connecting a HASP workstation line on  an FNP to a HASP host line
+  on    an    FNP    and    using    a    modified    version    of
+  hasp_host_operator_command  to  try  the  new  control orders and
+  attach options over the opr subchannels of the looped-back lines.
+
+  3.3.3:  DOCUMENTATION CHANGES
+
+  Make    the    following    additions    in    AG93,   GB60   and
+  &gt;doc&gt;info&gt;hasp_workstation_.info   to    the   documentation   of
+  hasp_workstation_.  These  descriptions of control  arguments and
+  control orders are taken from tty_.info.
+
+  Add to the list of control arguments:
+
+| -no_block
+|    prevents going blocked on any IO with the channel.
+
+  -suppress_dial_manager
+     suppresses calls to dial_manager_.
+
+  Add to the list of control orders:
+
+| assign_to_user_process
+|    assigns channel to user identified  by processid pointed to by
+|    info_ptr.  The processid is a  36 bit aligned string.  This is
+|    reserved for use by the Initializer process.
+
+| detach_user_process
+|    takes channel  away from user.   The detachflag pointed  to by
+|    info_ptr  controls  disposition  of  the  channel.   If 0, the
+|    channel  is made  available for  other users.   If not  0, the
+|    channel is placed in a hungup state.  This is reserved for use
+|    by the Initializer process.
+
+  set_event_channel
+     specifies  the ipc_  event channel  that receives  wakeups for
+     this  attachment.  Wakeups  are received  for input available,
+     output completed, and state changes such as hangups and quits.
+     The channel must be event wait.  The info_pointer should point
+     to a  fixed bin(71) aligned  quantity containing a  valid ipc_
+     channel identifier.
+
+
+  HASP WS Console Support                                 MTB703-02
+  Change the hasp_workstation_ I/O module.
+
+     If this control  order is not given before the  opening of the
+     switch,  hasp_workstation_ attempts  to allocate  a fast event
+     channel.   Fast event  channels  cannot  be converted  to call
+     channels    and   receive    no   associated    message.    If
+     hasp_workstation_ cannot allocate a  fast channel, an ordinary
+     event wait channel is created and used.  This control order is
+     accepted while the switch is closed or open.  If the switch is
+     open, the new channel replaces the old one.
+
+  read_record_timeout
+     performs  a read_record  operation, with  a timeout specified.
+     The  info_ptr  points   to  the  input_timeout_info  structure
+     declared in io_timeout_info.incl.pl1.                          |
+
+  write_record_timeout
+     performs a  write_record operation, with a  timeout specified.
+     The  info_ptr  points  to  the  output_timeout_info  structure
+     declared in io_timeout_info.incl.pl1.                          |
+
+  set_term_type
+     sets the terminal  type associated with the channel  to one of
+     the types  defined in the  terminal type table.   The info_ptr
+     should point  to the set_term_type_info structure  declared in
+     set_term_type_info.incl.pl1.    Only  the  input   and  output
+     translation tables for the specified terminal type are used.
+                                                                    *
+  printer_off
+     Nothing  happens with  this control  order.  An  error code of
+     zero is always returned.
+
+  printer_on
+     Nothing  happens with  this control  order.  An  error code of
+     zero is always returned.
+
+  set_line_type                                                     |
+     sets the line  type associated with the terminal  to the value |
+     supplied.   The  info_ptr  should  point  to  a  fixed  binary |
+     variable containing the new line type.  Only the LINE_HASP_OPR |
+     line type is accepted on the "opr" or console subchannel.      |
+
+  state
+     returns the state of the channel as one of 4 values;
+         1 = hung up
+         2 = listening
+         5 = dialed up
+        -1 = masked
+     The info_ptr should point to a "fixed bin (17)" aligned variable.
+
+
+  MTB703-02                                 HASP WS Console Support
+  Dynamic I/O Daemon Line Specification
+
+  3.4:  Dynamic I/O Daemon Line Specification
+
+  The I/O  daemon software assumes  that Type II  (no input device)
+  RJE  stations will always  be on dedicated  communications lines.
+  The communications  line to be  used is specified  with a "line:"
+  statement in iod_tables and cannot be changed.  In order to run a
+  Type II station on any of several different lines it is necessary
+  to define several  different names for the station,  one for each
+  line  that it may  use, and allow  each of the  differently named
+  stations to run the same request types.  What is really needed is
+  a  complete redesign  of the   I/O daemon  software, but  that is
+  beyond the scope of this project.
+
+  What  will  be  done  instead  is  to  add  a  function  that can
+  dynamically change the name of  the communications line as stored
+  in iod_working_tables.  This  could be done in two  ways.  One is
+  to  add an  I/O daemon  command to  change the  line number.  The
+  other is  to add a user  command to change the  line number.  The
+  former approach  has the disadvantage of giving  too much control
+  to the station operator if he is allowed to use the reply command
+  to  give  arbitrary  commands  to  his  I/O  daemon(s).  He could
+  potentially  try to  take over  other stations  attached to other
+  lines.  Building in any kind of  restriction as to the lines that
+  could be used would be difficult and would further complicate the
+  already incomprehensible iod_tables.
+
+  The  better approach  would require   that the  changing of  line
+  numbers  be done  in  the  project_start_up.ec.  This  allows the
+  author  of the  project_start_up.ec to  be able  to restrict  the
+  lines that  could be used  based on the  user_id set up  for that
+  remote station.   In addition, implementing a  standalone command
+  would eliminate  the need for  any changes to  iod_tables and the
+  I/O daemon software.  Its only  disadvantage is that it gives the
+  appearance of simply "patching" the iod_tables.
+
+  3.4.1:  MODULES AFFECTED
+
+  The iod_set_line command would be a new, independent module.
+
+  3.4.2:  TESTING
+
+  The iod_set_line command will be tested by using print_iod_tables
+  to check the value stored  in iod_working_tables before and after
+  the use of iod_set_line.
+
+
+  HASP WS Console Support                                 MTB703-02
+  Dynamic I/O Daemon Line Specification
+
+  3.4.3:  DOCUMENTATION CHANGES
+
+  Add  to GB64  the  following  documentation for  the iod_set_line
+  command.    Create  &gt;doc&gt;privileged&gt;iod_set_line.info   from  the
+  following information.
+
+  01/30/85 iod_set_line
+
+  Syntax:  iod_set_line Device Line {-control_args}
+
+  Function:   changes  the  communications  line  associated with a
+  device in iod_working_tables.
+
+  Arguments:
+  Device
+     is the name of a device  specified in a "Device:" statement in
+     iod_tables.iodt.
+  Line
+     is the name of the new  communications line to be used for the
+     device in place  of the line specified in  a "line:" statement
+     iod_tables.iodt.
+
+  Control arguments:
+  -directory Dir_path, -dr Dir_path
+     uses the segment iod_working_tables in the directory Dir_path.
+     If  this  control  argument  is  not  specified,  the  segment
+     &gt;ddd&gt;idd&gt;iod_working_tables is used.
+
+  Access required:  rw access is required to the iod_working_tables
+  segment.
+
+
+  MTB703-02                                 HASP WS Console Support
+  I/O Daemon Logout On Hangup
+
+  3.5:  I/O Daemon Logout On Hangup
+
+  When  a dialup station's  line hangs up,  it may be  desirable to
+  logout  the daemon  that was  using the  line in  order to  avoid
+  having  the daemon  try to  reattach the  line when  it is dialed
+  again (it may not be the same station) and in order to reduce the
+  number  of daemons  that are  just hanging  around doing nothing.
+  This  can  be  accomplished  by  adding  an  iod_tables  argument
+  (logout_on_hangup=  yes|no) to   be processed  by remote_driver_.
+  remote_driver_ would set a new flag in iodd_static and iodd_ will
+  be  changed to  logout the  daemon instead  of reinitializing the
+  driver when the re_init condition is signalled.
+
+  3.5.1:  MODULES AFFECTED
+
+  remote_driver_ and iodd_ will be modified.
+
+  3.5.2:  TESTING
+
+  The modifications  to the I/O  daemon software will  be tested by
+  connecting a HASP workstation line on  an FNP to a HASP host line
+  on an FNP and running the I/O daemon software in test mode.
+
+  3.5.3:  DOCUMENTATION CHANGES
+
+  The following  should be added at  the end of the  description of
+  Type  I and Type  II "Remote Driver  &lt;string&gt; Arguments" on  page
+  15-23 of the AM81 (System Maintenance Procedures) manual.
+
+  logout_on_hangup= &lt;yes_or_no&gt;
+     The logout_on_hangup= key  value of "yes" is used  to tell the
+     driver that  it should not attempt to  reinitialize the device
+     when the communications line is  hung up.  Instead, the driver
+     should logout.  This  key is optional and is only  used in the
+     args substatement of the major device.  The default is "no".
+
+
+  HASP WS Console Support                                 MTB703-02
+  Additional Documentation
+
+  3.6:  Additional Documentation
+
+  Insert the  rest of this section  on page 3-5 of  the GB60 manual
+  before the start of  the subsection titled "Workstation Structure
+  - Multics Simulating Workstation".
+
+  Using HASP Workstations on Non-dedicated Lines
+
+  If  a  HASP  workstation  is  to  be  used  on  several different
+  communications lines,  as may be  the case for  a dialup station,
+  the iod_set_line  command may be  used to dynamically  change the
+  name  of the  communications line   that was  specified for  each
+  device   of  the   workstation.   This   can  be   done  in   the
+  project_start_up.ec  using   the  "[user device_channel]"  active
+  function and the iod_set_line command.
+
+  Using The HASP Workstation Console
+
+  Because HASP workstations must be configured as Type II stations,
+  commands to  run the station (login, logout  and communicate with
+  daemons)  must  be  entered  from  a  user  process that has been
+  allowed to use the send_daemon_command.
+
+  This section  shows an example of  setting up and using  a dialup
+  HASP  workstation with one  printer and one  reader that may  use
+  lines  a.h200 or  a.h201.  Other  workstations may  use the  same
+  lines, and their  declarations would be similar to  what is shown
+  for the example station.  The  operators are required to login on
+  the  workstation  console.   In   this  case,  each  operator  is |
+  registered as "WS1", "WS2", etc on the HASP project.              |
+
+  The  HASP   project_start_up.ec  starts  up   the  HASP.SysDaemon |
+  processes  that  are  needed  to  service  the  devices  for  the |
+  particular workstation.                                           |
+
+  The  following  is  not  the  only   way  to  set  this  type  of
+  environment.  It serves only to show what could be done.
+
+  CMF
+
+  The CMF must contain entries for the HASP multiplexers a.h200 and
+  a.h201 as well as their subchannels.
+
+     name: a.h200;            baud: 9600;
+       service: multiplexer;   multiplexer_type: hasp;
+       line_type: BSC;         terminal_type: HASP_WORKSTATION;
+
+
+  MTB703-02                                 HASP WS Console Support
+  Additional Documentation
+
+       name: a.h200.opr;   service: login;     line_type: HASP_OPR;
+       terminal_type: HASP_WORKSTATION; attributes: check_acs;
+       name: a.h200.rdr1;  service: slave;     line_type: BSC;
+       name: a.h200.prt1;  service: slave;     line_type: BSC;
+
+     name: a.h201;            baud: 9600;
+       service: multiplexer;   multiplexer_type: hasp;
+       line_type: BSC;         terminal_type: HASP_WORKSTATION;
+
+       name: a.h201.opr;   service: login;     line_type: HASP_OPR;
+       terminal_type: HASP_WORKSTATION; attributes: check_acs;
+       name: a.h201.rdr1;  service: slave;     line_type: BSC;
+       name: a.h201.prt1;  service: slave;     line_type: BSC;
+
+  iod_tables
+
+  The  iod_tables  must  include  definitions  of the workstation's
+  devices and  request types.  Since the  communications lines will
+  only be  known at dialup  time, the "line:"  statements specify a
+  dummy  line number.   The  logout_on_hangup  argument is  used to
+  force  the daemons  to logout  should the  communications line be
+  hung up.
+
+  Device:             ws1_rdr1;
+    line:             dummy;
+    driver_module:    remote_driver_;
+|   args:             "station= ws1, slave= no,
+                      desc= -terminal hasp_workstation_ -comm hasp,
+                      logout_on_hangup= yes";
+
+    minor_device:     rdr1;
+       default_type:  dummy;
+       minor_args:    "dev= reader";
+
+| Device:             ws1_prt1;
+    line:             dummy;
+    driver_module:    remote_driver_;
+|   args:             "station= ws1, slave= no,
+                      desc= -terminal hasp_workstation_ -comm hasp,
+                      logout_on_hangup= yes";
+
+    minor_device:     prt1;
+       default_type:  ws1_prt1;
+       minor_args:    "dev= printer";
+
+  Request_type:       dummy;
+    driver_userid:    HASP.SysDaemon;
+    generic_type:     none;
+
+
+  HASP WS Console Support                                 MTB703-02
+  Additional Documentation
+
+    max_queues:       1;
+    device:           ws1_rdr1.rdr1;
+
+  Request_type:       ws1_prt1;
+    driver_userid:    HASP.SysDaemon;
+    generic_type:     printer;
+    device:           ws1_prt1.prt1;
+
+  HASP project_start_up.ec                                          |
+
+  The HASP project_start_up.ec must contain entries for each remote |
+  HASP workstation  and designed to  initialize the station  and to
+  log it out.
+
+  &amp;version 2
+  &amp;trace off
+
+  &amp;- Set correct line numbers in iod_working_tables.
+  &amp;-
+       &amp;set WS1.devices  "prt1 rdr1"                                |
+       &amp;set WS2.devices  "prt1 rdr1"
+
+       &amp;set WS_NAME &amp;[user name]
+       &amp;set WS_name &amp;[lowercase &amp;(WS_NAME)]
+       &amp;set WS_channel &amp;[user device_channel]
+       &amp;set WS_multiplexer &amp;[strip_entry &amp;(WS_channel)]
+       &amp;set WS_devices &amp;(&amp;(WS_NAME).devices)                        |
+       &amp;set WS_idents &amp;||[string &amp;(WS_name)(&amp;(WS_devices))]
+       do "iod_set_line &amp;(WS_name)_&amp;&amp;(1)                            |
+            &amp;+ &amp;(WS_multiplexer).&amp;&amp;(1)"
+            &amp;+ (&amp;(WS_devices))
+
+  &amp;- Monitor the logs for these daemons.                            |
+  &amp;-                                                                |
+       monitor_sys_log -mc_log iolog -match (&amp;(WS_idents))          |
+
+  &amp;- Login the daemons.  They send themselves the commands to
+  &amp;- start processing in their start_up.ec.
+  &amp;-
+       do "if [exists argument [as_who -channel &amp;&amp;(1)]]             |
+            &amp;+ -then ""send_daemon_command logout &amp;&amp;(1); pause 10"" |
+            &amp;+ ; send_daemon_command login &amp;&amp;(1) HASP.SysDaemon"    |
+            &amp;+ (&amp;(WS_idents))                                       |
+
+  &amp;- Now to enter operator environment.                             |
+  &amp;-                                                                |
+       abbrev
+
+
+  MTB703-02                                 HASP WS Console Support
+  Additional Documentation
+
+       enter_lss &gt;udd&gt;HASP&gt;WS_lss
+       &amp;quit
+
+  List of abbrevs:
+
+     .ab x exec_com admin
+     .ab logout exec_com admin logout
+     .ab r send_daemon_command reply
+
+  A workstation admin.ec for WS1
+
+     &amp;version 2
+     &amp;trace off
+     &amp;goto &amp;1.entry
+     &amp;label logout.entry
+     &amp;-
+     &amp;- Logout the daemons
+     &amp;-  Argument means he only wants to get rid of one daemon.
+     &amp;-  If operator typed argument wrong, mcacs segment will not
+     &amp;-  exist or the access will be wrong.
+     &amp;-
+     &amp;if &amp;[exists argument &amp;r2]
+     &amp;then send_daemon_command logout &amp;r2
+     &amp;else &amp;do
+|         send_daemon_command logout (ws1prt1 ws1rdr1)
+|         .q
+          logout
+          &amp;quit
+     &amp;-
+     &amp;label lor.entry
+     &amp;label list_output_requests.entry
+     &amp;if &amp;[exists argument &amp;r2]
+     &amp;then list_output_requests -request_type &amp;r2
+|    &amp;else list_output_requests -request_type ws1_prt1
+     &amp;quit
+
+| The HASP.SysDaemon start_up.ec
+
+|    &amp;version 2
+|    &amp;-
+|    &amp;-        start_up.ec for HASP.SysDaemon daemons
+|    &amp;-
+|    &amp;trace off
+
+|         &amp;if &amp;[not [equal &amp;2 "daemon"]]
+|         &amp;then &amp;do
+|              ioa_ "^a.^a may only be logged in as a daemon."
+|                   &amp;+ &amp;[user name] &amp;[user project]
+
+
+  HASP WS Console Support                                 MTB703-02
+  Additional Documentation
+
+               logout                                               |
+               &amp;end                                                 |
+
+          &amp;set channel &amp;[user device_channel]                       |
+          ioa_ "^a.^a (^a) logged in via &amp;1."                       |
+               &amp;+ &amp;[user name] &amp;[user project] &amp;(channel)           |
+          send_daemon_command reply &amp;(channel) driver               |
+
+          &amp;if &amp;[equal &amp;(channel) ws1prt1]                           |
+                &amp;then &amp;do                                           |
+                    send_daemon_command reply ws1prt1 ws1_prt1      |
+                    send_daemon_command reply ws1prt1 ready prt1    |
+                    send_daemon_command reply ws1prt1 go            |
+                    &amp;end                                            |
+
+          &amp;else &amp;if &amp;[equal &amp;(channel) ws1rdr1]                     |
+                &amp;then &amp;do                                           |
+                    send_daemon_command reply ws1rdr1 ws1_rdr1      |
+                    send_daemon_command reply ws1rdr1 read_cards    |
+                    &amp;end                                            |
+
+           &amp;else &amp;do                                                |
+               ioa_ "&amp;ec_name.ec: Invalid device ident, &amp;(channel)" |
+               logout                                               |
+               &amp;end                                                 |
+
+          iod_overseer_                                             |
+          &amp;quit                                                     |
+
+  The limited subsystem command table, WS_lss.ct
+
+     /* Limited SubSystem for HASP workstation operators. */
+
+     exec_com:                     ;
+     exists:                       ;                                |
+     list_output_requests:         ;
+     logout:                       ;
+     send_daemon_command:          ;
+
+     Convert the above with the command line;
+
+     make_commands WS_lss
+
+  Add station operator idents to PNT                                |
+
+  Each station operator identifier must be  added to the PNT with a |
+  normal password.
+
+     ec master register
+          .
+
+
+  MTB703-02                                 HASP WS Console Support
+  Additional Documentation
+
+          .
+          .
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

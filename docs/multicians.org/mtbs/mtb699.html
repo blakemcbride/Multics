@@ -1,0 +1,1634 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-699</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-699: Messages from privileged processes to user processes.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-699
+Messages Priv Processes -&gt; Users
+
+To:       Distribution
+
+From:     Benson I. Margulies
+
+Date:     01/15/85
+
+Subject:  Messages from privileged processes to user processes
+
+1  ABSTRACT
+
+     This  MTB  describes  a  mechanism  for  sending  large
+     messages  from   privileged  processes,  such   as  the
+     Answering Service,  to user processes.   It is proposed
+     at this time to solve two problems:  (1) the B2 project
+     requires  such  a mechanism  to inform  processes about
+     dialed  channels; (2)  the DSA project  requires such a
+     mechanism  to  comunicate between  the  Initializer and
+     login servers  and between login servers  and users, to
+     replace "blast" messages.
+
+     This   MTB   only  proposes   the   implementation  and
+     installation  of  the  general  mechanism  and  the  B2
+     application.   It does  not offer  the DSA applications
+     for review and approval, only as examples.
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Margulies at either System-M, MIT, or CISL-SERVICE.
+
+via Forum:
+   &gt;udd&gt;m&gt;mtgs&gt;B2 on System-M
+
+via telephone:
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+MTB-699                                Multics Technical Bulletin
+                                 Messages Priv Processes -&gt; Users
+
+   (HVN) 261-9333, or
+   (617) 492-9333
+
+
+Multics Technical Bulletin                                MTB-699
+Messages Priv Processes -&gt; Users
+
+2  INTRODUCTION
+
+The  current mechanism  for communications  between the Answering
+Service  and user  processes is  as_request.  This  consists of a
+message  segment in  &gt;sc1 and a  process id and  an event channel
+advertised in the  whotab.  A process can put  a message into the
+message segment  and send a  wakeup to the  advertised process id
+and  event  channel.  The  as_request  server in  the Initializer
+process  reads  messages out  of  the message  segment  and calls
+appropriate  programs to  perform the  requested services.  These
+services  include  bumping running  absentee jobs,  management of
+communications      channels      via      dial_manager_,     and
+send_admin_command.
+
+All   processes   have  ao   access   to  the   message  segment,
+&gt;sc1&gt;as_request.ms.
+
+If  a server  of one  of these  requests wishes  to reply  to the
+request  (for  example,  to   acknowledge  it),  the  only  means
+available is to  send an IPC wakeup to  an event channel supplied
+in the original message.  As always, an IPC message is limited to
+72 bits.
+
+72   bits  is   a  very   severe  limitation.    Several  current
+requirements  will  be  very  difficult  to  implement  without a
+facility for  sending more data  from the Initializer  (and other
+trusted  processes)  to  user  processes.  The  details  of these
+requirements are described later on in this MTB.
+
+An  individual  server  could   get  around  the  limitations  by
+accepting a  pathname into which  a reply would  be placed.  This
+would be  very difficult to  do right.  The server  would have to
+make an  interpretive access control decision  to see whether the
+user is indeed entitled to write into the specified segment.  For
+message segments and mailboxes, this  is not very dangerous.  The
+worst  a user  could do is  clutter another  user's mailbox.  For
+this reason, the send_admin_command  server is willing to deliver
+mail  to any  mailbox to which  the Initializer  has access.  For
+ordinary segments, this would be  very dangerous, due to the risk
+of data destruction.
+
+There would also be an  efficiency problem with having the sender
+of  a  request specify  a  location for  the response.   It would
+require  the Initializer  to reference  at least  one segment per
+user,  and require  the user to  create the segment.   As we will
+see,  that  is a  cost that  is  not reasonable  for some  of the
+proposed  applications  of  a  facility  to  send  messages  from
+privileged processes to users.
+
+
+MTB-699                                Multics Technical Bulletin
+                                 Messages Priv Processes -&gt; Users
+
+3  APPLICATIONS OF SENDING MESSAGES TO USERS
+
+There are several important requirements for this facility.
+
+3.1  B2 IDENTIFICATION AND AUTHENTICATION
+
+The B2 criteria  require all users connected to  the system to be
+identified and  authenticated.  Thus, users  who use the  dial or
+slave  pre-access requests  to connect  to server  processes must
+supply a  name and password, and  be authenticated.  Furthermore,
+the process to  which the users are connected  (i.e., the process
+that is  serving dials) must  be able to determine  the name that
+they supplied  and the AIM authorization  associated with them by
+the Answering Service.
+
+Requiring a name and password was fairly straightforward, and has
+already been  designed, implemented and  installed.  Passing this
+information  to  server processes  is  a more  difficult problem.
+There  is  no  way to  encode  32  characters of  user  name, AIM
+information, and the channel characteristics in a 72 bit message.
+Adding this data to the ring 0 tty database would be complicated.
+Worse, the work would have to  be discarded or duplicated as part
+of  the  new network  architecture (the  DSA project).   Adding a
+special purpose inner ring database would have the same problems.
+The alternative is to create and  use a mechanism for passing the
+results of a query back to a process from the Answering Service.
+
+3.2  LOGIN SERVERS
+
+The  DSA  project/new  networking  architecture  will  split  the
+Answering  Service  into  multiple  processes.   In  the  initial
+implementation, process management and  accounting will remain in
+the  Initializer, while  the network-specific  code will  move to
+server processes.  These processes must engage in a protocol with
+the Initializer  portion of the  Answering Service to  create and
+destroy processes.  This protocol,  in turn, requires significant
+quantities of  information to be  passed between the  servers and
+the Initializer.
+
+3.3  THE WARN COMMAND
+
+By  now,  every Multics  user of  the video  system or  emacs has
+experienced  the  unpleasant  effects of  the  "blast" mechanism,
+whereby  the  Initializer dumps  output into  user communications
+channels without regard  for the current state of  the channel or
+the terminal.  The complaints from the field are reason enough to
+replace   this.    In  addition,   though,  the   new  networking
+
+
+Multics Technical Bulletin                                MTB-699
+Messages Priv Processes -&gt; Users
+
+architecture  will  irretrievably  break  the  current  approach.
+There is  simply no general  way to stuff output  into the output
+stream of a process over an arbitrary network connection.
+
+This mechanism must be replaced by  one that sends the message to
+the user process and depends on the user process to present it to
+the user appropriately.  The existing message facility, even with
+the  addition  of urgent  messages, would  not suffice.   For one
+thing,  it  would have  the efficiency  cost above.   For another
+thing,  the  message  facility  is  not  designed  to  carry data
+structures,   but   only  text   messages.   Without   real  data
+structures,  it is  difficult to build  applications that respond
+programatically.   For example,  an application  like xmail might
+want to handle warn commands differently from bumps.
+
+4  DESIGN REQUIREMENTS
+
+This section describes the  functional requirements of a facility
+for  sending  messages  from  the  privileged  processes  to user
+processes.   The following  items characterize  what the facility
+will (and in some case, will not) be able to do.
+
+1)   This facility  will permit trusted system  processes to send
+     messages to  other processes.  This facility  will not allow
+     user processes to intercommunicate.
+
+2)   This  facility  will  transmit  messages  of  large  but not
+     arbitrary length.   The longest message may  be on the order
+     of a  full Multics segment, but  it need not be  as big as a
+     full Multics segment.
+
+3)   This  facility will  provide reliable  message transmission.
+     No message will be lost by  the facility once it is accepted
+     for  delivery.   (A  malfunctioning  user  process  can,  of
+     course, read out a message and drop it.)  This facility will
+     impose no limits on the total number of messages that can be
+     pending  at  one  time  or  on  the  number  of  messages  a
+     particular sender can send.  No malfunction of a non-trusted
+     process  will  prevent  messages  from  being  accepted  for
+     delivery.
+
+4)   This  facility  will  allow  the  sender  of  a  message  to
+     designate   its   destination  by   specifying   the  target
+     process(es)  and   a  "handle"  within   the  process.   The
+     process(es) may be specified by either:
+
+     a) A single process id.
+
+     b) A group id starname, specifying one or more processes.
+
+
+MTB-699                                Multics Technical Bulletin
+                                 Messages Priv Processes -&gt; Users
+
+     The  handle  is  a  bit  72  quantity  used  to  identify  a
+     particular protocol,  or a particular  transaction between a
+     trusted  process  and its  correspondent.  Some  handles are
+     reserved for  global system protocols.   The handle (72)"0"b
+     is reserved as an invalid handle.
+
+     In addition,  the sender must  specify the access  class and
+     ring  of the  message.  Senders without  ring1 privilege may
+     only   specify  their   current  authorization.   Privileged
+     senders  may  specify any  authorization from  system_low to
+     their  maximum  authorization.    A  message  is  implicitly
+     addressed only to processes whose authorization is identical
+     to the message  access class and whose ring  is less than or
+     equal to the specified destination ring.
+
+          5) The  disposition of the message  is specified by the
+     sender.   The  sender may  choose one  of the  following two
+     dispositions:
+
+     a) The  message  may be  deleted  by any  process that  is a
+        legitimate recipient.   Recipients may decline  to delete
+        such messages,  but protocols will be  designed to assume
+        that  in the  normal case  any recipient  will delete any
+        message that it can.
+
+     b) The  message  may only  be  deleted by  the  sender.  The
+        sender  is responsible  for keeping  track of outstanding
+        messages and deleting them as appropriate.
+
+     In addition, all outstanding messages for a specific process
+     specified by  process id will be  deleted automatically when
+     the process terminates.
+
+6)   This facility provides no receipt acknowledgement.
+
+7)   No message will be retained for delivery across a bootload.
+
+5  IMPLEMENTATION
+
+This  section  describes  a  design  that  provides  the services
+described above.
+
+5.1  BASIC APPROACH
+
+The basic approach of this design  is to make use of the existing
+message segment primitives, mseg_.   These primitives are already
+capable  of  efficiently  and  reliably  recording  messages  and
+
+
+Multics Technical Bulletin                                MTB-699
+Messages Priv Processes -&gt; Users
+
+marking   them   with  AIM   information.    This  design   is  a
+special-purpose  ring 1  multiclass database  that uses  a set of
+mseg_  managed segments  as its underlying  storage medium.  Note
+that these  will NOT be message  segments or mailboxes accessible
+through the  standard gates.  The fact  that they are implemented
+with mseg_ will be hidden,  since the database will be referenced
+only through its own gates.
+
+Mseg_ is  far from the  ideal of design  or efficiency.  However,
+any  attempt to  avoid it (given  that FAMIS is  not available in
+this environment)  would be a  large job, and  could not possibly
+receive the degree of testing and exposure that mseg_ has had.
+
+This design makes  two small enhancements to mseg_.   The rest is
+implemented  with  data  stored  in the  mseg_  segments  and the
+programs around it.
+
+5.2  ENHANCEMENTS TO MSEG_
+
+As described below, this  design stores some overhead information
+in  messages  in  mseg_  segments.   The  existing  interface for
+reading from  these segments assumes  that it is the  target of a
+gate  and allocates  a copy of  the message  in a caller-supplied
+area.  To improve the efficiency  of accessing overhead data that
+is only read  in the inner ring, this  design adds entrypoints to
+mseg_ that return pointers to  the header message and to ordinary
+messages.     These    entrypoints    are    mseg_$find_msg   and
+mseg_$find_hdr_msg, and are described in detail below.
+
+5.3  MSEG_ SEGMENTS AS A DATABASE
+
+An  mseg_ segment  is a set  of messages together  with a special
+"header"  message.   Each message  has  an envelope  that records
+information about  its source as  well as an AIM  marking for the
+information  in the  message.  Each message  has a  72 bit unique
+message id, which is in fact  a clock value.(1)  The envelope has
+no information about the destination  of the message; the segment
+itself is  assumed to have  been the destination.   As implied by
+the term "mseg_ segment," mseg_ provides no intrinsic support for
+the use of multiple segments.
+
+_________________________________________________________________
+
+(1) Note that it  is not quite unique.  The ID  is just a reading
+    of the SCU clock.  On a DPS8/70M processor, it is possible to
+    get the  same value from  two subsequent readings  of the SCU
+    clock.  This event is very unlikely, though.
+
+
+MTB-699                                Multics Technical Bulletin
+                                 Messages Priv Processes -&gt; Users
+
+To make use  of mseg_ segments for this  purpose, there are three
+tasks:  first,  to arrange for  the use of  a set of  segments to
+avoid limitations  on the amount of  data outstanding; second, to
+store  destination information  with each  message; third,  to be
+able   to  efficiently   find  a  message   without  knowing  its
+message_id.
+
+5.4  USING MULTIPLE SEGMENTS
+
+The  database will  consist of  a set  of segments,  named by the
+convention "as_user_message_NN".  The header of the first segment
+will contain the number of segments currently in use, the highest
+numbered  segment that  currently contains at  least one message,
+and the time that that  information last changed.  User processes
+will keep a  static list of mseg_ segment  pointers, and initiate
+additional segments by comparing the  time that they last checked
+the list against the change time in the first segment.
+
+The pad bits at  the top of a clock value will  be used to encode
+the  segment index  in a  message id.   To look  up a  message by
+message id, a process will first pick up the top 20 bits (the pad
+area),  and find  a segment index  there.  Then  the process will
+zero  the  top 20  bits, and  use the  resultant doubleword  as a
+message_id within the message segment.
+
+5.5  STORING DESTINATION INFORMATION
+
+Each  message written  in a  mseg_ segment  will have  a standard
+header that describes its destination.   The details of this data
+structure are  given below.  The  header will specify  the target
+process_id (if any), group_id (if  any),(2) handle, and ring.  It
+will also specify  whether or not the recipient  is to delete the
+message.
+
+5.6  EFFICIENT RETRIEVAL WITHOUT A MESSAGE_ID
+
+It is desirable to implement  protocols that work without the use
+of wakeups.   They are easier  to code and debug,  and often more
+efficient.   It  is  required  to implement  protocols  that work
+without  the   reliable  use  of   wakeups,  since  IPC   is  not
+
+_________________________________________________________________
+
+(2) "group_id"   is    the   original   Multics    term   for   a
+    user.project.tag  string.   All of  the existing  system code
+    uses this term in data structures, so this design follows the
+    example.
+
+
+Multics Technical Bulletin                                MTB-699
+Messages Priv Processes -&gt; Users
+
+reliable.(3)  In a wakeup-free protocol, a process would call the
+message  facility to  retrieve the  chronologically first message
+sent to it at a specified handle.
+
+While the  message facility has  a pseudo-hash table  that allows
+effecient  lookup by  message_id, a  search by  destination would
+require the examination of all the messages.
+
+It would be impractical to add support for this kind of searching
+to mseg_  proper in MR11.   The alternative is to  store a simple
+table that associates the  message_id's, handles, and destination
+process id's  of the messages  in a segment.   If the table  is a
+fixed size, then it can be searched very quickly.
+
+A fixed size table is not  ideal.  It imposes an artificial limit
+on  the number  of messages  that can  be stored  in the segment.
+This is not a serious problem.   The fixed table consumes 5 words
+per message  (process id, handle,  and message_id).  A  64K mseg_
+segment can  accomodate a 900  entry table and have  room for 900
+messages of average size 64  words.  (64 was actually calculated;
+the mseg_  overhead and destination  is 35 words,  leaving 31 for
+actual data).   If the messages are  generally smaller, then more
+segments will  be used.  The  result is still  far more efficient
+than reading all the messages in the segment or even chasing hash
+table threads from message to message.
+
+The search table  will be stored as the  first regular message in
+the mseg_ segment, since the header  message may only be 64 words
+long.
+
+6  DATA STRUCTURES
+
+This  section  documents  the  data structures  for  the database
+itself.  Data structures passed through interfaces are documented
+along with the interfaces.
+
+_________________________________________________________________
+
+(3) IPC is unreliable because the system has no mechanism to wait
+    for space  to be available in  the ITT.  If the  ITT is full,
+    then IPC wakeups  will be lost.  Given the  fact that the ITT
+    is a  wired database, and  therefore of limited  size, it may
+    never be possible to guarantee  that all IPC messages will be
+    delivered under all circumstances.
+
+
+MTB-699                                Multics Technical Bulletin
+                                 Messages Priv Processes -&gt; Users
+
+6.1  DATABASE SEGMENT NAME
+
+The     database     will     reside     in     the     directory
+&gt;system_control_dir&gt;user_messages.   The  following  declarations
+describe the names of the segments.
+
+declare  1 as_user_message_segment_name unaligned,
+           2 constant char (17),
+           2 index picture "99";
+
+declare  AS_USER_MESSAGE_SEGMENT_NAME_CONSTANT char (17)
+              init ("as_user_message_") int static
+              options (constant);
+
+6.2  MESSAGE ID'S
+
+The following declaration  describes the use of the  72 bit mseg_
+message  ID.  Only  the top  9 bits  are used  to leave  room for
+larger clock  values.  This declaration  is used only  within the
+subsystem.  Programs  use unspec to  copy data to  this automatic
+variable and then back to a bit (72), rather than based overlays.
+
+declare  1 as_user_message_id aligned,
+           2 segment_index fixed bin (9) unsigned unaligned,
+           2 pad bit (11) unaligned,
+           2 pad_clock bit (52) unaligned;
+
+STRUCTURE ELEMENTS
+
+segment_index
+   is  the zero-based  index of the  segment of  the user message
+   database that contains the message.  To convert a user_message
+   message into an mseg_ message id, clear this field to zero.
+
+pad
+   is zero  in mseg_ message  id's and is  unused by user_message
+   message id's.
+
+pad_clock
+   is  the  clock  reading  from  the  SCU  clock  that  uniquely
+   identifies a message in an mseg_ segment.
+
+6.3  MSEG_ HEADER MESSAGE
+
+This structure is  stored in the 64 word  mseg_ header message of
+all segments  of the database.   Some of the  information is only
+valid in the first segment.
+
+
+Multics Technical Bulletin                                MTB-699
+Messages Priv Processes -&gt; Users
+
+declare  as_user_message_system_info_ptr pointer;
+declare  1 as_user_message_system_info aligned
+              based (as_user_message_system_info_ptr),
+           2 sentinel char (8) aligned,
+           2 time_of_bootload fixed bin (71),
+           2 segment_update_time fixed bin (71),
+           2 n_segments fixed bin,
+           2 highest_segment_in_use fixed bin,
+           2 handle_table_message_id bit (72) aligned;
+
+declare  AS_USER_MESSAGE_SYSTEM_SENTINEL char (8) aligned
+              init ("asumsys1") int static options (constant);
+
+STRUCTURE ELEMENTS
+
+sentinel
+   is a value  used to cross-check the validity  of the database.
+   It must have the value AS_USER_MESSAGE_SYSTEM_SENTINEL.
+
+time_of_bootload
+   is  the value  of sys_info$time_of_bootload  at the  time this
+   segment  was initialized.   This value  is used  to tell  if a
+   given  segment  has ever  been used  in the  current bootload.
+   This  obviates  the need  to delete  old database  segments at
+   system initialization.
+
+segment_update_time
+   is    the    time    that   the    values    "n_segments"   or
+   "highest_segment_in_use" were last changed.  This value should
+   only  be changed  under the mseg_  lock on  the first segment.
+   This value is only valid in the first segment.
+
+n_segments
+   is the number of segments  in the database.  This value should
+   only  be changed  under the mseg_  lock on  the first segment.
+   This value is only valid in the first segment.
+
+highest_segment_in_use
+   is  the  number  of  the  highest  numbered  segment currently
+   containing at  least one message.   This value should  only be
+   changed under the mseg_ lock on the first segment.  This value
+   is only valid in the first segment.
+
+handle_table_messsage_id
+   is the mseg_  message id of the message  containing the search
+   table  of  handles.  This  message  will always  be  the first
+   message  in  the  segment.  The  handle  is stored  here  as a
+   cross-check.
+
+
+MTB-699                                Multics Technical Bulletin
+                                 Messages Priv Processes -&gt; Users
+
+6.4  MESSAGE HANDLE TABLE
+
+Each mseg_ segment  contains a message handle table  as its first
+message.  This fixed size table  lists all the messages stored in
+the  segment.   The table  is  maintained with  stacq.  To  add a
+message, the sender  finds a slot with zero  for a process_id and
+stacq's it in with either a  specific target or the special value
+AS_USER_ANY_PROCESS_ID.  Having claimed  the process_id slot, the
+sender then adds the message to the mseg_ segment and records the
+handle and the  message id.  To delete a  message, the process_id
+is stacq'd to zero.
+
+declare  AS_USER_MESSAGES_PER_SEGMENT fixed bin init (900)
+              int static options (constant);
+
+declare  as_user_message_handle_table_ptr pointer;
+declare  1 as_user_message_handle_table aligned
+              based (as_user_message_handle_table),
+           2 highest_in_use fixed bin (35),
+           2 process_id_list (900) bit (36) aligned,
+           2 handle_list (900) bit (72) aligned,
+           2 message_id_list (900) bit (72) aligned;
+
+declare  AS_USER_ANY_PROCESS_ID bit (36) aligned
+              init ("777777777777"b3) int static
+              options (constant);
+
+STRUCTURE ELEMENTS
+
+AS_USER_MESSAGES_PER_SEGMENT
+   is the maximum number of  messages stored in an mseg_ segment.
+   This is NOT  used as a variable bound for  the arrays below so
+   that the compiler will generate efficient code.
+
+highest_in_use
+   is the highests  numbered slot in the arrays  in use.  This is
+   maintained with the careful use  of stacq.  A process adding a
+   message tries  to stacq the  max of the current  value and the
+   slot number just filled in.  If the stacq fails, the new value
+   must again be compared to the updater's slot number.  Similiar
+   care must  be taken with deletions,  since another process can
+   claim  a  slot in  between  zeroing the  process_id  array and
+   updating the highest_in_use.
+
+process_id_list
+   is an array  listing the target process_id of  each message in
+   the mseg_ segment.
+
+handle_list
+
+
+Multics Technical Bulletin                                MTB-699
+Messages Priv Processes -&gt; Users
+
+   is an array  listing the target handle of  each message in the
+   mseg_ segment.
+
+message_id_list
+   is an  array listing the  mseg_ message_id of  each message in
+   the mseg_ segment.
+
+6.5  PERPROCESS INFORMATION
+
+For efficiency, some  information is stored in the  ring 1 static
+of each process that uses the user_message facility.
+
+declare  as_user_message_perprocess_info_ptr_ pointer
+              external init (null ());
+
+declare  as_user_message_perprocess_info_ptr pointer;
+
+declare  1 as_user_message_perprocess_info aligned,
+           2 sentinel char (8) aligned,
+           2 segment_update_time fixed bin (71),
+           2 n_segments fixed bin,
+           2 ms_ptr (1000) pointer unaligned;
+
+declare  AS_USER_MESSAGE_PROCESS_SENTINEL char (8) aligned
+              init ("asumprc1") int static options (constant);
+
+STRUCTURE ELEMENTS
+
+sentinel
+   is  a  value  used to  validate  the copy  of  the per_process
+   information.  The information is  discarded if this value does
+   not contain AS_USER_MESSAGE_PROCESS_SENTINEL.
+
+segment_update_time
+   is  the  time that  this process  last checked  the per-system
+   segment table in the first mseg_ segment header.
+
+n_segments
+   is the  number of mseg_  segments currently initiated  in this
+   process.
+
+ms_ptr
+   are  pointers to  each of  the n_segments  mseg_ segments that
+   this process has initiated.
+
+
+MTB-699                                Multics Technical Bulletin
+                                 Messages Priv Processes -&gt; Users
+
+7  INTERFACES
+
+This   section   describes   the  callable   interfaces   of  the
+user_message facility.  It also  contains descriptions of the new
+mseg_ entrypoints.  This section refers  to each interface by the
+gate that contains  it.  Since there are three  gates, a transfer
+vector is provided for all three.  The transfer vector is briefly
+described at the end.
+
+             ________________________________________
+
+NAME: MSEG_
+
+mseg_ is the inner ring utility procedure that implements .ms and
+.mbx  segments.  It  maintains a  segment containing  a series of
+messages each marked with their source and AIM classification.
+
+ENTRY:  MSEG_$FIND_HDR_MSG
+
+This entry, callable only from the ring of the segment, returns a
+pointer to the header message.
+
+USAGE
+
+declare mseg_$find_hdr_msg entry (ptr, ptr, fixed bin (18), bit
+     (72) aligned, fixed bin (35));
+
+call mseg_$find_hdr_msg (mseg_ptr, hdr_msg_ptr, hdr_msg_length,
+     hdr_msg_access_class, code);
+
+ARGUMENTS
+
+mseg_ptr
+   is a pointer to an mseg_ managed segment.  (Input)
+
+hdr_msg_ptr
+   is  a  pointer  to  the header  message  of  segment,  if any.
+   (Output)
+
+hdr_msg_length
+   is the  length, in words,  of the data in  the header message.
+   (Output)
+
+hdr_msg_access_class
+   is the  access class of  the information stored  in the header
+   message.   It  is  the  callers responsability  to  check this
+   against  the  process   authorization  before  returning  this
+   information out of ring 1.  (Output)
+
+
+_____                                          __________________
+
+mseg_                                          user_message_priv_
+_____                                          __________________
+
+code
+   will  be  zero  if there  was  a header  message  defined, and
+   error_table_$no_message otherwise.  (Output)
+
+ENTRY:  MSEG_$FIND_MSG
+
+This entry  is similiar to  mseg_$priv_read.  No area  pointer is
+supplied,  because  no  data  is   copied.   It  is  the  callers
+responsibility to make all access control checks.
+
+USAGE
+
+declare mseg_$find_msg entry (ptr, ptr, fixed bin (35));
+
+call mseg_$find_msg (mseg_ptr, mseg_message_info_ptr, code);
+
+ARGUMENTS
+
+mseg_ptr
+   is a pointer to a mseg_ managed segment.  (Input)
+
+mseg_message_info_ptr
+   is  a pointer  to a  standard mseg_message_info  structure, as
+   declared in mseg_message_info.incl.pl1.  On output, the fields
+   ms_ptr and ms_len are set to the actual location and length of
+   the message text in the  segment.  The other output fields are
+   set as usual.  (Input, but fields output)
+
+code
+   is   a   standard   system    status   code.    It   will   be
+   error_table_$no_message if the requested  message could not be
+   located.  (Output)
+
+             ________________________________________
+
+NAME: USER_MESSAGE_PRIV_
+
+This  gate  contains entries  used by  trusted processes  to send
+messages to  user processes using the  user_message facility.  In
+this  context, a  "trusted process" is  a process  trusted not to
+mis-use  this facility  (e.g., by sending  infinite quantities of
+messages  or disrupting  another process's use).   Access to this
+gate does  not permit a  process to write messages  down to lower
+authorizations without the ring1 system privilege.
+
+
+__________________                             __________________
+
+user_message_priv_                             user_message_priv_
+__________________                             __________________
+
+ENTRY:  USER_MESSAGE_PRIV_$SYSTEM_INIT
+
+This entrypoint is called by the Initializer as part of Answering
+Service initialization.   It deletes any information  left from a
+previous bootload and creates  a new user_message database.  This
+entrypoint uses the  syserr log to report details  of problems on
+the bootload console.
+
+USAGE
+
+declare user_message_priv_$system_init entry (fixed bin (35));
+
+call user_message_priv_$system_init (code);
+
+ARGUMENTS
+
+code
+   is a standard  system status code.  It will  be nonzero if and
+   only if it was impossible  to set up a functional user_message
+   facility.
+
+ENTRY:  USER_MESSAGE_PRIV_$ADD_MESSAGE
+
+This  entry  is  called to  queue  a  message for  delivery  to a
+process.
+
+USAGE
+
+declare user_message_priv_$add_message entry (ptr, fixed bin
+     (35));
+
+call user_message_priv_$add_message
+     (as_user_add_message_info_ptr, code);
+
+ARGUMENTS
+
+as_user_message_add_ptr
+   is a pointer to the as_user_message_add structure, as declared
+   in as_user_message_add.incl.pl1 and described below.  (Input)
+
+code
+   is a standard system status code.   It will be nonzero only if
+   the message could not be added.
+
+
+__________________                             __________________
+
+user_message_priv_                             user_message_priv_
+__________________                             __________________
+
+AS_USER_MESSAGE_ADD_INFO
+
+declare as_user_message_add_info_ptr pointer;
+declare 1 as_user_message_add_info aligned
+        based (as_user_message_add_info),
+        2 version char (8) aligned,
+        2 message_info aligned,
+          3 message_ptr pointer,
+          3 message_length fixed bin (18),
+          3 message_access_class bit (72) aligned,
+          3 message_id bit (72) aligned,
+        2 destination_info aligned,
+          3 group_id char (32) unal,
+          3 process_id bit (36) aligned,
+          3 handle bit (72) aligned,
+          3 reader_deletes bit (1) aligned;
+
+declare AS_USER_MESSAGE_ADD_INFO_VERSION_1
+        char (8) init ("auma0001") int static options (constant);
+
+STRUCTURE ELEMENTS
+
+version
+   is  the  version  of  this  structure,  and  must  be  set  to
+   AS_USER_MESSAGE_ADD_INFO_VERSION_1.  (Input)
+
+message_ptr
+   is a pointer to the text of the message to be added.  (Input)
+
+message_length
+   is the length, in words, of the message to be added.  (Input)
+
+message_access_class
+   is  the  access class  marking  for the  message.   Unless the
+   caller has the ring1 system  privilege set, this must be equal
+   to the calling process authorization.
+
+message_id
+   is the  unique id assigned  to the message when  it is stored.
+   (Output)
+
+group_id
+   is the target  group_id of the message.  If  process_id is not
+   all ones,  then this should  be set to  "" as it  is not used.
+   This may be  a starname.  If this is not  "" and process_id is
+   not  all  ones,  the call  is  invalid  and an  error  code is
+   returned.
+
+
+__________________                             __________________
+
+user_message_priv_                             user_message_priv_
+__________________                             __________________
+
+process_id
+   is the process id of the  process to which the message will be
+   delivered.  If the message is to be delivered to more than one
+   process, (or the target process  id is unknown) then this must
+   be set to all ones.
+
+handle
+   is the  protocol handle within  the target processes  to which
+   the message will be delivered.  This may not be zero.  Handles
+   with the first  bit equal to 1 are  reserved for global system
+   protocols.
+
+reader_deletes
+   specifies whether the recipient  the message should delete it.
+   If  this  is  set to  1,  then  any recipient  may  delete the
+   message.  If this is set to 0, then only the sender may delete
+   the message.
+
+NOTES
+
+The  system  automatically deletes  all  messages destined  for a
+specific process  id when the process  terminates.  Thus a sender
+may  set reader_deletes  to 0 and  specify a process  id, and the
+message will be readable until the process terminates.
+
+ENTRY:  USER_MESSAGE_PRIV_$DELETE_MESSAGE_ID
+
+This entry is used by a  sender to delete a message.  The message
+must be  specified by message_id.  The  message access class must
+be equal to the caller  authorization unless the caller has ring1
+privilege.
+
+USAGE
+
+declare user_message_priv_$delete_message_id entry (bit (72)
+     aligned, fixed bin (35));
+
+call user_message_priv_$delete_message_id (message_id, code);
+
+ARGUMENTS
+
+message_id
+   is the message id returned by add_message when the message was
+   added.
+
+code
+   is a standard system status code.
+
+
+__________________                            ___________________
+
+user_message_priv_                            user_message_admin_
+__________________                            ___________________
+
+ENTRY:  USER_MESSAGE_PRIV_$DELETE_PROCESS_MESSAGES
+
+This entrypoint  deletes all the messages  whose destination is a
+specific process as specified by process_id.  Only those messages
+whose access classes are equal  to the caller's authorization are
+deleted unless the caller has ring1 privilege.
+
+USAGE
+
+declare user_message_priv_$delete_process_messages entry (bit
+     (36) aligned, fixed bin (35));
+
+call user_message_priv_$delete_process_messages (pid, code);
+
+ARGUMENTS
+
+pid
+   is  the process  id of  the process  whose messages  are to be
+   deleted.   All messages  whose destination is  this process id
+   specifically are deleted.
+
+code
+   is a standard system status code.
+
+             ________________________________________
+
+NAME: USER_MESSAGE_ADMIN_
+
+This  gate contains  entries callable  by system  maintainers and
+administrators.   They  permit  an administrator  to  examine the
+messages in the user message database.
+
+ENTRY:  USER_MESSAGE_ADMIN_$READ_MESSAGE
+
+This entrypoint permits a process to read any message in the user
+message database,  subject to AIM  restrictions.  ring1 privilege
+is required  to read messages  whose access classes  are not less
+than or equal to the caller's authorization.
+
+USAGE
+
+declare user_message_admin_$read_message entry (ptr, ptr, fixed
+     bin (35));
+
+call user_message_admin_$read_message
+     (as_user_message_admin_read_info_ptr,
+     as_user_message_info_ptr, area_ptr, code);
+
+
+___________________                           ___________________
+
+user_message_admin_                           user_message_admin_
+___________________                           ___________________
+
+ARGUMENTS
+
+as_user_message_admin_read_info_ptr
+   is a pointer to the as_user_message_admin_read_info structure.
+
+as_user_message_info_ptr
+   is  a pointer  to the  as_user_message_info structure descrbed
+   below  under the  "user_message_$read" entrypoint.   All input
+   fields in the structure except  the version are ignored, since
+   the    message     is    completely    specified     by    the
+   user_message_admin_read_info structure.  (Input)
+
+area_ptr
+   is a pointer to an area.   The message returned will be copied
+   into storage allocated in this area.  (Input)
+
+code
+   is a standard system status code.
+
+AS_USER_MESSAGE_ADMIN_READ_INFO
+
+declare as_user_message_admin_read_info_ptr pointer;
+declare 1 as_user_message_admin_read_info aligned
+          based (as_user_message_admin_read_info_ptr),
+          2 version char (8) aligned,
+          2 source_group_id char (32) unal,
+          2 source_process_id bit (36) aligned,
+          2 target_group_id char (32) unal,
+          2 target_process_id bit (36) aligned,
+          2 target_handle bit (72) aligned,
+          2 after_message_id bit (72) aligned;
+
+declare AS_USER_MESSAGE_ADMIN_READ_INFO_VERSION_1
+        char (8) init ("aumar001") int static options (constant);
+
+STRUCTURE ELEMENTS
+
+version
+   must be AS_USER_MESSAGE_ADMIN_READ_INFO_VERSION_1.  (Input)
+
+source_group_id
+   is a starname specifying the sender of the message to be read.
+   "" is equivalent to *.*.*.  (Input)
+
+source_process_id
+   is the process id of the  source process.  If zero, the source
+   process id is not specified.  (Input)
+
+
+___________________                                 _____________
+
+user_message_admin_                                 user_message_
+___________________                                 _____________
+
+target_group_id
+   is a starname specifying the recipient(s) of the message to be
+   read.   This  starname  must  be  character  identical  to the
+   starname  specified  by the  message sender  for a  message to
+   match.  That  is, if a  message is sent to  "*.*.a", then this
+   value must be "*.*.a" to read  it out.  If this value is equal
+   to "", messages are read  regardless of their group id.  (Note
+   that if  a message is  sent to all  users it is  stored with a
+   destination of "*.*.*", not "".)  (Input)
+
+target_process_id
+   is the process  id of the recipient of  the message.  If zero,
+   then the recipient process id is not specified.  (Input)
+
+target_handle
+   is the target handle of the message to be read.  If zero, then
+   the handle is not specified.  (Input)
+
+after_message_id
+   is  a message  id of a  message previously  read.  The message
+   returned will  be one entered after  the message identified by
+   this message_id.  If any of  the target_ fields are specified,
+   then it  will be the  next message that  matches those fields.
+   If no  target fields are  specified, then it will  be the very
+   next message.   If this message_id  refers to a  message whose
+   access class is not less than or equal to that of the process,
+   and  the  caller  lacks  ring1  privilege,  this  argument  is
+   ignored.  (Input)
+
+             ________________________________________
+
+NAME: USER_MESSAGE_
+
+This gate allows  a user process to read the  messages sent to it
+by trusted processes.
+
+ENTRY:  USER_MESSAGE_$READ_MESSAGE
+
+This  entry  is used  to  read a  message  from the  user message
+database.
+
+USAGE
+
+declare user_message_$read_message entry (ptr, ptr, fixed bin
+     (35));
+
+
+_____________                                       _____________
+
+user_message_                                       user_message_
+_____________                                       _____________
+
+call user_message_$read_message (area_ptr,
+     as_user_message_info_ptr, code);
+
+ARGUMENTS
+
+area_ptr
+   is a pointer to an area  in which the returned message will be
+   allocated.  (Input)
+
+as_user_message_info_ptr
+   is a pointer to the as_user_message_info structure.
+
+code
+   is a standard system status code.
+
+AS_USER_MESSAGE_INFO
+
+declare  as_user_message_info_ptr pointer;
+declare  1 as_user_message_info aligned
+          based (as_user_message_info_ptr),
+           2 version char (8) aligned,
+           2 flags aligned,
+             3 read_message_id bit (1) unaligned,
+             3 read_after_message_id bit (1) unaligned,
+             3 no_handle_given bit (1) unaligned,
+             3 ring_given bit (1) unaligned,
+             3 dont_delete bit (1) unaligned,
+             3 pad bit (31) unaligned,
+           2 message_info aligned,
+             3 message_ptr pointer,
+             3 message_length fixed bin (18),
+             3 message_id bit (72) aligned,
+             3 message_access_class bit (72) aligned,
+             3 message_handle bit (72) aligned,
+             3 message_ring fixed bin (3),
+           2 sender_info aligned,
+             3 group_id char (32) unaligned,
+             3 process_id bit (36) aligned,
+           2 destination_info aligned,
+             3 group_id char (32) unal,
+             3 process_id bit (36) aligned,
+             3 ring fixed bin (3) aligned;
+
+declare  AS_USER_MESSAGE_INFO_VERSION_1 char (8)
+      aligned init ("asum0001") int static options (constant);
+
+
+_____________                                       _____________
+
+user_message_                                       user_message_
+_____________                                       _____________
+
+STRUCTURE ELEMENTS
+
+version
+   must be equal to AS_USER_MESSAGE_INFO_VERSION_1.  (Input)
+
+read_message_id
+   is  a   flag.   If  "1"b,  then   the  field  "message_id"  is
+   interpreted  as an  input argument.   The message  whose id is
+   "message_id"  is  returned if  it exists.   The message_handle
+   field is not  respected on input.  This flag may  not be on if
+   read_after_message_id is on.  (Input)
+
+read_after_message_id
+   is  a   flag.   If  "1"b,  then   the  field  "message_id"  is
+   interpreted  as an  input argument.   The first  message after
+   message_id  for the  handle message_handle  is returned.  This
+   flag may not be on if read_message_id is on.  (Input)
+
+no_handle_given
+   is a flag.  If "1"b, then a message is returned subject to the
+   read_message_id or read_after_message_id  flags without regard
+   to  the  handle  of  the message.   If  "0"b,  then  the field
+   message_handle  specifies  the  handle  of the  message  to be
+   returned.  (Input)
+
+ring_given
+   is a flag.  If "1"b,  then the field message_ring is respected
+   on input, and specified the destination ring of the message to
+   be  read.   If "0"b,  then messages  destined for  the current
+   validation level are returned.  (Input)
+
+dont_delete
+   is a flag.  If "1"b, then  the message is not deleted from the
+   user message database even if it is marked for deletion by its
+   recipient.  If  "0"b, the message  is deleted if  it is marked
+   for deletion.  (Input)
+
+message_ptr
+   is a pointer to the allocated copy of the message.  (Output)
+
+message_length
+   is the length of the allocated message in words.  (Output)
+
+message_access_class
+   is the access class of the message.  (Output)
+
+
+_____________                                       _____________
+
+user_message_                                       user_message_
+_____________                                       _____________
+
+message_handle
+   if  the handle  within the  process to  which the  message was
+   sent.   If  the flag  no_handle_given  is "1"b,  then  this is
+   (Output).  Otherwise it is (Input).
+
+message_ring
+   is the ring to which the message was sent.  This field is only
+   respected of the flag ring_given is "1"b.  (Input)
+
+sender_info
+   is a substructure describing the process who sent the message.
+
+group_id
+   is the User.Project.* user name of the sender.  (Output)
+
+process_id
+   is the process id of the sender.  (Output)
+
+ring
+   is  the validation  level of the  sender at the  time that the
+   sender sent the message.  (Output)
+
+destination_info
+   is a substructure describing how the message was addressed.
+
+group_id
+   is  the   starname  that  specified  the   user  name  of  the
+   recipient(s).  (Output)
+
+process_id
+   is the process id, if any, specified for the recipient.  If no
+   process  id  was specified  then this  will contain  all ones.
+   (Output)
+
+ring
+   is the ring specified for the recipient.  (Output)
+
+NOTES
+
+Normally, a caller should fill this structure up as follows:  set
+read_message_id to 1 if the  message if is known, zero otherwise.
+Set   read_after_message_id,  no_handle_given,   ring_given,  and
+dont_delete to 0.  They are only  used for tools that display the
+messages pending for the process.   Set the message_handle to the
+handle for which the message is to be read.
+
+
+_____________                                       _____________
+
+user_message_                                       user_message_
+_____________                                       _____________
+
+8  TRANSFER VECTOR
+
+User ring callers of this  facility will call the transfer vector
+as_user_message_  rather  than  the actual  gates.   This removes
+dependencies on the names of the gates themselves, and permits us
+to move  the gate entries to  other gates at a  future time.  The
+following  table  gives  the corespondance  between  gate entries
+documented above and transfer vector names.
+
+GATE NAME
+          TRANSFER VECTOR NAME
+
+user_message_priv_$system_init
+          as_user_message_$system_init
+
+user_message_priv_$add_message
+          as_user_message_$priv_add_message
+
+user_message_priv_$delete_message_id
+          as_user_mesage_$priv_delete_message_id
+
+user_message_priv_$delete_process_messages
+          as_user_message_$priv_delete_process_messages
+
+user_message_admin_$read_message
+          as_user_message_$admin_read_message
+
+user_message_$read_message
+          as_user_message_$user_read_message
+
+9  AS_REQUEST FOR B2 TERMINAL INFORMATION
+
+To  meet  the  B2  criteria,  it  is  neccessary  that  a process
+attaching a  communicationn channel other than  its login channel
+be  able to  obtain the  security-related information  about that
+channel.  In  particular, the process  must be able  to learn the
+user  name  of the  person identified  and authenticated  for the
+channel via the dial or slave pre-access requests.
+
+This section describes a facility  that allows a process to query
+the  Answering  Service  for information  about  a communications
+channel.   The  process  sends  an  as_request  message,  and the
+Answering Service replies with a user_message.
+
+
+Multics Technical Bulletin                                MTB-699
+
+9.1  THE AS REQUEST ITSELF
+
+This  section   describes  the  data  structure   passed  in  the
+as_request itself.
+
+ASR_COM_CHANNEL_INFO
+
+This  structure  is  passed   to  the  as_request  mechanism  via
+send_as_request_$block.  All fields are input.
+
+dcl  1 asr_com_channel_info aligned
+       based (asr_com_channel_info_ptr),
+       2 header aligned like as_request_header,
+       2 channel_name char (32) unaligned,
+       2 reply_message_handle bit (72) aligned;
+
+STRUCTURE ELEMENTS
+
+header
+   is the standard as_request_header structure.  The user of this
+   must  fill  in  the  version  and  type  fields,  and  set the
+   reply_channel to zero so that send_as_request_ will manage the
+   event channel.
+
+channel_name
+   is  the  communications  channel  name  to  return information
+   about.
+
+reply_message_handle
+   is the  message_handle to which a  user message containing the
+   information about the channel will be sent.
+
+ASR_REPLY_COM_CHANNEL_INFO
+
+This structure is packed into the 72 bit IPC reply message.
+dcl 1 asr_reply_com_channel_info aligned
+      based (asr_reply_com_channel_info_ptr),
+    2 error_code fixed bin (35),
+    2 pad bit (36) aligned;
+
+STRUCTURE ELEMENTS
+
+error_code
+   Is  an  standard system  status code.   It will  be zero  if a
+   user_message has  been sent to the  process with the requested
+   information, and  non-zero if the user  lacked access to issue
+   the query.
+
+
+Multics Technical Bulletin                                MTB-699
+
+9.2  THE REPLY MESSAGE
+
+AS_COM_CHANNEL_INFO
+
+This  structure is  returned as  a user  message in  reply to the
+com_channel_info as_request.
+
+dcl 1 as_com_channel_info aligned
+      based (as_com_channel_info_ptr),
+      2 version char (8),
+      2 channel_name char (32),
+      2 flags aligned,
+        3 access_control unaligned,
+          4 login bit (1),
+          4 dial_slave bit (1),
+          4 priv_attach bit (1),
+          4 dial_server bit (1),
+          4 dial_out bit (1),
+        3 attached_to_caller bit (1) unaligned,
+        3 user_authenticated bit (1) unal,
+        3 dialed_to_caller bit (1) unal,
+        3 pad bit (28) unaligned,
+      2 service_type fixed bin,
+      2 current_service_type fixed bin,
+      2 access_class (2) bit (72) aligned,
+      2 current_access_class bit (72) aligned,
+      2 auth_user_name char (32) unaligned;
+
+STRUCTURE ELEMENTS
+
+version
+   is  the  version of  this structure.   The current  version is
+   AS_COM_CHANNEL_INFO_VERSION_1.
+
+channel_name
+   is  the  name  of  the  channel  about  which  information  is
+   returned.
+
+flags
+   is a substructure of bit flags.
+
+access_control
+   is a  set of flags  that specify under  what circumstances the
+   system     checks     access     to     the     channel    ACS
+   (&gt;sc1&gt;rcp&gt;CHANNEL_NAME.acs).   Note  that  the  system  always
+   checks access to the acs  before returning this structure to a
+   user for a  channel which is not attached  to the user.  These
+   flags are the same as the flags in the CMF/cdt.
+
+
+Multics Technical Bulletin                                MTB-699
+
+login
+   is "1"b if a user must have rw access to the ACS to login over
+   the channel.
+
+dial_slave
+   is "1"b if a  user must have rw access to the  ACS to give the
+   dial or  slave pre-access commands over  the channel.  If this
+   flag is "1"b, then any user  giving a dial or slave pre-access
+   command must use  the -user control argument to  supply a user
+   name and project.
+
+priv_attach
+   is  "1"b  if a  process  must have  rw  access to  the  ACS to
+   privileged attach the channel.
+
+dial_server
+   is  "1"b if  a process  acting as a  dial server  must have rw
+   access to the ACS for the channel to be dialed to the process.
+
+dial_out
+   is "1"b  if a process must  have rw access to the  ACS to do a
+   dial_out on the channel.
+
+attached_to_caller
+   is "1"b if the specified  channel is currently attached to the
+   calling process.  All of the  fields below are not returned to
+   the user if  this is "0"b to prevent  processes from spying on
+   other processes.
+
+user_authenticated
+   This field is not returned if attached_to_channel is "0"b.  It
+   is  "1"b if  a user  was identified  and authenticated  on the
+   channel.
+
+dialed_to_caller
+   This field is not returned if attached_to_channel is "0"b.  It
+   is "1"b if the channel is  attached to the caller via the dial
+   facility.
+
+service_type
+   This field is not returned if attached_to_channel is "0"b.  It
+   is the service type defined in the cdt for the channel.
+
+current_service_type
+   This field is not returned if attached_to_channel is "0"b.  It
+   is the current service type of the channel.
+
+access_class
+   This field is not returned if attached_to_channel is "0"b.  It
+   is the AIM access class defined in the cdt for the channel.
+
+
+Multics Technical Bulletin                                MTB-699
+
+current_access_class
+   This field is not returned if attached_to_channel is "0"b.  It
+   is the AIM access class associated with the current attachment
+   of the channel.
+
+auth_user_name
+   This  field is  not returned  if attached_to_channel  is "0"b.
+   This field is only returned if user_authenticated is "1"b.  It
+   is  the  person.project  name  of the  user  authenticated and
+   identified for the channel.
+
+9.3  SUBROUTINE INTERFACE FOR COM_CHANNEL_INFO
+
+The following  subroutine is provided  to encapsulate the  use of
+as_request and the user message.
+
+
+_____________________                       _____________________
+
+get_com_channel_info_                       get_com_channel_info_
+_____________________                       _____________________
+
+NAME: GET_COM_CHANNEL_INFO_
+
+This  subroutine returns  info about a  communications channel by
+querying the answering service.
+
+USAGE
+
+declare get_com_channel_info_ entry (ptr, fixed bin (35));
+
+call get_com_channel_info_ (as_com_channel_info_ptr, code);
+
+ARGUMENTS
+
+as_com_channel_info_ptr
+   is a pointer to  the as_com_channel_info structure, as defined
+   above.  The version and channel name fields must be set.
+
+code
+   is a standard system status code.   If will be non-zero if the
+   specified channel does  not exist or if the  user lacks access
+   to get information about the channel.
+
+For channels attached to the  caller's process, no further access
+required.    Otherwise,    r   access   to    the   channel   ACS
+(&gt;sc1&gt;rcp&gt;CHANNEL_NAME).
+
+
+_____________________                                        ____
+
+get_com_channel_info_                                        tty_
+_____________________                                        ____
+
+9.4  TTY_ CONTROL ORDERS
+
+             ________________________________________
+
+NAME: TTY_
+
+To  make  it  easier  to  write  applications,  a  control  order
+interface to tty_ will be provided for this.  At the same time, a
+control  order   that  should  have  been   added  when  starname
+processing  was  added to  dial_manager_ will  be added  as well.
+Order name:  get_com_channel_info
+
+Function:
+This control order returns the Answering Service com_channel_info
+structure  for  the  attached  channel.   The  user  provides the
+as_com_channel_info      structure      as      described     for
+get_com_channel_info_  subroutine,  filling in  the  version, and
+passes the address of the structure as the info_ptr.
+
+Order name:  get_channel_name
+
+Function:
+This control order returns the name of the communications channel
+to which the switch is attached.   This is useful when the switch
+is  attached  with  a  generic destination  or  a  starname.  The
+info_ptr should point to a char (32) aligned variable.
+
+10  TASK LIST
+
+The following tasks are neccessary to complete this:
+
+     1)   Code the message facility as described here.
+
+     2)   Create functional tests for the gate level interfaces.
+
+     3)   Create  an   as_request  for  a  process   to  ask  for
+          information about a dialed channel that responds with a
+          user_message.
+
+     4)   Change tty_ to implement a  control order that uses the
+          as_request to return  the information.  Include io_call
+          support  so  that  the  as_request can  be  tested from
+          command level.
+
+
+Multics Technical Bulletin                                MTB-699
+
+11  TESTING
+
+The  gate  interfaces  described  here will  be  tested  with the
+standard gate testing technology, which is not completely defined
+as of this writing.  The as_request mechanism is accessed through
+a subroutine that can be tested as if it were a gate.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

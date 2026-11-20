@@ -1,0 +1,112 @@
+/* Sample program #3 for Project Rosetta Stone
+
+   Coded by Barry L. Wolman on 10 December 1972
+
+   The three entries in this program implement the "buddy" storage allocation
+   method described by Knuth.  An external segment "m$" of 65536 words is used
+   as the allocation pool.  The internal static array "x" holds the index
+   of the first available block of words of size 2**n;  the first word of an
+   available block holds the index of the next available block a value of -1
+   indicating the end of the list.  The list of available blocks is not
+   ordered.
+
+   The entry "init" initializes the pool to contain one block of size 65536.
+
+   The entry "get" obtains a block of size 2**n.  If a block of proper size
+   is available, the first such block is removed from the list of available
+   blocks.  If there is no block of size 2**n, get calls itself to get a block
+   of size 2**(n+1);  it splits the block into two halves, one of which it
+   uses and the other (the "buddy") it puts on the list of blocks of size 2**n.
+   An error code is returned if n is out of range or if the request cannot
+   be satisfied.
+
+   The entry "free" is called to return a block of size 2**n.  An error code
+   will be returned if
+          1.        n is out of range
+          2.        the block index is not a multiple of 2**n
+          3.        the block is already on the available list
+          4.        a smaller available block is included in the block being fre
+          5.        a larger available block includes the block being freed
+   If the "buddy" of the block being returned is also available, they are
+   combined into a block of size 2**(n+1) and that block is checked.
+
+                                                                      */
+
+
+init:     proc;
+
+dcl       m$(0:65535) fixed binary external,
+          x(0:16) fixed binary internal static,
+          two(0:16) fixed binary internal static
+           init (1,2,4,8,16,32,64,128,256,512,1024,
+                 2048,4096,8192,16384,32768,65536);
+
+dcl       (i,j,k,n,pj,buddy) fixed binary,
+          (max,unspec) builtin;
+
+          x = -1;
+          x(16) = 0;
+          m$(0) = -1;
+          return;
+
+get:      entry(ng) returns(fixed binary);
+
+dcl       ng fixed binary;
+
+          if ng < 0 | ng > 16 then return(-1) ;
+
+          k = x(ng);
+          if k >= 0
+          then do;
+               x(ng) = m$(k);
+               return(k);
+               end;
+
+          k = get(ng+1);
+          if k < 0 then return(-1);
+
+          unspec(buddy) = bool(unspec(k),unspec(two(ng)),"0110"b);
+          m$(buddy) = x(ng);
+          x(ng) = buddy;
+
+          return(k);
+
+free:     entry(index,nf) returns(fixed binary);
+
+dcl       (index,nf) fixed binary;
+
+          n = nf;
+          if n < 0 | n > 16 then return(-1);
+
+          i = index;
+          if mod(i,two(n)) ^= 0 then return(-1);
+
+          do k = 0 to 16;
+               do j = x(k) repeat(m$(j)) while(j >= 0);
+                    if bool(unspec(i),unspec(j),"0110"b)
+                     < unspec(two(max(n,k)))
+                    then return(-1);
+                    end;
+               end;
+
+loop:     unspec(buddy) = bool(unspec(i),unspec(two(n)),"0110"b);
+
+          pj = -1;
+          do j = x(n) repeat(m$(j)) while(j >= 0);
+               if j = buddy
+               then do;
+                    if pj < 0 then x(n) = m$(j); else m$(pj) = m$(j);
+
+                    if i > buddy then i = buddy;
+                    n = n + 1;
+                    goto loop;
+                    end;
+
+               pj = j ;
+               end;
+
+          m$(i) = x(n);
+          x(n) = i;
+          return(0);
+
+          end;

@@ -1,0 +1,126 @@
+/* Command/Active Function to convert Arabic numbers to Roman numbers */
+/* Written 751013 by PG from BCPL version in Runoff */
+
+roman:
+          procedure;
+
+/* automatic */
+
+declare   active_function bit (1) aligned,
+          argument_ptr ptr,
+          argument_len fixed bin (21),
+          (argument_routine, error_routine) entry variable options (variable),
+          code fixed bin (35),
+          (j, k, r) fixed bin,
+          n_args fixed bin,
+          number fixed bin,
+          (wa, wb) (4) fixed bin,
+          result_ptr ptr,
+          result_len fixed bin (21),
+          roman_string char (60) varying;
+
+/* based */
+
+declare   active_function_result char (result_len) based (result_ptr) varying,
+          argument char (argument_len) based (argument_ptr);
+
+/* external static */
+
+declare   error_table_$not_act_fnc fixed bin (35) external static;
+
+
+/* internal static */
+
+declare  (roman_fifths (4) char (1) initial ("v", "l", "d", "p"),
+          roman_tenths (4) char (1) initial ("i", "x", "c", "m")
+          ) internal static;
+
+/* entries */
+
+declare   active_fnc_err_ entry options (variable),
+          com_err_ entry options (variable),
+          cu_$af_arg_count entry (fixed bin, fixed bin (35)),
+          cu_$arg_ptr entry (fixed bin, ptr, fixed bin (21), fixed bin (35)),
+          cu_$af_arg_ptr entry (fixed bin, ptr, fixed bin (21), fixed bin (35)),
+          cu_$af_return_arg entry (fixed bin, ptr, fixed bin (21), fixed bin (35)),
+          ioa_ entry options (variable);
+
+/* builtins */
+
+declare   (binary, divide, verify) builtin;
+
+/* program */
+
+          call cu_$af_arg_count (n_args, code);
+          if code = error_table_$not_act_fnc
+          then do;
+                    active_function = "0"b;
+                    argument_routine = cu_$arg_ptr;
+                    error_routine = com_err_;
+               end;
+          else do;
+                    active_function = "1"b;
+                    argument_routine = cu_$af_arg_ptr;
+                    error_routine = active_fnc_err_;
+                    call cu_$af_return_arg (n_args, result_ptr, result_len, code);
+               end;
+
+          if n_args ^= 1
+          then do;
+                    call error_routine (0, "roman", "Usage: roman <arabic_number>");
+                    return;
+               end;
+
+          call argument_routine (1, argument_ptr, argument_len, code);
+          if code ^= 0
+          then do;
+                    call error_routine (code, "roman", "Accessing arg 1.");
+                    return;
+               end;
+
+          if verify (argument, "0123456789") ^= 0
+          then do;
+                    call error_routine (0, "roman", "Non-numeric digit in ^a", argument);
+                    return;
+               end;
+
+          number = binary (argument);
+
+          do j = 1 to 3;
+               r = number - 10 * divide (number, 10, 17, 0);
+               wb (j) = divide (r, 5, 17, 0);
+               wa (j) = r - 5 * wb (j);
+               number = divide (number, 10, 17, 0);
+          end;
+
+          if number > 20
+          then number = 20;                                 /* 0 <= N <= 20,000 */
+
+          roman_string = "";
+          do j = 1 to number;                               /* Put on leading 'M's */
+               roman_string = roman_string || "m";
+          end;
+
+          do j = 3 to 1 by -1;
+               if wa (j) = 4
+               then do;
+                         roman_string = roman_string || roman_tenths (j);
+                         if wb (j) = 0
+                         then roman_string = roman_string || roman_fifths (j);
+                         else roman_string = roman_string || roman_tenths (j + 1);
+                    end;
+               else do;
+                         if wb (j) ^= 0
+                         then roman_string = roman_string || roman_fifths (j);
+
+                         do k = 1 to wa (j);
+                              roman_string = roman_string || roman_tenths (j);
+                         end;
+                    end;
+          end;
+
+          if active_function
+          then active_function_result = roman_string;
+          else call ioa_ (roman_string);
+
+     end roman;

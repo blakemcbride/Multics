@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-567</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-567: Data Management: Before Journal Storage Operations.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-567
+Before Journal Storage
+
+To:       Distribution
+
+From:     Andre Bensoussan
+
+Date:     02/03/82
+
+Subject:  Data Management: Before Journal Storage Operations
+
+1 ABSTRACT
+
+     This  MTB  is  part  of the  Before  Journal  Manager Design
+documents.   It  describes,  in  the  format  used  for  the  MPM
+documentation,  the  set  of  operations  made  available  by the
+bjmgr_storage_  module, to  do storage  and retrieval  of logical
+records in the before journal.  This module is called only by the
+before  journal  manager  primitives,  at  journalling  time,  at
+rollback time and at rollback after crash time.
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Bensoussan.Multics on System M.
+
+via US Mail:
+   Andr&eacute; Bensoussan
+   Honeywell Information Systems, inc.
+   4 Cambridge Center
+   Cambridge, Massachusetts 02142
+
+via telephone:
+   (HVN) 261-9334, or
+   (617) 492-9334
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+
+                            CONTENTS
+
+                                                         Page
+
+                 1 Abstract . . . . . . . . . . . . . .     i
+                 2 Description of the Operations  . . .     1
+                    bjmgr_storage_  . . . . . . . . . .     1
+                       $append  . . . . . . . . . . . .     2
+                       $flush . . . . . . . . . . . . .     3
+                       $get . . . . . . . . . . . . . .     4
+                       $get_prior . . . . . . . . . . .     5
+                       $get_last  . . . . . . . . . . .     6
+                       $truncate  . . . . . . . . . . .     7
+
+Multics Technical Bulletin                                MTB-567
+Before Journal Storage
+
+2 DESCRIPTION OF THE OPERATIONS
+
+Name:  bjmgr_storage_
+
+     This  module  provides  a  set of  operations  to  store and
+retrieve logical records  in and from a Before  Journal.  It does
+not  understand the  contents of  a logical  record and  views it
+merely as a bit string.  It provides the following functions:
+
+1.  Append a  logical record at  the end of a  Before Journal and
+    return the record id assigned to the appended record.
+
+2.  Flush  the  journal to  disk  up to,  and including,  a given
+    logical   record,  with   the  option  of   waiting  for  I/O
+    completion.
+
+3.  Get  the logical  record specified  by its  record identifier
+    from a Before Journal.
+
+4.  Get  the  logical  record  that precedes  the  logical record
+    specified by  its record id  from a Before  Journal, with its
+    record identifier.
+
+5.  Get  the last  logical record that  was appended  to a Before
+    Journal, with its record identifier.
+
+6.  Truncate the journal from its beginning up to, and including,
+    the logical record specified by its record identifier.
+
+______________                                     ______________
+
+bjmgr_storage_                                     bjmgr_storage_
+______________                                     ______________
+
+Entry:  bjmgr_storage_$append
+
+This entry appends the logical record passed by the caller to the
+end  of  the Before  Journal  and returns  the  record identifier
+associated with the record just appended.
+
+Usage
+
+     dcl bjmgr_storage_$append entry (fixed bin (35), bit ()
+          varying, fixed bin (35), fixed bin (35));
+
+     call bjmgr_storage_$append (bj_oid, record, record_id,
+          code);
+
+where:
+
+bj_oid  (Input)
+   is  the before  journal opening  identifier of  the journal in
+   which the record is to be appended.
+
+record (Input)
+   is the bit  string representation of the logical  record to be
+   appended.
+
+record_id (Output)
+   is  the  record identifier  assigned  to the  appended record,
+   which  can be  used subsequently to  designate this particular
+   record in the journal.
+
+code (Output)
+   is a standard error code.
+
+______________                                     ______________
+
+bjmgr_storage_                                     bjmgr_storage_
+______________                                     ______________
+
+Entry:  bjmgr_storage_$flush
+
+This entry  causes all records  of the journal that  may not have
+been physically written  to disk to be force  written, up to, and
+including  a record  specified by  the caller.   Depending on the
+caller's request it returns either  after all necessary I/O's are
+initiated, or after all necessary I/O's are completed.
+
+Usage
+
+     dcl bjmgr_storage_$flush entry (fixed bin (35), fixed bin
+          (35), bit(1), fixed bin (35));
+
+     call bjmgr_storage_$flush (bj_oid, record_id, wait_switch,
+          n_io_pending, code);
+
+where:
+
+bj_oid (Input)
+   is the opening id of the journal to be flushed.
+
+record_id (Input)
+   is the record identifier of the  last record to be flushed; it
+   specifies how far  the journal has to be  flushed:  Records to
+   be flushed include the record  specified by this record_id and
+   all records  that have been  appended to the  journal,prior to
+   that record.
+
+wait_switch (Input)
+   indicates whether or not the entry should wait until all I/O's
+   associated with the flush must  be completed.  If its value is
+   1 the entry waits, if it is 0 it does not.
+
+n_io_pending (Output)
+   is the  number of I/O's that  are yet to be  completed for the
+   physical journalization to be complete.
+
+code (Output)
+   is a standard error code.
+
+______________                                     ______________
+
+bjmgr_storage_                                     bjmgr_storage_
+______________                                     ______________
+
+Entry:  bjmgr_storage_$get
+
+This entry  retrieves the logical record  specified by the caller
+and returns it  as a bit string.  The record  is specified by its
+record identifier.
+
+Usage
+
+     dcl bjmgr_storage_$get entry (fixed bin (35), fixed bin
+          (35), bit () varying, fixed bin (35));
+
+     call bjmgr_storage_$get (bj_oid, record_id, record, code);
+
+where:
+
+bj_oid (Input)
+   is  the  opening id  for  the journal  from  which to  get the
+   record.
+
+record_id (Input)
+   is the record identifier of the record to get.
+
+record (Output)
+   is the record string returned to the caller in response to his
+   request.   This bit  string is  the same  bit string  that was
+   passed  to the  append entry  point of  this module  when this
+   record was appended.
+
+code (Output)
+   is a standard error code.
+
+______________                                     ______________
+
+bjmgr_storage_                                     bjmgr_storage_
+______________                                     ______________
+
+Entry:  bjmgr_storage_$get_prior
+
+This  entry  retrieves the  logical  record prior  to  the record
+specified by its record identifier;  it returns the record string
+and the record identifier of the record it retrieved.
+
+Usage
+
+     dcl bjmgr_storage_$get_prior entry (fixed bin (35), fixed
+          bin (35), bit () varying, fixed bin (35), fixed bin
+          (35));
+
+     call bjmgr_storage_$get_prior (bj_oid, current_record_id,
+          record, record_id, code);
+
+where:
+
+bj_oid (Input)
+   is the opening  id of the journal from which  the record is to
+   be retrieved.
+
+current_record_id (Input)
+   is the record identifier of the  record to which the record to
+   be retrieved is prior.
+
+record (Output)
+   is the record string of the requested record.
+
+record_id (Output)
+   is the record identifier of the requested record.
+
+code (Output)
+   is a standard error code.
+
+______________                                     ______________
+
+bjmgr_storage_                                     bjmgr_storage_
+______________                                     ______________
+
+Entry:  bjmgr_storage_$get_last
+
+This entry returns the record string and the record identifier of
+the last record appended to the journal.
+
+Usage
+
+     dcl bjmgr_storage_$get_last entry (fixed bin (35), fixed bin
+          (35), bit () varying, fixed bin (35));
+
+     call bjmgr_storage_$get_last (bj_oid, last_record_id,
+          last_record, code);
+
+where:
+
+bj_oid (Input)
+   is the opening  id of the journal in which  the last record is
+   to be retrieved.
+
+last_record_id (Output)
+   is the record identifier of the requested record.
+
+last_record (Output)
+   is the record string of the requested record.
+
+code (Output)
+   is a standard error code.
+
+______________                                     ______________
+
+bjmgr_storage_                                     bjmgr_storage_
+______________                                     ______________
+
+Entry:  bjmgr_storage_$truncate
+
+This entry  truncates the journal  from its beginning  up to, and
+including,  the  logical  record  specified by  the  caller.  The
+logical  record  following  the  record specified  by  the caller
+becomes the first logical record of the journal.
+
+Usage
+
+     dcl bjmgr_storage_$truncate entry (fixed bin (35), fixed bin
+          (35), fixed bin (35));
+
+     call bjmgr_storage_$truncate (bj_oid, record_id, code);
+
+where:
+
+bj_oid (Input)
+   is the opening id of the journal to be truncated.
+
+record_id (Input)
+   is the record_id specifying the last record to be truncated.
+
+code (Output)
+   is a standard error code.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

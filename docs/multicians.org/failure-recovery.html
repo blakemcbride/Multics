@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Multics Failure Recovery</title>
+    <meta name="description" content="Tutorial description of failure recovery in the Multics operating system.">
+    <meta name="keywords" content="Multics, operating system, timesharing, time sharing, file system, salvager, repair, scavenger, computer, software, mainframe">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+    <style>
+     .outer {min-width: 200px; max-width: 1000px; width: auto !important; width: 800px; margin: 0px auto;}
+    </style>
+<style>
+ .red {color: #cc0000;}
+</style>
+  </head>
+  <body>
+    <div class="outer">
+      <div class="headbar">
+	<div class="headbar2">
+	  <span class="headinglogo"><a href="multics.html"><img src="mulimg/multics-redblack50x50.gif" alt="multics logo" height="25" width="25"></a></span>
+	  <span class="headingmult"><a href="multics.html">Multics</a></span>
+	  <span class="headingdate">&gt; <a href="biblio.html">Library</a> &gt; <a href="articles.html">Articles</a><br><a href="changes.html">04 Sep 2026</a></span>
+          <div class="h1holder"><h1>Failure Recovery</h1></div>
+	</div>
+      </div>
+<!-- ================ menus 2024-07-15 16:19 generated from gen-menubar.htmt ================ -->
+<div class="redmenubar" id="main-nav" role="navigation" aria-label="Main">
+  <nav>
+  <ul id="nav">
+    <li>
+      <a href="index.html">Home</a>
+    </li>
+    <li>
+      <a href="history.html" title="History of Multics">History&nbsp;&nbsp;&nbsp;&raquo;&nbsp;&nbsp;</a>
+  <ul>
+    <li>
+      <a href="features.html" title="Features of the system">Features</a>
+  </li>
+  <li>
+    <a href="myths.html" title="Incorrect statements about Multics found on the web">Myths</a>
+  </li>
+  <li>
+    <a href="project-mac.html" title="History of MIT Project MAC">Project MAC</a>
+  </li>
+  <li>
+    <a href="chrono.html" title="List of Multics related events in time order">Dates</a>
+  </li>
+  <li>
+    <a href="mgloss.html" title="Multics terms, concepts, and jargon">Glossary</a>
+  </li>
+  <li>
+    <a href="mhp.html" title="Multics History Project">History Proj</a>
+  </li>
+  <li>
+    <a href="corby-letter.html" title="Letter from Corby in 2000">Last site</a>
+      </li>
+    </ul>
+    <div class="clr"></div>
+  </li>
+  <li>
+    <a href="multicians.html" title="People who contributed to Multics">People&nbsp;&nbsp;&nbsp;&raquo;&nbsp;&nbsp;</a>
+  <ul>
+    <li>
+      <a href="multics-stories.html" title="Stories about Multics">Stories</a>
+  </li>
+  <li>
+    <a href="people-pictures.html" title="Pictures of Multicians">People Pictures</a>
+  </li>
+  <li>
+    <a href="multics-humor.html" title="Jokes about Multics">Humor</a>
+  </li>
+  <li>
+    <a href="memorabilia.html" title="Trinkets, T-shirts, and Ties">Memorabilia</a>
+      </li>
+    </ul>
+    <div class="clr"></div>
+  </li>
+  <li>
+    <a href="biblio.html" title="Information available online">Library&nbsp;&nbsp;&nbsp;&raquo;&nbsp;&nbsp;</a>
+  <ul>
+    <li>
+      <a href="papers.html" title="Classic papers about Multics available on the Web">Papers</a>
+  </li>
+  <li>
+    <a href="articles.html" title="Technical articles">Articles</a>
+  </li>
+  <li>
+    <a href="devdoc.html" title="Development document series">Dev Docs</a>
+  </li>
+  <li>
+    <a href="multics-source.html" title="Index to source code modules on this site">Source</a>
+  </li>
+  <li>
+    <a href="simulator.html" title="Multics Simulator">Simulator</a>
+      </li>
+    </ul>
+    <div class="clr"></div>
+  </li>
+  <li>
+    <a href="sites.html" title="Where Multics was used">Sites&nbsp;&nbsp;&nbsp;&raquo;&nbsp;&nbsp;</a>
+  <ul>
+    <li>
+      <a href="site-timeline.html" title="Chart of site history">Site Timeline</a>
+  </li>
+  <li>
+    <a href="site-afdsc.html" title="US Air Force Data Services Center, Pentagon, Washington DC">AFDSC</a>
+  </li>
+  <li>
+    <a href="site-asea.html" title="ASEA, V&auml;ster&aring;s, Sweden">ASEA</a>
+  </li>
+  <li>
+    <a href="site-avon.html" title="Avon Universities Computing Centre, Bristol, England">Avon</a>
+  </li>
+  <li>
+    <a href="site-bellcan.html" title="Bell Canada, 2 sites">Bell Canada</a>
+  </li>
+  <li>
+    <a href="site-cisl.html" title="Honeywell Cambridge Information Systems Laboratory, Cambridge MA">CISL</a>
+  </li>
+  <li>
+    <a href="site-cno.html" title="Honeywell Corporate Network Operations, Minneapolis MN">CNO</a>
+  </li>
+  <li>
+    <a href="site-dndh.html" title="Canadian Department of National Defence, Halifax NS">DND-H</a>
+  </li>
+  <li>
+    <a href="site-dockmaster.html" title="US National Security Agency, Linthicum MD">DOCKMASTER</a>
+  </li>
+  <li>
+    <a href="site-ford.html" title="Ford Motor Company, Detroit, MI">FORD</a>
+  </li>
+  <li>
+    <a href="site-gm.html" title="General Motors Corporate, Detroit, MI">GM</a>
+  </li>
+  <li>
+    <a href="site-mainz.html" title="Johannes Gutenberg Universitaet, Mainz, Germany">Mainz</a>
+  </li>
+  <li>
+    <a href="site-mit.html" title="Massachusetts Institute of Technology, Cambridge, MA">MIT</a>
+  </li>
+  <li>
+    <a href="site-nwgs.html" title="US Navy Naval War Games system, 4 sites">NWGS</a>
+  </li>
+  <li>
+    <a href="site-ou.html" title="Oakland University, Rochester MI">OU</a>
+  </li>
+  <li>
+    <a href="site-prha.html" title="Puerto Rican Highway Authority, San Juan, PR">PRHA</a>
+  </li>
+  <li>
+    <a href="site-radc.html" title="Rome Air Development Center, Griffiss AFB, Rome NY">RADC</a>
+  </li>
+  <li>
+    <a href="site-rae.html" title="Royal Aircraft Establishment, Farnborough, Hampshire, England">RAE</a>
+  </li>
+  <li>
+    <a href="site-stc.html" title="Standard Telephones and Cables, New Southgate, London, England">STC</a>
+  </li>
+  <li>
+    <a href="site-sysm.html" title="Honeywell System M, Phoenix AZ">System-M</a>
+  </li>
+  <li>
+    <a href="vanderschooten/index.html" title="Bull Systeme X, Louveciennes, France">Systeme X</a>
+  </li>
+  <li>
+    <a href="site-uc.html" title="University of Calgary, Calgary, Alberta, Canada">UC/ACTC</a>
+  </li>
+  <li>
+    <a href="site-usgs.html" title="US Geological Survey, 3 sites">USGS</a>
+  </li>
+  <li>
+    <a href="site-usl.html" title="University of Southwestern Louisiana, Lafayette LA">USL</a>
+  </li>
+  <li>
+    <a href="site-vpi.html" title="Virginia Polytechnic Institute, Blacksburg, VA">VPI</a>
+      </li>
+    </ul>
+    <div class="clr"></div>
+  </li>
+  <li>
+    <a href="about-multics.html" title="About the web site">About&nbsp;&nbsp;&nbsp;&raquo;&nbsp;&nbsp;</a>
+  <ul>
+    <li>
+      <a href="changes.html" title="Reverse chronological list of website changes this year">Changes</a>
+  </li>
+  <li>
+    <a href="multics-news.html" title="Current Multics events">News</a>
+  </li>
+  <li>
+    <a href="mult-links.html" title="Links to other sites on the Web relevant to Multics">Links</a>
+  </li>
+  <li>
+    <a href="multics-images.html" title="Thumbnails of images on the site">Image Gallery</a>
+  </li>
+  <li>
+    <a href="sitemap.html" title="Site Map">Site Map</a>
+        </li>
+      </ul>
+      <div class="clr"></div>
+    </li>
+  </ul>
+  </nav>
+  <!-- ================ red magnifying glass ================ -->
+  <a href="gsearch.html" style="float:right;" target="_blank"><img src="mulimg/mg2.gif" width="25" height="25" alt="search" title="search multicians.org"></a>
+</div> <!-- redmenubar -->
+<!-- ================ alt menubar for iphone, thanks erik ================ -->
+<div class="altmenubar" id="alt-main-nav" role="navigation" aria-label="Main">
+  <nav>
+    <div id="menuToggle">
+      <!-- A fake / hidden checkbox is used as click receiver, so you can use the :checked selector on it. -->
+      <input type="checkbox" id="switchmenus">
+      <!-- instead of a hamburger. -->
+      <a href="gsearch.html" target="_blank"><img src="mulimg/mg2.gif" width="25" height="25" alt="search" title="search multicians.org" style="float:right; display:inline;"></a>
+      <label for="switchmenus" class="altmenuword">&nbsp;MENU</label>
+      <!-- Abbreviated menu for small screens. Does not link to all the sites. -->
+      <div class="peekaboo">
+	<span>
+	<br><a href="history.html">History</a>:
+	    <a href="features.html">Features</a> |
+	    <a href="myths.html">Myths</a> |
+	    <a href="project-mac.html">Project MAC</a> |
+	    <a href="chrono.html">Dates</a> |
+	    <a href="mgloss.html">Glossary</a> |
+	    <a href="mhp.html">History Proj</a> |
+	    <a href="corby-letter.html">Last site</a> |
+	<br><a href="multicians.html">People</a>:
+	    <a href="multics-stories.html">Stories</a> |
+	    <a href="people-pictures.html">People Pictures</a> |
+	    <a href="multics-humor.html">Humor</a> |
+	    <a href="memorabilia.html">Memorabilia</a> |
+	<br><a href="biblio.html">Library</a>:
+	    <a href="papers.html">Papers</a> |
+	    <a href="articles.html">Articles</a> |
+	    <a href="devdoc.html">Dev Docs</a> |
+	    <a href="multics-source.html">Source</a> |
+	    <a href="simulator.html">Simulator</a> |
+	<br><a href="sites.html">Sites</a>:
+	    <a href="site-timeline.html">Site Timeline</a> |
+	<br><a href="about-multics.html">About</a>:
+	    <a href="changes.html">Changes</a> |
+	    <a href="multics-news.html">News</a> |
+	    <a href="mult-links.html">Links</a> |
+	    <a href="multics-images.html">Image Gallery</a> |
+	    <a href="sitemap.html">Site Map</a> |
+        </span>
+      </div>
+    </div>
+  </nav>
+</div>
+<!-- ================ end menus ================ -->
+	
+      <div class="main">
+<p class="author">Tom Van Vleck</p>
+
+<p>
+  <em>Summary.</em>
+  This note describes strategies Multics used to provide highly available computing and to recover from unexpected program interruptions and system crashes.
+  This note begins with the early 1960s CTSS operating system, and covers Multics recovery procedures developed from 1965 to 1985.
+  Today's systems face new challenges and run on far more capable and reliable hardware, 
+  but the strategies employed by Multics are still useful in the design of future file systems.
+</p>
+
+<h2 id="crash">System Crash Recovery</h2>
+<p>
+  A <strong>system crash</strong> occurs when an operating system stops processing abruptly, discarding the work of many running processes.
+  In the early 60s, crashes happened often, triggered by hardware failures, inadequate software recovery from hardware error indications, 
+  or by software bugs.
+  Operating systems were designed to crash when they encountered inconsistencies or hardware errors that they could not recover from.
+</p>
+<p>
+  In the 60s and 70s, hardware and software engineers spent a lot of effort eliminating crashes,
+  and reducing the impact on system availability when crashes did occur.
+</p>
+
+<h3 id="reload">Backup, Reload, and Retrieval</h3>
+<div class="rtpic" style="width: 75px;"><a href="mulimg/tapes-mit-1976.jpg"><img src="thumbnails150/tapes-mit-1976.jpg" width="75" height="75" alt="magnetic tapes" title="Backup tapes at MIT, 1976"></a></div>
+<p>
+  MIT's <a href="mgc.html#CTSS" title="glossary: Compatible Time Sharing System. This IBM 7094 time-sharing operating...">Compatible Time-Sharing System (CTSS)</a>, the predecessor to Multics, recovered from crashes by reloading a fresh version of the operating system and starting it.
+  Users had to log in again and redo work that was lost.
+  If the contents of the system's file storage were damaged, the system operators restored the whole file system from tape.
+  When CTSS was first put into service in 1963, the system was shut down for several hours each day to create backup tapes.
+  Later, CTSS was improved so that backup could be done while the system was in use by timesharing users, 
+  by a program known as the <a href="mgd.html#daemon" title="glossary: A beneficent spirit. A process, not associated with a..."><b>Backup Daemon</b></a>, 
+  which could dump all files to create a complete dump, or dump all modified files to create an incremental dump.
+  As an alternative to a complete reload of all files, system operators could retrieve specified files from backup tapes if a crash destroyed only a few files.
+</p>
+<p>
+  The design of Multics <a href="history.html" title="Narrative history of Multics.">began in 1965</a>, building on the CTSS experience.
+  The Multics designers intended to create a prototype "computer utility" providing always-on computing service to a large community.
+  The Multics <a href="fjcc4.html" title="Classic 1965 paper introducing Multics file system">file system</a> added many features, and was integrated with the virtual memory system.
+  It inherited the CTSS approach to file system backup and recovery.
+  The Multics <a href="mgd.html#daemon" title="glossary: A beneficent spirit. A process, not associated with a...">backup daemon</a> was a system process that traversed the file system directory tree, copying files to magnetic tape.
+  As in CTSS, the Multics backup daemon, written in 1967, could do a complete dump or an incremental dump,
+  and recovery could be done by reloading a complete dump followed by incremental dumps, or individual lost files could be retrieved.
+</p>
+<p>
+  Because the Multics hierarchy dump program ran very slowly while interactive users were requesting service,
+  additional backup and recovery tools were created about 1968.
+  When Multics was shut down, the <a href="mgb.html#BOS" title="glossary: Bootload Operating System. A minimal, single-user, single-processor, non-paged, entirely...">BOS</a> command <span class="cmd">SAVE</span>
+  could be used to copy a physical image of a disk device to tape as fast as the tape could write.
+  <span class="cmd">SAVE</span> tapes could be used instead of a complete dump as the basis for restoring a system after a catastrophe,
+  at considerable savings in time.
+</p>
+
+<h3 id="salvager">Salvagers</h3>
+<p>
+  CTSS had several generations of file-system repair procedures known as <strong>salvagers</strong>.
+  The first version was described in MIT Computation Center <a href="psn-34.pdf">Programming Staff Note 34</a> by S. D. Dunten and R. C. Daley (20 Oct 1964),
+  and written by M. J. Bailey in 1964.
+  This program was a stand-alone utility run by the system operators after every CTSS crash.
+  It repaired what it could, and discarded un-repairable garbage.
+  The salvager used several heuristics to correct damaged files; 
+  it sometimes became confused by damage to a directory and proceeded to delete every entry in a directory.
+  The usual CTSS practice was to run the salvager twice, the first time with the <strong>write inhibit</strong> switch set on the 7084 console, 
+  in case the salvager decided to discard large numbers of files.
+  If there were hundreds of deletions, the operators called system programmers to perform manual patches to repair the file system.
+  These manual patches required considerable skill and risk and were usually needed at inconvenient times.
+  In many cases, manual patching couldn't do any better than the salvager, and Operations had to reload the entire system disk storage from backup tapes.
+</p>
+<p>
+  The first Multics salvager, written in 1967, was a direct descendant of the CTSS salvager.
+  It too used <em>ad hoc</em> methods to detect and repair file system damage, and had similar failure modes.
+  As the cost of disk storage dropped in the 1970s, 
+  Multics systems were configured with more and more storage, and salvaging after a crash took longer and longer despite advances in CPU speed.
+  Many crashes didn't damage the file system database at all;
+  those crashes that did cause damage often damaged only a few records... but we had no way to know which ones at recovery time.
+</p>
+<p>
+  The CTSS and initial (pre-NSS) Multics salvagers were invoked manually by computer operations personnel after every system crash.
+  Some crashes didn't damage any disk files and didn't require salvaging, but there was no certain way to tell except by running the salvager.
+  If a system was restarted without salvage in a case where salvaging was needed, it would sometimes crash again, with worse data damage.
+  These crashes resulted because the original file systems counted on two properties: 
+  consistency of the disk allocation map with the file maps for individual files, and structural integrity for directories.
+  Inconsistent disk allocation maps led to file corruption; 
+  damaged directory structure caused faults in the supervisor during file system execution: such faults caused the system to crash.
+</p>
+<h3 id="esd">Emergency Shutdown</h3>
+<p>
+  The Multics <i>paging</i> mechanism copies disk records into memory pages on demand, and writes modified pages back to their disk record later.
+  When Multics system operation is interrupted by a crash, some records' most recent copies are in pages in main storage. 
+  Discarding these copies would turn files and directories into a patchwork of modified and unmodified records, and lead to damage.
+  The first step in post-crash recovery for a Multics system is for the system operator to
+  manually transfer to the memory address of the Emergency Shutdown (ESD) procedure, 
+  which flushes all main storage records back to disk.
+  If this operation succeeds, then the state of the system disk includes all modifications made to the virtual memory.
+  Introducing this feature in the early 70s improved Multics reliability and availability noticeably (when it worked: see below).
+</p>
+
+<h2>New Storage System</h2>
+<p>
+  A major rewrite of the Multics file storage system, the <a href="mgn.html#NSS" title="glossary: New Storage System. MR 4.0 included a rewritten storage...">New Storage System (NSS)</a>, in 1974-1975 
+  focused on improving system robustness, scalability, and damage recovery. 
+  It was released to customers with Multics release MR 4.0 in 1976.
+  Under NSS, Multics could recover from some hardware error situations without crashing, fewer software errors led to crashes,  
+  the time to recover from crashes was reduced, and less data was lost when errors occurred.
+</p>
+
+<h3>Separation of physical volume and directory</h3>
+<p>
+  Pre-NSS Multics treated all available disk records as assignable to any file, as CTSS had done.
+  Since the system started out with "one big disk drive," this made sense.
+  It made less sense as disk hardware capacity increased and multiple volumes were attached to Multics:
+  if any disk crashed, all disks had to be reloaded, because there was no way to tell which files might have records on the damaged disk.
+  NSS introduced the concepts of <em>logical volumes</em>, which were composed of <em>physical volumes</em>,
+  and made the rules that all pages of a segment are constrained to the same physical volume, and that each volume has its own free storage map.
+  The directory hierarchy resides in the <em>Root Logical Volume</em>, which cannot be dismounted.
+  ANn entry for a file in an NSS directory points to the physical volume containing the file's storage 
+  and the index of the entry in the Volume's Table of Contents (VTOC), which contains file attributes and the map of records in the file. 
+</p>
+<div style="width: 435px;"><img src="mulimg/nss-dir-pvt-vtoc.png" width="435" height="294" alt="directory pointing to VTOCE" title="" srcset="mulimg/nss-dir-pvt-vtoc.png 1x, mulimg/nss-dir-pvt-vtoc-2x.png 2x"><p class="caption">Figure 1. Connection between a directory and a VTOCE.</p></div>
+<p>
+  This organization means that a Multics system can keep operating without non-root physical volumes.
+  Furthermore, volume repair and maintenance can be performed on non-critical volumes while the system is available for users whose data is unaffected.
+</p>
+
+<h3>Force Writing</h3>
+<p>
+  The New Storage System introduced other changes to make sure that lower-level storage mechanisms could recover from interruption.
+  As described in Honeywell manual <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AN61A_storageSysPLM_Sep78.pdf" title="PDF scan of Multics manual" target="_blank" rel="noopener">AN61, Storage System PLM</a></span>, 
+  updating of the VTOC and volume free map was designed so that the on-disk state of the system is always safe, 
+  and that no interruption and loss of a write can move a page from one segment to another.
+  In certain cases, this change entails waiting for a write to complete.
+  The directory lock was moved from the directory itself to a separate supervisor segment,
+  so merely reading a directory does not cause a disk page to become modified, reducing I/O load and page control activity.
+  NSS also forces a directory write and an update of directory VTOCEs when unlocking a modified directory;
+  these actions decrease the vulnerability window when the disk image is not consistent.
+  These modifications lengthened a standard benchmark by about one percent,
+  but saved many hours of post-crash data recovery.
+</p>
+
+<h2 id="nss">NSS Directory Integrity, System Restart, and Salvager</h2>
+<p>
+  After the basic NSS was released in Multics release 4.0, we had the opportunity to reconsider the salvager.
+  We wanted a salvager that failed less often, to eliminate the need for expert disk patching.
+  We also wanted to shorten recovery times after system crashes substantially.
+  File system modifications and a new salvager were co-designed to meet these goals.
+  One was to modify the file system structure to aid in damage isolation, detection, and repair.
+  The other idea was to check data structures in directories for damage as they were used, 
+  and to salvage only those directories that appeared damaged.
+  These changes made a substantial improvement in availability of the system for users.
+  The system crashed less often, came back sooner for users, consumed fewer resources for repair operations, and repaired damage more reliably.
+  Honeywell manual <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AN61A_storageSysPLM_Sep78.pdf" title="PDF scan of Multics manual" target="_blank" rel="noopener">AN61, Multics Storage System Program Logic Manual</a></span>
+  describes the storage system and the salvager.
+</p>
+
+<h3>Volume Integrity</h3>
+<p>
+  The NSS Volume Salvager <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/system_library_1/source/bound_salvager.s.archive" title="Multics source archive" target="_blank" rel="noopener"><span class=code>salvage_pv</span></a></span>
+  ensures that VTOC entries are correct,
+  ensures file maps have correct checksums and don't overlap,
+  ensures that the VTOCE free list is well formed, and 
+  regenerates the volume's free storage map.
+  If a record is claimed by more than one file, it is cleared and taken away from all claimants to avoid leaking information from one file to another as a result of a crash.
+  If this happens to a file, the file's <em>damaged switch</em> is set in its VTOC entry, and attempts to use the file will encounter a fault.
+  Some user application must reset the switch and repair the damage, or retrieve an undamaged copy from a backup tape.
+</p>
+<p>
+  Volume salvaging operates only on the VTOC of each volume and its free storage map, and is relatively fast; 
+  system startup is designed so the system can start running as soon as critical volumes are salvaged, 
+  and can salvage additional volumes in parallel if multiple CPUs are available.
+</p>
+<p>
+  The need for volume salvaging to recover lost space as part of post-crash recovery was eliminated by the introduction of 
+  <a href="wos-record-stocks.html" title="Record Stocks in Multics. Pages are allocated to segments so crash recovery is safe and fast. ">record stocks</a> in 1982, designed by <a href="multicians.html#Bongiovanni" title="Multician: System (CISL): hardcore, scheduler, performance, scavenger, tools.">John Bongiovanni</a>.
+  The program <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/system_library_1/source/bound_page_control.s.archive" title="Multics source archive" target="_blank" rel="noopener"><span class=cmd>stock</span></a></span> performs the basic allocation and deallocation, 
+  and <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/system_library_1/source/bound_scavenger.s.archive" title="Multics source archive" target="_blank" rel="noopener"><span class=cmd>scavenge_volume</span></a></span> is the guts of the <b>Volume Scavenger</b>.
+  The way this works is that the storage system withdraws a "stock" of allocatable free disk records when a volume is mounted,
+  and keeps the on-disk free map updated.
+  A crash without ESD (see below) may lose a few hundred records per volume; 
+  volumes can be remounted without salvage with confidence that subsequent allocations will not lead to reused addresses.
+  The Scavenger can be invoked while the system is running to correct a volume's free map.
+</p>
+
+<h3>Redundant Directory Information for Damage Detection (Structure Marking)</h3>
+<p>
+  To assist the file system in detecting damage, and the directory salvager in rebuilding directories, 
+  <a href="thvv/marking.html" title="new window: https://multicians.org/thvv/marking.html" target="_blank" rel="noopener"><span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"> redundant <b>structure marking</b> information</span></a> was introduced as part of the NSS changes.
+  Multics directories are implemented as segments containing a header and an allocation area.
+  Pl/I <span class="code">based</span> structures for components of the directory are allocated in the area.
+  The allocated structures had data items added to them as follows:
+</p>
+<ul>
+  <li><span class="code">type</span> - a constant value for each different structure</li>
+  <li><span class="code">version</span> - version number for the declaration of this structure</li>
+  <li><span class="code">size</span> - the size of the structure</li>
+  <li><span class="code">owner</span> - the unique identifier of the parent object that the current one is a part of</li>
+</ul>
+<p>
+  The structures 
+  <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/include/dir_header.incl.pl1" title="Multics source file" target="_blank" rel="noopener"><span class=code>dir</span></a></span>,
+  <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/include/dir_entry.incl.pl1" title="Multics source file" target="_blank" rel="noopener"><span class=code>entry</span></a></span>,
+  <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/include/dir_acl.incl.pl1" title="Multics source file" target="_blank" rel="noopener"><span class=code>acl_entry</span> and <span class=code>access_name</span></a></span>,
+  <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/include/dir_ht.incl.pl1" title="Multics source file" target="_blank" rel="noopener"><span class=code>hash_table</span></a></span>,
+  <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/include/dir_link.incl.pl1" title="Multics source file" target="_blank" rel="noopener"><span class=code>link</span></a></span>, and
+  <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/include/dir_name.incl.pl1" title="Multics source file" target="_blank" rel="noopener"><span class=code>names</span></a></span>
+  were modified to contain 
+  <span class="code">type</span>,
+  <span class="code">size</span>, and 
+  <span class="code">owner</span> fields, where <span class="code">owner</span> was set to the UID of the owning structure at creation time.
+  The <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/include/vtoce.incl.pl1" title="Multics source file" target="_blank" rel="noopener"><span class=code>vtoce</span> structure</a></span> had an <span class="code">owner</span> field added containing the UID of the entry.
+  In addition, threaded lists in the directory were augmented by a count of the number of entries on the list.
+  The new data items occupied a fraction of a percent of additional disk storage.
+</p>
+<div style="width: 412px;"><img src="mulimg/dir-tsvo.png" width="412" height="279" alt="directory containing marked substructures" title="" srcset="mulimg/dir-tsvo.png 1x, mulimg/dir-tsvo-2x.png 2x"><p class="caption">Figure 2. Directory with structure marking.</p></div>
+<p>
+  A segment's Unique ID is stored in both the segment branch and the VTOC entry for the segment, and must match at segment <a href="mga.html#activate" title="glossary: To make a segment active. Done by getting an...">activation</a> time.
+  A mismatch indicates an error, called a <a href="mgc.html#connectionfailure" title="glossary: At segment activation time, segment control checks that the...">connection failure</a>, that prevents activation.
+</p>
+
+<h4>Damage Detection in the File System</h4>
+<p>
+  NSS modified every file system procedure to check, before accessing any main-memory instance of a marked structure, that 
+  <span class="code">type</span> and <span class="code">version</span> are correct, 
+  <span class="code">size</span> is in range for variable sized items, and 
+  <span class="code">owner</span> is correct.
+  If invalid values are found, or a loop that traverses a threaded list runs too long, the file system signals <span class="code">bad_dir_</span> condition.
+  The in-line processing cost of checking these items was not measurable: it was less than the resolution of standard benchmarks.
+</p>
+<p>
+  155 gate entry points in eight Multics <a href="mgg.html#gate" title="glossary: Segment that allows transfer of control between rings in...">gate segments</a> establish <a href="exec-env.html#tag8" title="The execution environment for Multics programs. Hardware architectural support and system conventions. ">PL/I <span class="cmd">condition</span> handlers</a> for the condition <span class="code">bad_dir_</span>.
+  These condition handlers are code that is invoked by the fault handling machinery if an error occurs in code invoked by the gate entry.
+  The actual machinery for establishing the handler for <span class="code">bad_dir_</span> is in <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/include/gate_macros.incl.alm" title="Multics source file" target="_blank" rel="noopener"><span class=code>gate_macros</span></a></span>.
+  When the condition <span class="code">bad_dir_</span> is raised, the on-unit unwinds the stack (executing any <span class="code">cleanup</span> on-units), 
+  invokes <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/system_library_1/source/bound_error_active_1.s.archive" title="Multics source archive" target="_blank" rel="noopener"><span class=cmd>verify_lock$verify_lock_bad_dir</span></a></span>,
+  which cleans up hardcore locks and runs the directory salvager on any locked directories, and then <b>retries the call once</b>.
+  If the fault occurs again, the condition handler <em>crawls out</em> to the user ring (<a href="#crawlout">see below</a>).
+</p>
+<p>
+  We sometimes referred to this design as "inline salvaging,"
+  since this code performed checking of directory data invariants on every data item reference
+  in addition to checking them when the salvager was run offline.
+</p>
+
+<h4>Damage Repair: On-Line Directory Salvage</h4>
+<p>
+  The directory salvager is invoked by a handler for any unexpected fault that occurs during a file system operation.
+  The program <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/system_library_1/source/bound_salvager.s.archive" title="Multics source archive" target="_blank" rel="noopener"><span class=code>salv_dir_checker_</span></a></span>
+  salvages a directory by examining and validating every object contained in the directory.
+  The salvager validates every value before using it; for each object, it verifies the structural integrity of the object first, 
+  using the structure marking data, and then verifies the object content.
+  After structure is validated, object content can be checked: for example, names must be unique and consist of valid characters.
+  Some substructures of a directory, such as hash tables, are rebuilt completely on every salvage.
+</p>
+<p>
+  The directory salvager finds objects in a directory by following pointers relative to the directory base.
+  Damage to an object might damage pointers to other structures and make other objects un-findable.
+  Although the salvager uses both forward and back pointers to find objects, some valid objects might still be unreachable.
+  To handle this case, the salvager builds a storage map for the directory and remembers each object it finds.
+  Whenever a new object is found, its location and size are entered in the map, and checked for overlap with objects already found.
+</p>
+<p>
+  The directory salvager sometimes decides how to resolve an inconsistency based on its knowledge of the design of the file system.
+  If the map shows overlapping objects, both objects can be rebuilt or removed.
+  the directory salvager also enters all validly free storage into the allocation map.
+  When all pointer chains have been examined, the salvager analyzes blocks of storage that are not marked in the map, 
+  to see if these are valid lost objects ("orphans") that can be reclaimed.
+</p>
+<p>
+  The directory salvager sometimes decides how to resolve an inconsistency based on its knowledge of the design of the file system.
+  For example, a crash during the deletion of a file branch might leave some evidence of the file's existence that could cause the salvager to undelete it.
+  This doesn't happen, because the salvager knows that the first step the file system takes in deleting a file entry is to zero its unique ID, 
+  and so the salvager refuses to reclaim an apparent file entry with a zero ID.
+</p>
+<p>
+  When the Multics salvager is repairing a directory, it will place items "security out of service" if security-related attributes have incorrect values:
+  in particular, the file system requires that the security level of a directory entry must not be less than the security level of its containing directory. 
+</p>
+<p>
+  Access control lists in directories are salvaged slightly differently from other lists in a directory, because the order of ACL entries is important; 
+  although the list of ACL entries is double threaded, only forward chains are followed.
+</p>
+
+<h3>Incremental Directory Salvage as Needed</h3>
+<p>
+  Crash recovery in post-NSS Multics does not visit every directory looking for damage; the system just restarts.
+  The structure checks performed with every access to a directory item will detect damaged directories and trigger their salvage if and when they are used.
+  The system is available for users not requiring a damaged directory, and a multi-CPU system can salvage multiple directories in parallel.
+  If an installation wishes to salvage all directories, 
+  a parallel driver that walks the directory tree, triggering the directory salvager when needed, can be run by operator command.
+</p>
+
+<h2>Additional System Recovery Mechanisms</h2>
+<p>
+  We added additional features to the storage system to improve speed and accuracy of recovery operations after hardware problems.
+</p>
+
+<h3 id="voldump">Volume Dumping and Reloading</h3>
+<p>
+  After NSS was introduced, the online <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/system_library_tools/source/bound_volume_dumper_.s.archive" title="Multics source archive" target="_blank" rel="noopener">Volume Dumper</a></span> was created.
+  Like BOS <span class="cmd">SAVE</span>, it dumps a whole physical volume to tape, but it can run while Multics is running.
+  This facility has the speed of <span class="cmd">SAVE</span> but the flexibility of the hierarchy dumper.
+  System operators perform scheduled volume dumps of all file system physical volumes on a regular basis, and use them to restore a volume's contents in case of data loss.
+  Files modified after a volume dump was taken are then reloaded from incremental dump tapes. 
+</p>
+
+<h3 id="nss_esd">NSS Emergency Shutdown</h3>
+<p>
+  Prior to NSS, ESD used to fail occasionally, causing damage to directories and user files, even when there was no hardware problem.
+  Our analysis showed that the crash had occurred while a processor was executing in the virtual memory manager, 
+  updating the pointers between the main storage map, the page tables, the paging device map, and the I/O queues.
+  Because the pointer update was not atomic, ESD might encounter looped or invalid threads, and fault or loop.
+</p>
+<h4 id="stabilizer">NSS Page Control Stabilizer</h4>
+<p>
+  <a href="multicians.html#GreenbergBS" title="Multician: System (CISL): Page control, NSS, LISP, I/O, Emacs, AN61, interpret_fdump.">Bernard Greenberg</a> analyzed the problem and produced an elegant solution.
+  Multics salvages, or "stabilizes," the virtual memory management database before using it in ESD.
+  After a crash,
+  <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/system_library_1/source/emergency_shutdown.alm" title="Multics source file" target="_blank" rel="noopener"><span class=code>emergency_shutdown</span></a></span> calls
+  <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/system_library_1/source/bound_wired_1.s.archive" title="Multics source archive" target="_blank" rel="noopener"><span class=code>pc_recover_sst</span></a></span>, which calls
+  <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/system_library_1/source/bound_library_wired_.s.archive" title="Multics source archive" target="_blank" rel="noopener"><span class=code>pc_check_tables</span></a></span>
+  to make a pass over the system tables to force them to a stable state before ESD attempts to use them.
+  By checking all relationships between table entries, <span class="code">pc_recover_sst</span> can identify inconsistent entries.
+  Detection isn't enough; the stabilizer has to have enough information to repair the inconsistent entries, or to mark segments as damaged.
+  We considered adding flags that showed intent to modify an entry in the virtual memory database, 
+  but maintenance of these flags inside the innermost loops of the system would have imposed a noticeable performance penalty.
+  Instead, we established a convention for the order in which any pointer relationship is modified.
+  When <span class="code">pc_recover_sst</span> finds an invalid thread, one whose value contradicts the value of another item in the system data bases, 
+  it can always determine which value is correct, since the recovery code and the modification code were co-developed using the same convention.
+  Certain infrequent operations, such as memory reconfiguration and segment moving, 
+  employ the simpler strategy of maintaining an indicator showing what table entry is being worked on;
+  the recovery code uses both kinds of information while repairing the virtual memory data bases.
+  (This technique recovers from interruptions of page control, assuming that page control is correct;
+  if a bug in the supervisor puts wrong values in some pointer, 
+  the stabilizer will detect an impossible situation and may mark segments as damaged rather than associate an incorrect page with a segment.)
+</p>
+<p>
+  Bernie says "The goal of the page control recovery code was not only to ensure that page-control shutdown would successfully flush core, 
+  so that the virtual memory was "at least as good" as such modifications that had been made, 
+  but also that shutdown would not loop and hang on account of non-safely-managed sst-internal pointers, 
+  i.e., it depended upon a new protocol being instituted and  followed for all internal pointer management."
+</p>
+<p>
+  After calling <span class="code">pc_recover_sst</span>, <span class="code">emergency_shutdown</span>
+  resets I/O devices, makes a stack frame, and enters 
+<!-- bound_wired_1 -->
+  <span class="code">wired_shutdown$wired_emergency</span>, which flushes out all pages in core and then calls
+<!-- bound_vtoc_man -->
+  <span class="code">vtoc_man$stabilize</span> to reset the vtoc_buffer to a consistent state so that shutdown can proceed.
+<!-- bound_segment_control -->
+  It then calls <span class="code">shutdown_file_system</span> to assign device addresses to all unwritten pages, write them out, 
+  and update the VTOCEs of active segments.
+  If all of this processing completes without error, 
+  the file system operations in progress at the time when emergency shutdown was invoked will be correctly saved to disk. 
+</p>
+<p>
+  See the section "Page Control Consistency" of Appendix A of <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AN61A_storageSysPLM_Sep78.pdf" title="PDF scan of Multics manual" target="_blank" rel="noopener">AN61, Storage System PLM</a></span>
+  for more information on this mechanism.
+</p>
+
+<h3 id="online">Maintenance Operations While the System Is Running</h3>
+<p>
+  The Multics file system provides many maintenance operations that are "truly online," 
+  meaning that they can be executed by operators or administrators while the system, 
+  and the volume affected, is also being used by regular users for useful work.
+</p>
+<ul>
+  <li> Hierarchy backup -- walk the directory tree and dump files to tape using the file system</li>
+  <li> Volume backup dumper -- copy a volume's file contents to tape without using the directory </li>
+  <li> <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/system_library_tools/source/bound_priv_ss_.s.archive" title="Multics source archive" target="_blank" rel="noopener"><span class=cmd>sweep_pv</span></a></span> -- resolve reverse connection failures</li>
+  <li> Quota corrector -- online repair of quota, see AN61</li>
+  <li> Hierarchy salvager -- driven by <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/ldd/system_library_tools/source/bound_priv_ss_.s.archive" title="Multics source archive" target="_blank" rel="noopener"><span class=cmd>do_subtree</span></a></span>. Has a switch to check forward connection failures</li>
+  <li> Volume scavenger -- repair record stocks</li>
+</ul>
+<p>
+  In addition, Multics provides some volume maintenance operations that can be performed while Multics is running, but only on volumes that are offline to regular processes.
+</p>
+<ul>
+  <li> Volume salvager -- salvage VTOC and free map for a volume</li>
+  <li> Volume rebuilder -- like the volume salvager, but writes a new disk</li>
+</ul>
+
+<h3 id="restart">Automatic system restart</h3>
+<p>
+  When a Multics system crashes, we wish to have <a href="boot.html" title="The evolution of Multics bootstrap loading and BOS.">Multics restart and initialize itself</a> by going through all recovery steps automatically, 
+  in the correct order, without requiring human decisions or input.
+  Some hardware failures may make this impossible, but our general design is that
+  after a crash, the recovery process simply initiates system restart: 
+  if dumps should be taken, salvaging initiated, or volumes mounted in a certain order, the system discovers these conditions and does them.
+  As each new facility is added to the restarted system, its resources are checked for validity and salvaged if necessary.
+  As directories are used, the in-line checks in the file system ensure that each directory is undamaged, or invoke the directory salvager to repair it.
+  The general idea was to eliminate delays and errors caused by forgetting to do a recovery step,
+  or doing unnecessary steps, or doing things in the wrong order, or issuing commands that are not needed.
+</p>
+
+<h3 id="vm_safety">Virtual Memory Safety</h3>
+<p>
+  As described in <span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"><a href="http://www.bitsavers.org/pdf/honeywell/large_systems/multics/AN61A_storageSysPLM_Sep78.pdf" title="PDF scan of Multics manual" target="_blank" rel="noopener">AN61, Storage System PLM</a></span>,
+  the AST replacement algorithm updates the VTOCEs of ASTEs whose file maps have changed.
+  Segments that stay active a long time will have the disk copy of their file map updated occasionally.
+  These updates are done as the AST replacement algorithm cycles through the AST, or the Initializer process may call 
+  the ring 0 routine <span class="cmd">get_aste$flush_ast_pool</span> via <span class="cmd">hphcs_</span> at accounting update time,
+  if it determines that load is so light that a pool has not cycled (based on meters in the SST). 
+  Under light load, the Initializer may also periodically invoke <span class="cmd">pc$flush_core</span> to ensure that heavily-modified pages are flushed to disk occasionally
+  even if they remain in memory. 
+</p>  
+
+<h3 id="crawlout">Crawlout</h3>
+<p>
+  A <a href="exec-env.html#crawlout" title="The execution environment for Multics programs. Hardware architectural support and system conventions. ">crawlout</a>
+  is an alternate return path used if the call-side ring 0 supervisor faults.  
+  The crawlout mechanism converts a hardware fault in an inner ring into a software signaled fault in the outer (calling) ring.
+</p>
+<p>
+  If a user-ring application program calls into a hardcore gate, and the supervisor code encounters a CPU fault, 
+  this fault is mapped to a PL/I signal in ring 0 and the runtime searches for a handler in ring 0.
+  If no handler is found, the signaller invokes a crawlout and raises the condition in the outer ring that called ring 0.
+  Such faults can be due to programming errors in the operating system, 
+  or due to damaged data values, for example in file system directory structures,
+  or due to hardware failure.
+  The crawlout routine checks if any locks are locked. 
+  Early versions of the system crashed if there was a crawlout with a lock locked; 
+  later, the sustem unlocks the lock and tries to salvage the locked object, as with the <span class="code">bad_dir_</span> condition. 
+</p>
+<p>
+  The crawlout routine fabricates a stack frame on the user ring stack and re-signals the <a href="exec-env.html#tag8" title="The execution environment for Multics programs. Hardware architectural support and system conventions. ">signal</a> in the user ring.
+  (Such signals cannot be restarted the way user-ring signals can.)
+</p>
+<p>
+  If the inner ring code has locked objects or allocated temporary storage, 
+  just <strong>abandoning</strong> the inner ring calculation would lead to deadlock or resource exhaustion.
+  Instead, ring zero code tolerates such faults by using the PL/I condition mechanism to establish <span class="code">cleanup</span> handlers that clean up storage allocations,
+  and establishing condition handlers that unlock locks and salvage other ring zero databases before abandoning ring 0, 
+  similar to the handling of directory operations. 
+</p>
+<p>
+  File system calls are not completely transactional;
+  a few calls such as <span class="cmd">hcs_$star_long</span> are passed pointers to a user-ring area where return data items are allocated.  
+  A crawlout in these routines may lead to lost storage in the user area, unless the user ring program also sets up <span class="code">cleanup</span> handlers.
+</p>
+
+<h3 id="damaged">Damaged Switch</h3>
+<p>
+  If a main memory parity error is detected, the fault handler calls 
+  Page Control to take the memory page out of service and turn on the containing segment's <i>damaged switch</i>. 
+  Attempts to access a damaged segment get a segment fault, which is signalled in the user ring.
+  The standard action for such a signal is to suspend execution, print a message, and invoke a new listener level.
+  The user can reset the damaged switch with a standard command, and should then check whether a write to the memory page was lost. 
+  If the segment contents are correct, the user can issue the <span class="cmd">start</span> command to continue execution.
+  If the page was modified by a user program, and then the hardware failure prevented the page from being written, the user might observe
+  a page of zeroes or out-of-date page contents.  In that case, the user must re-create the page and either restart the computation or start from the beginning.
+  A hardware failure on a disk drive may also cause a segment to be marked damaged, if modified pages could not be written to disk.
+  If the volume salvager finds a <i>reused address</i>, that is, a situation where two segments' volume maps claim the same page,
+  it marks both segments damaged and removes the page from both segments, to ensure that no crash moves information from one segment to another.
+  <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/doc/info_segments/damaged_segments.gi.info" title="online info segment" target="_blank" rel="noopener">Info segment on damaged segments</a></span>.
+</p>
+
+<h3 id="soos">Security Out-Of-Service Switch</h3>
+<p>
+  The Multics security implementation of levels and categories assigns a security <b>access class</b> to every file system entity.
+  These classes must conform to a tree structure: a high-security directory cannot contain low-security segments and directories.
+  If the directory salvager (online or offline) finds that a segment's branch access class differs from the VTOCE's access class, 
+  or if the access class of a directory entry is less than that of its parent directory,
+  or if an upgraded directory does not have a quota, the salvager will mark the entry <i>security out of service</i>.
+  If a program attempts to access a segment with this switch set, it will get a segment fault.
+  A Site Security Officer (i.e., someone with access to the <span class="cmd">system_privilege_</span> gate) can reset this switch after investigating.
+</p>
+
+<h2 id="reconfig">Dynamic Hardware Reconfiguration</h2>
+<p>
+  The original design of Multics specified a system that could be reconfigured dynamically into separate parts for maintenance and reliability,
+  in order to provide "utility grade" service.  
+  (For example, see <a href="mdn-intro.html" title="Very early design documents.">Design Notebook Section I</a> or Corby's "System requirements for multiple-access, time-shared computers," MAC-TR-3.)
+  The GE/Honeywell hardware provided many reconfiguration options,
+  but software support for reconfiguration and test while the system was running was not present in initial releases of the system.
+  These functions were added to Multics in stages: online reconfiguration and test and diagnostic processing
+  was added for CPUs in the early 70s, and the ability to reconfigure memory and I/O controllers took longer.
+  Disk reconfiguration and the ability to change which disk storage volumes were used for Multics came as part of the New Storage System.
+  There were proposals to implement automatic detection and removal of failing CPUs from the configuration, but these features were never implemented.
+</p>
+
+<h3>Hardware Failures</h3>
+<p>
+  If a CPU fails, the system operator can dynamically reconfigure it off line, and run <a href="mgt.html#tnd" title="glossary: Test and Diagnostic. Until late in the 70s, all...">T&amp;D</a> without shutting down.
+</p>
+<p>
+  A disk drive can go offline due to a transient error, such as someone bumping the online button, 
+  a more serious problem like a power failure, or a permanent problem like a head crash.
+  If a disk device becomes inoperative, the supervisor does not immediately give up and signal errors to the user;
+  it may be possible for the operator to put the drive back online, or to move a disk pack to another physical drive
+  (the disk DIM checks the pack label when a drive comes online and updates its tables correctly, and will salvage the volume's VTOC if it was not shut down).
+  Appendix A of AN61 contains some details on this process.
+</p>
+
+<h2 id="application">Application Recovery Mechanisms</h2>
+<p>
+  Some software and hardware errors have effects confined to a single user process.
+  The Multics <a href="exec-env.html" title="The execution environment for Multics programs. Hardware architectural support and system conventions. ">execution environment</a> for user applications provided facilities that 
+  user programs could use to build application-specific recovery mechanisms.
+</p>
+
+<h3 id="signal">Signals and Conditions</h3>
+<p>
+  The <a href="exec-env.html#tag8" title="The execution environment for Multics programs. Hardware architectural support and system conventions. ">Execution Environment</a> article describes how Multics incorporated and extended the PL/I notion of conditions, signals, and handlers.
+  Faults (like overflow) detected by the CPU are mapped into runtime PL/I signals.
+  Software-detected errors (like end of file) are signalled using the same mechanism.
+  A set of user programs can also define its own signals and handlers to accomplish nonlinear control flow transfers within a process.
+  Unlike Java's throw/catch construct, PL/I signals have continuation semantics; a handler can return to cause a program to continue from the point of signal.
+</p>
+<p>
+  Interactive user subsystems can establish a handler for the <span class="cmd">program_interrupt</span> condition to set a restart point.
+  For example, text editors use such a handler so that if a user requests printing of a lot of output, and then hits QUIT, 
+  issuing the <span class="cmd">program_interrupt</span> (<span class="cmd">pi</span>) command will return the editor to the toplevel command-reading call.
+  <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/doc/info_segments/program_interrupt.info" title="online info segment" target="_blank" rel="noopener">Info segment for <span class=code>program_interrupt</span> command</a></span>.
+</p>
+<p>
+  <b>Crawlout</b>, discussed above, manifests itself in user programs as a condition signalled from a call to ring zero.
+  Such a signal informs the user program of problems in the supervisor and allows it to execute user-defined recovery.
+  (User handlers cannot return to continue execution if a lower-ring call signalled a crawlout.)
+</p>
+
+<h3 id="run_unit">Run Units</h3>
+<p>
+  Run units isolate execution of a program so that it has no permanent effect on process static.  
+  This feature was originally needed for COBOL certification.  
+  The semantics and persistence of FORTRAN COMMON were also handled by this mechanism.
+  <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/doc/info_segments/run_cobol.info" title="online info segment" target="_blank" rel="noopener">Info segment for <span class=code>run_cobol</span> command</a></span>.
+  <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/doc/info_segments/run.info" title="online info segment" target="_blank" rel="noopener">Info segment for <span class=code>run</span> command</a></span>.
+</p>
+
+<h3 id="vfile">vfile_ File Manager</h3>
+<p>
+  The <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/doc/info_segments/vfile_.info" title="online info segment" target="_blank" rel="noopener"><span class=code>vfile_</span></a></span> <a href="mgo.html#outermodule" title="glossary: I/O module intended for user stream attachment. Both ios_...">outer module</a> 
+  supports traditional read/write input and output to segments and <a href="mgm.html#multisegmentfile" title="glossary: One of the weaknesses of Multics is that data...">multisegment files</a> in the file system.
+  It is invoked the the PL/I and FORTRAN language I/O statements when output is to a file, and provides both stream and record operations.
+  <span class="cmd">vfile_</span> uses the Multics virtual memory to provide storage for its files, and paging I/O to transfer file blocks between memory and disk.
+  If a <span class="cmd">vfile_</span> operation is interrupted, a recovery block mechanism transparently completes or rolls back the operation when the file is next accessed.
+</p>
+<h3 id="force_write">Segment Force-Write</h3>
+<p>
+  <span class="pathname">hcs_$force_write</span> is an interface that applications may call to request that the pages of a segment be force written to disk.
+  <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/doc/info_segments/terminate_file_.info" title="online info segment" target="_blank" rel="noopener"><span class=cmd>terminate_file_</span></a></span>
+  provides a switch to request force writing on terminate.
+  No standard software uses this feature, but user software can, subject to administrative control.
+</p>
+<h3>Process preservation and reconnect after hangup</h3>
+<p>
+  In the days of dial-up access to mainframes over the switched telephone network, 
+  it was not uncommon to have a user session disconnected when a data connection failed.
+  Initially, when this happened, Multics destroyed the user process and the user had to 
+  dial back in and start over.
+  In the early 80s, the Answering Service was modified to support the preservation of processes when a hangup occurred,
+  and to allow a user to reconnect after dialing the computer and logging in again.
+  Some tricky coding had to be done so that the user could dial in from a different type of terminal from the one the previous session had been connected to.
+  <span class="nb"><img src="mulimg/tinymultics.gif" alt="" width="16" height="16" style="display: inline;"><a href="https://web.mit.edu/multics-history/source/Multics/doc/info_segments/login.info" title="online info segment" target="_blank" rel="noopener">Info segment for <span class=code>login</span></a></span>.
+</p>
+<h3>Application Logging</h3>
+<p>
+  Some user applications on Multics implemented application-level logging and checkpointing, so that a user
+  could, for example, explore data analysis variations and quickly revert to an earlier state if results were not useful.
+  The ability to create memory segments dynamically made this easy.
+</p>
+
+<h3 id="areas">Areas</h3>
+<p>
+  PL/I <span class="code">area</span> variables are implemented by the standard runtime library.
+  Since directories are implemented as areas stored in ring-zero segments, 
+  the crash safety of the area management code is important.
+</p>
+<p>
+  The Multics area management code protects itself from asynchronous re-invocations within the same process (e.g.
+  by IPS signals which interrupt it, and then call routines that allocate to the area in allocation at the interruption).
+  It does this by maintaining a counter (area.allocation_p_clock), which is incremented in routines
+  which could conflict with allocation if called asynchronously (other allocations and frees).
+  After finding a suitable free block, the saved value is checked in <strong>inhibited code</strong> against the current value in the area header.
+  If the value has changed, allocation is retried.
+  If the value is still unchanged, the free block is allocated, unthreaded, etc.
+  in inhibited code.
+  The use of the inhibit bit to limit the places where area management can be interrupted takes advantage of an architectural feature of the Multics CPU.
+  (Described in <a href="AL39.pdf" title="1.5MB PDF">Honeywell manual AL39</a>.)
+</p>
+<p>
+  The Multics area implementation is also designed to leave areas in a valid state at all times; 
+  an interruption may lose space but will not leave the area in a state where further allocations will fault.
+</p>
+<p>
+  Area allocation is not protected against multiple invocations on different CPUs against the same area:
+  application logic is required to implement locks to prevent this case.
+  In the mid 70s, <a href="multicians.html#MorrisNI" title="Multician: System (MIT, CISL): MRGEDT, 6.36, EPL runtime, File system, FIM, Initialization, BOS, FDUMP, Phase One, ESD, Backup, Printer DIM, Tape DIM, Disk DIM, NSS, MPC loading, EPLBSA, reconfiguration.">Noel Morris</a> and I speculated at length whether such protection without locking was possible on the 6180, 
+  but since multi-process access to an area was protected by locks that were not performance problems, we didn't pursue this to the end.
+</p>
+
+<h3 id="mpsafe">Multiprocessor Safety</h3>
+<p>
+  The symmetric multiprocessor nature of Multics means that programs can perform arbitrary interleavings of access to a variable, unless atomic operations are used.
+  The atomic operations on the 6180 and its descendants were provided by CPU instructions that used special features of the memory controller to ensure atomicity.
+  The main instructions, described in <a href="AL39.pdf" title="1.5MB PDF">Honeywell manual AL39</a>, are the "to-storage" operations, 
+  especially Add One to Storage (<span class="code">AOS</span>), and the Store A Conditional (<span class="code">STAC</span>) and Store A conditional on Q (<span class="code">STACQ</span>) instructions.
+  The Multics PL/I compiler provided builtin functions for <span class="code">STAC</span> and <span class="code">STACQ</span>,
+  and guaranteed that adding one to a word-aligned fixed bin (35) variable would be done with <span class="code">AOS</span>.
+  Locking on Multics is accomplished using atomic instructions.
+  Locking was revised several times during the system's history as the platform evolved, and different atomic primitives were provided.
+  Supervisor databases are protected by a hierarchy of locks; user application programs can use the basic facilities for their own coordination.
+</p>
+<p>
+  The late Noel Morris created an experimental module in the mid 70s that provided a simple in-memory queue without locking,
+  by using the atomic operations of the 6180.
+  We didn't pursue this because future generations of Multics hardware were likely to have different atomic instructions, 
+  and because there was no pressing product problem that needed it at the time.
+</p>
+
+<h2 id="transactions">Transactions</h2>
+<p>
+  As Multics outgrew its time-sharing roots, we encountered requirements for true database-oriented transactions like those provided to banking and airline reservations.
+  Crashing rarely and recovering quickly were insufficient for this class of customer: they needed systems that provided true atomic transactions,
+  like those described in Jim Gray's book, <cite>Transaction Processing: Concepts and Techniques</cite>.
+  Providing this kind of behavior on top of a demand-paged virtual memory and integrating with <a href="mgm.html#MRDS" title="glossary: Multics Relational Data Store. Originally written by Jim Weeldreyer...">MRDS</a> was a substantial design challenge.
+  The Multics Data Management project, begun in 1980, 
+  created a traditional write-ahead-log transaction implementation, including before and after journaling, integrated with the Multics storage system.
+</p>
+<p>
+  In 1985, Multics release 11 introduced a true atomic transaction manager,
+  the Data Management (DM) facility, sometimes called <b>FAMIS</b>, and MRDS was changed to use it.
+  It ran in ring 2 and DM files were a new file type like message segments.
+  DM provided recovery and rollback of DM files.
+  Page control was modified to guarantee
+  that a modified control interval is not written to disk until the
+  modification's "before" image is written to disk, implementing the Write-Ahead-Log protocol.
+</p>
+
+<h2>Acknowledgments</h2>
+<p>
+  <a href="multicians.html" title="List of contributors to Multics.">Colleagues too many to mention</a> contributed to the CTSS and Multics file systems, virtual memory, and recovery mechanisms.
+  The late <a href="multicians.html#Bensoussan" title="Multician: Designer (GE/CISL): File manager, Initialization, AIM, NSS.">Andr&eacute; Bensoussan</a> provided valuable feedback and encouragement on an early draft of this note.
+</p>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+	      <nav id="footer-nav" aria-label="Footer">
+<div id="l2nav" class="textnav">Library links: <a href="papers.html" title="Classic papers about Multics available on the Web">Papers</a> | <a href="articles.html" title="Technical articles">Articles</a> | <a href="devdoc.html" title="Development document series">Dev Docs</a> | <a href="multics-source.html" title="Index to source code modules on this site">Source</a> | <a href="simulator.html" title="Multics Simulator">Simulator</a>
+
+</div>       <a href="multics.html">Home</a> | 
+       <a href="history.html">History</a> | 
+       <a href="multicians.html">People</a> | 
+       <a href="biblio.html">Library</a> | 
+       <a href="sites.html">Sites</a> |
+       <a href="about-multics.html">About</a>  | 
+         <a href="sitemap.html">Site Map</a> | 
+         <a href="changes.html">Changes</a>
+
+              </nav>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-634</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-634: Data Management:  System Shutdown.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-634
+DM:  Shutdown
+
+To:       Distribution
+
+From:     Lee A. Newcomb
+
+Date:     10/11/83
+
+Subject:  Data Management:  System Shutdown
+
+1 ABSTRACT
+
+     A data management system should be shutdown when the Multics
+system it is running on is shutdown.  This allows data management
+to be  made available more  quickly to users in  the next Multics
+bootload by  avoiding crash recovery.   It also gives  some extra
+insurance that users' protected files are consistent.  The reader
+should note  that some hardcore  changes are required  to support
+new inter-process signals (IPS) and the required static handlers.
+
+Comments should be sent to the author:
+
+via Multics forum:
+   &gt;udd&gt;Multics&gt;Spratt&gt;meetings&gt;DMS_Development
+
+via Multics Mail:
+   Newcomb.Multics on System M or
+   LNewcomb.Multics on MIT Multics.
+
+via US Mail:
+   Lee A. Newcomb
+   Honeywell Information Systems, Inc.
+   4 Cambridge Center
+   Cambridge, Massachusetts 02142
+
+via telephone:
+   (HVN) 261-9332, or (617) 492-9332
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+
+                            CONTENTS
+
+                                                         Page
+
+                 1 Abstract . . . . . . . . . . . . . .     i
+                 2 Introduction . . . . . . . . . . . .     1
+                 3 Basic Shutdown Steps . . . . . . . .     1
+                 4 Start shutdown and warn users  . . .     2
+                    4.1 Mark DMS State  . . . . . . . .     2
+                    4.2 Stop New Transactions . . . . .     2
+                    4.3 Warn Users  . . . . . . . . . .     3
+                    4.4 Set Daemon Timer  . . . . . . .     3
+                 5 User Shutdown  . . . . . . . . . . .     3
+                    5.1 Mark DMS State  . . . . . . . .     3
+                    5.2 Signal User Processes . . . . .     4
+                    5.3 Set Daemon Logout Timer . . . .     4
+                 6 Final Shutdown . . . . . . . . . . .     4
+                 7 Problems . . . . . . . . . . . . . .     5
+                    7.1 Invalidating User DMS
+                     References . . . . . . . . . . . .     5
+                    7.2 IPS' (inter-process signals)
+                     Ignored  . . . . . . . . . . . . .     5
+                    7.3 Hardcore Changes to support new
+                     IPS' . . . . . . . . . . . . . . .     6
+
+
+Multics Technical Bulletin                                MTB-634
+DM:  Shutdown
+
+2 INTRODUCTION
+
+     The  major objective  of Data  Management is  to keep users'
+protected  files  consistent.   To  this end,  there  are several
+termination  mechanisms  employed  to recover  from  user process
+deadlocks,  a Multics  system crash  (with or  without ESD), etc.
+The  shutdown of  a running  Data Management  System (DMS)  is an
+extra guarantee  that protected file are  correct.  As important,
+users  will  see a  DMS  available more  quickly after  a Multics
+bootload since crash recovery, which  can be very time consuming,
+is avoided.
+
+     DMS  shutdown  will  normally  occur just  prior  to Multics
+system  shutdown.   There  are   also  occasions  when  a  system
+administrator  may  wish to  shutdown a  DMS without  taking down
+Multics.  For example, there may  be some priority jobs that must
+run  and  do not  use  any protected  files.   It is  possible to
+shutdown the DMS until these jobs  are finished and bring it back
+up.  It is  expected these occasions will be  very rare; however,
+it  is easy  to add this  capability to Data  Management and also
+facilitates development testing.
+
+     It must be  remembered that DMS shutdown is  not an absolute
+necessity;  the DMS  crash recovery mechanism  will put protected
+files back in order.  If DMS shutdown does complete, the recovery
+at the next  DMS bootload will have nothing to  do.  For the same
+reason, shutdown does not have  to complete:  recovery will still
+rollback any  transactions left over.   The result is  less crash
+recovery time and faster availability on the next bootload.
+
+     The reader is assumed to be familiar with the MTB's covering
+the initialization and recovery of a DMS.  These are MTB numbers:
+508, 592, and 603.
+
+3 BASIC SHUTDOWN STEPS
+
+     Following  are the  basic steps  in the  shutdown of  a Data
+Management System.  These will be discussed in detail later.  The
+objective  is  to  have  no  transactions  in  progress  when the
+caretaker  Daemon  of the  DMS logs  out, implying  all protected
+files and before journals are closed (and therefore consistent).
+
+    o  The  DMS  state  is  set  to  "shutdown  warning";  no new
+       transactions     are     allowed     to     begin.     The
+       "dm_shutdown_warning_" inter-process signal  (IPS) is sent
+       to  the  current users  of  the DMS  to  warn them  DMS is
+       shutting  down and  there is  a finite  amount of  time to
+       finish their work.
+
+
+MTB-634                                Multics Technical Bulletin
+                                                    DM:  Shutdown
+
+    o  When the  time limit for  users to finish  is reached, the
+       DMS    state   is    set   to    "user   shutdown".    The
+       "dm_user_shutdown_" IPS is sent  to any remaining users of
+       the DMS.   The default action  for user processes  in this
+       case will be to call transaction_manager_$user_shutdown to
+       finish any active transactions,  close all protected files
+       and journals, and invalidate their per-process DM data.
+
+    o  When all transactions have been finished, the DMS state is
+       set to "normal shutdown" and the Daemon logs out.  At this
+       time,  all protected  files in this  system are consistent
+       and crash recovery will do nothing on the next bootload of
+       DMS.
+
+4 START SHUTDOWN AND WARN USERS
+
+     At  some time,  someone or  something decides  a running DMS
+should be shutdown and informs  the DMS' caretaker Daemon.  It is
+anticipated  this  will  normally  occur when  it  is  decided to
+shutdown the Multics system running  the DMS.  There will also be
+an administrative  interface to allow a  privileged user to start
+DMS shutdown.
+
+4.1 Mark DMS State
+
+     The current  state of the  DMS (in dm_system_data_)  must be
+set to "shutdown warning".  This  is in case the caretaker Daemon
+dies  before completing  the shutdown  tasks.  A  new Daemon will
+note this state  and pick up the shutdown  work instead of trying
+to continue normal DMS operation.
+
+4.2 Stop New Transactions
+
+     No  new  transactions  will  be  started  once  shutdown has
+started.        This       is      enforced       by      calling
+transaction_manager_$begins_off  to  set  a  global  flag  in the
+current  DM  system.   This  does not  prohibit  currently active
+transactions from continuing.
+
+
+Multics Technical Bulletin                                MTB-634
+DM:  Shutdown
+
+4.3 Warn Users
+
+     Send  the "dm_shutdown_warning_"  inter-process signal (IPS)
+to all users  of the current DMS.  The  default static handler in
+the user ring for this IPS reports to the user the amount of time
+remaining  to  finish  a  transaction  before  DMS  user shutdown
+actually  occurs.   If  the  process  does  not  have  an  active
+transaction, the static  handler will act as if  the user's grace
+time has expired.  See the "USER SHUTDOWN" section below.
+
+4.4 Set Daemon Timer
+
+     The DMS caretaker Daemon then sets a timer to wake itself up
+when the user  grace time is over to force  users out of the DMS.
+This  will  be the  DMS shutdown  time for  users, not  the final
+shutdown time.
+
+5 USER SHUTDOWN
+
+     When  the  Daemon's timer  for user  shutdown goes  off, all
+active transactions must be aborted  or abandoned (this allows us
+to  use the  normal rollback  procedures for  shutdown instead of
+writing  new  ones).   In addition,  all  users of  the  DMS must
+invalidate  their  references to  DMS per-system  and per-process
+data.   This is  mainly to  avoid segment  faults in  the DM ring
+(which is  generally lower than  a user's login ring)  if the DMS
+bootload  directory is  deleted (expected  to be  the most common
+case).
+
+5.1 Mark DMS State
+
+     The current state of the  DMS (in dm_system_data_) is set to
+"user shutdown".   Again, this is  in case the  current caretaker
+Daemon dies and a new one must pick up the shutdown work.
+
+
+MTB-634                                Multics Technical Bulletin
+                                                    DM:  Shutdown
+
+5.2 Signal User Processes
+
+     The Daemon sends the "dm_user_shutdown_" IPS to all users of
+the DMS.   The default static  handler in the user  ring for this
+signal        will        call       the        new       program
+transaction_manager_$user_shutdown.       This      will     call
+transaction_manager_$abandon_txn  if  the   user  has  an  active
+transaction  so the  Daemon may  rollback the  active transaction
+using  the  currently  existing   code  for  this  function.   In
+addition, the user_shutdown entry  will invalidate the user's DMS
+per-process  data  (e.g.  dm_data_,  lm_data_) and  references to
+per-system  tables,  and  terminate   the  Data  Management  ring
+transfer vectors.  This termination allows  the user to use a new
+DMS if  one is booted  again in this  Multics bootload; otherwise
+the user must new_proc.  This type  of shutdown is expected to be
+rare and may only be used in development and testing.
+
+5.3 Set Daemon Logout Timer
+
+     The Daemon now sets a timer  for when it is to logout.  This
+is  much  like the  user  warning timer:   it defines  the finite
+amount of  time the Daemon has  to cleanup transactions abandoned
+by users.   This may be  unneccesary if shutdown  is occurring as
+part of Multics shutdown.
+
+6 FINAL SHUTDOWN
+
+     When  there  are  no more  users  of the  DMS  bootload, the
+caretaker Daemon  will mark the  DMS state as  "normal shutdown".
+It      will      then      call      the      new      procedure
+dm_dir_$old_bootload_dir_disposition  to either  rename or delete
+the  current bootload  directory just  as the  DMS crash recovery
+mechanism would when it is finished.
+
+     When  the  above two  steps  are finished,  the  Daemon will
+logout.  It may  logout without doing any of  the above if forced
+by the Multics operator.
+
+
+Multics Technical Bulletin                                MTB-634
+DM:  Shutdown
+
+7 PROBLEMS
+
+7.1 Invalidating User DMS References
+
+     Users  who  do not  have  active transactions  must  also be
+notified  that the  DMS is shutting  down so  they may invalidate
+their per-process  data and references to  per-system tables, and
+terminate  references  to  the   Data  Management  ring  transfer
+vectors.  This is only a concern  when Multics is not going down,
+just the DMS,  and it is expected that the  DMS will be re-booted
+within  this Multics  bootload.  If  a user  has references  to a
+previous DMS (now inactive), the user's process will take segment
+faults in  the Data Management  ring if attempts are  made to use
+the shut down DMS.
+
+     There are  several options in  this case.  One  method is to
+follow the  scheme presented in the  main description of shutdown
+above.  This is more work for the Daemon and requires more coding
+effort, but  is easier for  users and for  booting multiple DMS's
+within the same Multics invocation for development testing.
+
+     The most  convenient solution for development  is to only be
+concerned  with  users  having  active  transactions.   Since DMS
+shutdown  will usually  coincide with  Multics shutdown,  the DMS
+will not be  re-booted to cause segment faults  in the inner ring
+for a  user without an  active transaction at  DMS shutdown time.
+If the DMS is re-booted, a warning  could be sent to all users to
+new_proc or call the user_shutdown entry in transaction_manager_.
+
+     It would  also be possible  to handle segment  faults in the
+inner  ring  code,  but  the  faults  would  require considerable
+analysis.  There are better ways to use our time.
+
+7.2 IPS' (inter-process signals) Ignored
+
+     It    is    possible   for    the    user   to    mask   the
+"dm_shutdown_warning_"  and  "dm_user_shutdown_"  IPS'.   In this
+case, the user process may  never recieve the shutdown warning or
+call  the user_shutdown  entry.  This  is an  unavoidable problem
+with the way  things are done.  The Daemon  certainly cannot wait
+forever for  the user process  to respond.  The first  step is to
+simply ignore  the fact an  active transaction still  exists when
+the time comes for the Daemon to logout.
+
+
+MTB-634                                Multics Technical Bulletin
+                                                    DM:  Shutdown
+
+     An  alternative  solution  is  for the  caretaker  Daemon to
+forcibly  take  over  any  transaction not  abandoned  by  a user
+process  which ignores  the "dm_user_shutdown_"  IPS.  The Daemon
+would process those transactions  given up voluntarily first, and
+then  takes  over  any  left over.   In  addition,  users without
+transactions, but  with DMS per-system  bootload tables initiated
+must   be   "kicked   out".    This   all   amounts   to  running
+transaction_manager_$user_shutdown for a user (I wonder if we can
+charge extra for this?).  This will require some modifications to
+transaction_manager_  to be  able to take  over transactions; and
+will  probably  also increase  the Daemon's  working set  to keep
+pointers to all users' per-process data in the DM ring.  There is
+a minor advantage to this:  force takeover could allow for future
+handling of transaction  timeouts by the Daemon on  an active DMS
+to ease holding of before journals, deadlocks, etc.
+
+     Another solution is to force  the user to logout, which will
+cause  the  Daemon to  be  notified that  the  TDT entry  for the
+process needs  cleaning out.  This is  a rather drastic situation
+that only matters if the DMS  is being shutdown, but Multics will
+stay  up,  and  the  DMS  re-booted  later  in  the  same Multics
+invocation.  If the force takeover of user transactions and force
+invalidation  of user  DMS data  method is  used, this  method is
+unnecessary.  If  required, a temporary  interface interface with
+the Initializer to destroy the process could be created.
+
+7.3 Hardcore Changes to support new IPS'
+
+     This  is  not  strictly a  problem,  just a  subtask  of the
+strategy  presented above.   Two new IPS  need to  be created and
+static handlers written to take care of the signal.  In addition,
+some programs that deal with  the character representation of the
+IPS  names must  be modified  (e.g.  sys_info, create_ips_mask_);
+and  the  default static  handlers  must be  setup in  all stacks
+greater than the  DM ring (except when the DM  ring IS the user's
+login ring, mods.  required to make_stack_).
+
+     It is also being proposed that the four character limitation
+on the name  of an IPS be expanded to  32 characters.  This gives
+us  the  ability  to name  the  IPS' according  to  function more
+clearly  and make  them self-documenting.  Instead  of the "dmw_"
+and "dms_"  signals with the  four character restriction,  we get
+"dm_shutdown_warning_" and "dm_user_shutdown_".
+
+     The system programs dealing with IPS are limited enough that
+the above changes should not be hard to do.
+
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-686</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-686: Improving the Security of SAC and the Admin Password.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-686
+More Secure SAC
+
+To:       Distribution
+
+From:     Benson I. Margulies
+
+Date:     10/25/84
+
+Subject:  Improving the Security of SAC and the Admin Password
+
+1 ABSTRACT
+
+     The  send_admin_command  facility  does  not  provide a
+     secure  audit  trail of  the  senders of  commands, and
+     leaves  the   admin  password  subject   to  un-audited
+     changed.  This MTB describes changes to resolve both of
+     these problems.
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Margulies at either System-M, MIT, or CISL-SERVICE.
+
+via Forum:
+   &gt;udd&gt;m&gt;mtgs&gt;B2 on System-M
+
+via telephone:
+   (HVN) 261-9333, or
+   (617) 492-9333
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+MTB-686                                Multics Technical Bulletin
+                                                  More Secure SAC
+
+2 &gt;SC1&gt;COMMUNICATIONS IS AN INSECURE DESIGN
+
+&gt;sc1&gt;communications  is,  I  believe, the  oldest  permanent data
+structure in  the system.  Unlike  other shared data  bases which
+are   now   managed  with   the   install  mechanism   or  rings,
+communications  is  read-write  to  all  persons  trusted  to use
+send_admin_command.    One   of  these   users   can,  therefore,
+arbitrarily change a command sent  by another, the recorded ID of
+the user who  sent the command, the operator  admin password, and
+the old default pdir quota values.
+
+3 REPLACING COMMUNICATIONS
+
+There are three items in &gt;sc1&gt;communications:  send_admin_command
+support,  the operator  admin password,  and default  process dir
+quota values.
+
+3.1 send_admin_command
+
+Send_admin_command  is  logically  an  as_request  function.  The
+major difficulty  in replacing sac with  an as_request service is
+that  the execution  of sac commands  must be  inhibited in admin
+state.(1)   V4 message  segments do  not store  process id's with
+mesages.  as_request_server_ uses the  process id from the wakeup
+accompanying the message segment  message.  Each time it receives
+a  wakeup,  it reads  the  message specified  by  the 72  bit IPC
+message and processes it.  This  design has two serious problems.
+First, the  program will never  clear out messages  whose wakeups
+have been lost.  Second, there is  no place to store a process id
+when deferring the processing of a message.
+
+_________________________________________________________________
+
+(1) There is a confusing  and important terminology here.  "admin
+    state" is  entered by the Initializer  whenever it reattaches
+    its    switches   to    avoid   the    message   coordinator.
+    sc_stat_$admin_switch is  set for admin  state.  "admin mode"
+    is the situation  when the Initializer is in  admin state and
+    is  listening for  Multics commands  typed on  an Initializer
+    terminal         or        the         system        console.
+    sc_stat_$admin_listener_switch is set  for admin mode.  Admin
+    state may include borrowing from the message coordinator with
+    borrow_tty_from_mc_.  All Initializer  commands (primarily in
+    execute_sc_command_) that read responses  to queries borrow a
+    terminal.  The server  for send_admin_command commands enters
+    a admin state,  but will not borrow a  terminal in the design
+    described here.
+
+
+Multics Technical Bulletin                                MTB-686
+More Secure SAC
+
+Version  5  message  segments  remove  this  problem  by securely
+storing a process id with each message.
+
+While  re-implementing  send_admin_command,  we  can  improve the
+condition   handling  and   input  handling   properties  of  the
+environment in which sac commands are executed.  Attempts to read
+input  while  executing a  sent command  will abort  the command.
+Output data will be logged.
+
+Some features of sac will be removed.  It will not be possible to
+implement sac -cancel.  This facility  can be restored at a later
+time by providing a command to cancel as_requests.
+
+A  list_as_requests  command will  be  provided.  This  will show
+pending  sac  commands, as  well  as any  other  as_requests that
+happen to be  in the message segment.  For  this release, it will
+have no fancy selectivity (-user/-admin/-id), but it will be able
+to use own access to the message segment.
+
+Name:  list_as_requests
+
+Function:   Displays  any  as_requests currently  pending  in the
+as_request queue message segment, &gt;sc1&gt;as_request.ms.
+
+Access  required:   o access  to as_request.ms  to see  one's own
+messages, r access to see anyone else's.
+
+The new command writeup for send_admin_command follows here:
+
+
+MTB-686                                Multics Technical Bulletin
+                                                  More Secure SAC
+
+Name:  send_admin_command, sac
+
+Function:  Sends  a command line  to the Initializer  process for
+execution.
+
+Syntax:
+send_admin_command {-control_args} command line without quotes.
+
+Where:
+
+command_line_without_quotes Is  a command line to  be sent to the
+          initializer.   To  send  special  characters  you  must
+          include them, or the whole command line, in quotes.  If
+          the first  character of the  command is a  "-" command,
+          the "-string" control argument must be used.
+
+control args may be chosen from the following:
+
+-no_wait, -nwt
+          The  command  returns to  the listener  as soon  as the
+          command_line has been sent to the Initializer.
+
+-wait WAIT_TYPE, -wt WAIT_TYPE
+          This  control  argument specifies  whether  the command
+          will wait for any  acknowledgement from the Initializer
+          before  returning  to the  listener.  WAIT_TYPE  may be
+          chosen from the following list:
+
+     start
+          The  command waits  for the  Initializer to acknowledge
+          receipt  of the  command line  before returning  to the
+          listener.
+
+     finish
+          The  command  waits  for   the  Initializer  to  finish
+          execution of  the command line before  returning to the
+          listener.  This is the default.
+
+-notify_by_message, -ntmsg
+          The   user  will   receive  a   brief  notification  by
+          interactive message in the following cases:
+          * -no_wait  is specified, and execution  of the command
+          line is denied due to lack of access.
+          * The command completes execution.
+
+          If the user's  mail table entry can be  used to deliver
+          an  interactive  message, it  will.   If not,  the full
+          User.Project specification will  be used.  The -address
+          control   argument  does   not  apply   to  interactive
+          messages.
+
+
+Multics Technical Bulletin                                MTB-686
+More Secure SAC
+
+-no_notify_by_message, -nntmsg
+          The   user   will  receive   no   interactive  messages
+          concerning the  execution of the command  except in the
+          special  case  that  -no_wait   is  specified  and  the
+          execution  of  the command  is  denied due  to  lack of
+          access.
+
+-notify_by_mail, -ntmail
+          The user will be sent mail in the following cases:
+          * -no_wait  is specified, and execution  of the command
+          line is denied due to lack of access.
+          * The command completes execution.
+
+          By default,  the mail will  be send to  the destination
+          specified in mail table for the user's personid.  If no
+          destination is found there,  the full user.project will
+          be  used.   The  default  may  be  overridden  with the
+          -address control argument.  If the command is executed,
+          the  mail  will  contain  all  output  produced  on the
+          error_output, user_output, and user_i/o switches during
+          the command execution.
+
+-address MAIL_ADDRESS
+          Specifies that  mail sent for notifications  be sent to
+          the  mail  address   specified  by  MAIL_ADDRESS.   See
+          mail_addresses.gi.info for more information.
+
+-string
+          The  rest of  the command  line will  be interpreted as
+          part of  the command to  send whether or  not it begins
+          with a "-".
+
+-query, -qy
+          The command line is printed on the user's terminal, and
+          the  user is  queries "Do you  want to  send this admin
+          command  line?".   This  can  be used  to  validate the
+          effects of abbrevs and active functions.
+
+-no_query, -nqy
+          No  query  is posed  before  sending the  command line.
+          This is the default.
+
+Notes:
+
+RW access to &gt;sc1&gt;admin_acs&gt;send_admin_command.acs is required to
+use this command.
+
+SUMMARY OF COMMAND EXECUTION
+1) The command line is sent to the Initializer.
+
+
+MTB-686                                Multics Technical Bulletin
+                                                  More Secure SAC
+
+2a) If  -no_wait  is  specified,   the  command  returns  to  the
+     listener.  Skip to step 4.
+
+2b) If  -wait  start or  -wait finish  is specified,  the command
+     waits for Initializer to  acknowledge receipt of the command
+     line.  If  the Initializer rejects execution  of the command
+     line, an explanatory message is printed.
+
+3a) If  -wait  start is  specified,  the command  returns  to the
+     listener.
+
+3b) If  -wait  finish  is  in effect,  the  command  waits  for a
+     notification from the Initializer that execution of the sent
+     command is complete.  A message of the form:
+
+        send_admin_command:  Completed command OTHER_NOTES.
+
+     is printed.  OTHER_NOTES can include the strings:
+
+        "with errors"  if output was written  on error_output, or
+     the command_error condition was signalled.
+        "Finish  command signalled."   if an attempt  was made to
+     terminate the process during execution of the command.
+        ERROR_CODE_MESSAGE if  the Initializer returned  an error
+     code describing a problem with execution of the command.
+        "Command line  aborted by error."  if  a condition signal
+     caused the command line execution to be aborted.
+
+4) If -notify_by_mail or -notify_by_message is in effect, mail or
+     a  message  arrives  from  the Initializer.   Both  mail and
+     messages include the summary described in step 3.  Mail will
+     include the complete output of the command line execution.
+
+3.2 admin password
+
+The admin password  will be moved into the PNT,  where all of the
+other  passwords  are stored.   This  will automatically  give us
+auditing of its changes and the like.
+
+It  is  not desirable  to  use new_user  to manipulate  the admin
+password and any  other special user names that  we define in the
+future.  We don't want to have  aliases or mail table entries for
+these, and most of the fields in the pnt_entry are not relevant.
+
+A new  command, set_special_password, will be  added.  Its syntax
+is:
+
+  set_special_password SPECIAL_ID {-control_args}
+
+
+Multics Technical Bulletin                                MTB-686
+More Secure SAC
+
+where:
+
+SPECIAL_ID is a name of a  special password.  The current list of
+          special names is:
+          operator_admin_mode   for   the  operator   admin  mode
+          password.
+
+control args may be chosen from:
+
+-none  sets  the  specified  ID to  have  no  password.   For the
+          operator_admin_password, setting -none will cause admin
+          mode to be entered without asking for a password.
+
+-prompt causes the command to prompt, twice, for the value of the
+          password.  This is the default.
+
+-password PASSWORD causes the password  PASSWORD to be set.  This
+          should be used ONLY in the accouting_start_up exec_com.
+          It is NOT recommended for general use.
+
+3.3 default pdir quota values
+
+Communications  was the  original location of  pdir quota values.
+Today, these  values are respected, though  there are no programs
+to  display  or  set  them.   Two  new  installation  parameters,
+"default_pdir_seg_quota  (df_pdsq)"  and  "default_pdir_dir_quota
+(df_pddq)" will be added to replace the values in communications.
+ed_installation_parms   will   read   the   old   value   out  of
+communications  for  the  seg  quota,  and  the  dir  quota  will
+arbitrarily  default to  1000.  No changes  will be  made at this
+time  to respect  the dir quota  value, since  ring zero act_proc
+knows nothing of directory quota.
+
+4 A GENERAL SUBROUTINE FOR SENDING AS REQUESTS.
+
+Currently,  all "users"  of as request  call message_segment_ for
+themselves.   This  duplicates code,  and  makes it  difficult to
+reliably find  them all.  The following  subroutine will be added
+to improve this situation:
+
+Name:  send_as_request_
+
+Function:  Contains entrypoints that  send messages to the system
+Answering Service Request server.
+
+Entry:  send_as_request_$block
+
+Function:  sends an as_request, and  blocks to await the system's
+
+
+MTB-686                                Multics Technical Bulletin
+                                                  More Secure SAC
+
+reply.
+
+Syntax:
+
+declare  send_as_request_$block  entry  (ptr,  bit  (72) aligned,
+fixed bin (35));
+call  send_as_request_$block  (as_request_ptr,  as_request_reply,
+code);
+
+where:
+
+as_request_ptr  is  a pointer  to standard  as_request structure.
+          as_request structures  begin with a  header declared in
+          as_request_header.incl.pl1.    Declarations   for  most
+          as_request    info    structures     are    found    in
+          as_request.incl.pl1.   We  do  not  recommend  that any
+          application   code    send   as_requests.    Subroutine
+          interfaces   are  available   for  all   the  supported
+          as_request facilities.
+
+as_request_reply is  the event message returned  by the system in
+          reply to the request.  (output)
+
+code is a standard system status code.
+
+Entry:  send_as_request_$no_block
+
+Function:  sends an  as request message to the  system as request
+server, and does not block to await a reply.
+
+Syntax:
+
+declare send_as_request_$no_block entry (ptr, fixed bin (35));
+call send_as_request_$no_block (as_request_ptr, code);
+
+where the parameters are as described above.
+
+5 TESTING
+
+All appropriate  cases will be tested.   An interface that allows
+sc_admin_command_, the sac command execution server, to be run in
+a user's process for testing will be added.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

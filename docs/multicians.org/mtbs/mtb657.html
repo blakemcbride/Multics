@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-657</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-657: Limited Subsystems for the Hierarchy and Volume Backup Dumpers.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+Multics Technical Bulletin                                MTB-657
+Backup Dumper Subsystems
+
+To:       Distribution
+
+From:     Benson I.Margulies
+
+Date:     05/11/84
+
+Subject:  Limited Subsystems for the Hierarchy and Volume Backup Dumpers
+
+1_ A_B_S_T_R_A_C_T_
+
+          It should not be  neccessary to trust Multics
+          operators  as System  Security Adminstrators.
+          However,   the   current  interface   to  the
+          hierarchy  and  volume   dumpers  allows  the
+          operator unrestricted  use of a  process with
+          access  to  privileged  gates.   A  malicious
+          operator, using the Backup.SysDaemon process,
+          can arbitrarily and  invisibly subvert system
+          security.   This  MTB   describes  a  limited
+          subsystem for the volume and hierarchy backup
+          processes  that  eliminates this  risk.  This
+          MTB  proposes  two  options  for  the command
+          repetoire of the subsystem.  When a consensus
+          is   reached  a   revision  will   be  issued
+          describing only the definitive design.
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Margulies at either System-M, MIT, or CISL-SERVICE.
+
+via Forum:
+   &gt;udd&gt;m&gt;mtgs&gt;B2.forum on System-M
+
+via telephone:
+   (HVN) 261-9333, or
+   (617) 492-9333
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+MTB-657                                Multics Technical Bulletin
+                                         Backup Dumper Subsystems
+
+2_ I_N_T_R_O_D_U_C_T_I_O_N_ -_-_ T_H_E_ D_U_M_P_E_R_S_
+
+Both the  hierarchy and volume backup  dumper processes introduce
+unacceptable security flaws in an operating Multics system.  They
+are  examined  here  in  turn.   The  hierarchy  dumper  requires
+considerable  access to  do its  work.  It  depends on  access to
+hphcs_ and  ACL access to all  objects to be dumped,  and runs in
+ring  1.   Since  it runs  in  an ordinary  Multics  process, the
+operator  can  use  the  "reply"  command  to  send  it arbitrary
+commands.
+
+The access of this process  could be restricted.  A seperate gate
+containing only the necessary entries for the dump side of backup
+could be created,  or they could be added  to the volume dumper's
+gate hc_backup_.  Instead of giving *.SysDaemon access to all the
+branches in  the storage system,  the volume dumper  switches (or
+new switches) could be used to control access via these entries.
+
+The  volume dumper  already uses  a restricted  gate, and  is not
+given access to the hierarchy in any extensive fashion.  However,
+both the  volume dumper and  the hierarchy dumper  with the added
+restrictions  discussed  above  would be  processes  with unusual
+abilities  under the  complete control of  operations.  All other
+such  processes run  in restricted environments  to add assurance
+that the operators cannot exploit these abilities.
+
+Running the dumper processes  in a restricted command environment
+would  prevent   the  operators  from   exploiting  the  existing
+abilities of the hierarchy dumper except via a flaw in the dumper
+software.   This  MTB  proposes restricted  environments  for the
+dumpers.   Future work  should examine  restricting the hierarchy
+dumper process' access to the file system.
+
+3_ R_E_L_O_A_D_E_R_S_ A_N_D_ R_E_T_R_I_E_V_E_R_S_
+
+This MTB  does not discuss  reloaders and retrievers.   It is the
+author's belief that these are inescapably privileged operations.
+Even  the  retrieval  of  a  previous  version  of  a  segment or
+directory can be a serious security  breach if it is done without
+proper  authorization, since  it can modify  or destroy protected
+information.  At a secure site, reloads and retrievals would only
+be run by trusted people.
+
+4_ T_H_E_ R_E_S_T_R_I_C_T_E_D_ E_N_V_I_R_O_N_M_E_N_T_S_
+
+For  an  initial  implementation,  the  obvious  approach  is  to
+construct a  process overseer that  calls an ssu_  subsystem that
+contains the  dumper commands as "multics_requests,"  in the ssu_
+
+
+Multics Technical Bulletin                                MTB-657
+Backup Dumper Subsystems
+
+sense.  This also  offers the opportunity to improve  the ease of
+use of these commands by assigning them more obvious (and in some
+cases, shorter) names.
+
+There  are  two possible  approaches to  the construction  of the
+subsystem.   The first  is to  construct a  single subsystem with
+requests for both the hierarchy  and volume backup dumpers.  Such
+a subsystem would look like:
+
+          Subsystem_name:        backup_dumper
+          Subsystem_ec_suffix:   ec
+          Subsystem_prompt:      "Enter command (backup dumper)^/"
+
+          Subsystem_requests:
+
+          SUBSYSTEM REQUEST            -&gt; MULTICS COMMAND
+          -----------------------------------------------
+
+          begin_hierarchy_incremental  -&gt; start_dump
+           begin_hinc
+           start_hierarchy_incremental
+           start_hinc
+
+          wakeup_hierarchy_incremental -&gt; wakeup_dump
+           wakeup_hierarchy
+           wakeup_hinc
+
+          end_hierarchy_incremental    -&gt; end_dump
+           stop_hierarchy_incremental
+           end_hinc
+           stop_hinc
+
+          hierarchy_catchup            -&gt; catchup_dump
+           hcatchup
+           hcat
+
+          hierarchy_complete           -&gt; complete_dump
+           hcomplete
+           hcomp
+
+          begin_volume_incremental     -&gt; incremental_volume_dump
+           begin_vinc
+           start_volume_incremental
+           start_vinc
+
+          wakeup_volume_incremental -&gt;    wakeup_volume_dump
+           wakeup_volume
+           wakeup_vinc
+
+
+MTB-657                                Multics Technical Bulletin
+                                         Backup Dumper Subsystems
+
+          end_volume_incremental    -&gt;    end_volume_dump
+           stop_volume_incremental
+           end_vinc
+           stop_vinc
+
+          volume_catchup            -&gt;    volume_catchup_dump
+           vcatchup
+           vcat
+
+          volume_complete           -&gt;    volume_complete_dump
+           vcomplete
+           vcomp
+
+The second alternative is to  create two subsystems, one for each
+dumper.   Inside  each  subsystem,   the  markings  "volume"  and
+"hierarchy"  would  be  omitted  from  the  request  names.   The
+subsystem    names    would    be    "volume_backup_dumper"   and
+"hierarchy_backup_dumper",         and         the        prompts
+"Enter command (volume backup)"                               and
+"Enter command (hierarchy backup)".   In all  cases, the exec_com
+search list would be "backup_dumper".
+
+Since any  given process should  only be running one  dumper at a
+time, the two subsystem approach seems easiest on the users.
+
+5_ I_M_P_L_E_M_E_N_T_A_T_I_O_N_ C_O_N_S_I_D_E_R_A_T_I_O_N_S_
+
+An initial  implementation of both of  the subsystem alternatives
+has been made.  This implementation  makes no changes to the code
+of the dumpers.  They are called "as is."  This, or course, means
+that any error messages that they produce continue to carry their
+old names.   In addition, no  provision is made  for changing the
+default or permissible control arguments for any of the commands.
+A site might well want to insure that a particular set of control
+arguments  were  always  used.   This  might  be  accomplished by
+providing a "one-way" abbrev request; the start_up exec_com could
+lock the  process in to  an abbrev profile  with suitable command
+lines.  This  would require abbrev  to have an  option that would
+expand abbreviations  while forbidding some or  all of the abbrev
+control requests, such as ".u".  All  of this can be addressed in
+a future version.
+
+6_ A_ M_I_N_O_R_ E_X_T_E_N_S_I_O_N_ T_O_ S_S_U__
+
+The ssu_  implementation of "standard  requests" in inappropriate
+for  securely restricted  subsystems.  While a  subsystem can use
+the  "unknown_request" macro  to disable a  standard request, the
+implementor   has  no   guarantee  that   a  future   version  of
+
+
+Multics Technical Bulletin                                MTB-657
+Backup Dumper Subsystems
+
+ssu_request_tables_$standard_requests will not add a request that
+allows  the user  unwanted privilege.   Therefore, a  new request
+table,   ssu_request_tables_$restricted_requests,  needs   to  be
+added.  It contains all the the existing standard_requests except
+for the "execute" request.
+
+7_ D_E_B_U_G_G_I_N_G_ A_N_D_ A_D_M_I_N_I_S_T_R_A_T_I_O_N_
+
+     Like the Initializer process, the dumper processes need some
+escape mechanism by which  maintainers can reach ordinary command
+level.  This  will be implemented  via an "admin"  request, which
+will demand a assword.  This password will be stored in the PNT.
+A  future  MTB on  PNT  management will  discuss  storing "admin"
+passwords.
+
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

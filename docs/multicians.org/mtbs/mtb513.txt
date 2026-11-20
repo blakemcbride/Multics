@@ -1,0 +1,871 @@
+Multics Technical Bulletin                                MTB-513
+DM:  Recovery
+
+
+
+To:       Distribution
+
+From:     Andr&eacute; Bensoussan
+
+Date:     05/18/81
+
+Subject:  Data Management: Recovery Management - Overview
+
+
+
+1 INTRODUCTION
+
+    This  document  introduces the  concepts of  transaction and
+checkpoint,  and uses  them to express  the recovery requirements
+for  Multics data  management.  In  very loose  terms, the system
+must never  lose any useful  information stored in  the data base
+and  must be  able to  clean up the  data left  inconsistent by a
+program that could not run to completion.
+
+    The method chosen for recovery  is the traditional method of
+journalization:  the system keeps a  before image journal to undo
+unfinished  operations,  and  an  after  image  journal  to  redo
+completed operations that may have been lost by a system failure.
+
+    The last  section of the  document includes a  discussion on
+the controversial subject:  "Is  virtual memory incompatible with
+recovery?"   and explains  the decision  we made,  in the Multics
+context, to  provide a phased implementation,  first with virtual
+memory and next without.
+
+
+
+
+
+
+
+
+
+
+
+
+
+_________________________________________________________________
+
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+
+
+                            Page i. 
+MTB-513                                Multics Technical Bulletin
+                                                   DM:  Recovery
+
+
+
+Comments should be sent to the author:
+
+via Multics Mail:
+  Bensoussan.Multics on System M.
+
+via US Mail:
+  Andr&eacute; Bensoussan
+  Honeywell Information Systems, inc.
+  4 Cambridge Center
+  Cambridge, Massachusetts 02142
+
+via telephone:
+  (HVN) 261-9334, or
+  (617) 492-9334
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                           Page ii. 
+
+
+
+
+
+
+
+
+
+
+                           CONTENTS
+
+
+                                                        Page
+
+                1 Introduction . . . . . . . . . . . .     i
+                2 Transaction - Consistency  . . . . .     1
+                3 Checkpoint . . . . . . . . . . . . .     1
+                4 Recovery Requirements  . . . . . . .     2
+                5 Journals and Saved Data Base . . . .     3
+                   5.1 Before Image Journal  . . . . .     3
+                   5.2 After Image Journal . . . . . .     4
+                   5.3 Saved Data Base . . . . . . . .     5
+                6 Commitment . . . . . . . . . . . . .     6
+                7 Failures and Recovery Scenarios  . .     6
+                   7.1 A transaction fails.  . . . . .     6
+                   7.2 A process fails.  . . . . . . .     7
+                   7.3 The system fails with no loss
+                    of data. . . . . . . . . . . . . .     7
+                   7.4 The system fails and main
+                    memory is lost.  . . . . . . . . .     8
+                   7.5 The system fails with disk
+                    damage.  . . . . . . . . . . . . .     9
+                8 New Practices  . . . . . . . . . . .     9
+                9 Virtual Memory and Recovery  . . . .    10
+                   9.1 Medium Range Plan with Virtual
+                    Memory . . . . . . . . . . . . . .    11
+                   9.2 Long Range Plan without Virtual
+                    Memory . . . . . . . . . . . . . .    11
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                              iii Multics Technical Bulletin                                MTB-513
+DM:  Recovery
+
+
+
+2 TRANSACTION - CONSISTENCY
+
+    A transaction is  a sequence of operations on  the data base
+that must be viewed as atomic, in two different aspects:
+
+a.  It must be completely done or,  if it cannot be completed, it
+   must be completely undone.
+
+b.  While  it  is in  progress,  its elementary  actions  are not
+   visible to  other transactions; they  become globally visible
+   to other transactions only  after the transaction in progress
+   has successfully completed; if it cannot be completed and has
+   to  be undone,  its actions will  never be seen  by any other
+   transaction.
+
+    Transactions are  the unit of  consistency; each transaction
+transforms  the  data  base  from a  consistent  state  to  a new
+consistent  state.   The  recovery  manager  and  the concurrency
+manager cooperate to implement these  two aspects of atomicity in
+order  to  preserve  the  consistency  of  the  data transactions
+operate on.
+
+    The recovery manager guarantees that, no matter what kind of
+malfunction the  system may experience during  the execution of a
+transaction,  the data  base can always  be restored  to its last
+consistent  state.  It  must be  told by  the application program
+when  a transaction  begins, when  it is  completed, and  when it
+cannot be completed.  This is done by using the BEGIN, COMMIT and
+ABORT transaction statements, respectively.
+
+
+3 CHECKPOINT
+
+    It is convenient to design  a long transaction as a sequence
+of phases  such that, if  a failure occurs during  one phase, the
+execution can be  resumed at the beginning of  that phase instead
+of  having  to  be  restarted again  from  the  beginning  of the
+transaction.  Resuming  at the beginning of  a phase requires the
+data base to be restored to the  state it was in before the phase
+started,  and  it  is  necessary  for  the  transaction  to  make
+arrangement to that effect with the recovery system.
+
+    The checkpoint is the facility by which this arrangement can
+be  made.   A  checkpoint  primitive  will  be  available  to the
+transaction  programmer for  telling the  system that  a phase is
+completed  and  a  checkpoint  has to  be  recorded.  Checkpoints
+within a  transaction are numbered 1,2,3,4,..,  and the beginning
+of the transaction can be viewed as checkpoint 0.
+
+
+
+
+                            Page 1. 
+MTB-513                                Multics Technical Bulletin
+                                                   DM:  Recovery
+
+
+
+    It is  important to realize  that a checkpoint  is different
+from a commit.  The commit implies that the entire transaction is
+completed, all modifications made to  the data are consistent and
+can  be made  available to  other transactions,  and that,  in no
+circumstances,  can  the  committed transaction  be  undone.  The
+checkpoint  is only  the end of  a step in  the transaction.  All
+data  made private  (i.e.  modified)  before the  checkpoint must
+remain so;  the data which  was read must remain  locked since it
+may be relied on for further operation of the transaction.
+
+    Checkpoints  act  like firewalls  with  respect to  the undo
+operation, or  "rollback", causing it  to stop.  However,  if the
+transaction  has to  be aborted,  the rollback  operation will no
+longer  stop   at  checkpoints  and  will   completely  undo  the
+transaction.
+
+    Restarting   the  transaction   at  a   checkpoint  requires
+restoring the data base state and also the process state to their
+original  value  at the  time  of the  checkpoint.   The recovery
+mechanism is  reponsable for restoring  only the data  base state
+and not the process state.
+
+
+4 RECOVERY REQUIREMENTS
+
+    The requirements of the  recovery mechanism are to guarantee
+that:
+
+a.  The effects of  a committed transaction can never  be lost or
+   undone, and
+
+b.  The  effects  of  an  uncommitted transaction  can  always be
+   undone, completely  if the transaction has  to be aborted, or
+   up to  the previous checkpoint  if the transaction  has to be
+   restarted.
+
+    These requirements must always  be satisfied, no matter what
+kind  of malfunction  the system may  experience or  what kind of
+unexpected   situation  the   transaction  may   encounter.   Any
+situation requiring recovery action falls in one of the following
+categories:
+
+1.  A transaction fails.  It  must be undone.  Example:  Deadlock
+   detection, access violation.
+
+2.  A process fails.  Its unfinished transactions must be undone.
+   Example:  stack overflow, hangup ...
+
+3.  The system fails  with no loss of data.   All transactions in
+   progress  must  be  undone.    Example:   System  crash  with
+
+
+                            Page 2. 
+Multics Technical Bulletin                                MTB-513
+DM:  Recovery
+
+
+
+   successful emergency shut down (ESD) procedure.
+
+4.  The system  fails with main  memory loss but  no disk damage.
+   All transactions in progress must be undone and all committed
+   transactions   must  remain   committed,  even   though  some
+   information in core is lost.  Example:  System crash with ESD
+   failure, power failure.
+
+5.  The system fails with main  memory and disk damage.  The data
+   base must be restored to the  state showing the effect of all
+   committed  transactions up  to the last  one.  All unfinished
+   transactions must be undone.
+
+
+5 JOURNALS AND SAVED DATA BASE
+
+    The  proposed  method  of  recovery from  any  of  the above
+situations requires  keeping redundant information.   In addition
+to the  data base, the  system maintains a  before image journal,
+used to undo unfinished transactions, an after image journal used
+to reconstruct a  damaged data base, and a  saved data base, used
+as  the initial  data base on  which after images  are applied to
+reconstruct the data base.
+
+
+5.1 Before Image Journal
+
+    In the Before Image Journal (BIJ), the system keeps track of
+all  parts  of  the  data  base  that  are  being  modified  by a
+transaction.  For each transaction in progress, a list of entries
+is  kept where  each entry  has the  address, the  length and the
+value before modification, of that part of the data base modified
+by that  transaction.  When the transaction  commits, the list of
+before  images is  discarded, since  it becomes  useless.  In the
+event  of  a transaction  failure,  the system  uses the  list of
+before  images associated  with the  particular transaction.  The
+list is processed in reverse  chronological order, and each entry
+is used  to restore the portion  of the data to  its value before
+modification.   This  operation  is  known  as  "Rollback."   The
+journal  also  contains  checkpoint  marks which  will  cause the
+rollback to stop.
+
+    The objective, in  keeping a before image journal,  is to be
+able  to  recover from  the  most frequent  and  non catastrophic
+failures  by  performing  a   rollback,  which  is  a  relatively
+inexpensive  operation compared  to the  data base reconstruction
+required after catastrophic and unfrequent failures.
+
+    Recovering  by rollback  after transaction  failure, process
+failure, or system failure with  no loss of data (Successful ESD)
+
+
+                            Page 3. 
+MTB-513                                Multics Technical Bulletin
+                                                   DM:  Recovery
+
+
+
+is straightforward, since the lists  of all before images for all
+transactions in  progress have not be  damaged and are completely
+available.
+
+    Recovering  by  rollback  after  ESD  failure,  without disk
+damage, is more complex.  ESD failure  means that part or all the
+content of main memory has been lost, and in particular, the last
+portion  of the  BIJ that  was still in  main memory  and was not
+written to disk yet.  This situation may happen because, in order
+to minimize disk  I/O's, before images are "blocked"  in a main a
+memory buffer, and  written to disk when the  buffer is full.  In
+order to be able to rollback  after ESD failure, the migration to
+disk of a before image must  always precede the migration to disk
+of  the corresponding  data base  modification.  If  this rule is
+enforced, the  last portion of  the BIJ still in  main memory and
+lost after  ESD failure is  not needed because  the modifications
+are not on disk either.
+
+    At commit time, all before  image entries for the committing
+transactions are  written on disk  if they have  not already been
+written.  When they are all  on disk, the data base modifications
+that are  still in main memory  are written on disk  and a commit
+mark is written on disk in the before image journal.
+
+    The before  image journal needs to  contain information only
+about uncommitted transactions.  After a transaction commits, all
+its  before image  entries become  useless and  the space  can be
+reused.  If  several concurrent transactions share  the same BIJ,
+which is the most frequent case,  the journal may have to be read
+backwards for a  transaction rollback while it has  to be written
+forward for a transaction making updates.  Since the BIJ needs to
+be accessed  randomly, the best  device for it will  be the disk.
+Since its volume is not very large and its space can be reused.
+
+
+5.2 After Image Journal
+
+    The   After  Image   Journal  (AIJ)   keeps  track   of  all
+modifications  made  to the  data  base since  the last  time the
+entire data base was saved.  It is a sequential file, each record
+of  which represents  a modification made  to the data  base by a
+particular  transaction.   It  also  contains  commitment  marks,
+showing   that  the   associated  transaction   has  reached  its
+committment point.  This journal is  used to reconstruct the data
+base  up  to  the last  committed  transaction, in  case  of disk
+failure.    The  rule   that  must   be  enforced   is  that  all
+modifications made by a given transaction must be safely recorded
+on the after  image journal before the transaction  is allowed to
+commit.   In  order to  minimize  disk or  tape I/O's,  the after
+images  are  "blocked"  in a  main  memory buffer.   A  data base
+
+
+                            Page 4. 
+Multics Technical Bulletin                                MTB-513
+DM:  Recovery
+
+
+
+modification  is allowed  to migrate to  disk, even if  it is not
+safely  recorded on  the after  journal as  long as  it is safely
+recorded in the before image journal.
+
+    At commit time, all modifications  still blocked in the main
+memory  buffer  must be  physically  written on  the  after image
+journal.
+
+    The  AIJ is  always used  sequentially.  Tape  is most often
+used for after journal, but it is also conceivable to use a disk.
+
+
+5.3 Saved Data Base
+
+    Periodically, the  entire data base  is saved on  tape or on
+removable  disk.   The period  between  two consecutive  SAVES is
+chosen by the user.  The SAVE may be a long operation and it is a
+requirement  that users  transactions can continue  to take place
+while the SAVE is in progress.  It is also a requirement that the
+SAVE programs do not acquire locks for the pages it dumps because
+it would very soon lock all users out.  One would like to run the
+SAVE  concurrently  with users  transactions in  such a  way that
+transactions are not slowed down  by the SAVE and the information
+dumped by the  SAVE program can still be  used to reconstruct the
+data base.
+
+    The  method  used to  achieve  this goal  requires  that the
+system quiesce the  data base at the beginning and  at the end of
+the  SAVE.   To quiesce  the data  base means  to wait  until all
+transactions   in   progress  terminate   while   preventing  new
+transactions from starting.
+
+    The basic algorithm used by the SAVE program is as follows:
+
+  - Quiesce the data base.
+  - Write a "Begin save" mark in the AIJ, at time t0.
+
+  - Let users in.
+  - Save page 1, 2, 3, ...last.
+
+  - Quiesce the data base.
+  - Write "End save" mark in AIJ, at time t1.
+
+    The claim is that the SAVE taken between t0 and t1, plus the
+portion of the AIJ generated between  t0 and t1 are equivalent to
+a  SAVE  that  would  have  been  taken  at  t1,  with  no  users
+transactions allowed during the SAVE.
+
+    Two  situations  may  cause  a   page  of  the  SAVE  to  be
+"incorrect":
+
+
+                            Page 5. 
+MTB-513                                Multics Technical Bulletin
+                                                   DM:  Recovery
+
+
+
+
+1.  A  page  is saved  at time  T and  modified  at T  + dT  by a
+   transaction.   This modification,  like any  modification, is
+   recorded in the AIJ and  appears after the "Begin save" mark.
+   If the  data base has  to be reconstructed,  applying the AIJ
+   from the  "Begin save" mark would  cause the "incorrect" page
+   of the SAVE to become "correct".
+
+2.  A page may be modified by a transaction at time T - dT, saved
+   at time  T and rolled back  at time T + dT.   The page in the
+   SAVE is "incorrect".  In order  to reflect the rollback, when
+   reconstructing  the  data  base,  the  modifications  done by
+   rollback  are  also recorded  in  the AIJ.   Althought  it is
+   sufficient  to journalize  rollback modifications  in the AIJ
+   only  during the  SAVE, it may  be more  convenient to always
+   journalize them in the AIJ, even  when no SAVE is in progress
+   since  rollbacks  are  not  frequent,  and  the  overhead  is
+   negligible.
+
+
+6 COMMITMENT
+
+    The actions performed by the recovery manager at commit time
+are as follows:
+
+  - Flush the BIJ and AIJ buffers.
+  - Wait  for BIJ buffer I/O completion.
+  - Flush the data base modifications made by this transaction.
+  - Wait for data base modifications and AIJ buffer I/O completion.
+  - Write commit mark in BIJ and AIJ.
+
+    Additional actions  have to be performed  by the concurrency
+manager.  Basically, all locks set by the committing transactions
+are  released.  More  details can  be found  in the  documents on
+concurrency.
+
+
+7 FAILURES AND RECOVERY SCENARIOS
+
+    The various  categories of failures listed  in the "Recovery
+Requirements"  section are  examined again, with  more details on
+how  each case  of failure  is detected  and how  it is recovered
+from.
+
+
+7.1 A transaction fails.
+
+    The  process  responsible for  executing the  transaction is
+still in existence and in  good functioning order.  It can detect
+the failure of the transaction  using methods such as error codes
+
+
+                            Page 6. 
+Multics Technical Bulletin                                MTB-513
+DM:  Recovery
+
+
+
+returned  by  procedures,  signals  and  condition  handling,  or
+messages coming from another process or even another machine.  It
+can  then call  the recovery  manager to  recover the transaction
+from this particular failure.
+
+    The  recovery manager  knows that  the Before  Image Journal
+(BIJ) was not damaged by  whatever caused the transaction to fail
+in this particular situation (deadlock, access violation,...etc).
+It uses the BIJ to rollback the failing transaction.
+
+    The  decision to  rollback the transaction  completely or to
+the  last checkpoint  belongs to  the application.   The recovery
+manager is capable of handling either case using the BIJ.
+
+
+7.2 A process fails.
+
+    The  process  that was  executing  a transaction  is  out of
+order.  It  cannot be used to  detect its failure or  to call the
+recovery  manager.  Other  processes, however, are  still in good
+functioning order and can be used to do so.
+
+    The  detection  can be  done by  any process  executing, for
+example,  in  the transaction  manager  or in  the  lock manager.
+These  modules  may  detect the  failure  of the  process  when a
+transaction  takes too  long to finish  or when a  process has to
+wait for a  lock set by the dead process.   The process that does
+the detection can  call the recovery manager to  recover from the
+process failure.  It is also conceivable that, instead of calling
+the recovery manager, the process  that does the detection send a
+message to a daemon process dedicated to recovery.
+
+    When  the  recovery  manager  is invoked  for  this  case of
+failure, it knows the BIJ has not been damaged by whatever caused
+the  process to  die (hangup,  automatic logout,  ring zero stack
+overflow,...etc).  It uses the BIJ to rollback the transaction(s)
+left unfinished by the dead process.
+
+
+7.3 The system fails with no loss of data.
+
+    This  case  is  known  in  Multics  as  "system  crash  with
+successful  Emergency  Shut  Down   (ESD)".   One  of  the  tasks
+performed  by ESD  is to  write main  memory pages  to their home
+location on disk.   When ESD succeeds in performing  this job, no
+data is lost, and all programs can rely on any bit of information
+they produced before the crash  occured.  In particular, the BIJ,
+the  lock table,  the transaction  table and  more generally, any
+data that was needed to  recover from the two previous situations
+are still available and can be trusted.
+
+
+                            Page 7. 
+MTB-513                                Multics Technical Bulletin
+                                                   DM:  Recovery
+
+
+
+    It is easy  for any module in Multics  to determine if there
+was  a  system  shut down  since  the  last time  the  module was
+invoked.  But  it is not  possible to determine whether  it was a
+normal  or  an emergency  shut down,  and whether  or not  it was
+successful.   A  minor modification  to  the shut  down procedure
+could make this information available  to any module that depends
+on it.
+
+    Let us  assume that the system  crashes with successful ESD.
+A  new system  initialization is performed  and the  system is up
+again.  The first time the begin transaction primitive is called,
+it can detect, by simply comparing two numbers, that a shut dowmn
+was  performed since  its last invocation;  it can  then find out
+that it was an ESD, and that it was successful.
+
+    The process that happens to perform the detection is in good
+functioning order.   It can call the  recovery mamager to recover
+from this case  of failure, or it can send  a message to a daemon
+process dedicated to recovery.
+
+    When  the  recovery manager  is invoked,  it knows  that all
+processes running transactions in the previous incarnation of the
+system are  now dead.  It  also knows ESD was  successful and the
+BIJ can be  relied on.  It can therefore use  the BIJ to rollback
+all   transactions  left   unfinished  in   the  previous  system
+incarnation.
+
+
+7.4 The system fails and main memory is lost.
+
+    This  case is  known in  Multics as  "system crash  with ESD
+failure".  It  can be detected  as in the previous  case, and the
+recovery manager can be invoked the same way.
+
+    Since ESD failed, the recovery  manager knows the BIJ is not
+completely  available.   The  major  portion of  it  is available
+because it was  written to disk before the  crash occured.  But a
+small  portion  of it  is missing  because it  was still  in main
+memory and  was not written  to disk yet when  the crash occured.
+And ESD was not able to do  it.  That portion of the BIJ is lost.
+This situation is  very sensitive to the relative  order in which
+data  base  modifications and  their corresponding  before images
+migrate to disk.
+
+    If the  migration of the  before images always  precedes the
+migration of the corresponding  modifications then, the last part
+of the  BIJ lost with  main memory is  not needed to  perform the
+rollback.   This  is  because  the  modifications  themselves are
+"lost" too, with main memory, and  are not on disk either.  There
+is no need to undo them.   The recovery manager can therefore use
+
+
+                            Page 8. 
+Multics Technical Bulletin                                MTB-513
+DM:  Recovery
+
+
+
+the  BIJ  to rollback  all  transactions left  unfinished  in the
+previous system incarnation.
+
+    If  one cannot  guarantee that  the migration  of the before
+images  always   precede  the  migration   of  the  corresponding
+modifications, then when the last part of the BIJ is lost, it may
+be impossible to undo the modifications that were already written
+to  disk  when the  crash occured.   The recovery  manager cannot
+safely  use  the  BIJ  to rollback  unfinished  transactions.  It
+cannot  rollback; it  has to  treat this  case as  a catastrophic
+failure (next case) where the data base has to be reconstructed.
+
+
+7.5 The system fails with disk damage.
+
+    This  is  a catastrophic  failure.   The data  base  must be
+reconstructed starting  from the last  saved version of  the data
+base, to which all subsequent  modifications are redone using the
+After Image Journal (AIJ).  All modifications recorded in the AIJ
+are  applied to  the saved  data base,  up to  the last committed
+transaction   and  the   last  checkpoint   of  each  uncommitted
+transaction.
+
+    It is  desirable to allow  for the possibility  of using the
+save, or a  portion of it, to recover from  a failure of only one
+disk or  even a portion of  a disk.  This should  be addressed in
+our design.
+
+
+8 NEW PRACTICES
+
+    The  recovery mechanism  has some implications  for users at
+various  levels:  system  programmer, application  programmer and
+data base administrator.
+
+    The system programmer is the programmer who knows the format
+of the data base at the bit level.  This programmer has to modify
+the data base according to a standard protocol.  No matter if the
+data base  is in virtual  memory or if  it is accessed  through a
+buffer manager, the system programmer must announce his intention
+to modify a  field or any portion of the  data base before making
+the actual modification, so that the before image can be recorded
+in the before image journal.  After the modification is done, the
+after  image must  be recorded in  the after  image journal.  The
+system  programmer will  be presentd  a tailored  interface to do
+just  that.   A PUT  primitive will  take care  of the  data base
+modification   as   well   as   the   before   and   after  image
+journalization.   This  primitive has  to be  told the  data base
+address of the first bit to modify, the number of bits to modify,
+
+
+
+                            Page 9. 
+MTB-513                                Multics Technical Bulletin
+                                                   DM:  Recovery
+
+
+
+and the value of the new  bit string to substitute to the current
+one.
+
+    The  application programmer  is the programmer  who uses the
+data base manager to solve his particular problem.  He might also
+use a  vfile-like manager.  His characteristics  are that he does
+not know the actual format of the data base at the bit level, but
+he is  the only one who  knows what actions must  be made atomic.
+This programmer will be provided with the BEGIN, COMMIT and ABORT
+transaction primitives.
+
+    The data base administrator has to have a tape drive for the
+after  image  journal  and  a disk  drive  for  the  before image
+journal.   He  has  to have  removable  disk packs  or  tapes for
+periodically saving the data base.
+
+
+9 VIRTUAL MEMORY AND RECOVERY
+
+    There is no  theoretical reason why the data  base cannot be
+in the Multics virtual memory as long as:
+
+a.  All modifications are journalized,
+
+b.  The commit protocol is respected,
+
+c.  No modified page is allowed to be written from main memory to
+   disk until the corresponding  before image entries are safely
+   recorded on disk.
+
+    It does however require  a tight synchronization between the
+page  control manager  and the  before image  journal manager, in
+order  to guarantee  that the migration  of the  before images to
+disk always precede the migration  of the data base modifications
+to disk.  Only then can the rollback be used to recover when main
+memory is lost.
+
+    It  is  interesting  to  note that,  if  we  are  willing to
+restrict  the  use of  the  before journal  to the  situations of
+transaction failure,  process failure and system  failure with no
+loss  of  data  (i.e.    successful  emergency  shut  down),  the
+management  of  the  before  journal  becomes  much  simpler.  In
+particular,  the data  base, as well  as the  before journal, can
+reside in virtual  memory and their pages can  migrate to disk at
+any time, without any synchronization constraints.  The reason is
+that, if  ESD does not fail,  all pages of the  data base and the
+before journal  are still available to  the recovery mechanism to
+perform the rollback.  If ESD fails, no rollback is performed and
+therefore it  does not matter if  the pages of the  data base and
+the before journal have or have not been written on disk.
+
+
+                           Page 10. 
+Multics Technical Bulletin                                MTB-513
+DM:  Recovery
+
+
+
+    The  disadvantage,  of course,  is that  the case  of system
+crash with ESD failure has to be treated like a system crash with
+disk damage; that is, after images have to be applied to the most
+recent saved data  base.  This may not be  so bad considering the
+small frequency of ESD failure in Multics.  In fact the frequency
+of ESD  failure in Multics is  in the same order  of magnitude as
+the frequency of disk failure.   In other systems, the concept of
+system crash with successful ESD does not exist.  When the system
+crashes, the  data in main memory  is lost.  In Multics  ESD is a
+very sophisticated  function, and one  can take advantage  of its
+existence  by  simplifying  the  management of  the  before image
+journal, eliminating waiting restrictions  to write the data base
+on disk,  and most of  all storing the  data base in  the Multics
+virtual memory.
+
+
+9.1 Medium Range Plan with Virtual Memory
+
+    Our medium  range plan (MR10)  is to continue  to store data
+bases  in  Multi Segment  Files  (MSF's) in  the  virtual memory.
+However, these MSF's will not  be directly accessible to programs
+that manage their  content.  All accesses will be  made through a
+get  and put  interface, which will  completely hide  the way the
+file is implemented.  Above this  interface, the fact that a file
+is  implemented  as  a  single  segment,  an  MSF,  or  any other
+consrtruct, the fact that it resides in virtual memory or not, or
+even  the  fact  that  it  resides  in  a  different  computer is
+immaterial.  The Page Access Layer described in "Data Management:
+Architecture  Overview" (MTB  508) is  the layer  responsible for
+implementing  the  file  object,  and to  preserve  the interface
+visible by  higher layers, regardless  of the particular  way the
+file happens to be implemented.
+
+    Since the data base pages will  be moved from main memory to
+disk  by page  control, and since  we do not  plan to synchronize
+page  control  with  the  before  journal  manager,  the rollback
+facility  will not  be available  after a  system crash  with ESD
+failure.
+
+
+9.2 Long Range Plan without Virtual Memory
+
+    Our medium range plan is a  compromise in order to allow for
+a  phased  implementation.  The  long range  plan includes  a new
+approach  to  file implementation  often referred  to (internally
+within the Multics group) as "large files".  These files will not
+reside  in the  virtual memory primarily  because of  the lack of
+hardware support for large files by the Multics CPU, leading to a
+high memory overhead in implementing them and a high CPU overhead
+in  accessing them  as part of  the Multics  virtual memory (More
+
+
+                           Page 11. 
+MTB-513                                Multics Technical Bulletin
+                                                   DM:  Recovery
+
+
+
+detail can be found on this  subject in MTB 329:  "A new proposal
+for  accessing  larges files").   A second  reason to  take large
+files   out  of   the  virtual   memory  is   the  difficulty  of
+synchronizing page control and the  before journal manager, as it
+was  discussed  above.   In  any   event,  large  files  will  be
+implemented  within  the Page  Access  Layer, which  will present
+exactly the same interface as in the medium range plan.
+
+    From the recovery point of  view, the difference between the
+first version and  the final version of the system  is in the way
+the system will recover from a system crash with ESD failure.  In
+the first  version the data  base must be  reconstructed from the
+previous save using  the after image journal, while  in the final
+version, the system will simply recover by using the before image
+journal to rollback all unfinshed transactions.
+
+    From the  standpoint of capacity, the  first version will be
+targeted towards small and medium size data base users, while the
+final version will be able to support very large data base users.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                           Page 12. 
+

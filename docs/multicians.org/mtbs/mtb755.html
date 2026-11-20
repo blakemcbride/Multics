@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Deck file Manager.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+MULTICS TECHNICAL BULLETIN                                MTB-755
+
+To:       MTB Distribution
+
+From:     Rick Fakoury
+
+Date:     August 7, 1986
+
+Subject:  Deck file Manager
+
+ABSTRACT
+
+This document  describes the design  and implementation of  a new
+subsytem that will provide a user interface to tools necessary to
+maintain  a T&amp;D  deckfile.  This  new subsystem  will replace the
+functionality provided by the existing load_tandd_library command
+and  provide a  number of  new functions  that will  aide in  the
+maintaining and updating of the deck file.
+
+Comments on this MTB may be made:
+
+via Forum:
+
+via Multics Mail:
+    Fakoury.Tolts on System M
+
+via telephone:
+    Rick Fakoury
+    HVN:  862-6545
+    DDD:  602-862-6545
+
+_________________________________________________________________
+
+Multics  Project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics Project.
+
+
+MTB-755                                         Deck File Manager
+
+                             CONTENTS
+
+                                                         Page
+
+    1:  History . . . . . . . . . . . . . . . . . . . .     1
+    2:  Introduction  . . . . . . . . . . . . . . . . .     2
+    3:  create and maintain a deckfile  . . . . . . . .     3
+    4:  delete_deck (dd)  . . . . . . . . . . . . . . .     5
+    5:  load_from_diskettes (lfd) . . . . . . . . . . .     6
+    6:  load_from_tape (lft)  . . . . . . . . . . . . .     7
+    7:  merge_deckfiles (md)  . . . . . . . . . . . . .     9
+    8:  patch_deck (pd) . . . . . . . . . . . . . . . .    10
+    Appendix A:  Documentation  . . . . . . . . . . . .    11
+    A.1:  dfm . . . . . . . . . . . . . . . . . . . . .    11
+       deck_file_manager (dfm)  . . . . . . . . . . . .    12
+    A.2:  delete_deck . . . . . . . . . . . . . . . . .    13
+       delete_deck, (dd)  . . . . . . . . . . . . . . .    14
+    A.3:  list_diskette_types . . . . . . . . . . . . .    15
+       list_diskette_types, (ldt) . . . . . . . . . . .    16
+    A.4:  load_from_diskette  . . . . . . . . . . . . .    17
+       load_from_diskette, (lfd)  . . . . . . . . . . .    18
+    A.5:  load_from_tape  . . . . . . . . . . . . . . .    19
+       load_from_tape, (lft)  . . . . . . . . . . . . .    20
+    A.6:  merge_deckfiles . . . . . . . . . . . . . . .    24
+       merge_deckfiles, (md)  . . . . . . . . . . . . .    25
+    A.7:  patch_deck  . . . . . . . . . . . . . . . . .    26
+       patch_deck, (pd) . . . . . . . . . . . . . . . .    27
+
+
+Deck File Manager                                         MTB-755
+
+1:  HISTORY
+
+On   Multics,  a   multi  segment   file  called  tandd_deck_file
+(deckfile) is located in &gt;system_library_tandd.  This file, which
+is  created  and  updated  by  a  tool called load_tandd_library,
+contains a collection of GMAP compiled programs which are used by
+the  T&amp;D  subsystem.   The  load_tandd_library  command loads MPC
+firmware,  ITRs, MDRs,  and T&amp;D  test pages  from the  Integrated
+Firmware  And  Diagnostic  (IFAD)  Tape  into  a keyed sequential
+vfile_ file, with the  name of tandd_deck_file (deckfile).  These
+programs  include the  Tolts  common  subexecutives that  are run
+under  the Multics  Test and  Diagnostic Simulator  subsystem and
+individual  test  pages  that  are  run  under  control  of these
+subexecutives.  In addition, MPC firmware modules are loaded into
+individual  segments in  a  form  acceptable to  the generate_mst
+command, so that they may be  written onto the Multics boot tape.
+Also, a DN6600 or DN6670 Binary  Deck Tape may be loaded into the
+deckfile using the -fnp_tape control argument.  This command also
+generates  a  printable  ASCII   segment  in  the  users  working
+directory for each invocation.  This segment contains a directory
+of test pages, catalog records and a corresponding entry for each
+deckfile   entry.     The   listing   segment   has    the   name
+"tape_name.list".   This command  is  very  limited in  scope, as
+these are the only functions it provides.
+
+
+MTB-755                                         Deck File Manager
+
+2:  INTRODUCTION
+
+Deck  File Manager (dfm)  is written using  the subsystem_utility
+(ssu).  This  new subsystem provides  an interface to  all of the
+old functions of the load_tandd_library  command, and a number of
+new often requested features.  The features provided by dfm are:
+
+     o    create and update a deckfile
+     o    delete a deck from the deckfile
+     o    load a deckfile from MCA diskettes
+     o    load a deckfile from IFAD or datanet binary deck tape
+     o    merge two deckfiles
+     o    add or delete $patch cards to a deck in the deckfile
+
+
+Deck File Manager                                         MTB-755
+
+3:  CREATE AND MAINTAIN A DECKFILE
+
+The scheme used in deck_file_manager in the creation and updating
+of a deckfile is the  same as the load_tandd_library command with
+a number of minor changes added.   The deckfile will be opened by
+vfile_   for   keyed_sequential_update   and   a   list  segment,
+tandd_deck_file.list (from here on  referred to as deckfile.list)
+file  will be  opened  by  vfile_ for  stream_input_output.  Each
+module that  is read from the  source is written to  the deckfile
+as-is.  Each  module occupies one record of  the keyed sequential
+deckfile.  A unique record search  key is formed from information
+obtained from the module.  If  the deckfile already exists, it is
+updated with the  new modules as they are read.   This is done by
+first deleting  records for which  the record search  key already
+exists and rewriting the contents of the record.  Leaving records
+in  the file that  do not have  a corresponding entry  unchanged.
+Catalog  records are built  for files while  the files are  read.
+These catalog records are merely a list of all of the search keys
+associated  with groups  of common  files that  are referenced in
+test sequences.   Each catalog record is written  to the deckfile
+immediately  following each  group of  files.  The  catalogs have
+record search keys in the form:
+
+   cata.&lt;file_group&gt;.&lt;group_name&gt;.&lt;rev&gt;
+
+The record search  keys for the files will vary  depending on the
+particular application.  A listing  segment is created containing
+a   directory  of   the  files   and  catalogs   loaded,  with  a
+corresponding    entry    for    each    deckfile    entry.    In
+deck_file_manager, the  the generic names of  tandd_deck_file and
+tandd_deck_file.list   are   used   and   a   name   made  up  of
+&lt;source_name&gt;.deckfile  and &lt;source_name&gt;.list  will be  added to
+the  segment.   It  is  intended  that  deckfile.list reflect the
+current state of the deckfile.
+
+On each opening for creating or appending, Deck File Manager will
+attempt to  locate an existing deckfile and  deckfile.list by the
+following search rules:
+
+  1. the current working  directory is checked for an  entry - if
+     it exists it is used.
+
+  2. if  the  user  has  `rw`  effective  access  to the entry in
+     &gt;system_library_tandd&gt;tandd_deck_file
+        a.  the user  is queried if this deckfile  should be used
+        b.  if replied "no" the user is queried if a deckfile
+            should be created in current working directory
+
+     3. if  the user  lacks  sufficient  effective access  to the
+        deckfile in &gt;system_library_tandd, the user is queried if
+        one should be created in the current working directory
+
+
+MTB-755                                         Deck File Manager
+
+In all  cases the users effective  access is verified and  if the
+user  has sufficient  access, the  user will  be notified  that a
+particular entry will  be used or the user will  be queried prior
+to creation.
+
+
+Deck File Manager                                         MTB-755
+
+4:  DELETE_DECK (DD)
+
+The  delete_deck  request  will  delete  a  deck  specified  by a
+complete key or  partial key.  If no key is  supplied the user is
+queried for the required key information.
+
+The deckfile will be opened by vfile_ for keyed_sequential_update
+and  the  deckfile.list  file  will   be  opened  by  vfile_  for
+stream_input_output  -no_truncate.  Given  a key  obtained by the
+user  from  the  deckfile.list  segment,  deck_file_manager  will
+search  the  deckfile  using  iox_$control  (select  and get_key)
+control orders to  locate a specified deck.  If a  partial key is
+given then the  user is queried for every match  of the given key
+portion  until the  desired key   is located.   The deck  is then
+deleted using iox_$seek_key and  iox_$delete_record to delete the
+deck.  For each  deck that is deleted the  corresponding entry in
+the deckfile.list is located by using iox_$get_line looking for a
+match of the key string.  When  the desired entry is located, the
+portion  of  the  line  containing  the  record  location will be
+modified to  show that the deck  was deleted along with  the date
+and time.   The record pointer  is backed up  using iox_$position
+and the  line reinserted using iox_$put_chars  being careful that
+the line length is the same as when it was read.
+
+
+MTB-755                                         Deck File Manager
+
+5:  LOAD_FROM_DISKETTES (LFD)
+
+The  load_from_diskettes request  will read  and catalog programs
+read  from the new  Maintenance Channel Adapter  (MCA) diskettes.
+The  heart of  the new  I/O subsytem  (IMU) is  a micro processor
+called the  MCA.  The MCA  is used to  test the operation  of the
+channel adapters in the IMU.   In an offline environment, the MCA
+reads diagnostic  programs from a diskette reader  built into the
+IMU.   In an  online environment,  the MCA  obtains the  required
+modules  from   the  deckfile  via  the   Tolts  subsystem.   The
+load_from_diskettes request will read  the diskettes from the MCA
+and catalog them into the  deckfile.  In the deckfile, there will
+be one master catalog for  all MCA diskettes (cata.nio.MCA) and a
+separate  catalog  for  each  diskette (cata.&lt;header.unique_id&gt;).
+Each  diskette catalog  will be  unique for  each revision,  thus
+allowing  the cataloging of  multiple revisions.  Each  file from
+the diskette is also stored in a simular manner thus allowing for
+multiple revisions of a particular file  but only one copy of the
+same revision.  At run time,  the MCA will request the particular
+revision required  for the channel  under test.  As  each file is
+stored  in the deckfile,  an entry is  made in the  deckfile.list
+containing the file name, key and  the location where the file is
+stored in the deckfile.
+
+The load_from_diskettes  request requires the user  to supply the
+MCA  name to  be used  and  the  diskette names  to be  loaded or
+"-all".  If the required information  is not supplied the user is
+queried.  The MCA name is verified to be in a valid range and the
+diskette  names  are  also  validated  against  known MCA utility
+diskette names.  A list of these diskettes maybe obtained via the
+list_diskettes_types  (ldt) request.   The deckfile  is opened by
+vfile_  for  keyed_sequential_update  and  the  deckfile.list  is
+opened by  vfile_ for stream_input_output -no_truncate.   The MCA
+is then  attached via mca_$attach_mca.  The  deckfile is searched
+for an existing cata.nio.mca catalog.   If found it is used, else
+one  will  be  created.   The  operator  is  then  requested  via
+opr_query_  to  load  a  diskette  in  one  of  the MCAs'diskette
+readers.  The operator will reply with the diskette reader number
+upon completion.
+
+The diskette header will be read via mca_$diskette_read (HDR) and
+verified  that  the  correct  diskette  is  mounted.   The header
+information  is used to  form a catalog  key and the  deckfile is
+searched for  a match.  If  one is found  it is used,  else a new
+catalog   is  created.    The  directory   is  then   read  using
+mca_$diskette_read (DIR) and each entry is read and stored in the
+deckfile and  a corresponding entry  is made in  the catalog file
+for  this diskette.   Upon completion  of reading  a diskette, an
+entry is  made in the cata.mca  file and the diskette  catalog is
+written to the deckfile.  When  all requested diskettes are read,
+the cata.mca is then written to the deckfile.
+
+
+Deck File Manager                                         MTB-755
+
+6:  LOAD_FROM_TAPE (LFT)
+
+The  load_from_tape request loads  MPC firmware, ITRs,  MDRs, and
+T&amp;D test pages from an IFAD Tape into the deckfile.  It will also
+place  MPC firmware  modules into  individual segments  in a form
+acceptable  to the  generate_mst command,   so that  they may  be
+written  onto the  Multics Boot  tape.  Also  a DN6600  or DN6670
+Binary  Deck  Tape  (binary  deck  tape)  may  be loaded into the
+deckfile by  using the -fnp_tape control  argument.  This request
+will  also  generate  or  update  a  deckfile.list  segment  with
+information about those modules loaded from the tape.
+
+The default action,  is to load all modules on  the tape that are
+applicable to Multics into the  deckfile and all firmware modules
+into  individual  segments.   Firmware  segments  are created (in
+memory image format) using a three component entry name:
+
+   fw.&lt;name&gt;.&lt;ident&gt;.&lt;fw_rev&gt;
+
+where "name" is the name of the device, "ident" is taken from the
+MPC-assembler IDENT pseudo-op card,  and "fw_rev" is the firmware
+revision.  Each module that is read  from the tape and written to
+the deckfile  is copied as-is  in GCOS object  deck format.  Each
+object deck occupies one record of the keyed sequential deckfile.
+The record  search key is  formed from information  obtained from
+the $OBJECT card.  Catalog records are  built for all ITR and MDR
+tape files while the respective tape files are being read.  These
+catalog records are  a list of all of the  search keys associated
+with each  individual ITR or  MDR tape file  and are used  by the
+respective ITR and MDR T&amp;D  drivers to determine test sequencing.
+Each  catalog  record  is  written  to  the  deckfile immediately
+following each ITR or MDR tape  file, and have record search keys
+in the form:
+
+   cata.itr.&lt;mpc_name&gt;.&lt;fw_rev&gt;.&lt;file&gt; - for an ITR catalog
+or
+
+   cata.mdr.&lt;grp_name&gt;.&lt;file&gt; - for an MDR catalog
+where:
+   &lt;mpc_name&gt;  is  the name taken  from the ident  pseudo-op card
+               image
+   &lt;grp_name&gt;  is  the name of  the generic peripheral  group and
+               can be either tape, disk, print, or card
+   &lt;fw_rev&gt;    is the revision of the  mpc firmware in this file.
+               For  the  urcmpc  itr/firmware  file,  it  is  the
+               revision of the common mpc firmware.
+   &lt;file&gt;      is the current IFAD tape file number.
+
+For a binary  deck tape, each FNP object deck  image is read from
+the  tape and  written to  the deckfile  with a  unique key  that
+includes the fnp  type (the fnp type is  determined by heuristics
+from the first object deck on  the tape).  In addition, a catalog
+
+
+MTB-755                                         Deck File Manager
+
+record is accumulated  as each object deck image is  read, and is
+written  to the  deckfile when   the entire  tape is  read.  This
+catalog record also has a unique key which includes the fnp type.
+
+
+Deck File Manager                                         MTB-755
+
+7:  MERGE_DECKFILES (MD)
+
+The  merge_deckfiles request  will allow  the user  to merge  two
+existing  deckfiles and  create a  new deckfile.list.   Given two
+deckfiles   (a   master   and   a   deckfile   to   be   merged),
+deck_file_manager   will  open   both  deckfiles   and  a  master
+deckfile.list.   It will  then do   a read_key  operation on  the
+deckfile that is to be merged  and using the obtained key to read
+the record.  The record is  then written into the master deckfile
+in  the  same  manner  as   the  ldf  and  mdf  operations.   The
+deckfile.list  is updated  to reflect  the addition  of this  new
+file.
+
+
+MTB-755                                         Deck File Manager
+
+8:  PATCH_DECK (PD)
+
+Given a  key or partial key,  the patch_deck request will  add or
+delete either an  octal or hex patch card located  in a deck.  If
+no  key is supplied,  the user will  be queried for  the required
+information.  The user is then queried for the type of patch card
+and the patch data to be inserted.
+
+The deckfile will be opened by vfile_ for keyed_sequential_update
+and  the  deckfile.list  file  will   be  opened  by  vfile_  for
+stream_input_output  -no_truncate.  Given  a key  obtained by the
+user  from  the  deckfile.list  segment,  deck_file_manager  will
+search  the  deckfile  using  iox_$control  (select  and get_key)
+control orders to  locate a specified deck.  If a  partial key is
+given then the  user is queried for every match  of the given key
+portion  until the  desired key   is located.   The user  is then
+requested to supply the type of  patch and the patch data.  After
+which  the user is  then asked to  verify the data  entered.  The
+deck is then  scanned for either a $dkend card  or a $patch card.
+If  the $patch  card is  encountered the  user is  queried if the
+patch is to  be retained.  If it is to be  retained, all the data
+from the beginning up to and including the current card is copied
+to a  temp seg, else just  the data prior to  the current card is
+copied.  When the  $dkend card is encountered, the  patch card is
+inserted  and  the  block  control  words  are  updated  per GCOS
+standard  record  format.   The  original  deck  is deleted using
+iox_$seek_key  and iox_$delete_record  to delete  the deck.   The
+temp seg  is then written  using iox_$write_record.  If  the deck
+being  patched is  a firmware  deck, a  firmware segment  will be
+created  in a  form acceptable  to the  generate_mst command  and
+stored in a separate segment  in the working directory.  For each
+deck that is patched the corresponding entry in the deckfile.list
+is located by using iox_$get_line looking  for a match of the key
+string.  When  the desired entry  is located, the  portion of the
+line  containing the  record location  will be  modified with the
+word  "PATCHED" and  the date  time the  patch was  applied.  The
+record pointer  is then positioned to  the end of the  file and a
+new entry will  be created for the patched deck  and a listing of
+the patched cards will follow this new entry.
+
+
+Deck File Manager                                         MTB-755
+
+APPENDIX A:  DOCUMENTATION
+
+A.1:  dfm
+
+
+_______________________                   _______________________
+
+deck_file_manager (dfm)                   deck_file_manager (dfm)
+_______________________                   _______________________
+
+Name: deck_file_manager (dfm)
+
+SYNTAX AS A COMMAND:
+
+   dfm
+
+FUNCTION:  This command  is used to invoke the  Deck File Manager
+subsystem utility environment.  This enables a number of requests
+designed to assist in  creating and maintaining a tandd_deck_file
+and its associated tandd_deck_file.list.
+
+ARGUMENTS:
+
+   none
+
+LIST OF REQUESTS
+
+delete_deck, dd
+   deletes a deck in a tandd_deck_file
+
+list_diskette_types, ldt
+   lists    the   valid    diskette   types    allowed   by   the
+   load_from_diskette request.
+
+load_from_diskettes, lfd
+   catalog and load MCA diskettes into a tandd_deck_file
+
+load_from_tape
+   catalog  and load an  IFAD or DN6670  Binary Deck Tape  into a
+   tandd_deck_file
+
+merge_deckfiles, md
+   merge two existing tandd_deck_files.
+
+patch_deck, pd
+   add or remove $patch cards in a deck.
+
+
+_______________________                   _______________________
+
+deck_file_manager (dfm)                   deck_file_manager (dfm)
+_______________________                   _______________________
+
+A.2:  delete_deck
+
+
+___________                                           ___________
+
+delete_deck                                           delete_deck
+___________                                           ___________
+
+Name: delete_deck, (dd)
+
+SYNTAX:
+
+   dd {key}
+
+FUNCTION:  delete a deck specified by &lt;key&gt; in a tandd_deck_file.
+
+ARGUMENTS:
+
+key
+   is  a key  obtained by  the user  from a  tandd_deck_file.list
+   which identifies a particular deck in a tandd_deck_file.
+
+NOTES
+   If no key  is supplied the user will be  queried for one.  The
+   key  maybe  a  complete  or  partial  key  obtained  from  the
+   tandd_deck_file.list.  If  a partial key is  supplied the user
+   is queried for each match.
+
+
+___________                                           ___________
+
+delete_deck                                           delete_deck
+___________                                           ___________
+
+A.3:  list_diskette_types
+
+
+___________________                           ___________________
+
+list_diskette_types                           list_diskette_types
+___________________                           ___________________
+
+Name: list_diskette_types, (ldt)
+
+SYNTAX:
+
+   ldt
+
+FUNCTION:  list the  MCA diskette types that are  accepted by the
+load_from_diskette request.
+
+
+___________________                           ___________________
+
+list_diskette_types                           list_diskette_types
+___________________                           ___________________
+
+A.4:  load_from_diskette
+
+
+__________________                             __________________
+
+load_from_diskette                             load_from_diskette
+__________________                             __________________
+
+Name: load_from_diskette, (lfd)
+
+SYNTAX:
+
+   lfd {-mca mca_id} {diskette_type1.....diskette_typeN or -all}
+
+FUNCTION:  loads MCA diskettes into a tandd_deck_file.
+
+ARGUMENTS:
+
+-mca &lt;mca_id&gt;
+   specifies  the MCA  to be  used for  reading diskettes.  Where
+   &lt;mca_id&gt;  is  a  value  between   a-d  and  is  equal  to  the
+   designation of the IMU.
+
+diskette_type1...N
+   label(s)  of diskette(s) to  be read or  -all (-a) which  will
+   cause all known diskettes to be loaded in sequence.
+
+NOTES
+   If  any  argument  is  missing  the  user  is  queried for the
+   required information.  A list of  known valid diskettes may be
+   obtained by the list_diskette_types (ldt) request.  See above.
+
+
+__________________                             __________________
+
+load_from_diskette                             load_from_diskette
+__________________                             __________________
+
+A.5:  load_from_tape
+
+
+______________                                     ______________
+
+load_from_tape                                     load_from_tape
+______________                                     ______________
+
+Name: load_from_tape, (lft)
+
+SYNTAX:
+
+   lft tape_name {-control_args}
+
+FUNCTION:  will load MPC firmware, ITRs, MDRs, and T&amp;D test pages
+from  the  Integrated,  Firmware  And  Diagnostic  (IFAD)  into a
+tandd_deck_file.   In addition,  MPC firmware  modules are loaded
+into individual segments in a form acceptable to the generate_mst
+command, so that they may be  written onto the Multics Boot Tape.
+Also, a DN6600 or DN6670 Binary  Deck Tape may be loaded into the
+deckfile using the -fnp_tape control argument.
+
+ARGUMENTS:
+
+tape_name
+   specifies the name for the IFAD Tape to be used.
+
+CONTROL ARGUMENTS:
+
+-copy &lt;copy_vol&gt; {-copy_args}, -cp &lt;copy_vol&gt; {-copy_args}
+   produces a tailored copy of an  IFAD tape for use with offline
+   T&amp;D.   The  control  arguments  preceding  the  -copy argument
+   determine what modules from the  input tape are written to the
+   copy tape (i.e., if the -list argument is specified, the input
+   tape  is   copied  unchanged;  if  the   -config  argument  is
+   specified,   only  modules   which  pertain   to  the  current
+   configuration  are written  to the  copy tape;  if neither the
+   -list nor -config argument is specified, only modules that are
+   applicable  to   Multics  are  written  to   the  copy  tape).
+   specifies that no modules are to be loaded from the tape; only
+   a listing of the contents of  the IFAD Tape is generated.  For
+   a  list  of  -copy_args,  see  "COPY  ARGS"  below.  The -copy
+   argument is mutually exclusive  with the -deckfile, -firmware,
+   -fnp_tape, and -list arguments.
+
+-deckfile, -dkf
+   specifies  that no  firmware modules   are to  be loaded  into
+   individual segments;  only a deckfile is  produced.  specifies
+   that no modules are to be loaded from the tape; only a listing
+   of the contents of the  IFAD Tape is generated.  This argument
+   is  mutually exclusive  with the  -copy, -firmware, -fnp_tape,
+   and -list arguments.
+
+
+______________                                     ______________
+
+load_from_tape                                     load_from_tape
+______________                                     ______________
+
+-density &lt;value&gt;, -den &lt;value&gt;
+   specifies  the initial  density setting  for tape  attachment.
+   Although  the  density  of  the  input  tape  is automatically
+   determined,  some tape  subsystems  may  not have  tape drives
+   capable  of handling  the default   density of  800 bpi.   The
+   allowable values for &lt;value&gt; are 6250, 1600, 800, 556, or 200.
+
+-firmware, -fw
+   specifies  that only  firmware modules  are to  be loaded into
+   individual segments; no deckfile  or listing file is produced.
+   This argument is mutually exclusive with the -deckfile, -list,
+   -copy, and -fnp_tape arguments.
+
+-fnp_tape
+   specifies that the input tape is not an IFAD tape but rather a
+   DN6600 or DN6670 Binary Deck Tape which contains FNP tests for
+   use by the PPAS T&amp;D  subsystem and the test_fnp online Multics
+   command.  Each FNP object deck image is read from the tape and
+   written to  the deckfile with  a unique key  that includes the
+   fnp type  (the fnp type  is determined by  heuristics from the
+   first object deck on the tape).  In addition, a catalog record
+   is  accumulated as  each object   deck image  is read  in (the
+   catalog  record is nothing  more than an  array of search  key
+   names), and  written to the  deckfile when the  entire tape is
+   read.   This  catalog  record  also  has  a  unique  key which
+   includes  the fnp  type.specifies that  no modules  are to  be
+   loaded from  the tape; only a  listing of the contents  of the
+   IFAD Tape  is generated.  This argument  is mutually exclusive
+   with the -deckfile, -copy, -firmware, and -list arguments.
+
+-list, -ls
+   specifies that no modules are to be loaded from the tape; only
+   a listing of the contents of the IFAD Tape is generated.  This
+   argument  is  mutually  exclusive  with  the -deckfile, -copy,
+   -firmware, and -fnp_tape arguments.
+
+-patches
+   allows  patches  with  zero  checksums  to  be  accepted.  The
+   checksum  is adjusted  before the   record is  written to  the
+   deckfile.
+
+-track &lt;n&gt;, -tk &lt;n&gt;
+   where &lt;n&gt; is 7 or 9 (for  7- or 9-track tapes).  If the -track
+   argument is not specified, 9-track is assumed.
+
+NOTES
+   The default  action of this  command, if no  control arguments
+   are  specified, is to  load all modules  on the tape  that are
+   applicable  to  Multics  into  the  deckfile  and all firmware
+
+
+______________                                     ______________
+
+load_from_tape                                     load_from_tape
+______________                                     ______________
+
+   modules into individual segments.
+
+   Firmware segments are created (in memory image format) using a
+   three component entry name:
+
+      fw.&lt;name&gt;.&lt;ident&gt;.&lt;fw_rev&gt;
+
+   where name is the name of  the device, ident is taken from the
+   MPC-assembler IDENT pseudo-op card, and fw_rev is the firmware
+   revision.
+
+   Each  module that  is read  from the  tape and  written to the
+   deckfile  is copied  as-is in  GCOS object  deck format.  Each
+   object  deck  occupies  one  record  of  the  keyed sequential
+   deckfile.   The record search  key is formed  from information
+   obtained from the $ OBJECT card.
+
+   If the deckfile already exists  in the specified directory, it
+   is updated with  the new modules read from the  tape.  This is
+   done by first deleting records for which the record search key
+   already  exists  and  rewriting  the  contents  of the record,
+   leaving records in  the file that do not  have a corresponding
+   entry read from tape unchanged.
+
+   Catalog records are built for all ITR and MDR tape files while
+   the  respective  tape  files  are  being  read.  These catalog
+   records are merely a list of all of the search keys associated
+   with each individual ITR or MDR  tape file and are used by the
+   respective  ITR   and  MDR  T&amp;D  drivers   to  determine  test
+   sequencing.   Each catalog record  is written to  the deckfile
+   immediately  following each  ITR or  MDR tape  file, and  have
+   record search keys in the form:
+
+      cata.itr.&lt;mpc_name&gt;.&lt;fw_rev&gt;.&lt;file&gt; - for an ITR catalog
+   or
+
+      cata.mdr.&lt;grp_name&gt;.&lt;file&gt; - for an MDR catalog
+   where:
+      &lt;mpc_name&gt;  is the name taken from the ident pseudo-op card
+                  image
+      &lt;grp_name&gt;  is the name of the generic peripheral group and
+                  can be either tape, disk, print, or card
+      &lt;fw_rev&gt;    is  the revision  of the  mpc firmware  in this
+                  file.  For the urcmpc  itr/firmware file, it is
+
+
+______________                                     ______________
+
+load_from_tape                                     load_from_tape
+______________                                     ______________
+
+                  the revision of the common mpc firmware.
+      &lt;file&gt;      is the current IFAD tape file number.
+
+LIST OF COPY ARGS:
+
+    The  copy_args pertain  only to   the &lt;copy_vol&gt;  and may  be
+   chosen from the following:
+
+-density &lt;value&gt;, -den &lt;value&gt;
+    sets the density of the  copy tape to &lt;value&gt;.  The allowable
+   values for &lt;value&gt; are 6250, 1600,  800, 556, and 200.  If the
+   -density argument  is not specified,  the copy tape  is set to
+   the density of the input tape.
+
+-track &lt;n&gt;, -tk &lt;n&gt;
+   where n  is 7 or 9  (for 7- or 9-track  tapes).  If the -track
+   argument is not specified, 9-track is assumed.
+
+load_from_tape                                     load_from_tape
+
+A.6:  merge_deckfiles
+
+
+_______________                                   _______________
+
+merge_deckfiles                                   merge_deckfiles
+_______________                                   _______________
+
+Name: merge_deckfiles, (md)
+
+SYNTAX:
+
+   md {-system, -sys} {path1} {path2}
+
+FUNCTION:  merge two existing deckfiles.
+
+ARGUMENTS:
+
+-system, -sys
+   is the tandd_deck_file in &gt;system_library_tandd
+
+path1, path2
+   is the the pathname of a tandd_deck_file entry.
+
+NOTES
+   if no args are given the user will be queried.
+
+
+_______________                                   _______________
+
+merge_deckfiles                                   merge_deckfiles
+_______________                                   _______________
+
+A.7:  patch_deck
+
+
+__________                                             __________
+
+patch_deck                                             patch_deck
+__________                                             __________
+
+Name: patch_deck, (pd)
+
+SYNTAX AS A COMMAND:
+
+   pd {deck name}
+
+FUNCTION:   add   or  delete  $patch   cards  to  a   deck  in  a
+tandd_deck_file .
+
+ARGUMENTS:
+
+{deck name}
+   where deck name is the name of the deck to be patched.
+
+NOTES
+   If no deck name given the user will be queried.  The user will
+   also be queried as to the type of patch (octal or hex) and the
+   patch data.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-627</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-627: Subroutines for Generating Object Segments.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-627
+ou_
+
+To:       Distribution
+
+From:     Benson I. Margulies
+
+Date:     07/07/83
+
+Subject:  Subroutines for Generating Object Segments
+
+1 ABSTRACT
+
+          create_data_segment_ is capable of generating
+          only the  simplest of object  segments.  This
+          MTB describes a new subroutine, ou_, which is
+          capable  of  generating  any  standard object
+          segments.   It  can  handle  arbitrary links,
+          definitions,  and  relocation.   Rather  than
+          interpreting   a   single,   massive,   input
+          structure, it is  called successively to emit
+          the various parts of an object segment.  Thus
+          translators  can  generate  code  and whatnot
+          directly through ou_ if they so choose.
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Margulies.Multics on either MIT Multics or System M.
+
+via US Mail:
+   Benson I. Margulies
+   Honeywell Information Systems, inc.
+   575 Tech Square
+   Cambridge, Massachusetts 02139
+
+via telephone:
+   (HVN) 261-9333, or
+   (617) 492-9333
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Name:  ou_
+
+     The  ou_  program  provides  a set  of  entrypoints  for the
+construction of Multics standard object segments.  The user makes
+a series of calls to specify the various components of the object
+segment, and then  a final call to put the  result into an output
+segment.
+
+     Object  segments  generated  with  ou_  are  relocatable  if
+correct  relocation  bits are  provided for  the text  and symbol
+sections.   Note,  though,  that  in  a multiple-location-counter
+segment,  or one  that is non-seperate-static,  a translator that
+fails to supply relocation is responsable itself for backpatching
+all references to point to the final location of referenced data.
+Therefore  we STRONGLY  RECOMMEND that  relocation information be
+supplied.
+
+     Ou_ provides  a standard symbol header,  but no other symbol
+table information  as yet.  Translators that  wish to construct a
+full runtime symbol table must do so themselves.
+
+     Ou_ provides no support for  obsolete features of the object
+segment format,  including links type 2  and 6, defs_in_link, and
+links_in_text.
+
+     The  documentation that  follows assumes that  the reader is
+familiar with the  object segment format as described  in the MPM
+reference  guide.  These  should be consulted  for definitions of
+terms.
+
+      Entries in  ou_ only supply  standard status codes  when an
+error condition is possible without a  logic error on the part of
+the  caller.  For  example, the  call to  ou_ that  specifies the
+output segment pathname may encounter an access control violation
+or null link, which the caller of ou_ could not reliably prevent.
+Inconsistent or invalid parameters and other errors, however, are
+reported  by  the  sub_err_  mechanism.   Callers  of  ou_ should
+establish a  handler for the sub_error_  condition, and intercept
+signals  with a  "caller name" of  "ou_" if they  want to recover
+from such errors.
+
+Sections and Classes
+
+     Object  segments  are  made  up a  several  sections:  Text,
+Static,  Linkage, Definitions,  and Symbol.  The  Text and Static
+sections  are  unstructured,  and  ou_ entries  simply  allow the
+translator to  supply their contents.  While  there is a standard
+format for the symbol section, ou_ provides no facilities for its
+construction,  and  it  is  treated like  Text  and  Static.  The
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Linkage and Definitions sections are structured, and ou_ provides
+entries that  construct their contents.  Translators  call ou_ to
+generate segnames, definitions, and links, and ou_ constructs the
+appropriate structures.
+
+       To  simplify object  segment construction,  the translator
+may  define arbitrary  location counters  within the unstructured
+sections.   Location counters  are specified  in calls  to ou_ by
+"section indices."  One location counter per unstructured section
+is  provided  by default.   The  indices for  these  sections are
+defined by named constants  in the include file ou_info.incl.pl1.
+Other sections are defined by  calls to ou_$make_section.  When a
+section is created, its "class" (Text, Static, or Symbol) must be
+specified.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Entry:  ou_$init
+
+     Initializes the ou_ environment,  returning a state pointer.
+This  state pointer  identifies a  particular object  segment and
+must be passed in all further calls to ou_ for that segment.
+
+Usage
+
+     dcl ou_$init entry (pointer, pointer);
+
+     call ou_$init (info_ptr, state_ptr);
+
+where:
+
+       info_ptr                     (Input)
+            is  a  pointer  to  a  structure  specifying  initial
+            information about the object segment.  The structure,
+            ou_init_info,   is   found   in   the   include  file
+            ou_info.incl.pl1.
+
+            declare   1 ou_init_info aligned based (ou_init_info_ptr),
+                        2 version char (8) aligned,
+                        2 primary_segname character (32) unaligned,
+                      /** this segname is the one that "symbol_table" for
+                          the main segment will be hung off of. */
+                        2 short_translator_name char (8) unaligned,
+                        2 translator_version fixed bin,
+                        2 translator_birthday fixed bin (71),
+                        2 long_translator_version aligned like long_string,
+                        2 translator_comment aligned like long_string;
+
+            declare   1 long_string aligned based,
+                        2 s_ptr pointer unaligned,
+                        2 s_length fixed bin (21);
+
+            declare   long_translator_version_string character
+                (ou_init_info.long_translator_version.s_length)
+                 based (ou_init_info.long_translator_version.s_ptr);
+
+            declare   translator_comment_string character
+                 (ou_init_info.translator_comment.s_length)
+                 based (ou_init_info.translator_comment.s_ptr);
+
+            declare   OU_INIT_INFO_V_1 char (8) aligned internal
+                       static options (constant);
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+       version                      (Input)
+            is the version number of  this structure, and must be
+            set to OU_INIT_INFO_V_1.
+
+       primary_segname              (Input)
+            This is the first segname of the object segment.  The
+            required  definition "symbol_table"  will be attached
+            to this  segname.  In general, this  will be the same
+            as the  file system entryname of  the object segment.
+            All definitions specified for  the object segment are
+            associated with this segname by default.
+
+       short_translator_name        (Input)
+            Is a short name of the generating translator.
+
+       translator_version           (Input)
+            is  an integer  version of  the translator generating
+            the object segment.
+
+       translator_birthday          (Input)
+            is a  standard clock value of  the date-time when the
+            current version of the translator was created.
+
+       long_translator_version      (Input)
+            Is a long string  (max 255 characters) describing the
+            translator  version.   See  the  description  of  the
+            long_string substructure below.
+
+       translator_comment           (Input)
+            Is  a  long  string (max  255  characters) describing
+            compilation options  or anything else  the translator
+            wishes to leave as a note.
+
+       text_section_mod             (Input)
+            If this  value is nonzero, the  binder will place the
+            text   section   of   this   segment  on   a   0  mod
+            text_section_mod boundary in the bound segment.  This
+            value may not be odd.
+
+       static_section_mod           (Input)
+            is  the   same  as  text_section_mod,   but  for  the
+            static_section.
+
+       long_string.s_ptr            (Input)
+            is  a pointer  to a  character string  of length less
+            than or equal to 255 characters.
+
+       long_string.s_length         (Input)
+            is the length of the character string.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+       state_ptr                    (Output)
+            is a  pointer to a  state information for  the object
+            segment.  The contents of this data structure are not
+            available to the caller.  This pointer must be passed
+            into  all  further  calls  to  ou_  for  this  object
+            segment.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Entry:  ou_$definition
+
+     creates a definition in the object segment.  The location of
+the  object  defined  relative  to  a  location  counter  must be
+supplied.
+
+Usage
+
+     dcl ou_$definition entry (ptr, char (), char (), bit (),
+          fixed bin, fixed bin (18) unsigned returns (fixed bin
+          (18) unsigned));
+
+            definition_loc = ou_$definition (state_ptr, segname,
+          entrypoint,
+                           flags, section, location);
+
+where:
+
+       state_ptr                    (Input)
+            is a state pointer obtained from ou_$init.
+
+       segname                      (Input)
+            is  the  segname  to  which this  definition  will be
+            attached.   If it  is "", the  primary_segname in the
+            ou_$init call  will be used.  This  segname must have
+            been  previously   defined,  either  in   a  call  to
+            ou_$segname, or as the primary segname.
+
+       entrypoint                   (Input)
+            is the name of this definition.  The linker will find
+            this definition as "segname$entrypoint".
+
+       flags                        (Input)
+            (Input) are bit flags.  Only one is defined:
+            declare OU_IGNORE_DEFINITION bit (1) init ("1"b)
+            if this  bit is set,  the ignore flag will  be set on
+            the definition, causing the  linker to ignore it when
+            searching the object segment.
+            This constant is defined in ou_info.incl.pl1.
+
+       section                      (Input)
+            specifies  the  location  counter  within  which this
+            definition will point.  It  must have previously been
+            defined,  either as  one of the  default sections, or
+            with a call to ou_$make_section.
+
+       location                     (Input)
+            is  the location  within the location  counter of the
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+            object defined.  It will  ordinarily be obtained from
+            a call to ou_$emit or ou_$reserve.
+
+       definition_loc               (Output)
+            is  the location,  within the  definition section, of
+            the  definition.    This  is  useful   when  defining
+            entrypoints,   which   require  a   pointer   to  the
+            definition.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Entry:  ou_$segname
+
+     defined  additional segnames  within the  object segment, or
+synonyms to segnames already defined.
+
+Usage
+
+     dcl ou_$segname entry (ptr, char (), char ());
+
+     call ou_$segname (state_ptr, segname, syn_to_segname);
+
+where:
+
+       state_ptr                    (Input)
+            is a state pointer from ou_$init.
+
+       segname                      (Input)
+            is  the  segname  to  be defined.   Segnames  must be
+            unique  within an  object segment.   It must  be less
+            than or equal to 32 characters long.
+
+       syn_to_segname               (Input)
+            (Input) if  this argument is not  "", segname will be
+            associated   with   syn_to_segname   as   a  synonym.
+            syn_to_segname must have been previously defined.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Entry:  ou_$link
+
+     emits an  ordinary link.  Links are  automatically merged --
+multiple links to the same external name are combined.
+
+Usage
+
+     dcl ou_$link entry (ptr, char (), char (), fixed bin, fixed
+          bin, bit (6)) returns (fixed bin (18) unsigned));
+
+           link_relp = ou_$link (state_ptr, segname, offsetname,
+          sectionx, expression,
+                     modifier);
+
+where:
+
+       state_ptr                    (Input)
+            is a state pointer from ou_$init.
+
+       segname                      (Input)
+            is the symbolic segname.  If its first character is a
+            "*", it  is a symbolic reference  to a section within
+            the   object  segment   containing  the   link.   The
+            following symbolic sections are permitted:
+                 SECTION_TEXT init ("*text")
+                 SECTION_STATIC init ("*static")
+                 SECTION_LINKAGE init ("*link")
+                 SECTION_SYMBOL init ("*symb")
+                 SECTION_DEFINITION init ("*defs")
+                 SECTION_SYSTEM init ("*system")
+
+       offsetname                   (Input)
+            is  the symbolic  definition name  to which  the link
+            will  point.   If  it  is  "",  the  link  target  is
+            determined   entirely   by   the   segname   and  the
+            expression.
+
+       sectionx                     (Input)
+            if nonzero,  specifies a location  counter within the
+            segment being generated to which the link will point.
+            For  example, if  a location counter  within the text
+            section is supplied, then  the segname will be forced
+            to "*text".  It is an error for segname to be unequal
+            to "" if this argument is nonzero.
+
+       expression                   (Input)
+            is  a signed  offset from the  location determined by
+            the segname and offsetname fields.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+       modifier                     (Input)
+            is  the indirect  modifier for the  snapped link.  It
+            will normally be  "n", or ""b.  A snapped  link is an
+            ITS pointer,  and this becomes the  modifier (NOT the
+            tag) field of that pointer.
+
+       code                         (Input)
+            is a standard system status code.
+
+       link_relp                    (Output)
+            is  a  offset, relative  to the  base of  the linkage
+            section,  of  this  link.   For  non-separate  static
+            segments, this value is  only meaningful if stored in
+            this object segment with a relocation code of rc_lp15
+            or rc_lp18.   This is because the  actual location of
+            the  link is  not known  until the  static section is
+            inserted  in the  object segment.  At  that time, all
+            relative    pointers    to   links    are   relocated
+            automatically by ou_.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Entry:  ou_$link_trap
+
+     this  entrypoint  is identical  to  ou_$link except  that it
+associated a link  trap with the link.  All  arguments not listed
+are identical to ou_$link.
+
+Usage
+
+     dcl ou_$link_trap entry (ptr, char (), char (), fixed bin,
+          fixed bin, bit (6), fixed bin (18) uns, fixed bin (18)
+          uns) returns (fixed bin (18) uns));
+
+            link_relp = ou_$link_trap (state_ptr, segname,
+          offsetname, expression,
+              sectionx, modifier, trap_call_relp, trap_arg_relp,
+          code);
+
+where:
+
+       trap_call_relp               (Input)
+            is  a relative  pointer in  the linkage  section to a
+            link to the procedure to  be called when this link is
+            snapped.
+
+       trap_arg_relp                (Input)
+            is  a relative  pointer in  the linkage  section to a
+            link to an argument to  the trap procedure.  The trap
+            procedure is called as follows:
+
+                 call trap_proc (addr (arg_ptr));
+
+            so as to  avoid snapping the arg link  until the trap
+            procedure referenced through it, if ever.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Entry:  ou_$link_init
+
+     generates  *system  links  with  initialization information.
+Any arguments not specified are as documented for ou_$link.
+
+Usage
+
+     dcl ou_$link_init entry (ptr, char (), fixed bin, bit (6),
+          ptr returns (fixed bin (18) uns));
+
+              link_relp = ou_$link_init (state_ptr, offsetname,
+          expression, modifier,
+                   init_info_ptr);
+
+where:
+
+       info_ptr                     (Input)
+            is   a   pointer  to   a  structure   describing  the
+            initialization  to  be  done  with  this  link.   The
+            structure    is   found    in   the    include   file
+            ou_info.incl.pl1
+
+            declare   init_info_ptr       pointer;
+            declare   1 init_info_header  aligned based (init_info_ptr),
+                        2 n_words         fixed bin,
+                      /* Zero for NO_INIT */
+                        2 init_type       fixed bin;
+
+            declare   1 init_no_init      aligned based (init_info_ptr),
+                        2 header          aligned like init_info_header;
+               /* type = INIT_NO_INIT */
+               /* or INIT_DEFINE_AREA */
+
+            declare   init_info_n_words   fixed bin;
+            declare   1 init_copy_data    aligned based (init_info_ptr),
+                        2 header          aligned like init_info_header,
+                        2 data            (init_info_n_words
+                        refer (init_copy_data.header.n_words)) bit (36) aligned;
+
+            declare   (
+                      NO_INIT             init (0), /* No initialization data */
+                      COPY_DATA           init (3), /* Template present */
+                      DEFINE_AREA         init (4)  /* Make an area */
+                      )                   fixed bin int static options (constant);
+
+            These structures are identical to the init structures documents in the
+            reference guide.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Entry:  ou_$emit
+
+     supplies data for the unstructured sections of the object segment.
+
+Usage
+
+     dcl ou_$emit entry (ptr, ptr, ptr, fixed bin (18) unsigned, fixed bin returns (fixed bin (18) uns));
+
+             section_relp = ou_$emit (state_ptr, data_ptr, reloc_ptr, n_words,
+                   sectionx);
+
+where:
+
+       state_ptr                    (Input)
+            is a state_ptr from ou_$init.
+
+       data_ptr                     (Input)
+            is a  pointer to data  to be placed  in the specified
+            section.
+
+       reloc_ptr                    (Input)
+            is a  pointer to an array  of relocation information.
+            If it is null,  absolute relocation will be supplied.
+            The  pointer  should  point  to  an  array structures
+            unaligned  like  ou_relocation,   of  dimension  2  *
+            n_words.
+
+            declare   1 ou_relocation based,
+                        2 reloc_type bit (6) unaligned,
+                        2 sectionx fixed bin (12) unsigned unaligned;
+
+       reloc_type                   (Input)
+            is a relocation code from relocation_bits.incl.pl1.
+
+       n_words                      (Input)
+            is the number of words of  data to be put in the text
+            section.
+
+       sectionx                     (Input)
+            if nonzero,  specified a location  counter within one
+            of the unstructured sections.
+
+       relp                         (Output)
+            is a relative pointer in the section to the beginning
+            of the data.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Entry:  ou_$set_segment_info
+
+     specifies  the   pathname  of  the  object   segment  to  be
+generated, and  some per-segment information for  the object map.
+This entrypoint may be  called any time before ou_$finish_segment
+is called.  If  it returns an error code, it  may be called again
+after the error is corrected.
+
+Usage
+
+     dcl ou_$set_segment_info entry (ptr, ptr, fixed bin (35));
+
+     call ou_$set_segment_info (state_ptr, segment_info_ptr,
+          code);
+
+where:
+
+       state_ptr                    (Input)
+            is a state pointer from ou_$init.
+
+       info_ptr                     (Input)
+            is  a   pointer  to  the   ou_segment_info  structure
+            declared in ou_info.incl.pl1.
+
+            declare   ou_segment_info_ptr      pointer;
+            declare   1 ou_segment_info        aligned based (segment_info_ptr),
+                        2 version              char (8) aligned,
+                        2 dir_name             char (168) unaligned,
+                        2 entryname            char (32) unaligned,
+                        2 flags                aligned,
+                          3 separate_static    bit (1) unal,
+                          3 procedure          bit (1) unal,
+                          3 perprocess_static  bit (1) unal,
+                          3 standard           bit (1) unal,
+                          3 relocatable        bit (1) unal,
+                          3 bound              bit (1) unal,
+                        2 entry_bound          fixed bin (18) unsigned,
+                        2 mode                 bit (3) aligned;
+
+            declare   OU_SEGMENT_INFO_V_1      char (8) aligned int static
+                      options (constant);
+
+       version                      (Input)
+            is the version number of  this structure.  It must be
+            SEGMENT_INFO_V_1;
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+       dir_name                     (Input)
+            is the  directory name of the  pathname of the object
+            segment to be generated.
+
+       entryname                    (Input)
+            is the entryname of the generated segment.
+
+       separate_static              (Input)
+            If  this  is "1"b,  the  object segment  will  have a
+            separate  static  section.    Otherwise,  the  static
+            section  will be  combined with  the linkage section.
+            For a non-seperate-static  segment, ou_ automatically
+            redirects all references to the static section to the
+            appropriate part of the linkage section.
+
+       procedure                    (Input)
+            this flag  is reflected in the  procedure flag of the
+            object map, and is respected by the linker and binder
+            when snapping links.
+
+       perprocess_static            (Input)
+            this flag is reflected  in the preprocess_static flag
+            of the object map.
+
+       standard                     (Input)
+            indicates  that  the  object segment  is  in standard
+            format.   If it  is "0"b,  most system  routines will
+            refuse to  have anything to do  with the segment.  It
+            should only be set off if for some reason you wish to
+            generate a standard object  segment that will only be
+            examined  by  your own  routines,  and is  not  to be
+            considered an object segment by system routines.
+
+       relocatable                  (Input)
+            indicates that appropriate relocation information has
+            been supplied  by the translator to  allow binding of
+            the  object   segment.   Note,  though,   that  in  a
+            multiple-location-counter  segment,  or  one  that is
+            non-seperate-static,  a  translator   that  fails  to
+            supply   relocation   is   responsable   itself   for
+            backpatching  all  references to  point to  the final
+            location of  referenced data.  Therefore  we STRONGLY
+            RECOMMEND that relocation information be supplied.
+
+       bound                        (Input)
+            indicates that the segment  is a bound segment.  This
+            bit should only be set on if the translator has put a
+            correct bind_map  into the symbol  section.  The only
+            effect of  the bound bit  is to inform  display tools
+            that a segment has  a bind map.  Duplicate definition
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+            resolution works with or without the bound flag.
+
+       entry_bound                  (Input)
+            is  the segment  entry bound.   If this  is set  to a
+            value other  than zero, the  entry_bound attribute of
+            the segment  will be set  to it, and  the file system
+            entry bound as well.
+
+       mode                         (Input)
+            is  the  file  system  access mode  that  the calling
+            process  will  be given  when  the object  segment is
+            finished.     Values    may    be    obtained    from
+            access_mode_values.incl.pl1.
+
+       code                         (Output)
+            is a  standard system status code,  which will be set
+            if  initiate_file_$create is  unable to  initiate the
+            segment with write and read access.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Entry:  ou_$make_section
+
+     defines  a  new  location  counter  within  an  unstructured
+section.
+
+Usage
+
+     dcl ou_$make_section entry (ptr, char (), fixed bin returns
+          (fixed bin));
+
+               sectionx = ou_$make_section (section_name, class);
+
+where:
+
+       section_name                 (Input)
+            is  the  name  of  the  new  location  counter  to be
+            created.  Location counters must be uniquely named.
+
+       class                        (Input)
+            is the  section of the object  segment into which the
+            location   counter   will   be   put.    If   may  be
+            OU_CLASS_TEXT, OU_CLASS_STATIC, or OU_CLASS_SYMBOL.
+
+       sectionx                     (Output)
+            is the  index for this  location counter that  may be
+            passed to other ou_ entries.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Entry:  ou_$reserve
+
+     reserves  a block  of space  in a  section, to  be filled in
+later.
+
+Usage
+
+     dcl ou_$reserve entry (ptr, fixed bin, fixed bin (18) uns
+          returns (fixed bin (18) uns));
+
+               location = ou_$reserve (state_ptr, sectionx,
+          size);
+
+where:
+
+       state_ptr                    (Input)
+            is a state pointer from ou_$init.
+
+       sectionx                     (Input)
+            identifies  the  location  counter  within  which the
+            space will be reserved.
+
+       size                         (Input)
+            specifes the number of words to reserve.
+
+       location                     (Output)
+            is  the offset,  within the section,  of the reserved
+            space.   The tuple  of (sectionx,  location) uniquely
+            specifies a location.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Entry:  ou_$get_backpatch_ptr
+
+     obtains a pointer  to space that has been  either emitted or
+reserved previously.   Such a pointer is  not valid across future
+reserve  or  emit calls  within  the same  segment.   This entry,
+together with  ou_$backpatch_relocation, allow the  translator to
+backpatch.
+
+Usage
+
+     dcl ou_$get_backpatch_ptr entry (ptr, fixed bin, fixed bin
+          (18) unsigned returns (pointer));
+
+              backpatch_ptr = ou_$get_backpatch_ptr (state_ptr,
+          sectionx,
+                     location);
+
+     call ou_$get_backpatch_ptr (IGNORE THIS);
+
+where:
+
+       state_ptr                    (Input)
+            is a state pointer from ou_$init.
+
+       sectionx                     (Input)
+            identifies the section  withing which backpatching is
+            needed.
+
+       location                     (Input)
+            is the location within the section.
+
+       backpatch_ptr                (Output)
+            is a pointer  to an array of bit  (36) aligned words,
+            which the  caller may set as  needed.  Note that this
+            pointer MAY NOT be used after ou_$emit or ou_$reserve
+            has     been     called     for     this     section.
+            ou_$get_backpatch_ptr  MUST be  called again  in this
+            case.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Entry:  ou_$backpatch_relocation
+
+     changes  the relocation  for one  or more  half-words in the
+text  or  static  sections  after  they  have  been  defined with
+ou_$emit or ou_$reserve.
+
+Usage
+
+     dcl ou_$backpatch_relocation entry (ptr, fixed bin, fixed
+          bin (18) uns, bit (1) aligned, fixed bin, ptr);
+
+     call ou_$backpatch_relocation (state_ptr, sectionx,
+          location, right, n_halves, relocs_ptr);
+
+where:
+
+       state_ptr                    (Input)
+            is a state pointer from ou_$init.
+
+       sectionx                     (Input)
+            identifies the  section within which  backpatching is
+            to be done.
+
+       location                     (Input)
+            identifies the first word for whom relocation will be
+            changed.
+
+       right                        (Input)
+            specifies the  first half-word to be  changed.  If it
+            is "1"b, the right half-word is the first one.  If it
+            is "0"b, the left half-word is used instead.
+
+       n_halves                     (Input)
+            is  the  number  of  half-word  for  whom  relocation
+            information is changed.
+
+       relocs_ptr                   (Input)
+            points  to  an  array  of  unaligned  structures like
+            ou_relocation, from ou_info.incl.pl1.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Entry:  ou_$set_mod
+
+     advances  a location  counter so  that a  subsequent call to
+ou_$emit or  ou_$reserve emits data  on a particular  boundary in
+the final  object segment.  The  entire location counter  will be
+placed in the segment on the boundary demanded by the largest mod
+called out  in any call  to ou_$set_mod.  Thus  data with extreme
+alignment requirements (like pages)  should be placed in location
+counters of their own.
+
+Usage
+
+     dcl ou_$set_mod entry (ptr, fixed bin, fixed bin);
+
+     call ou_$set_mod (state_ptr, sectionx, mod);
+
+where:
+
+       state_ptr                    (Input)
+            is a state pointer from ou_$init.
+
+       sectionx                     (Input)
+            identifies a location counter to be advanced.
+
+       mod                          (Input)
+            is the modulus that the  location counter will be set
+            to.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Entry:  ou_$add_source
+
+     adds a source file to the  source map of the object segment,
+returning its zero-based "file number."
+
+Usage
+
+     dcl ou_$add_source entry (pointer, char (), bit (36)
+          aligned, fixed bin (71) returns (fixed bin));
+
+               file_number = ou_$add_source (state_ptr, pathname,
+          UID, DTCM);
+
+     call ou_$add_source (IGNORE THIS);
+
+where:
+
+       state_ptr                    (Input)
+            is a state pointer from ou_$init.
+
+       pathname                     (Input)
+            is a source file  absolute pathname.  No restrictions
+            are placed upon the content of this string.
+
+       UID                          (Input)
+            is the file system UID of the source file.
+
+       DTCM                         (Input)
+            is the file system date-time contents modified of the
+            source file.
+
+       file_number                  (Output)
+            is the file number, suitable for use on a source_map,
+            of  this  source  file.   File  numbers  are assigned
+            sequentially from zero.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Entry:  ou_$fr_trap
+
+     adds a  first-reference trap to the  segment.  A segment may
+have any number of first-reference traps.
+
+Usage
+
+     dcl ou_$fr_trap entry (ptr, fixed bin (18) unsigned, fixed
+          bin (18) unsigned);
+
+     call ou_$fr_trap (state_ptr, call_link_relp, arg_link_relp);
+
+where:
+
+       state_ptr                    (Input)
+            is a state pointer from ou_$init.
+
+       call_link_relp               (Input)
+            is the offset of a link to the procedure to be called
+            when the  generated segment is first  referenced in a
+            process.  It should be obtained from ou_$link.
+
+       arg_link_relp                (Input)
+            is  a  link  to  information  to  be  passed  to  the
+            procedure specified by the  call link.  The procedure
+            is called as follows:
+
+                 call trap_proc (addr (arg_ptr));
+
+            so the procedure should be coded as follows:
+
+            fr_trap_proc: procedure (arg_ptr_ptr);
+
+            dcl arg_ptr_ptr pointer;
+            dcl arg_ptr pointer based (arg_ptr_ptr);
+            dcl .... arg .... based (arg_ptr) ...
+
+            The variable arg_ptr is actually THE arg_link ITSELF.
+            Thus, until referenced through, it will have a TAG of
+            "46"b3  rather than  "43"b3.  This  allows the called
+            procedure  to analyze  the link  without snapping it.
+            This is only appropriate in ununual circumstances.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Entry:  ou_$finish
+
+     finishes the  process of generating an  object segment.  The
+location counters are packed  into the appropriate sections.  All
+words with  relocation information specifying  translator defined
+location counters are relocated to reflect their placement within
+the object segment.  All definitions  and links are threaded, and
+duplicate name  information is generated as  neccessary.  The ACL
+of the  segment is set as  specified in ou_segment_info.mode, and
+the entry_bound is set if neccessary.  The segment is terminated.
+
+Usage
+
+     dcl ou_$finish entry (ptr);
+
+     call ou_$finish (state_ptr);
+
+where:
+
+       state_ptr                    (Input/Output)
+            is a state pointer from  ou_$init.  It is nulled when
+            the object segment is complete.
+
+___                                                           ___
+
+ou_                                                           ou_
+___                                                           ___
+
+Entry:  ou_$cleanup
+
+     frees  all  storage associated  with  an ou_  state pointer.
+This  entrypoint  should be  called  in the  cleanup  handlers of
+translators calling ou_.
+
+Usage
+
+     dcl ou_$cleanup entry (ptr);
+
+     call ou_$cleanup (state_ptr);
+
+where:
+
+       state_ptr                    (Input/Output)
+            is a state_ptr from ou_$init.  It is nulled.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

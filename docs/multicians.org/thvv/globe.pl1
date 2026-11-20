@@ -1,0 +1,196 @@
+globe: proc;
+
+/* This program draws the globe from any viewpoint.
+   I have copied the CTSS incarnation of the program.
+    */
+
+dcl (i, j, k, l, m, n) fixed bin,
+     nelts fixed bin,                    /* gui only lets me display 4000 lines */
+     toomany fixed bin int static init (1000),
+     ap ptr,
+     al fixed bin,
+     bchr char (al) unaligned based (ap),
+     ec fixed bin,
+     world_ptr ptr,
+     temp_ptr ptr;
+
+dcl (fa1, fa2, fa3, fa4, fa5, fa6, fa7, fa8, fa9) float bin,
+    (cosa, cosp, cost, sina, sint, sinp) float bin,
+    (x0, y0, z0) float bin,
+     z float bin,
+     exit fixed bin init (0),
+     mode fixed bin init (1),
+     line fixed bin init (0),
+    (ix, iy) fixed bin,
+    (delx, dely) fixed bin,
+    (xprev, yprev) fixed bin,
+     icentr fixed bin init (0),
+     jcentr fixed bin init (0),
+     erase fixed bin init (0),
+     TINY fixed bin init (2),
+     rad float bin,
+     radus float bin,
+     factor float bin init (1.745329e-2),          /* pi / 180 */
+     frac float bin init (0.0e0);
+
+dcl  alpha float bin init (0.0e0),
+     phi float bin init (42.36058333e0),          /* Latitude of IPC 42-21-38.1 N */
+     theta float bin init (288.9063333e0),          /* Longitude of IPC 71-05-35.4 W */
+     irad fixed bin,
+     radius float bin init (1.0e0);
+
+dcl  gui_$ginit_ entry,
+     gui_$gcirc_ entry (fixed bin, fixed bin),
+     gui_$gvec_ entry (fixed bin, fixed bin, fixed bin),
+     gui_$gsps_ entry (fixed bin, fixed bin, fixed bin),
+     gui_$gdisp_ entry,
+     gui_$grmv_ entry,
+     gui_$geras_ entry;
+
+dcl 1 worldbin based (world_ptr) aligned,
+    2 input (0:6048) fixed bin;
+
+dcl  temp fixed bin;
+
+dcl 1 component based (temp_ptr) aligned,
+    2 x bit (12) unal,
+    2 y bit (12) unal,
+    2 z bit (12) unal;
+
+dcl (addr, sin, cos, abs, null) builtin;
+
+dcl  cu_$arg_ptr ext entry (fixed bin, ptr, fixed bin, fixed bin),
+     hcs_$make_ptr entry (ptr, char (*) aligned, char (*) aligned, ptr, fixed bin),
+     ioa_ ext entry options (variable),
+     com_err_ ext entry options (variable),
+     sysin stream,
+     hcs_$terminate_noname ext entry (ptr, fixed bin);
+
+/* =============================================== */
+
+     temp_ptr = addr (temp);
+     call hcs_$make_ptr (null, "world.bin", "", world_ptr, ec);
+     if world_ptr = null then do;
+er:          call com_err_ (ec, "globe", "");
+          return;
+     end;
+
+     call gui_$ginit_;
+
+inform:     mode = 1;
+     call ioa_ ("The following is an example of a complete input line:");
+     call ioa_ (" phi = ^f, theta = ^f, alpha = ^f, radius = ^f;", phi, theta, alpha, radius);
+     call ioa_ ("(phi and theta are latitude and longitude of the display center, and");
+     call ioa_ (" alpha is rotation around the center. Radius 1.0 is full screen.)");
+     call ioa_ ("To find the values of parameters, type:");
+     call ioa_ (" mode = 0;");
+     call ioa_ ("To exit from the program, type:");
+     call ioa_ (" exit = 1;");
+
+start:     call ioa_ ("^/Enter input data");
+     get data (phi, theta, alpha, radius, mode, exit);
+
+     if exit = 1 then do;
+          call hcs_$terminate_noname (world_ptr, ec);
+          return;
+     end;
+     if mode = 0 then go to inform;
+     if erase = 0 then call gui_$geras_;
+
+     sinp = sin (phi * factor);
+     cosp = cos (phi * factor);
+     sint = sin (theta * factor);
+     cost = cos (theta * factor);
+     sina = sin (alpha * factor);
+     cosa = cos (alpha * factor);
+
+     fa1 = cost * cosa + sinp * sina * sint;
+     fa2 = -cosp * sina;
+     fa3 = cost * sina * sinp - sint * cosa;
+     fa4 = cost * sina - sint * cosa * sinp;
+     fa5 = cosp * cosa;
+     fa6 = -cost * cosa * sinp - sint * sina;
+     fa7 = sint * cosp;
+     fa8 = sinp;
+     fa9 = cost * cosp;
+     radus = radius * 512.e0;
+     irad = radus + 0.5e0;
+     line = 0;
+     rad = radus;
+
+     call gui_$gsps_ (0, irad, 0);
+     call gui_$gcirc_ (0, -irad);
+
+     call gui_$gdisp_;                    /* Display the circle */
+     call gui_$grmv_;                    /* Empty the display list */
+     nelts = 0;
+     do i = 6048 to 1 by -1;
+
+          if input(i) = -1 then go to done;
+          if input(i) = 0 then go to linend;
+
+          temp = input(i);
+
+          z0 = fixed (component.z) / 1.e3 - 1.0e0;
+          y0 = fixed (component.y) / 1.e3 - 1.0e0;
+          x0 = fixed (component.x) / 1.e3 - 1.0e0;
+
+          z = fa7 * x0 + fa8 * y0 + fa9 * z0;
+          if z < frac then go to linend;
+
+          if mode ^= 2 then go to ster;
+          rad = radus / (z + 1.0e0);
+
+ster:          ix = rad * (fa1 * x0 + fa2 * y0 + fa3 * z0);
+          iy = rad * (fa4 * x0 + fa5 * y0 + fa6 * z0);
+          ix = ix + icentr;
+          iy = iy + jcentr;
+
+          if abs (ix) > 1.e3 then go to linend;
+          if abs (iy) > 1.e3 then go to linend;
+
+          if line = 0 then go to newlin;
+
+          delx = ix - xprev;
+          dely = iy - yprev;
+
+          if abs (delx) < TINY then if abs (dely) < TINY then go to loop;
+
+          line = line + 1;
+
+          call gui_$gvec_ (delx, dely, 0);
+          nelts = nelts + 1;
+          go to more;
+
+newlin:          call gui_$gsps_ (ix, iy, 0);
+          nelts = nelts + 1;
+
+          line = 1;
+
+more:          xprev = ix;
+          yprev = iy;
+
+          go to loop;
+
+linend:          if line = 1 then do;
+          call gui_$gvec_ (1, 1, 0);
+          nelts = nelts + 1;
+          end;
+          if nelts > toomany then do;
+          call gui_$gdisp_;
+          call gui_$grmv_;
+          nelts = 0;
+          end;
+
+          line = 0;
+
+loop:     end;
+
+done:     call gui_$gsps_ (0, 512, 0);
+     call gui_$gdisp_;
+
+     call gui_$grmv_;
+
+     go to start;
+
+     end globe;

@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-730</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-730: Data Management: Consistent File Save and Restore.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+  Multics Technical Bulletin                                MTB-730
+  DM: File Save and Restore
+
+  To:       Distribution
+
+  From:     Lee A. Newcomb
+
+  Date:     10/21/85
+
+  Subject:  Data Management: Consistent File Save and Restore
+
+  1 ABSTRACT
+
+       The current Multics backup mechanisms do not provide for the
+  consistent backup and reloading of protected Data Management (DM)
+  files without  violating the transaction model DM  is built upon.
+  The various problems with the  current dumpers, and backing up DM
+  files in general, are  discussed.  Several possible solutions and
+  sub-tasks   are  presented,   some  general   analysis  of  their
+  implications, and a recommended first implementation.
+
+  Comments should be sent to the author:
+
+  via Multics forum:
+     &gt;udd&gt;m&gt;dms_sys&gt;meetings&gt;DMS_Development
+
+  via US Mail:
+     Lee A. Newcomb
+     Honeywell Information Systems, Inc.
+     4 Cambridge Center
+     Cambridge, Massachusetts 02142
+
+  via telephone:
+     (HVN) 492-9341, or (617) 492-9341
+
+  _________________________________________________________________
+
+  Multics  project  internal  working  documentation.   Not  to  be
+  reproduced or distributed outside the Multics project without the
+  consent of the author or the author's management.
+
+  Multics Technical Bulletin                                MTB-730
+
+                             CONTENTS
+
+                                                         Page
+
+                 1  Abstract  . . . . . . . . . . . . .   i
+                 2  Introduction  . . . . . . . . . . .   1
+                    2.1 Transaction Model is Bypassed .   1
+                    2.2 Users Cannot Backup Databases .   2
+                    2.3 Hierarchy Dumper  . . . . . . .   2
+                    2.4 Volume Dumper . . . . . . . . .   2
+                    2.5 Concurrency Control Bypassed  .   3
+                    2.6 System Management Problems  . .   3
+                 3  An Ideal Solution . . . . . . . . .   3
+                    3.1 Backup/Restoration Steps  . . .   4
+                    3.2 Benefits  . . . . . . . . . . .   4
+                    3.3 Problems  . . . . . . . . . . .   4
+                 4  Solutions and Other Concerns  . . .   5
+                    4.1 Locking for Backup  . . . . . .   5
+                    4.2 Locking for Restore . . . . . .   6
+                    4.3 Consistent Backup/Reload of
+                     Related DM Files . . . . . . . . .   6
+                    4.4 User Settable Backup Options  .   8
+                    4.5 Forcing File Backup . . . . . .   9
+                    4.6 Access Modes for Backup and
+                     Restore  . . . . . . . . . . . . .   9
+                    4.7 User Backup and Cross-retrieval   10
+                    4.8 How Many Dumpers? . . . . . . .   10
+                    4.9 DM specific backup/reload vs.
+                     existing mechanisms  . . . . . . .   11
+                 5  Conclusions . . . . . . . . . . . .   11
+                    5.1 Recommendation and Estimate . .   11
+                       5.1.1 File Relationship Support    12
+                       5.1.2 Incremental vs.  Complete
+                        Dumping . . . . . . . . . . . .   12
+                       5.1.3 Support User Backup  . . .   12
+                       5.1.4 file_manager_ support  . .   12
+                       5.1.5 Data_Mgmt_Backup.Daemon  .   13
+
+  DM: File Save and Restore
+
+  2 INTRODUCTION
+
+       Multics' ability to manage data  was greatly improved by the
+  new  Data Management  (DM) system  in MR11,  particularly in  the
+  areas of storage management, concurrent access, file consistency,
+  and recovery  from unexpected failures.   The DM system  does not
+  give complete  protection from hard  failures as the  DM recovery
+  and  Multics dump/reload  mechanisms  do  not understand  DM file
+  objects.   We will  concentrate on  how to  dump/reload DM files,
+  especially those  with the protected switch on.   For an overview
+  of the new Data Management (DM) facilities, the reader should see
+  the  "Multics Programmer's  Reference Manual",  Order No.   AG94,
+  section 10, "Multics Data Management".
+
+       The DM system protects user  data from the most common types
+  of  failures:  unexpected  process termination  (e.g., time outs,
+  faults)  and system  crash (with  or without  ESD), and  makes it
+  easier to undo mistakes  by aborting transactions.  However, hard
+  failures (e.g., media failure, fire) and programming error (e.g.,
+  incorrect encoding) are not recoverable.
+
+       The hierarchy  and volume dumpers have been  used to protect
+  against failures  in the past.   There are several  problems with
+  these dumpers being the only protection of user databases, files,
+  etc.  Some of  these problems are generic to all  files, not just
+  DM files.  A few problems are:
+
+  2.1 Transaction Model is Bypassed
+
+       A  dump image can  be taken in  the middle of  a transaction
+  modifying a file.  It is  possible to dump partial modifications,
+  or  modifications which  will end   up being  rolled back  if the
+  transaction aborts.  The  end result is a file image  on tape not
+  necessarily consistent within the transaction model.  If the dump
+  is reloaded, it is not guaranteed  to be correctable if in error.
+  Of course, this  is a generic problem with anything;  but in this
+  case, the  model of the  transaction as a  unit of work  has been
+  violated.
+
+  MTB-730                                Multics Technical Bulletin
+                                          DM: File Save and Restore
+
+  2.2 Users Cannot Backup Databases
+
+       When  a database (DB)  is built using  vfile_, any user  who
+  could  quiesce  the  DB  (usually  the  DBA)  could backup the DB
+  himself.  Due to the dumpers  not understanding the DM file type,
+  this is no longer possible without giving a user the privilege of
+  logging in at the DM ring (currently 2).  A relatively costly and
+  error-prone  solution is  for  users  and site  administrators to
+  agree for very  critical files to be backed up  at certain times.
+  Our  two major  objectives are:   (1) the  dump and  reload of DM
+  files handled by Daemons as currently done for the file system by
+  the  existing hierarchy  and  volume  mechanisms; and  (2) giving
+  users back the ability to do  their own dumping and retrieving of
+  DBs built with  DM files.  This must all be  done in a controlled
+  manner without compromising file or DB integrity and security.
+
+       For a DB built upon vfile_, a user could use the backup_dump
+  after  quiescing the  DB.  Users   will get  an access  violation
+  trying  to  dump  or  reload  DM  files  with  the hierarchy dump
+  mechanisms as the  directory portion of a DM file's  MSF has ring
+  brackets of the DM ring.
+
+  2.3 Hierarchy Dumper
+
+       DM files are currently MSF's  in the DM ring.  The hierarchy
+  incremental  dumper only dumps  directories and segments.   If an
+  MSF  has only  one out   of seven  components modified,  only the
+  modified component  will be dumped,  not the entire  DM file.  If
+  the  system hierarchy  reloader is  used, it  is possible several
+  dumps will have  to be used to get a  consistent file image; this
+  increases the control and resources required for reloading.
+
+  2.4 Volume Dumper
+
+       User requests  to reload a DM  file from a volume  dump will
+  fail  when  issued  from  a   ring  greater  than  the  DM  ring.
+  Currently, if the  reload is requested, the MSF  directory of the
+  DM file will be retrieved,  but not the subordinate MSF segments.
+  Of course, there is still no guarantee the dump being reloaded is
+  consistent.
+
+  Multics Technical Bulletin                                MTB-730
+  DM: File Save and Restore
+
+  2.5 Concurrency Control Bypassed
+
+       None of  the existing dumpers and  reloaders use concurrency
+  control allowing for inconsistent  file images.  Users can modify
+  parts of a  file already dumped before the entire  file is on the
+  dump  media.  Likewise,  users can  lose modifications  done to a
+  file  by  the  reloading  process  overwriting  modifications not
+  committed.
+
+       Any solution must allow for the dumping or reloading process
+  to hold  locks to prevent the  above problems.  In order  for the
+  hierarchy backup system to work for DM files it would have to use
+  a ring  1 DM locking mechanism.  This  requires lock_manager_ and
+  its associated environment  to work in ring 1.   As the hierarchy
+  Daemons use privileges to  circumvent AIM checks, lock_manager_'s
+  tables  would also need  to be multi-class  or the Daemons  would
+  need  a  way  to  switch  between  DM  systems  of  different AIM
+  authorizations.
+
+  2.6 System Management Problems
+
+      There  are various  questions as   to the  management of  the
+  backup processes  within the current DM  framework.  Should there
+  be one dumper for all of Multics, or one for each DM system?  How
+  should files related to each other be backed up without violating
+  the  transaction  model  even  more  than  indicated above (e.g.,
+  MRDS)?   How  should  dumping  of  DM  files  be scheduled?  What
+  locking  mechanism should  be used  for dumping/reloading  to not
+  hold  up the  backup/reloader  process  with minimal  effect upon
+  users?
+
+  3 AN IDEAL SOLUTION
+
+       The following is a brief outline  of what I believe to be an
+  "ideal" solution to consistent and reliable dumping and reloading
+  of   protected  DM  files.    Note  only  the   actual  data/file
+  consistency and  accuracy problems are addressed;  other aspects,
+  having more  to do with system interfaces,  are discussed further
+  below.  The interested reader can look in various places for more
+  detail  on  this  scheme:   e.g.,  "An  Introduction  to Database
+  Systems, Volume  II" by C. J. Date  gives a short,  more detailed
+  (albeit informal) presentation.
+
+  3.1 Backup/Restoration Steps
+
+    1) All  changes are  after imaged  in a  transaction resolution
+       journal  (TRJ) in addition  to the before  imaging currently
+       done.
+
+  MTB-730                                Multics Technical Bulletin
+                                          DM: File Save and Restore
+
+    2) All before  and after images and journal  marks are recorded
+       in an archival copy of the journal (with one or more various
+       compression methods).
+
+    3) The   dumper  of  DM   files  and  the   archival  mechanism
+       synchronize via  mark(s) in the TRJ, allowing  the dumper to
+       work without requiring any locking mechanism.
+
+    4) Reload  will  be  able  to  bring  back  any  DM  file  to a
+       particular time by:
+         A) exclusively locking the file(s) to be reloaded;
+         B) reloading the file(s) to  most recent dump image before
+            the requested time;
+         C) rolling  back those  transactions in  the archived  TRJ
+            aborted  or not  completed  before  the dump  image was
+            taken;
+         D) rolling forward  any transactions completed  before the
+            requested time  but not finished before  the dump image
+            (using the archived TRJ); and
+         E) unlocking the reloaded file(s).
+
+  3.2 Benefits
+
+       With  the  above  method,  no  quiescing  of  a  DM  file is
+  required,  allowing  side-by-side  user  access  and backup.  The
+  algorithm is known from other  efforts.  The user has the ability
+  to reload a file to a  particular time when after imaging is used
+  and all imaging  is archived.  Recovery can also do  a better job
+  as  a byproduct  of the  imaging/archive methods,  possibly doing
+  some automatic recovery from well defined hard failure.
+
+  3.3 Problems
+
+       The  above  mechanism  requires  CONSIDERABLE implementation
+  effort, particularly  in adding the after  imaging, archival, and
+  synchronization  mechanisms.   Also,  some  other  areas  are not
+  addressed (see next section).
+
+  Multics Technical Bulletin                                MTB-730
+  DM: File Save and Restore
+
+  4 SOLUTIONS AND OTHER CONCERNS
+
+       For the  remainder of this  report, it is  assumed the above
+  "ideal"  solution   will  NOT  be  implemented.    The  following
+  discusses  various  ways  of  providing  backup/reload  given the
+  current  state of  the DM  software and  this assumption.   Also,
+  several issues  of the backup/restore problem  exist not directly
+  related to actual data consistency  and are discussed below.  Our
+  main  concern is  the automatic   dumping or  protected DM  files
+  (along the  lines of the existing volume  and hierarchy dumpers),
+  or an acceptable alternative for users.
+
+  4.1 Locking for Backup
+
+       It  is required  for the  dumped image  of a  DM file  to be
+  consistent within the transaction  model.  The backup process can
+  ensure this  ONLY by getting at  least a share lock  on the file.
+  However, users could keep the dumper  waiting for a share lock by
+  continually requesting  other write or exclusive  locks which can
+  be granted; this ability to prevent the dumper from dumping other
+  user files is unacceptable.
+
+       A bypass is to add  priority locking to lock_manager_ either
+  requiring privilege (no impact on  existing user software), or as
+  the default locking mechanism  (may impact existing applications,
+  but  not fully  studied).  When  the dumper  asks for  a lock, it
+  waits  until it  gets the  lock, but  no other  process may get a
+  conflicting  lock until  the dumper  releases its  share priority
+  lock.
+
+       A dumper could  request a lock on the file,  and if the lock
+  cannot  be granted  within a  short  wait  limit, go  on to  dump
+  another file  WITHOUT waiting.  The  backup process would  keep a
+  queue of those files bypassed and periodically re-try to dump the
+  files in the  queue when the current dump finishes.   When a lock
+  cannot be  acquired, the failure is logged;  the statistics would
+  be  generated from  the log  for warning  when a  file cannot  be
+  backed  up  in  a  timely  manner  or  forcing  through  existing
+  transactions.   This solution  is  discouraged  due to  the extra
+  control required for minimal benefit.
+
+       Another mechanism is for the Daemon to force its way through
+  existing  transactions holding  exclusive locks  by aborting them
+  forcibly.   This is  an extremely  violent solution, particularly
+  when the relative frequency of exclusive lock conflicts should be
+  low.  However, having the ability to force abort transactions may
+  be useful  if a critical file  or database needs to  be backed up
+  with a high priority.
+
+  MTB-730                                Multics Technical Bulletin
+                                          DM: File Save and Restore
+
+  4.2 Locking for Restore
+
+       A requirement for reloading a file  is to lock out all users
+  from accessing  the file.  With  the current reloaders,  the user
+  must lock the  file, request the reload of the  file, and release
+  the lock.   If the lock  is not acquired,  other transactions may
+  continue to run,  either destroying the file or  doing work which
+  will need  to be redone after  the reload is finished.   The file
+  must  be  locked  as  soon  as  possible  after  the  request for
+  restoration is submitted to save resources.
+
+       ALL  transactions referencing the  file to be  reloaded must
+  release  all locks held  against the file.   This can be  done by
+  forcing  the transaction  to either  be rolled  back, aborted, or
+  abandoned.   This requires  an interface  with the  DM Daemon  to
+  force processes  into one of  these actions.  This  idea has been
+  discussed in the  past in the context of DM  shutdown, but it was
+  not required then as it is for reload.
+
+       A  compromise could  be  to  create priority  exclusive (PX)
+  locks and  wait for the  other transactions to  complete.  When a
+  reload  is attempted,  a PX  lock is  acquired on  the file to be
+  restored.  A PX lock cannot be refused unless one already exists;
+  other transaction  holding locks on  the PX'd locked  file(s) can
+  only  release locks,  either by   finishing or  rolling back  the
+  transaction.  At best, this would  be a short-term measure as the
+  cost  of  the  resources  and  work  which  may  be  discarded is
+  extremely high.
+
+  4.3 Consistent Backup/Reload of Related DM Files
+
+       All the  above discussions focus on  individual protected DM
+  files.  However,  most users of  DM have several  files which are
+  related  and all  may be  accessed within  the same  transaction.
+  MRDS  is  the  major  user  of  DM  files  in  MR11.  It builds a
+  directory which is  the database, with one file  in the directory
+  for  each relation  (and other   DB control  information such  as
+  submodels).  In the following scenario of two processes accessing
+  the database (user  and backup), the model of a  transaction as a
+  unit of work is again violated.   Files A, B, and C are relations
+  of a single DB and time is increasing as you read down the page.
+
+  Multics Technical Bulletin                                MTB-730
+  DM: File Save and Restore
+
+          USER PROCESS BACKUP PROCESS
+       ------------------ ---------------------
+    v|          :                start dumping file A          v|
+    v|    modify file C                    :                   v|
+    T          :                finish dump of file A         T
+    I    modify file A          start dumping file B          I
+    M  commit transaction       finish dump of file B         M
+    E          :                start dumping file C          E
+    v|          :                finish dump of file C         v|
+    v|          :                          :                   v|
+               :                          :
+
+       When the dump of the DB  is complete, the backed up image of
+  the  DB is  inconsistent.  The  "correct" solution  is to  keep a
+  complete running analysis of those files related as determined by
+  their  use in  the same  transactions.  This  is probably  a very
+  costly  process and  requires preservation  of file relationships
+  across transactions and bootloads.  It  may also be impossible to
+  guarantee  correct  operation  all  the  time  without making the
+  relationship data file a DM file.  As all users would need access
+  to the data file in the DM ring, there is a potential for locking
+  conflicts unless very special care is  taken in the design of the
+  data file's structure.
+
+       A solution is to dump all  DM files in the same directory in
+  one shapshot.  This requires getting share locks on all the files
+  in the directory; and then dumping the files, releasing the locks
+  as the dump proceeds.  N.B., this  type of dump has valid data at
+  the time the last necessary lock is acquired, but may not be used
+  until all files locked are dumped.   In addition, all links to DM
+  files in the directory should be chased and the linked files also
+  locked and dumped in the same shapshot.
+
+       Alternately,  the locations  of all  related files  could be
+  recorded  in the DM  file header upon  creation of the  file.  In
+  effect, the file itself contains the file relationships mentioned
+  above;  but there  is the  potential for  lock conflicts  between
+  users on the header now when a new relationship is to be entered,
+  not to  mention the limited size  of the file header.   This also
+  quickly  runs into  consistency and  maintenance (e.g., pathnames
+  being  invalidated when  a  higher  directory is  renamed, adding
+  links to the DB relations).  This method is discouraged.
+
+  MTB-730                                Multics Technical Bulletin
+                                          DM: File Save and Restore
+
+       Users   should  have  the   ability  to  register   DM  file
+  relationships.   This  is  a  compromise  between  the  automatic
+  detection  and the  parent  directory  methods of  relating files
+  above.   The directory  method will  be the  default.  Users  may
+  register DM file relationships in a  DM system DB via a gate into
+  the DM ring.  This control will still be defined on the directory
+  level;  i.e., if  a user  relates the  DMFs &gt;udd&gt;proj&gt;user1&gt;Z and
+  &gt;udd&gt;proj&gt;user2&gt;B,    all    DMFs    in    &gt;udd&gt;proj&gt;user1    and
+  &gt;udd&gt;proj&gt;user2 will be related.
+
+       When  restoring, ALL related  files must be  reloaded (small
+  optimizations are possible).  This can cause a great deal of work
+  if file relationships  are widespread, but it is  not expected to
+  be the normal  case.  However, it may be the case  a file to file
+  relationship  should be  backed out  (e.g.,  a  link in  a DB  is
+  removed), contributing to the maintenance problem.
+
+       Another  idea  deserves  careful  attention:   expanding the
+  hierarchy  dump mechanism  to use  the extended  objects software
+  (fs_util_  and friends  and calling  it the  "consistent dumper."
+  When dumping a MRDS DB, fs_util_$begin_consistent_dump would call
+  suffix_db_$=,  and continue   with other  appropriate operations.
+  This has the  added benefit of allowing any  extended object type
+  to  be  dumped  via  the  consistent  dumper  if  desired and the
+  supporting suffix_* entries exist.  A suffix_db_ would have to be
+  installed for this to work.  This does not solve the general case
+  where  more than one  DB is modified  in the same  transaction or
+  another application exists which  simply uses multiple files with
+  "random" locations in the hierarchy.
+
+       The  two  above  methods  are  both  acceptable  within  the
+  limitations  noted.   The  second  has  the  advantage  of  being
+  extendable   to   other   extended    object   types.    If   all
+  file-to-transaction dependencies are  tracked reliably, the first
+  has the advantage of preserving the transaction model.
+
+  4.4 User Settable Backup Options
+
+       It is desirable to give the  user the ability to set various
+  options about backup of files.  Currently, users may only set the
+  incremental  or  complete  volume  dump  switches,  or  deny  the
+  hierarchy dumper access for any file system object.
+
+  Multics Technical Bulletin                                MTB-730
+  DM: File Save and Restore
+
+       A possible  solution is a set_backup_options  command to set
+  backup information for a set of objects.  When a file is created,
+  it acquires the default dumper options,  but the user will now be
+  able to change them to suit  the usage of the file.  For example,
+  if a database  is only modified once per week,  the user can save
+  resources  and  request  the  DB  only  be  backed  up  after the
+  modifications  are made.  This  requires modifications to  the DM
+  file  header to store  the dump attributes.   If the changes  are
+  deemed useful  for all file  system objects, the  directory entry
+  would have to be extended.
+
+       Possible options  are the relative time  between incremental
+  and complete dumps, the files to  be dumped as a unit, whether to
+  chase links when  creating the set of files to  be backed up, and
+  if a dump should be done at all.
+
+  4.5 Forcing File Backup
+
+       Sometimes  it  is  desirable  to  override  the default dump
+  options.  For this, an enter_dump_request command would be useful
+  to queue a set of files for  dumping at a special time (e.g., end
+  of the  month or just  after restructuring a  DB).  This requires
+  little  control other  than what  is common  amongst the  I/O and
+  absentee  mechanisms, with  a decision   on when  to examine  the
+  queues when actively backing up.
+
+  4.6 Access Modes for Backup and Restore
+
+       If  the   preceeding  two  tasks   and  the  next   one  are
+  implemented, ACL modes for indicating  who may affect the dumping
+  and  restoration  of  files  would   be  helpful.   If  only  the
+  administrator  of a  DB may  set the  dump options,  or request a
+  dump,  it  would  cut  down  on  the  possible  overuse of system
+  resources by multiple  users requesting the same DB  be backed up
+  within a short amount of time.  Also, it is not desirable to have
+  a restoration  done, a few transactions run  against the reloaded
+  files,  and another  user request   the files  be reloaded  again
+  wiping out recent work.  This  is only precautionary, however, to
+  aid in the proper administration of the files.
+
+  4.7 User Backup and Cross-retrieval
+
+       Users  may force  a backup  or reload  of their  DBs to/from
+  their own tape if the DB is managed by the vfile_ I/O module.  In
+  MR11,  the user  loses this  capability if  the DB  relations are
+  managed  by DM.   This ability  is desired  to be  able to ship a
+  database to another system or to cross-retrieve the DB.
+
+  MTB-730                                Multics Technical Bulletin
+                                          DM: File Save and Restore
+
+       To do the dumping, an  interface into the DM ring (currently
+  two)  is required  so users  need not  acquire more authorization
+  than  normally  needed  for  their  work.   The consistent dumper
+  discussed  above  provides  this.   However,  the cross-retrieval
+  problem  requires  file_manager_  to  be  changed  as the control
+  intervals  (CIs)  of  the  new   file  will  contain  the  unique
+  identifier (UID) of the original file, not the newly created one.
+  File_manager_ was  written to not  require the UID  stored in the
+  file to  be the same as  the branch UID; but  this "violation" of
+  protocol now causes problems  with cross-retrieval.  As a general
+  rule, it is safer to change the  UID stored in the new file's CIs
+  to be the UID stored in the directory branch of the file.
+
+  4.8 How Many Dumpers?
+
+       Currently,  there is one  DM system per  AIM classification.
+  If  this is  maintained, at  least one  tape drive  per active DM
+  system  will be required  for backup.  As  this only affects  AIM
+  sites,  this is  not considered  a major  problem; a  single tape
+  drive can be used at these sites by running one AIM class dumper,
+  having it release  the tape drive it used, and  then have another
+  AIM class  dumper use the same  drive.  This level of  control is
+  probably not necessary at these sites.
+
+       To change the  DM software to support one dumper  for all DM
+  systems requires considerable effort.   The lock_manager_ must be
+  put in  ring one and made  multi-class.  The DM dumper  will need
+  privileges  to  bypass  its  normal  inability  to  access across
+  classifications; or the DM system will have to be changed to have
+  all its control made multi-class, so  there is only one DM system
+  per  Multics system.   The latter,  although very  desirable, has
+  already been determined to  be expensive in development resources
+  in  researching the  SRDBMS RPQ  given the  current state  of the
+  Multics product.   In both cases, B2 functional  tests and covert
+  channel analysis would be required  as we would be making changes
+  to the Trusted Computing Base (TCB).
+
+  4.9 DM specific backup/reload vs.  existing mechanisms
+
+       The existing retrievers must be  modified no matter which of
+  the solutions  is adopted.  If  a DM specific  dumper is created,
+  the option to not reload DM files should be added.  This bypasses
+  the problem of the  hierarchy reloader not understanding locking,
+  etc.  Both dumpers  should understand the dumping of  DM files is
+  not needed if there is a  DM specific dumper; or understand it is
+  not worth dumping  a DM file unless the DM  system used to access
+  the file is shutdown.
+
+  Multics Technical Bulletin                                MTB-730
+  DM: File Save and Restore
+
+       The safest way to dump DM files currently is to shutdown the
+  DM system(s), run the dumper or  dumpers of choice, and bring the
+  DM  system(s)  back  again.   This  could  be  done on a nightly,
+  weekly, etc.  basis as sites see fit.
+
+  5 CONCLUSIONS
+
+       The  current  volume  and  hierarchy  dumpers  would require
+  considerable  changes to  maintain the  transaction model  and be
+  able  to support  related DM  files.  It  is also  too costly  at
+  present  to  implement  the  required  support  for  this:  after
+  imaging, lockless dumping, and  a multi-class lock_manager_ or DM
+  system.
+
+       The  consistent dumper is  considered the most  flexible and
+  upgradable  mechanism,  even  though  it  may  still  violate the
+  transaction  model.  It  may be  possible to  implement both  the
+  consistent  dumper and  the  file  relationship support,  but the
+  latter can be  added on after the first is  in place.  Both these
+  options  are relatively  expensive.  Share  and exclusive locking
+  for the dumpers and reloaders must be implemented, probably using
+  priority locking for the  first and force abortion/abandonment of
+  existing  transactions in  the way  or reloading  for the latter.
+  The  force abortion  mechanism is  potentially very  expensive to
+  create, but it could follow the  DM shutdown design which is well
+  known, though potentially violent.
+
+       There are  various other desirables which  could be designed
+  and implemented,  but are low  priority for the  main task.  They
+  should be able to be added as time permits (which it never does).
+
+  5.1 Recommendation and Estimate
+
+       It  is  recommended  the  following  brief  version  of  the
+  dump/reload solution be implemented in  the MR12 time frame.  The
+  work  should take  about two  man-months to  design and implement
+  given  some  understanding  of  the  internal  operations  of the
+  hierarchy dumper/retriever (or free  access to someone who does).
+  It  is  recommended  the  changes  to  the  existing  backup  and
+  retrieval subsystems not be made at  this time; it is unknown how
+  much of a  hinderance these existing subsystems will  be, and the
+  cost of doing the changes later is considered small.
+
+  MTB-730                                Multics Technical Bulletin
+                                          DM: File Save and Restore
+
+  5.1.1 FILE RELATIONSHIP SUPPORT
+
+       The  directory  will  be  used  to  define the relationships
+  between DM files  to be dumped as a unit.   This handles the most
+  common case of MRDS DBs.  Users will be able to register the fact
+  multiple directories contain DM files which are related.
+
+  5.1.2 INCREMENTAL VS.  COMPLETE DUMPING
+
+       Both  complete and  incremental dumpers  will be  supported.
+  The incremental dump mechanism requires some added control on the
+  reload side, but the savings in  backup resources is too great to
+  ignore.
+
+  5.1.3 SUPPORT USER BACKUP
+
+       A gate entry into the DM  ring will be created to give users
+  the  ability to backup  and reload ALL  DM files in  a directory.
+  Link  chasing will  not be  supported.  Effective  read access is
+  needed  to  dump  the  files.   Effective  append  access  on the
+  directory  and, if  the files  exist, effective  write access are
+  needed  to reload  the files.   A  new  set of  commands will  be
+  created  along  the  lines   of  the  existing  hierarchy  backup
+  subsystem's commands.  This task should take two weeks.
+
+  5.1.4 FILE_MANAGER_ SUPPORT
+
+       The file_manager_ will be changed to support the changing of
+  the  file UID  stored in  the each  CI to  the UID  in the file's
+  directory  entry.   This  will  always  happen  when  a  file  is
+  reloaded.  An exhaustive analysis of this task's implications has
+  not  been  done  (e.g.,  the  complete  handling  of file's being
+  renamed and reloaded  under the old name).  This  task is allowed
+  two weeks for any investigation needed and its implementation.
+
+  5.1.5 DATA_MGMT_BACKUP.DAEMON
+
+       A  new Daemon  user, Data_Mgmt_Backup,  will be  created for
+  dumping and reloading DM files.   It exists only as a convenience
+  to users (tape volume and time conservation) and system operators
+  (fewer tape mounts).  The Daemon will  operate in the DM ring and
+  requires the access mentioned above in "Support User Backup".  It
+  is  based on the  hierarchy dumper.  The  dumper will operate  in
+  either  incremental or  complete dump  mode, or  both; it  is the
+  responsibility  of the  DM administrator  to manage  this Daemon.
+  There will be one Daemon  operating at each AIM classification DM
+  is used.  This task is allowed three weeks.
+
+  Multics Technical Bulletin                                MTB-730
+  DM: File Save and Restore
+
+       No locks will be forced for  dumping or reloading.  It is up
+  to the user to guarantee no locking conflict will result.  All DM
+  files  in a  directory will  be locked  and dumped,  with no link
+  chasing.  If one or more files cannot be locked, messages will be
+  logged for inspection.  Force aborting of transactions preventing
+  reload or persistently preventing dumping can be added at a later
+  time with relative ease by following the DM shutdown mechanism if
+  it becomes necessary; the user ability to do this work from their
+  process  should suffice  for those  user files  which do  not get
+  backed up due to extreme locking conflicts.
+
+       A notation will be made as to the start and end times of the
+  dump and  reload processes.  A  method of handling  invalid dumps
+  will be created (e.g., dump was  started, three out of four files
+  made  it to  the backup  media, but  the fourth  did not  make it
+  completely).
+
+       Testing  is estimated  at one  week.  The  cost of  MCR'ing,
+  auditing, and installing these changes has not been estimated.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

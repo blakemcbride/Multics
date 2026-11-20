@@ -1,0 +1,1467 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : The C Runtime System on Multics.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+MULTICS TECHNICAL BULLETIN                             MTB-689-03
+
+To:       MTB Distribution
+
+From:     Doug Howe
+
+Date:     August 20, 1986
+
+Subject:  The C Runtime System on Multics
+
+               -----------------------------------
+
+This  MTB  describes  the  C   runtime  library  as  it  will  be
+implemented on Multics.  It is expected  to be a complete list of
+the runtime library available from System V Release 2.0(1)
+
+Changes within this Mtb will be marked with change bars.
+
+Revision 3:                                                       |
+Changes  include a complete  list of the  runtime routines to  be |
+available with the C compiler.                                    |
+
+               -----------------------------------
+
+_________________________________________________________________
+
+(1) Unix and System V Release 2.0 are registered trademarks of AT
+    &amp; T
+
+
+MTB-689-03                                       C Runtime System
+
+Comments should be sent to the authors:
+
+     via Multics mail to:
+
+        DGHowe.Multics
+
+     via posted mail to:
+
+        Douglas G.  Howe
+        Advanced Computing Technology Centre
+        Foothills Professional Building
+        1620 29th St., N.W.
+        Calgary Alberta Canada   T2N-4L7
+
+     via telephone to:
+
+        (403)-284-6400
+        (403)-284-6432 (Howe)
+
+     via forum on System-M to:
+
+        &gt;udd&gt;m&gt;DGHowe&gt;mtgs_dir&gt;c&gt;c_imp (c)
+
+_________________________________________________________________
+
+Multics  project internal documentation;  no to be  reproduced or
+distributed ouside the Multics project.
+
+
+C Runtime System                                       MTB-689-03
+
+                        TABLE OF CONTENTS
+
+Section    Page  Subject
+=======    ====  =======
+
+1          1     Preface
+2          2     Introduction
+2.1        2     . . Goal
+2.2        2     . . Background
+2.3        2     . . References For this Document
+3          3     Name Conflicts
+4          3     C Runtime Routines
+5          3     Math Routines
+5.1        3     . . abs
+5.2        3     . . acos
+5.3        4     . . asin
+5.4        4     . . atan
+5.5        4     . . atan2
+5.6        4     . . cabs
+5.7        4     . . ceil
+5.8        5     . . cos
+5.9        5     . . cosh
+5.10       5     . . exp
+5.11       5     . . fabs
+5.12       5     . . floor
+5.13       5     . . frexp
+5.14       6     . . hypot
+5.15       6     . . ldexp
+5.16       6     . . log
+5.17       6     . . log10
+5.18       6     . . modf
+5.19       6     . . pow
+5.20       7     . . sin
+5.21       7     . . sinh
+5.22       7     . . sqrt
+5.23       7     . . tan
+5.24       7     . . tanh
+6          8     Utility and Conversion Routines
+6.1        8     . . atof
+6.2        8     . . atoi
+6.3        8     . . atol
+6.4        8     . . ecvt
+6.5        9     . . fcvt
+6.6        9     . . gcvt
+6.7        9     . . isalpha
+6.8        9     . . isalnum
+6.9        9     . . isascii
+6.10       10    . . iscntrl
+6.11       10    . . isdigit
+6.12       10    . . islower
+6.13       10    . . isprint
+6.14       10    . . ispunct
+
+
+MTB-689-03                                       C Runtime System
+
+6.15       10    . . isspace
+6.16       11    . . isupper
+6.17       11    . . memccpy
+6.18       11    . . memchr
+6.19       11    . . memcmp
+6.20       11    . . memcpy
+6.21       11    . . memset
+6.22       12    . . strchr
+6.23       12    . . strrchr
+6.24       12    . . strcat
+6.25       12    . . strcmp
+6.26       12    . . strcpy
+6.27       13    . . strlen
+6.28       13    . . strncat
+6.29       13    . . strncmp
+6.30       13    . . strncpy
+6.31       13    . . toascii
+6.32       14    . . tolower
+6.33       14    . . toupper
+7          15    Storage Routines
+7.1        15    . . calloc
+7.2        15    . . free
+7.3        15    . . malloc
+7.4        15    . . realloc
+8          16    Input and Output
+9          16    General I/O Routines
+9.1        16    . . exit
+9.2        17    . . _exit
+9.3        17    . . unlink
+10         18    I/O using File Pointers
+10.1       18    . . clearerr
+10.2       18    . . fclose
+10.3       18    . . fdopen
+10.4       19    . . feof
+10.5       19    . . ferror
+10.6       19    . . fileno
+10.7       19    . . fflush
+10.8       19    . . fgetc
+10.9       19    . . fgets
+10.10      20    . . findiop
+10.11      20    . . fopen
+10.12      20    . . fprintf
+10.13      20    . . fputc
+10.14      20    . . fputs
+10.15      21    . . fread
+10.16      21    . . freopen
+10.17      21    . . fscanf
+10.18      21    . . fseek
+10.19      21    . . ftell
+10.20      22    . . fwrite
+10.21      22    . . getc
+10.22      22    . . getchar
+
+
+C Runtime System                                       MTB-689-03
+
+10.23      22    . . gets
+10.24      22    . . getw
+10.25      22    . . printf
+10.26      22    . . putc
+10.27      23    . . putchar
+10.28      23    . . puts
+10.29      23    . . putw
+10.30      23    . . rewind
+10.31      23    . . scanf
+10.32      23    . . setbuf
+10.33      24    . . setvbuf
+10.34      24    . . sprintf
+10.35      24    . . sscanf
+10.36      24    . . ungetc
+11         25    I/O using File Descriptor Numbers
+11.1       25    . . close
+11.2       25    . . creat
+11.3       25    . . lseek
+11.4       25    . . open
+11.5       26    . . read
+11.6       26    . . write
+12         26    Miscellaneous Routines
+12.1       26    . . ctime
+12.2       26    . . fork
+12.3       27    . . longjmp
+12.4       27    . . mktemp
+12.5       27    . . sbrk
+12.6       27    . . setjmp
+12.7       28    . . system
+12.8       28    . . tempnam
+12.9       28    . . tmpfile
+12.10      28    . . tmpnam
+12.11      28    . . time
+
+
+C Runtime System                                       MTB-689-03
+
+1.  Preface
+
+This MTB describes the Runtime  Library that will support the 'C'
+language on Multics.                                              *
+
+
+MTB-689-03                                       C Runtime System
+
+2.  Introduction
+
+2.1.  Goal
+
+The Goal of this MTB is to describe a C runtime System compatible
+with  System V  release 2.0;  that will  allow the  porting of  C
+programs and packages from other systems.
+
+2.2.  Background
+
+The  C language  was designed  to be  portable, and  is currently
+working  on many different  machines and operating  systems.  C's
+native  environment is  usually  a  Unix operating  system, which
+contains  both  C  librarys   and  system  libraries.   A  common
+misconception is that C consists of both of these libraries, when
+they are actually seperate:  one for the language support and the
+other for the system support.   The Runtime Library to be defined
+here  will only  contain those  routines that  the C  language is
+dependant  on and  will leave   the development  of an  operating
+system library to a later date.
+
+2.3.  References For this Document
+
+1) MTB-647 created by Greg Baryza.
+
+2) The C Programming Language
+   Brian W.  Kernighan &amp; Dennis M.  Ritchie
+   Prentice-Hall (1978)
+   Englewood Cliffs, New Jersey
+
+3) The Multics Programmers Reference Manual (10.2 AG91-03A)
+
+4) MTB on C for Multics by Doug Howe (MTB 688).
+
+5) MTB  titled The Multics  C Execution Environment  by Doug Howe
+(MTB 691).
+
+
+C Runtime System                                       MTB-689-03
+
+3.  Name Conflicts
+
+Several C routines listed below,  have name clashes with existing
+Multics routines.  These  clashes will be taken care  of with the
+use of the existing binder or with the new Link Editor defined in
+Mtb 718.
+
+ceil   date   exit   floor   mod   system   time   unlink
+
+4.  C Runtime Routines
+
+The  C   runtime  routines  have  been  broken   down  into  five
+categories:   Math  Routines,   Utility  &amp;  Conversion  Routines,
+Storage   Routines,  Input/Output  Routines,   and  Miscellaneous
+Routines.
+
+5.  Math Routines
+
+The  math routines  being implemented  will use  the Mutlics math |
+routines  whenever possible.   The following  list defines  the C |
+Math Routines:
+
+abs          cabs          fabs        log        sin
+acos         ceil          floor       log10      sinh
+asin         cos           frexp       modf       sqrt
+atan         cosh          hypot       pow        tan
+atan2        exp           ldexp       rpow       tanh
+
+5.1.  abs
+
+int abs(i);
+int i;
+Returns the absolute value of its argument.
+
+
+MTB-689-03                                       C Runtime System
+
+5.2.  acos
+
+double acos(x);
+double x;
+Returns the arc-cosine of its argument in radians.
+
+5.3.  asin
+
+double asin(x);
+double x;
+Returns the arc-sine of its argument in radians.
+
+5.4.  atan
+
+double atan(x);
+double x;
+Returns the arc-tangent of its argument in radians.
+
+5.5.  atan2
+
+double atan2(x,y);
+double x,y;
+Returns the arc-tangent of x/y in the range of -pi to pi.
+
+5.6.  cabs
+
+double cabs(z);
+struct { double x,y; } z;
+Returns the  absolute value of  a complex number.   Equivalent to
+sqrt(x^2 + y^2).
+
+5.7.  ceil
+
+double ceil(x);
+double x;
+Returns its argument rounded up if modf (x, temp) &gt; 0.
+
+
+C Runtime System                                       MTB-689-03
+
+5.8.  cos
+
+double cos(x);
+double x;
+Returns the cosine of its argument.  (radians).
+
+5.9.  cosh
+
+double cosh(x);
+double x;
+Returns the hyperbolic-cosine of its argument.
+
+5.10.  exp
+
+double exp(x);
+double x;
+Returns the e to the power of its argument.  (anti-log base e)
+
+5.11.  fabs
+
+double fabs(x);
+double x;
+Returns the absolute value of its argument.
+
+5.12.  floor
+
+double floor(x);
+double x;
+Returns its argument rounded down if modf (x, temp) &lt; 0.
+
+5.13.  frexp
+
+double frexp(value,eptr);
+double value;
+int *eptr;
+Returns the mantissa of a double  value x, of magnitude less than
+1 and stores  an integer n such that value =  x * 2**n indirectly
+through eptr;
+
+
+MTB-689-03                                       C Runtime System
+
+5.14.  hypot
+
+double hypot(x,y);
+double x,y;
+Returns the hypotenuse length given two co-ordinates.  Equivalent
+to sqrt(x^2 + y^2).
+
+5.15.  ldexp
+
+double ldexp (value,exp);
+double value;
+int exp;
+Returns the value of value * 2**exp;
+
+5.16.  log
+
+double log(x);
+double x;
+Returns the log base e of its argument.
+
+5.17.  log10
+
+double log10(x);
+double x;
+Returns the log base 10 of its argument.
+
+5.18.  modf
+
+double modf(value,iptr);
+double  value,*iptr;
+Returns the fractional part of  value and stores the integer part
+indirectly through iptr.
+
+5.19.  pow
+
+double pow(x,y);
+double x,y;
+Returns  the first  argument raised  to the  power of  the second
+argument.
+
+
+C Runtime System                                       MTB-689-03
+
+5.20.  sin
+
+double sin(x);
+double x;
+Returns the sine of its argument.  (radians).
+
+5.21.  sinh
+
+double sinh(x);
+double x;
+Returns the hyperbolic-sine of its argument.
+
+5.22.  sqrt
+
+double sqrt(x);
+double x;
+Returns the square-root of its argument.
+
+5.23.  tan
+
+double tan(x);
+double x;
+Returns the tangent of its argument.  (radians).
+
+5.24.  tanh
+
+double tanh(x);
+double x;
+Returns the hyperbolic-tangent of its argument.
+
+
+MTB-689-03                                       C Runtime System
+
+6.  Utility and Conversion Routines
+
+The following routines are considered to be Utility or conversion
+routines:
+
+atof      isalnum      isspace    strchr       strncmp            |
+atoi      isascii      isupper    strrchr      strncpy            |
+atol      iscntrl      memccpy    strcat       toascii            |
+ecvt      isdigit      memchr     strcmp       tolower            |
+fcvt      islower      memcmp     strcpy       toupper            |
+gcvt      isprint      memcpy     strlen                          |
+isalpha   ispunct      memset     strncat                         |
+
+6.1.  atof
+
+double atof(x);
+char *x;
+Ascii to float.  Convert a string to a double value.
+
+6.2.  atoi
+
+int atoi(x);
+char *x;
+Ascii to integer.  Convert a string to a integer value.
+
+6.3.  atol
+
+long atol(x);
+char *x;
+Ascii to long.  Convert a string to a long value.
+
+6.4.  ecvt
+
+char * ecvt(value,ndigit,decpt,sign);
+double value;
+int ndigit,*decpt,*sign;
+Converts 'value' into a character string.
+
+
+C Runtime System                                       MTB-689-03
+
+6.5.  fcvt
+
+char * fcvt(value,ndigit,decpt,sign);
+double value;
+int ndigit,*decpt,*sign;
+Convert  'value'  to  ascii  string  rounded  as  in Fortrans 'F'
+format.
+
+6.6.  gcvt
+
+char * gcvt(value,ndigit,buffer);
+double value;
+int ndigit;
+char *buffer;
+Convert 'value' into a string allocated in 'buffer' with 'ndigit'
+significant  digits.   Uses  Fortrans   'F'  format  if  possible
+otherwise 'E' format.
+
+6.7.  isalpha
+
+isalpha (c);
+
+Is a MACRO defined with  the #define statement.  Returns non-zero
+if 'c' is alphabetic, zero if not.
+
+6.8.  isalnum
+
+isalnum (c);
+
+Is a MACRO defined with  the #define statement.  Returns non-zero
+if c is numeric, zero if not.
+
+6.9.  isascii
+
+isascii (c);
+
+Is a MACRO defined with  the #define statement.  Returns non-zero
+if c is an Ascii character, zero if not.
+
+6.10.  iscntrl
+
+iscntrl (c);
+
+
+MTB-689-03                                       C Runtime System
+
+Is a MACRO defined with  the #define statement.  Returns non-zero
+if c is a control character (delete char (177) or less than 040),
+zero if not.
+
+6.11.  isdigit
+
+isdigit (c);
+
+Is a MACRO defined with  the #define statement.  Returns non-zero
+if 'c' is digit, zero if not.
+
+6.12.  islower
+
+islower (c);
+
+Is a MACRO defined with  the #define statement.  Returns non-zero
+if 'c' is lower-case letter, zero if not.
+
+6.13.  isprint
+
+isprint (c);
+
+Is a MACRO defined with  the #define statement.  Returns non-zero
+if c is a printable character (040 through 176), zero if not.
+
+6.14.  ispunct
+
+ispunct  (c); Is  a MACRO   defined with  the #define  statement.
+Returns non-zero if c is a punctuation character, zero if not.
+
+6.15.  isspace
+
+isspace (c);
+
+Is a MACRO defined with  the #define statement.  Returns non-zero
+if 'c' is blank, tab or newline; zero if not.
+
+6.16.  isupper
+
+isupper (c);
+
+
+C Runtime System                                       MTB-689-03
+
+Is a MACRO defined with  the #define statement.  Returns non-zero
+if 'c' is upper-case letter, zero if not.
+
+                                                                  |
+                                                                  |
+6.17.  memccpy                                                    |
+                                                                  |
+char *memccpy (s1, s2, c, n)                                      |
+char *s1, *s2;                                                    |
+int  c, n;                                                        |
+Copy characters from s2 to s1, stopping after the first occurence |
+of the character c, or after n characters have been copied.       |
+                                                                  |
+                                                                  |
+                                                                  |
+6.18.  memchr                                                     |
+                                                                  |
+char *memchr (s, c, n)                                            |
+char *s;                                                          |
+int  c, n;                                                        |
+Returna  pointer to  the first  occurence  of  c in  the first  n |
+characters of s or null if c does not exist.                      |
+                                                                  |
+                                                                  |
+                                                                  |
+6.19.  memcmp                                                     |
+                                                                  |
+int memcmp (s1, s2, n)                                            |
+char *s1, *s2;                                                    |
+int  n;                                                           |
+Compares the first  n characters of s1 to s2 and  returns &lt; 0 (if |
+s1 is &lt; s2) or 0 (if s1 = s2) or &gt; 0 (if s1 &gt; s2).                |
+                                                                  |
+                                                                  |
+                                                                  |
+6.20.  memcpy                                                     |
+                                                                  |
+char *memcpy (s1, s2, n)                                          |
+char *s1, *s2;                                                    |
+int  n;                                                           |
+Copy n characters from s2 to s1 returning s1.                     |
+                                                                  |
+                                                                  |
+                                                                  |
+6.21.  memset                                                     |
+                                                                  |
+char *memset (s, c, n)                                            |
+char *s;                                                          |
+int  c, n;                                                        |
+Set the first n characters in s to c returning s.                 |
+
+
+MTB-689-03                                       C Runtime System
+
+6.22.  strchr
+
+char *strchr(s,c);
+char *s,c;
+Returns a pointer to the first occurance  of c in the string s or
+null if  c does not occur  in string s.  strchr  is equivalent to
+index in some verisons of C.
+
+6.23.  strrchr
+
+char *strrchr(s,c);
+char *s,c;
+Returns a pointer  to the last occurance of c in  the string s or
+null if c  does not occur in string s.   strrchr is equivalent to
+rindex in some versions of C.
+
+6.24.  strcat
+
+char * strcat(x,y);
+char *x,*y;
+Append y to x returning a pointer to the result.
+
+6.25.  strcmp
+
+int strcmp(x,y);
+char *x,*y;
+Lexigraphically compare  x and y returning an  integer value that
+describes their relationship.
+     x &lt; y  returns -1
+     x = y  returns 0
+     x &gt; y  returns 1
+
+6.26.  strcpy
+
+char * strcpy(x,y);
+char *x,*y;
+Copy y into x returning the result.
+
+
+C Runtime System                                       MTB-689-03
+
+6.27.  strlen
+
+int strlen(x);
+char *x;
+Return the length of the string.
+
+6.28.  strncat
+
+char * strncat(x,y,n);
+char *x,*y;
+int  n;
+Append at most n characters from y into x returning the result.
+
+6.29.  strncmp
+
+int strncmp(x,y,n);
+char *x,*y;
+int  n;
+Lexigraphically  compare at  most n  characters between  x and  y
+returning an integer value that describes their relationship.
+
+     x &lt; y returns -1
+     x = y returns 0
+     x &gt; y returns 1
+
+6.30.  strncpy
+
+char * strncpy(x,y,n);
+char *x,*y;
+int  n;
+Copies at most n characters from y into x returning the result.   |
+                                                                  |
+                                                                  |
+6.31.  toascii                                                    |
+                                                                  |
+int toascii (c)                                                   |
+int c;                                                            |
+Converts the inputed integer to an ascii character.               |
+                                                                  |
+                                                                  |
+                                                                  |
+6.32.  tolower                                                    |
+                                                                  |
+int tolower (c)                                                   |
+int c;                                                            |
+Converts the inputed character to its lower case equivalent.      |
+
+
+MTB-689-03                                       C Runtime System
+
+6.33.  toupper                                                    |
+                                                                  |
+int tolower (c)                                                   |
+int c;                                                            |
+Converts the inputed character to its upper case equivalent.      |
+
+
+C Runtime System                                       MTB-689-03
+
+7.  Storage Routines
+
+The standard Unix storage routines of malloc, calloc, realloc and
+free will  be implemented for Multics using  the standard Multics
+area manager.  This will limit  the maximum size of an allocation
+to  255K words -  50 words for  the area managers  overhead.  The
+Storage Routines are outlined below:
+
+calloc   free   malloc   realloc
+
+7.1.  calloc
+
+char * calloc();
+string = calloc(integer_x, integer_y);
+Return a pointer to enough clear  space (zeroed) to hold x copies
+of size y.  The storage is later freed via a call to 'free'.
+
+7.2.  free
+
+void free();
+free(ptr);
+Free  the space  previously allocated  at ptr.   The storage must
+have  been  allocated  via  the  'calloc',  'malloc' or 'realloc'
+routines.
+
+7.3.  malloc
+
+char * malloc();
+string = malloc(size);
+Returns a  pointer to allocated  space sufficient to  hold 'size'
+bytes.  The storage is later freed via a call to 'free'.
+
+7.4.  realloc
+
+char * realloc();
+string = realloc(oldloc, size);
+Re-allocate storage  returning a pointer to 'size'  bytes given a
+previously  allocated  pointer  'oldloc'.   `oldloc'  must  be  a
+pointer  to a non-freed  area of storage.   If `oldloc' has  been
+freed prior to the call to realloc the results are unpredictable.
+The storage is later freed via 'free'.
+
+
+MTB-689-03                                       C Runtime System
+
+NOTE:   The above  is a  redefinition of  the original  C routine
+'realloc'.   The original  routine reallocated  storage that  had
+just been freed.
+
+8.  Input and Output
+
+In C, some routines refer to  files that are indicated by integer
+values (file descriptor numbers) and some routines refer to files
+that are  indicated by pointers (file pointer  or file descriptor
+pointers).
+
+Unix, at it's basic level references files via a file descriptor.
+There  is a  maximum number  of these  descriptors available  per
+process (20).  Multics on the other hand uses a defined structure
+called the iocb block to allow references to segments.
+
+The FILE pointer type of C is a pointer to a defined structure of
+type FILE  which contains the  files descriptor number  and other
+associated information.  The routines  that perform file I/O with
+FILE pointers call a series of  base level routines with the file
+descriptor from the structure that they point to.
+
+Therefore Multics C will redefine  the iobuf structure to include
+a pointer to an iocb block so that the IO routines can access the
+standard Multics iocb block structure.                            *
+
+9.  General I/O Routines
+
+The following is a list of general I/O Routines.                  *
+
+exit  _exit  unlink
+
+9.1.  exit
+
+void exit(code);
+int code;
+Leave  main  procedure  and  close   all  files  opened  in  main
+procedure.  Set  C_exit_status_severity_ to 'code'.   `exit' will
+signal a  condition to be trapped  in main_ which will  reset the
+current environment and return the  passed status code unless the
+current level  of exectuion is 0.   See the MTB on  the Execution
+Environment (MTB 691) for details.
+
+
+C Runtime System                                       MTB-689-03
+
+9.2.  _exit
+
+void _exit(code);
+int code;
+Same as exit  except no files are closed.   Leave main procedure,
+setting  status variable  to 'code'.   Due to  the environment of
+Multics and  the structure of  the C environment  on Multics this
+routine will generate an error message.
+
+9.3.  unlink
+
+int unlink(filename);
+char *filename;
+Delete file 'filename'.  Returns  a zero if successful.  Although
+this  is a  Unix system  function it  will be  required by  the C
+language.   This will  operate similar  to the  delete command on
+Mutlics.
+
+
+MTB-689-03                                       C Runtime System
+
+10.  I/O using File Pointers
+
+These routines  do I/O on  files indicated by  file pointers.  By
+convention their are three special file pointers:  stdin, stdout,
+and  stderr.   (corresponding  to  user_input,  user_output,  and
+error_output)
+
+The following routines expect file pointers as their arguments or
+return file pointers as their output.
+
+clearerr      fopen       getc            scanf                   |
+fclose        fprintf     gets            setbuf                  |
+fdopen        fputc       getw            setvbuf                 |
+feof          fputs       getchar         sprintf                 |
+ferror        fread       printf          sscanf                  |
+feof          fscanf      putc            ungetc                  |
+fflush        freopen     putchar                                 |
+fgetc         fseek       puts                                    |
+fgets         ftell       putw                                    |
+findiop       fwrite      rewind                                  |
+
+10.1.  clearerr
+
+clearerr(fp); FILE *fp;
+
+Is a MACRO defined with  the #define statement.  Clears the error
+flag associated with the file pointed to by fp.
+
+10.2.  fclose
+
+int fclose(fp);
+FILE  *fp;
+Close the file pointed to by fp.
+
+10.3.  fdopen
+
+FILE *fdopen (fd,type);
+int  fd;
+char *type;
+Associates a stream with a file descriptor.  Where stream implies
+buffered IO.
+
+
+C Runtime System                                       MTB-689-03
+
+10.4.  feof
+
+int feof(fp); FILE *fp;
+
+Returns  non-zero  when  end-of-file  is  reached  on  input file
+pointed to by fp.
+
+10.5.  ferror
+
+int ferror(fp);
+FILE  *fp;
+Returns non-zero after an error occurs while reading/writing file
+pointed to by fp.  The error indication lasts until a clearerr is
+called.
+
+10.6.  fileno
+
+fileno (fp); FILE *fp;
+
+Is a MACRO defined with  the #define statement.  Returns the file
+descriptor associated with the file pointer.
+
+10.7.  fflush
+
+int  fflush(fp);
+FILE  *fp;
+Flush out any pending output on file pointed to by fp.
+
+10.8.  fgetc
+
+int fgetc(fp);
+FILE  *fp;
+Return a character/int from file pointed to by fp.
+
+10.9.  fgets
+
+char *fgets(line,MAXLINE,fp);
+char  *line;
+int   MAXLINE;
+FILE  *fp;
+Returns line.   Read at most MAXLINE-1 characters  into line from
+file pointed to by fp.
+
+
+MTB-689-03                                       C Runtime System
+
+10.10.  findiop                                                   |
+                                                                  |
+FILE *findiop ()                                                  |
+Returns a FILE pointer to the next free iobuf entry.              |
+
+10.11.  fopen
+
+FILE *fopen(filename,mode);
+char  *filename,*mode;
+Open a file named filename with modes mode returning a pointer to
+it.
+
+10.12.  fprintf
+
+int fprintf(fp,control_string);
+FILE  *fp;
+char  *control_string;
+Output  arguments under the  control of "control_string"  to file
+pointed to by fp.
+
+10.13.  fputc
+
+int fputc(c,fp);
+FILE  *fp;
+char  c;
+Output character 'c' into file pointed to by fp.
+
+10.14.  fputs
+
+int fputs(string,fp);
+FILE  *fp;
+char  *string;
+Output string to file pointed to by fp.
+
+10.15.  fread
+
+int fread(buffer,size,n,fp);
+FILE  *fp;
+char  *buffer;
+int   size,n;
+Read into buffer at most n items of size 'size' from file pointed
+to by fp.  Return the number of items actually read.
+
+
+C Runtime System                                       MTB-689-03
+
+10.16.  freopen
+
+FILE *freopen(filename,type,fp);
+char  *filename,*type;
+FILE  *fp;
+Returns  original value  of fp.   Closes file  pointed to  by fp.
+Opens  file "filename" with  mode "type" and  set fp to  point to
+this file.
+
+10.17.  fscanf
+
+int fscanf(fp,control_string);
+FILE  *fp;
+char  *control_string;
+Read from file pointed to by fp under control of "control_string"
+into  variables  located  by   the  pointer  arguments  following
+"control_string".  Returns the number of items successfully read.
+
+10.18.  fseek
+
+int fseek(fp,long_pos,origin);
+FILE  *fp;
+long  long_pos;
+int   origin;
+Seeks to a new position in file pointed to by fp.  Change current
+file position by long_pos  characters.  When origin=0 relative to
+file  start,  origin=1  relative  to  current  position, origin=2
+relative to end-of-file.  Returns a zero value when successful.
+
+10.19.  ftell
+
+long ftell(fp);
+FILE  *fp;
+Obsolete.  Returns the current position  in bytes of file pointed
+to by fp.
+
+10.20.  fwrite
+
+int fwrite(buffer,size,n,fp);
+FILE  *fp;
+char  *buffer;
+int   size,n;
+Output at most  n items of size 'size' from  buffer into the file
+pointed to by fp.
+
+
+MTB-689-03                                       C Runtime System
+
+10.21.  getc
+
+int getc(fp);
+FILE  *fp;
+Returns  the character/integer value  of the next  character read
+from file pointed to by fp.
+
+10.22.  getchar
+
+int getchar();
+Returns  the character/integer value  of the next  character read
+from standard input.
+
+10.23.  gets
+
+char * gets(string);
+char  *string;
+Read  a line  from standard  input into  string.  Returns string.
+Replaces newline character with null-character (end-of-string).
+
+10.24.  getw
+
+int getw(fp);
+FILE *fp;
+Gets the next word from the file.
+
+10.25.  printf
+
+int printf(control_string);
+char  *control_string
+Output  arguments to  standard output  using format  specified in
+"control_string".
+
+10.26.  putc
+
+int putc(c,fp);
+FILE  *fp;
+char  c;
+Output a character 'c' into file  pointed to by 'fp'.  Return the
+character.
+
+
+C Runtime System                                       MTB-689-03
+
+10.27.  putchar
+
+int putchar(c);
+char  c;
+Output a character 'c' to standard output.  Return the character.
+
+10.28.  puts
+
+int puts(string);
+char  *string;
+Output a string and a newline char to stdio.
+
+10.29.  putw
+
+putw(w,fp);
+FILE *fp;
+Putw writes the word w to the file fp;
+
+10.30.  rewind
+
+void rewind(fp);
+FILE *fp
+Resets the  file pointed to  by fp to  the begining of  the file.
+Reset  any error  flags set  for the  file and  flush the  buffer
+associated with the file.
+
+10.31.  scanf
+
+int scanf(string);
+char  *string;
+Reads  from standard  input assigning  to pointer  variable using
+format  specified  by  "control_string".   Return  the  number of
+values successfully read.
+
+10.32.  setbuf
+
+setbuf(fp,buf);
+FILE  *fp;
+char  *buf;
+Use  buf as the  I/O buffer used  by the file  pointed to by  fp.
+Note:   buf must  be at  least as  long as  the manifest constant
+BUFSIZ.
+
+
+MTB-689-03                                       C Runtime System
+
+10.33.  setvbuf                                                   |
+                                                                  |
+int setvbuf (fp, buf, type, size)                                 |
+FILE *fp;                                                         |
+char *buf;                                                        |
+int  type, size;                                                  |
+Use buf as the I/O buffer for the file pointed to by fp.  Set the |
+file buffer type to one of the following:                         |
+                                                                  |
+     IOFBF causes input/ouput to be fully buffered.               |
+     IOLBF  causes input/output to  be line buffered;  the buffer |
+     will  be flushed  when a  new line  is written  or when  the |
+     buffer is full, or if input is requested.                    |
+     IONBF causes input/output to be unbuffered.                  |
+
+10.34.  sprintf
+
+char *sprintf(string,control_string);
+char  *string,*control_string
+Format arguments under control of 'control_string' into string.
+
+NOTE:  Due  to the size difference between  pointers and integers
+this function will  return a character pointer and not  an int as
+is deifned in some documentation.
+
+10.35.  sscanf
+
+int sscanf(string,control_string);
+char  *string,*control_string
+Read   values  from   string  using   the  format   specified  in
+"control_string"  into  the  arguments  specified  by the pointer
+arguments.  Return the number of values successfully read.
+
+10.36.  ungetc
+
+char ungetc(c,fp);
+int  c;
+FILE  *fp;
+Sets c to be the next character read from file pointed to by fp.
+
+
+C Runtime System                                       MTB-689-03
+
+11.  I/O using File Descriptor Numbers
+
+The following routines  perform file I/O on files  indicated by a
+file descriptor number (int).  By convention file descriptors map
+onto file pointers (0 =&gt; stdin, 1 =&gt; stdout, 2 =&gt; stderr).
+
+close    creat    lseek    open    read    write
+
+11.1.  close
+
+int close(fd);
+int  fd;
+Close the file indicated by fd.  Return zero if successful.
+
+11.2.  creat
+
+int creat(filename);
+char  *filename;
+Create  a file  "filename" and  return a  file descriptor  to it.
+Although considered a part of  the operating system this function
+is required for C program to create a new file.
+
+NOTE:  This is different than  the standard definition but is how
+the routine has been implemented in System V.
+
+11.3.  lseek
+
+int lseek(fd,offset,origin);
+int  fd,origin;
+long offset;
+Seek to position 'offset' in  file fd.  When origin=0 position is
+relative  to  beginning  of  file.   When  origin=1  position  is
+relative to current position.  When origin=2 position is relative
+to end-of-file.
+
+11.4.  open
+
+int open(filename,mode);
+char  *filename;
+int   mode;
+Return a  file descriptor indicating file  "filename" opened with
+mode "mode".  mode(0,1,2) = (read, write, read_write).
+
+
+MTB-689-03                                       C Runtime System
+
+11.5.  read
+
+int read(fd,buffer,size);
+int  fd,size;
+char *buffer;
+Read  up to size  characters into buffer  from file indicated  by
+'fd' returning the actual number of characters read.
+
+11.6.  write
+
+int write(fd,buffer,size);
+int  fd,size;
+char *buffer;
+Write at most 'size' bytes from buffer into file indicated by fd.
+Returns the  number of characters actually  written, -1 indicates
+an error.
+
+12.  Miscellaneous Routines
+
+The  following miscellaneous  routines will   be added  to the  C
+Runtime Library.
+
+ctime     longjmp      sbrk     system      tempnam   time        |
+fork      mktemp       setjmp   tmpfile     tmpnam                |
+
+12.1.  ctime
+
+char *ctime(tvec);
+int tvec[2];
+Ctime  converts a  time as   returned by  the C  runtime function
+`time' into  a character string  representing that date  and time
+and returns a pointer to it.  The string has the form of "Sun Sep
+16 01:03:52 1978n0" where all the fields have a constant width.
+
+12.2.  fork
+
+fork();
+Fork  is  a  function  on  Unix  Systems  that  generates a child
+process.  On Multics  this routine will generate an  error at all
+times.
+
+
+C Runtime System                                       MTB-689-03
+
+12.3.  longjmp
+
+longjmp(env,val);
+jmp_buf env;
+int val;
+On Multics longjmp will perform a non-local goto to a label saved
+in  setjmp.  For  a complete  description see  the definition  of
+setjmp that follows.
+
+                                                                  |
+                                                                  |
+12.4.  mktemp                                                     |
+                                                                  |
+char *mktemp(template)                                            |
+char *template;                                                   |
+Mktemp replaces the  string pointed to by template  with a unique |
+name.  For Multics this will be  a shriek name.  The minimum size |
+required is  15 characters.  For a  more descriptive explaination |
+see unique_chars_ in the AG93 Manual.                             |
+
+12.5.  sbrk
+
+char *sbrk(size);
+int size;
+Sbrk usually is used by C programmers to gain free space in their
+heap area.  Sbrk extends the area  by the passed size and returns
+a pointer to  the beginning of this allocated  space.  On Multics
+this can be achieved by a  call to malloc and therefore sbrk will
+return the value of a call to malloc with the parameter size.
+
+12.6.  setjmp
+
+setjmp(env);
+jump_buf env;
+Non-local gotos in C are performed by a coordinated use of setjmp
+and longjmp.  Setjmp saves the  current Program Counter and Stack
+Pointer for refrence in longjmp  which restores the saved values.
+On Multics this will be done by saving a label value in setjmp of
+the  current location  and performing  a non-local  goto to  that
+label  in longjmp.   In this  way the  standard Multics non-local
+goto mechanism will be invoked.
+
+12.7.  system
+
+int system(string);
+char  *string;
+Execute command string returning a standard status code.          |
+
+
+MTB-689-03                                       C Runtime System
+
+12.8.  tempnam                                                    |
+                                                                  |
+char *tempanm (dir, pfx)                                          |
+char *dir, *pfx;                                                  |
+Tempnam generates a unique file name.  Tempnam allows the user to |
+specify what directory  is to be used.  If dir  is null the users |
+process directory  will be used.  If  pfx is non null  it will be |
+taken to be the prefix of the unique name generated.  If an error |
+occurs null will be returned.                                     |
+                                                                  |
+                                                                  |
+                                                                  |
+12.9.  tmpfile                                                    |
+                                                                  |
+FILE *tmpfile()                                                   |
+Tmpfile creates  a temporary file  opened for update  ("w+").  If |
+the file can not be opened  a null is returned otherwise the file |
+pointer  is returned.  The  file will be  created in the  process |
+directory on Multics.                                             |
+                                                                  |
+                                                                  |
+                                                                  |
+12.10.  tmpnam                                                    |
+                                                                  |
+char *tmpnam (s)                                                  |
+char *s;                                                          |
+tmpnam  will  generate  a  file  name  using  the  users  process |
+directory as  a prefix.  The name  will be store on  the heap and |
+any further invocations of tmpnam  will destroy the stored value. |
+The address  of the stored  name will be  returned.  If s  is non |
+null the  name will be store  in s.  s should  be large enough to |
+store a full Multics path name (64 characters).                   |
+
+12.11.  time
+
+long time(tloc);
+long *tloc;
+Time  returns  the  number  of  seconds  that  have elapsed since
+00:00:00 01  Jan 1970 GMT.   If tloc is  not null a  copy is also
+stored at *tloc.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

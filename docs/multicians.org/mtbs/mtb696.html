@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics Cover Channel Analysis</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Covert Channel Analysis.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+MULTICS TECHNICAL BULLETIN 696                             page 1
+
+To:       Distribution
+
+From:     Keith Loepere
+
+Date:     December 7, 1984
+
+Subject:  Covert Channel Analysis
+
+     A covert  channel (relative to system  security) is a mecha-
+nism through which information may  flow between two processes of
+different authorizations.  Needless to  say, such channels are to
+be avoided.
+
+     This MTB discusses covert channels.  The discussion includes
+a  description of  what are covert  channels, where  do they come
+from,  and  how  to deal  with  them.   It does  not  discuss any
+specific  covert channels  in Multics;  it only  describes covert
+channels in general.
+
+     This description  is being provided  as a base  of reference
+for upcoming MCRs  that propose to deal with  the covert channels
+in Multics.
+
+     Comments on this MTB should be sent to the author:
+
+          Keith Loepere (Loepere.Multics)
+
+     or via the B2 forum.
+
+_________________________________________________________________
+
+Multics  Project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics Project.
+
+
+
+OVERT DATA TRANSMISSION CHANNELS
+
+     There are many ways that data (information) gets transmitted
+from  one  process to  another  in a  computer system.   The most
+obvious  way  is the  direct transmission  of data  through files
+(actually their  disk or memory  equivalent).  In this  case, one
+process writes data into a file.  Another process then reads this
+data from the file.  This  means of data transmission is normally
+the fastest available, since the movement of data into and out of
+files runs at full processor speed.
+
+     Other  means  of  transmission  exist  other  than  the file
+system.  A process may write data to a tape which another process
+may read.  A process may  attach a communication line which feeds
+back into the system, into a different process.  And so on.  Each
+of  these channels  involves identifiable  objects that  form the
+communication medium (the files/disk, tapes, communication lines,
+etc.).
+
+CONTROLLING OVERT DATA TRANSMISSION CHANNELS
+
+     In an  operating system that  wishes to control  the flow of
+data between processes, it is necessary to establish restrictions
+on the use  of these overt channels.  It  is necessary to require
+that the "receiver" process in all  of the above cases is granted
+permission to see the data created by the "transmitter".
+
+     Within  a  system that  contains  data of  multiple security
+access  classes, this  is especially important.   The system must
+ensure  that data  of one  access class  is not  passed through a
+transmission  channel from  a process  of one  authorization to a
+process of a lower authorization.
+
+     These  overt  channels involve  the usage  of some  (more or
+less)      physically       identifiable      storage      device
+(memory/disk/tape/communication lines/etc.).   For these physical
+data transmission paths, the ability to restrict the transmission
+of  data between  processes of  different authorizations involves
+basically adding an access class  "label" to the data by labeling
+the physical medium.   Files are marked with the  access class of
+the  data contained  therein.  Tapes are  known to  the system as
+having a certain access class.  A  communication line in use by a
+process is marked with an  access class equal to the transmitting
+process' authorization.   Another process whose  authorization is
+less  than  this  access  class  is  not  allowed  to  access the
+file/tape/communication line/etc.
+
+COVERT DATA TRANSMISSION CHANNELS
+
+     A  covert  channel  is  a  channel  that  passes information
+between two processes in a non-obvious way.  That is, it does not
+
+
+
+utilize a  system mechanism that  is intended for  data transmis-
+sion.  The idea is to trick the operating system into passing the
+desired data.  Using covert channels  involves finding a piece of
+information (defined very broadly) within  the system that can be
+written and read  by processes and is not  "labeled" as to access
+class.
+
+Storage Covert Channels
+
+     A  storage  covert  channel  operates by  using  a  piece of
+storage  (again defined  broadly) within  the system  that can be
+affected  (set) by  a process  and sensed  (read) by  a different
+process,  independent  of  the  authorizations  of  the processes
+involved.
+
+     The classic storage covert channel involves the ability of a
+process to fill some system  wide resource (possibly a table).  A
+lower  authorization process  can determine  if this  resource is
+full.  For example, a system_high  process decides to either fill
+(use up the last record) or  not fill, depending on whether a "1"
+or  a "0"  bit is  to be transmitted,  a sharable  disk pack that
+contains data not likely to  be referenced by other processes.  A
+system_low process can sense whether the disk pack is full or not
+by trying to request a new record from that disk itself.  In this
+way, a  system_high process may transmit  one bit at a  time to a
+system_low process.
+
+     Another classic  example involves the interlocks  on a file.
+Assuming that  the system allows  certain files to  be opened for
+exclusive use,  a process may  transmit a bit of  data to another
+process by  deciding to open,  or not, a file  for exclusive use.
+Another  process can  sense this  exclusitivity by  attempting to
+open the file itself.
+
+Timing Covert Channels
+
+     A  timing  covert  channel  involves  transmitting  data  by
+utilizing  the timing  of system operations.   The use  of such a
+covert channel  involves the ability  of a process  to perform an
+operation  which causes  some operation performed  by a different
+process to  take a varying  amount of time,  depending on whether
+the sending process is performing its operation or not.
+
+     The  classic  timing covert  channel involves  system paging
+rate.  A system_high process either  takes a large amount of page
+faults or decides  not to do so.  A  system_low process can sense
+this change in system paging rate by how long it takes it to take
+a  page fault  itself.  This  channel is  very noisy,  of course,
+since all  system processes are taking  page faults.  However, by
+using  this  channel during  a period  of otherwise  light system
+
+
+
+load,  and by  using fancy  encoding methods,  a usable,  if low,
+bandwidth can be obtained.
+
+THE SIGNIFICANCE OF COVERT CHANNELS
+
+     One might argue that covert  channels are not of interest to
+system security.  Overt channels must be removed from the system,
+since they may be used accidentally.  That is, physical transmis-
+sion paths  must be labeled with  the access class so  that it is
+not possible to accidentally (or purposefully) leave data where a
+lower authorization  process could read it.   Covert channels are
+not as interesting, since a process must be actively transmitting
+data, and another  process must be running to  actively sense the
+information.  It would seem that  such an occurrence could not be
+an accident.
+
+     This  is  precisely the  point.  It  is conceivable  that an
+"untrusted" individual has created  a "trojan horse" program.  (A
+"trojan  horse" program  is an application  program that performs
+some  useful  function, but,  within which  is concealed,  by its
+author,  some  code that  is designed  to steal  information from
+anyone who uses the program and pass it to the program's author.)
+A user  at some high  authorization would then  run this program.
+The  program's author  (at some  lower authorization,  since most
+programs, even on secure systems,  are probably written by people
+with comparatively  low clearances) would  then run a  program to
+sense  the  transmitted  data.   A "trojan  horse"  program could
+perform its  intended function and  spend its spare  time reading
+classified  files (files  to which the  higher authorization user
+has  access, since  it is  the higher  authorization user  who is
+running the program) and transmitting the files' contents through
+covert channels to the program's author.
+
+     Thus, it is  desirable to limit the number  and bandwidth of
+covert channels within the  system.  Indeed, limiting these chan-
+nels is a B2 requirement.
+
+GENERIC CLASSIFICATION OF COVERT CHANNELS
+
+     Aside from classifying covert channels  as to a storage or a
+timing channel  (which can sometimes be  difficult), covert chan-
+nels may be broken down into other classifications.
+
+     First of all,  these channels can be broken  down by ease of
+use.  If, to use a channel, a very difficult set-up must be used,
+requiring  the establishment  of very  carefully created objects,
+especially  objects  that  the process  can  not be  sure  of the
+required  contents,  this channel  becomes  unlikely to  be used.
+First  of all,  this set-up  becomes easier  to spot  (and stop).
+Also, elaborate  set-up tends to imply  lower bandwidth channels.
+
+
+
+Covert channels are broken down into  groups by ease of use, from
+unlikely to be usable to certain to be usable.
+
+     A second classification for covert channels is by bandwidth.
+For  these purposes,  covert channels  are broken  down into four
+main groups.  The groups are:  &lt; 1 bps, 1-10 bps, 10-100 bps, and
+&gt; 100 bps  (old teletype speed).  These groups  imply an ordering
+of  the covert  channels into groups  of channels  that pass more
+information  (are  more of  a  security violation)  and therefore
+require a greater response on our part to resolve.
+
+GENERAL RESOLUTION OF COVERT CHANNELS
+
+     Each of the four  groups of channels (sorted bandwidth-wise)
+has a different requirement for being dealt with, relative to the
+B2 requirements.
+
+     A covert channel  that has a bandwidth of &gt;  100 bps must be
+removed,  or  made  to  have  a  bandwidth  that  is  in  a lower
+classification.
+
+     A covert channel that has a  bandwidth of 10-100 bps must be
+removed, made to have a bandwidth  that is in a lower classifica-
+tion,  or  detected  by  the  system,  with  the  system auditing
+attempted uses of this channel.
+
+     A covert  channel that has  a bandwidth of 1-10  bps must be
+removed, made to have a bandwidth  that is in a lower classifica-
+tion, detected by the system,  with the system auditing attempted
+uses of  this channel, or  documented as a covert  channel in the
+system security administrator's manual.
+
+     A  covert channel  that has  a bandwidth of  &lt; 1  bps may be
+ignored.
+
+     Thus, the  possible choices for resolving  a covert channel,
+depending on its bandwidth are:
+
+     - remove the channel
+
+     - lower the bandwidth of the channel
+
+     - audit attempted uses of the channel
+
+     - document the existence of the channel
+
+     - ignore the channel
+
+
+
+Removing Covert Channels
+
+     When we say  that we have removed a  covert channel, we mean
+that the  system mechanism used  to transmit information  in this
+way is made to be no longer utilizable in this way.
+
+     Consider  the example  of detecting  the fullness  of a disk
+pack.  If each process using the  disk pack is given its own disk
+space limit, and the sum of all of the assigned disk space limits
+is not greater than the space limit for the entire pack, then the
+filling  of the  assigned area  of a pack  by one  process is not
+detectable by another process.  Thus, this channel can be removed
+by administrative controls on disk space allocation.
+
+Lowering the Bandwidth of Covert Channels
+
+     Some  covert  channels  may  be  resolved  by  lowering  the
+bandwidth  of the  channel.  Sometimes this  involves making sure
+that a  user cannot utilize  the particular system  mechanism too
+often.  Often, lowering the bandwidth means making the results of
+certain system operations less predictable, that is, noisier.  If
+a given covert  channel is made to be  noisy, transmitting a good
+signal requires more bits, effectively reducing the bandwidth.
+
+Auditing Attempted Uses of Covert Channels
+
+     Auditing  attempted uses  of a covert  channel means exactly
+that.   However,  this  method  of  resolution  is  sometimes not
+usable.
+
+     First  of  all, if  the event  that signals  transmission or
+reception of data through the channel occurs often, the volume of
+audit messages may  become excessive (to the point  of making the
+system uselessly slow).
+
+     Also,  it  is necessary  to  sense from  the audit  log real
+attempted uses  of a covert  channel.  If the  event that signals
+transmission or reception of data through a covert channel occurs
+in the normal course of system events, it will not be possible to
+tell a valid  occurrence of the event from  an occurrence that is
+part of the utilization of the covert channel.
+
+     Consider  the  example  involving  filling  the  disk  pack.
+Attempts  to ask  for space  on a  completely full  disk pack are
+rare.  Once one  finds a pack full, one does  not tend to ask for
+space on it  again (at least not right  away).  Thus, seeing many
+messages  to the  effect of "user  X couldn't  allocate some disk
+space" in a row within the log would be suspicious.  This channel
+would  be a  good candidate  for resolution  by auditing,  if its
+bandwidth were in the right range.
+
+
+
+     Now consider the page  fault based covert channel.  Auditing
+all page faults, or even all cases  of a process' taking a lot of
+page  faults, would  not work.   Page faults  occur too  often in
+normal use to be suspicious within an audit log.  It would not be
+possible to sense an attempted use of the covert channel from the
+log.
+
+Documenting the Existence of Covert Channels
+
+     Some  covert channels  may be  simply documented.   They are
+such  that  we  are  need not  do  anything  explicitly  to them.
+However,  a security  administrator would  like to  know of their
+existence, so that programs could  be examined for potential uses
+of them.
+
+THE COVERT CHANNEL STUDY
+
+     For  any given  system, several of  those knowledgeable with
+the system's internals  are sealed in a room  and made to examine
+the various system mechanisms.  Each person proposes ideas on how
+each  mechanism  may be  used for  covert channel  purposes.  The
+other people present  then tell that person how  stupid the ideas
+are.   (This  process  is  known  as  brainstorming.)   After the
+violence subsides,  the ideas are  added to the  potential covert
+channel  list.   This  continues  until  a  large  list  of ideas
+(hypotheses) is generated.
+
+     Each hypothesis is further tested (researched), to determine
+the  ease of  use of the  channel (including  whether the channel
+really exists).   An estimated bandwidth  is calculated.  Further
+research suggests  potential methods to resolve  the covert chan-
+nel.
+
+     This analysis  was done for Multics.   Future MCRs will deal
+with  those  covert channels  that were  discovered to  exist and
+whose resolution requires a change to the system.
+
+METHODS FOR RESOLVING CHANNELS
+
+     There  are   as  many  methods   for  resolving,  preferably
+removing,  covert channels  as there  are methods  for exploiting
+covert  channels.   However, they  may be  grouped into  types of
+fixes, just  as the channels themselves  may be grouped according
+to the generic type of system mechanism that is exploited.
+
+Controlling Resource Exhaustion
+
+     By far, the most common  type of covert channel involves the
+ability  to  exhaust  a  system-wide  resource.   One  method  of
+
+
+
+removing  these  channels  is  to make  the  resource effectively
+inexhaustible.  The more common method  is to not allow a process
+to exhaust the resource (or its  share of that resource) in a way
+visible to  anyone else at  a different authorization.   That is,
+the process must  be limited so that what  that process uses does
+not affect what is left  for other users.  This normally requires
+giving the  process its own, preassigned,  exclusive share of the
+resource.  Resolving  the exhaustion of disk  space through quota
+restrictions is a common example of this method of resolution.
+
+Slowing Down a System Function
+
+     If a covert  channel involves using a system  mechanism in a
+way  that  can not  be removed  or audited,  it may  sometimes be
+slowed  down.   This is  an acceptable  solution only  if several
+conditions are met.   1) The cases in which  the system mechanism
+are  being slowed  must cover  the cases  in which  the mechanism
+could be  used for a covert  channel.  2) The cases  in which the
+system mechanism are being slowed must be rare.  3) The mechanism
+must be slowed  in a way so as  to not slow down the  rest of the
+system.  (That  is, it is  not acceptable to simply  loop to wait
+for time to go by.)
+
+Reducing the Accuracy of System Responses
+
+     Many covert channels involve  detecting the occurrence of an
+operation  performed  by  the  higher  authorization  process  by
+requesting from  the system the  status of some  object or opera-
+tion.   If the  status being requested  is not  used for critical
+uses, it may be possible to simple make the status less accurate.
+For example, if the mechanism involves  asking for the color of a
+certain  leaf falling  from a  tree, it  may be  better to return
+"orange" as opposed to  differentiating between "burnt amber" and
+"rust".  In  this way, fewer bits  of information are transmitted
+through each use of the mechanism.
+
+Restricting the Use of a Mechanism
+
+     If the mechanism  used for the covert channel  is not really
+needed by normal users, it can  simply be restricted for use only
+by privileged  users.  This might  involve disallowing requesting
+the system to perform  certain operations or disallowing requests
+to determine the status of certain system-wide operations.
+
+     Another method of restricting a mechanism is to restrict the
+objects  that  a user  may  use it  upon.   Consider the  case of
+filling the disk pack.  If the system allowed any given disk pack
+to be  used only for data  of the same access  class, this covert
+channel  could not  be used  to transmit data  to a  process of a
+different authorization.
+
+
+
+Restructuring the Mechanism
+
+     Some perfectly  reasonable system mechanisms can  be used to
+transmit data.   If it is  the method of operation  of the system
+mechanism  that  allows  another  process  to  sense  that  it is
+operating,  a change  of the method  of operation  may remove the
+covert  channel.   For example,  if, when  the system  performs a
+certain operation it causes many lockings of some system table or
+resource  to occur  (that can be  sensed), redo  the mechanism to
+restructure the lockings.
+
+Making System Operations More Random
+
+     Some covert channels involve the fact that the system always
+does  certain things  in the same  way or order.   In some cases,
+predictable is  undesirable.  For example, if  the method of disk
+space allocation is known and  predictable, and it is possible to
+sense  the placement  of objects  on disk,  a covert  channel can
+exist.   The  covert  channel  would consist  of  having  a lower
+authorization process request a unit  of disk space and ask which
+unit  was received.   A higher  authorization process  would then
+request, or not,  a unit of disk space.   The lower authorization
+process then requests another unit  of disk space.  If disk space
+allocation is  predictable, then the  lower authorization process
+can  sense  the  possible request  of  disk space  by  the higher
+authorization  process depending  on whether  the second  unit of
+disk space given to the lower authorization process is the "next"
+unit after the first one  given.  By making disk space allocation
+more  (literally) random,  it becomes  harder to  use the channel
+(makes the channel noisier) and reduces the bandwidth.
+
+SUMMARY
+
+     Covert  channels  are  a  means by  which  tricky  users can
+violate system security.  In our continued quest for B2, any such
+channels must be dealt with.  The changes we will make to Multics
+to deal with our channels will appear soon in future MCRs.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

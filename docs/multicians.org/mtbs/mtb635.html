@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-635</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-635: Management of Large Physical Disk Drives -- an Overview.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-635
+Disk Volumes
+
+To:       Distribution
+
+From:     Benson I. Margulies
+
+Date:     10/19/83
+
+Subject:  Management of Large Physical Disk Drives -- an Overview
+
+1 ABSTRACT
+
+          This  MTB  describes  a  new  design  for the
+          management  of physical  and logical volumes,
+          intended to  support larger devices  than can
+          be supported today.  This effort is necessary
+          to offer a better administrative interface on
+          3380 class  devices, and to  support the next
+          generation of disks after that at all.
+
+          Readers of  this MTB should  be familiar with
+          the   existing  disk   DIM,  physical  volume
+          management,  and  logical  volume  management
+          subsystems, at least in broad outline.
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Margulies.Multics on either MIT Multics or System M.
+
+via telephone:
+   (HVN) 261-9333, or
+   (617) 492-9333
+
+or  via  the   &gt;udd&gt;m&gt;meetings&gt;Disk_Support.forum  (disks)  forum
+meeting on System M.
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+Multics Technical Bulletin                                MTB-635
+Disk Volumes
+
+2 INTRODUCTION
+
+There  are  two  problem  areas  in  storage  system  disk volume
+management.   The first  is administrative.   When storage system
+volume management was designed for  NSS (the new storage system),
+disk drives  were small.  The goal  was to relieve administrators
+of  the need  to divide  up their  storage systems  into pools of
+quota which would fit on a DSU190.  The solution was to construct
+logical volumes out of multiple physical volumes.
+
+Today, the situation is reversed.  Typical disk drives are so big
+that  they  cannot be  assigned  to a  single functional  pool of
+quota.   The  administrative  problem is  further  complicated by
+FAMIS, which  plans to offer  a disk access method  that does not
+use storage  system segments.  To dedicate  an entire 3380 device
+to a database, or even a  series of databases, is an unreasonable
+restriction.
+
+Further, all  of the drives available  when volume management was
+designed had  removable packs.  The  changes made to  support the
+5xx   devices  made   the  least   changes  possible   to  handle
+non-removable  packs.  Now,  when more  and more  sites have only
+non-removable packs, the assumption  of removability makes for an
+unreasonably clumsy administrative and operational interface.
+
+The  second  problem  is   one  of  implementation.   Within  the
+supervisor, storage system records are addressed by record number
+within  the  physical volume.   There  are currently  17  bits of
+record number available in several crucial data structures.  This
+is not enough to represent all the records on the next generation
+of disk drive  after the 3380.  A design is  needed that not only
+finds  enough bits  for this new  generation of  disk drives, but
+does not require us to repeat the exercise every few years.
+
+This  MTB  offers  a  description   of  the  issues  involved  in
+redesigning disk  support, and an initial  overview of a suitable
+design.   Once these  general features  of the  design are agreed
+upon, future MTB's can address the details.
+
+Tom Oke  (of the U. of  Calgary), has made an  extensive study of
+the  design  of the  disk  DIM, proposing  (and  implementing) an
+alternative  strategy  for queueing  and seek  optimization.  The
+redesign  of  disk  support  proposed  here  is  the  appropriate
+framework for  an implementation of  Oke's design.  His  paper on
+the disk DIM is attached to this MTB as an appendix.
+
+
+MTB-635                                Multics Technical Bulletin
+                                                     Disk Volumes
+
+3 ISSUES TO BE ADDRESSED
+
+The preceeding section listed the problems with disk support that
+compel a new design.  This section shows those issues in a little
+more detail, and also describes some other, less urgent, problems
+that can be addressed at the same time.
+
+3.1 The Disk DIM
+
+The disk DIM  is the lowest layer of  disk support.  Its contract
+is to  take a Physical  Volume index (PVTX) and  a Multics record
+number or sector number and do the necessary I/O to read or write
+it.  It is the only program  with knowledge of the translation of
+a  PVTX to  a device number  and of  a record number  to a sector
+number.   It  is  responsible  for  seek  optimization  and error
+recovery.  The following subsections describe changes that should
+be made in this area:
+
+3.1.1 MORE SECTORS
+
+The disk DIM's queue entries currently are completely packed, and
+have 22 bits available to record a sector number.  They should be
+restructured  to have  enough sector bits  to cover  the next few
+generations (doubling in capacity) of disk drives.  Note that the
+disk queue  is only used  by the disk  DIM, so that  a occasional
+change in format to get more sector bits is not unreasonable.
+
+3.1.2 BIGGER SECTORS
+
+All Multics storage system disk I/O  is currently done in 64 word
+sectors.  This has a number  of problems.  First, it inflates the
+number of bits needed to describe the desired sector.  Second, on
+writes   it   requires   the   controller   hardware   to   do  a
+read-alter-rewrite sequence.  It is not  clear that we can depend
+on this feature being available in the indefinite future.
+
+Note,  though,  that  to  use  bigger  sectors  we  will  have to
+reorganize  the VTOC.   Thus while  support for  512 word sectors
+should be added to the disk  DIM, support for 64 word sectors may
+not be removable just yet.
+
+3.1.3 BETTER QUEUEING AND LOCKING STRATEGY
+
+Tom  Oke's paper  describes this  issue in  complete and glorious
+detail and is attached to this MTB.
+
+
+Multics Technical Bulletin                                MTB-635
+Disk Volumes
+
+3.1.4 DIFFERENT HARDWARE CONNECTABILITY
+
+IBM 3380 subsystems will not  support the current Multics concept
+of a  subsystem, since the  paths to disk  drives are differently
+organized.  To get full performance out of these disks we have to
+make our configuration and seek optimization more complex.
+
+3.1.5 ERROR RECOVERY
+
+The existing error recovery  strategy has three problems.  First,
+it does  not have knowledge of  controllers, adaptors and logical
+channels.   All it  can do  in a "bad  path" error  is delete the
+channel, which may  not solve the problem.  Second,  it can print
+tremendous  volumes  of  messages  on the  system  console, which
+brings  the  system  to  a standstill.   Third,  its  handling of
+offline disks is primitive.  If  a process detects a disk offline
+while it has a crucial paged system lock locked, it will hold the
+lock until the disk comes back online.
+
+3.1.6 FAMIS SUPPORT
+
+The  disk  DIM  currently  multiplexes disks  amongst  two access
+methods,  VTOC I/O  and Paging I/O.   A third is  being added for
+Bootload Multics, though it is effectively just Paging I/O with a
+different  posting mechanism.   The first  design decision  to be
+made is how to support  further access methods.  One possiblility
+is a  general scheme resembling io_manager,  in which each access
+method would  register itself, presenting  an interrupt procedure
+and  receiving a  handle.  The other  possibility is  to add each
+access  method to  the disk  DIM individually.   While the second
+approach  is less  modular, it  allows seek  optimization and the
+like to take the particular access method into consideration.
+
+With either design,  it is important that access  methods be able
+to  make  effective  use  of  prior  knowledge  of  their  access
+patterns, by reading ahead or pre-seeking.
+
+3.2 Page and Segment Control
+
+In page  and segment control,  there are two issues  that will be
+addressed.  First, any change in the  VTOC format to use 512 word
+sectors will be reflected here.  Second, the problem with offline
+disks described  above must be  addressed here as well  as in the
+disk DIM.
+
+
+MTB-635                                Multics Technical Bulletin
+                                                     Disk Volumes
+
+3.3 Disk Administration
+
+3.3.1 DIVIDING UP STORAGE INTO SMALLER CHUNKS
+
+A  3380,  or even  a 451,  is too  large  a chunk  of disk  to be
+assigned  to an  autonomous administrator  in many circumstances.
+It is necessary to allow sites  to dedicate portions of a disk to
+different uses.
+
+3.3.2 THE ADMINISTRATIVE INTERFACE
+
+The current "three ring circus" command (xxx_volume_registration)
+are clumsy, confusing, and only  work in the initializer process.
+We will design something far easier to use.
+
+3.3.3 "SWEET SPOT" ALLOCATION
+
+A study has shown that 10% of  the disk storage at a typical site
+accounts  for 90%  of the disk  accesses.  This  suggests that it
+would be worthwhile to  allocate the per-process information (the
+10%)  in the  middle of  the disk  by default,  and the permanent
+information on the outside.   A more sophisticated strategy would
+be  to  try  to  automatically migrate  segments  back  and forth
+between "high use" regions and "low use" regions.
+
+Note, also, that the VTOC is  a popular region, and would benefit
+from this treatment.
+
+3.3.4 ALTERNATE TRACK MANAGMEMENT
+
+This area  effects the disk  DIM and page and  segment control as
+well.  Current  support of alternate  tracks is minimal  at best.
+It is excruciatingly difficult to clear  all of the data off of a
+track so that an alternate can be assigned.  We make no effort to
+automate  the process  of detecting  a failing  track, inhibiting
+allocation  of  new  pages  on  it,  and  moving  existing  pages
+elsewhere.  As disk drives get  bigger and fewer, requiring sites
+to do  extensive tape saving  in order to  do routine maintenance
+becomes less and less reasonable.
+
+4 THE PROPOSED DESIGN
+
+This  section is  a sketch  of a  proposed design,  followed by a
+discussion of resource requirements and phasing possibilities.
+
+
+Multics Technical Bulletin                                MTB-635
+Disk Volumes
+
+4.1 Disk I/O
+
+The disk DIM will be reimplemented to use Oke's queueing strategy
+and address the other issues described above.
+
+4.2 Volume Organization and Management
+
+There will be  a new layer of organization  in volume management.
+Physical  volumes  will  be  divided into  one  or  more "logical
+regions",  and logical  volumes will be  constructed from logical
+regions, rather than physical volumes.  Record addresses that are
+currently  interpreted as  offsets within a  physical volume will
+become offsets within a logical  region.  A logical region may be
+administratively assigned to some  storage system logical volume,
+or to some  other disk access method, such  as FAMIS.  The change
+will be  largely transparent to  page and segment  control.  They
+will  continue   to  work  with  (pvtx,   vtocx,  record  number)
+addresses,  and the  disk DIM  will map  the PVTX  to the correct
+physical device.
+
+Bad track information will be maintained, so that records for bad
+tracks can be assigned to  place-holder vtoces until an alternate
+can be  assigned.  Track formatting  algorithms will be  coded in
+Multics (rather  than just in  T&amp;D) to allow  automatic alternate
+assignment.
+
+4.3 Administrative Interface
+
+Disk  administration  will  be  a  subsystem  accessible  in  any
+administrator's process.  The design  goals of this subsystem are
+to make it easy to specify the usual layout of a disk pack, while
+offering the  option of more complicated,  specialized cases.  In
+particular,  any  limitation in  the  maximum size  of  a logical
+region  will  be hidden  by the  administrative software.   If an
+administrator requests a logical region too large for the current
+software, multiple logical regions will be defined transparently.
+
+A   video   system  application   will  be   used  to   make  the
+administrative subsystem easy to use.  A graphical representation
+of the  disk pack will be  shown in one window  while requests to
+change the layout will be accepted in the other.
+
+4.4 Volume Dumper
+
+The volume dumper and reloader  will be made knowledgeable of the
+logical region  strategy.  Further, the volume  dumper will start
+
+
+MTB-635                                Multics Technical Bulletin
+                                                     Disk Volumes
+
+dumping information  in the pack other  than VTOCE's and records,
+like bad track lists, partitions, and the line.
+
+4.5 Disk Format
+
+This  design requires  changes to  the disk  layout.  The obvious
+change  is to  replace the  partition map  with a  map of defined
+logical  regions.  However,  this more complex  organization of a
+pack  will  make  it  more  vunerable  to  damage  to  the label.
+Therefore, the basic label will  be recorded in several places on
+the pack.  This  will reduce the chances of  data loss.  To avoid
+another flag  day like that  for record stocks,  the current disk
+format  will  be supported  for  several releases  after  the new
+format is released.
+
+5 IMPLEMENTATION CONSIDERATIONS
+
+This  design is  clearly more than  we can implement  in a single
+release cycle.   Even if the resources  were available, the debug
+and  qualification  effort involved  in reimplementing  all these
+things at once would be tremendous.
+
+The design divides up into a number of disjoint phases.
+
+5.1 Disk DIM
+
+Reimplementation  if the  disk DIM  is a  self-contained project.
+Any  changes to  its interfaces can  be trivially  tracked in its
+callers.  However,  the new features should  be thoroughly tested
+with test stubs  rather than waiting for the  following phases to
+exercise them.
+
+When this phase is done, the system will:
+  *  have far better disk performance (see Oke's paper),
+  *  be able  to support the  FAMIS access method  (for an entire
+     disk),
+  *  will have better error recovery,
+  *  and  be   able  to  support   3390  drives  in   an  interim
+     compatability  mode  in which  Multics software  splits each
+     3390 actuator into two "devices."
+
+This project is  a person-year, assuming that 4  to six months of
+Tom Oke are available for the disk DIM proper.
+
+
+Multics Technical Bulletin                                MTB-635
+Disk Volumes
+
+5.2 New Volume Format I
+
+In  this phase,  the new volume  layout is used  to transform the
+current partition strategy into a set of logical regions.  All of
+hardcore  logical volume  management is converted  to the logical
+region design.  The "three ring  circus" is gutted.  However, the
+current administrative interface  is preserved.  Multiple logical
+regions  on  a  device are  not  yet  supported.  This  is  a one
+person-year project.
+
+5.3 New Volume Format II
+
+In this final phase, the administrative interface is implemented.
+Automatic creation  of logical regions  is implemented.  Multiple
+logical region support is announced.  This is a 3 month project.
+
+Note that  these phases do not  necessarily correspond to release
+boundaries.  In particular, the latter  two phases may well be in
+a single release.  The time estimates here are generous, allowing
+for   a   good  deal   of   test  exposure,   qualification,  and
+documentation.
+
+
+MTB-635                                Multics Technical Bulletin
+                                                     Disk Volumes
+
+                  Disk System Modification MTB
+
+                                Tom Oke
+                                January 12, 1983
+
+ABSTRACT
+
+     This  MTB  describes  a  three  phase  modification  to  the
+existing  Multics  disk  management  system.  The result of these
+modifications  will be a net decrease in the processor and system
+overheads necessary to manage the disk system, and a net increase
+in the  throughput and responsiveness of the computer system as a
+whole.
+
+     The  total  project  is  broken into three sub-phases.  Each
+sub-phase  is  necessary to supply groundwork and background upon
+which  to  base  the next phase, but each phase has its own goals
+and  benefits.   It is possible to halt the project at completion
+of  any  phase  and  have  a  functional  system to that level of
+support.   Phase  One  removes  fixed  limitations  from the disk
+sub-systems, provides better utility with the same resources, and
+permits  full  utilization  of  the  channel  capabilities of the
+hardware.   Phase  Two  reduces  locking  and queueing overheads,
+permits   on-cylinder  optimizations,  and  better  metering  and
+statistics.   Phase  Three introduces an efficient dynamic system
+optimizer  aimed  at  optimizing  total  system resources as they
+apply  to  the storage system to achieve better system throughput
+and  responsiveness  and  to  dynamically  manage these resources
+according  to  site  defined  optimization  desires  (effectively
+stated as simple desire rules).
+
+     This  MTB  outlines  the  conceptual  basis for these design
+modifications,  and  the  expected  benefits of each phase of the
+project.   Each  phase  is  outlined  in  terms  of reason, cost,
+benifit,  and  expended  manpower.  Much of the work necessary to
+implement  PHASES  ONE  and  TWO  has already been done on an MR7
+level  of  the  disk  system  software, but this would have to be
+forward-fitted  to  the MR10.2 level in order to abe useful.  All
+work  necessary  to  implement  the  changes could be done on the
+Calgary  system  and  then moved to Phoenix for final integration
+checkout.
+
+PREMISE
+
+     The basic premise of these modifications is that two general
+forms  of storage access operations exist: blocked and un-blocked
+IO.   Blocking  IO  occurs  when  either  a  user process, or the
+operating  system  must  wait  for  the  completion  of  physical
+activity  to be able to continue execution.  Un-blocked IO occurs
+
+
+Multics Technical Bulletin                                MTB-635
+Disk Volumes
+
+with  situations  in which process actions are not dependant upon
+the  completion  of IO operations, a normal occurrance for things
+like  page  writes,  and VTOCE writes which are bufferred and not
+directly requested by a process.
+
+     For  example,  a  process  becomes  blocked  when  it  makes
+reference  to  a  page  which is not in main memory, and causes a
+demand  page read.  In this case the process must cease execution
+until the page becomes available.  The operating system typically
+will  encounter  blocking  situations only when its paging system
+processing  resources  are  saturated  and  it  must wait for the
+completion  of  some  physical  activity  before resources become
+freed and the system can continue.
+
+     ALLOCATION  LOCKS  are  a  typical  example of paging system
+saturation.   In  this  situation the system cannot do ANY paging
+activity until the allocation lock situation is cleared and queue
+resources  become  available,  so at the point where there are no
+processes  left  to  execute  which do not need pages, the system
+becomes idle.
+
+     Un-blocked IO typically occurs if a queue of IO is output to
+the  storage  system which is not a dependancy of any process and
+can continue without causing any process to block.
+
+     The  danger  lies  in  the  transformation  of un-blocked to
+blocked  IO  when the queue resource becomes saturated, as occurs
+with   ALLOCATION  LOCKS,  INTERRUPT  LOCKS,  RUN  LOCKS  or  the
+attainment  of  the  WRITE-LIMIT threshold.  This is particularly
+important  in  that it is possible to shut down operations of the
+entire system, rather than individual processes.
+
+     In  alleviating  these  situations  the basic intent is that
+un-blocked IO can be ignored, since it does not halt a process or
+processor, until sufficient system resources become consumed that
+the  un-blocked IO may potentially be turned into blocking IO due
+to saturation.
+
+     It  is  further  seen that there are levels of blocking, for
+example  a  VTOC  demand  read  is a primary block, since it must
+occur  before  a  page demand read can possibly complete.  A VTOC
+write  is  of  slightly  lesser  importance from the viewpoint of
+blocking  processes,  but  is important to the consistency of the
+storage  system  in  case of failure.  A page demand read is more
+important  than a page demand write, since it causes a process to
+become ineligible for execution until the page is in main memory.
+A page demand read may well be more important for system response
+than  a  VTOCE  write, but this must be balanced with file system
+consistency and the loading of the VTOC buffers.
+
+
+MTB-635                                Multics Technical Bulletin
+                                                     Disk Volumes
+
+     Such optimizations have an effect, not only upon the storage
+system,  but  upon the efficiency of the operating system itself.
+If  there  is  a  high  degree of blocking occuring, this must be
+countered  by a high level of multiprogramming in order to attain
+sufficient   executable   processes  to  statistically  fill  the
+available  processor  cycles.   A  high level of multiprogramming
+directly  translates  into  a  higher level of system overhead in
+process  management,  queue searching and scheduling, and process
+switching.
+
+     To  this  end  a system works most efficiently if it has the
+minimal  degree of blocking possible, and further the users see a
+more responsive system when blocking is minimized.
+
+PHASE  ONE  -  Alleviation  of  Allocation  Locks, Elimination of
+               Channel Limits
+
+FEATURES:
+
+     Considerable  reduction  in  ALLOCATION  LOCKS over existing
+system   functionality,   makes  queue  resources  site  tunable,
+provides   better   utilization  of  the  same  amount  of  queue
+resources,  permits site declaration of a variable number of disk
+channels  per  sub-system, permits declaration of a sub-system to
+be  only a declaration of physical connectability, and not skewed
+to attempt to optimize allocation of queue or channel resources.
+
+PROBLEM
+
+     Allocation  locks  are  a  problem  which  has  consistently
+plagued  a  loaded  Multics system, this is aggravated by unequal
+disk   sub-system  loadings.   Many  sites  have  sub-split  disk
+sub-systems   in   an   attempt  to  alleviate  this  problem  by
+introducing  more  queuing resource, but this has lead to channel
+allocation and connection problems.  In addition there is a fixed
+limit  of  8 logical channels to each disk sub-system, in current
+large  disk  configurations this limits the level of seek overlap
+which   can  be  maintained  and  limits  degraded  configuration
+capabilities by failing to permit full exploitation of one of the
+nicer features of the HIS hardware.
+
+CAUSE
+
+     The   Multics   disk  system  is  split  into  one  or  more
+sub-systems.   Each  sub-system is given a queuing resource which
+is sufficient to hold 64 IO requests for the collection of drives
+
+
+Multics Technical Bulletin                                MTB-635
+Disk Volumes
+
+which  may  be  attached  to that sub-system, and is limited to 8
+channels through which to access all the drives.
+
+     Due to the burst effect of page writes, as a large number of
+writes  are  emitted  in  cleaning up modified pages, it is quite
+common  for  a  large number of requests to be queued to a single
+drive, which may be sufficient to saturate the queue resource for
+the  entire  sub-system.   When this occurs, the IO for an entire
+sub-system  waits  for the completion of IO for a single drive, a
+high degree of bottlenecking.  In addition there will probably be
+a  number  of  writes as yet un-emitted at the point of blockage,
+which will simply extend the period of blockage, since these will
+be emitted as soon as space in the queue is available for them.
+
+     In  addition  to being a queue resource, the sub-system also
+describes  the  physical  makeup  and  connection  of  the  paths
+(channels  and  drives)  with which to utilize the storage system
+resources.   By being bastardized to allocate necessary queue and
+channel  resources according to the drive loadings the connection
+problem  is made more complex and connection and use is no longer
+straight-forward,  and in some connection cases it is made more
+error prone.
+
+CORRECTION
+
+     The  first  phase  of  the  disk  project  is  to  reduce or
+alleviate  these  problems,  and  further to make the queuing and
+channel  resources  site  tunable  parameters  to account for the
+varying characteristics of individual site workloads.
+
+     The  primary  cause  of  allocation  lock  problems  is  the
+allocation  of free queue resources as a fixed function of a disk
+sub-systems.   Since  drive  loadings are typically a function of
+logical  volume  content  and  transitory  system  loadings  the
+corresponding queue loadings are also typically transietory.  The
+allocation  of  a  fixed  resource  to  a  dynamic  load, and the
+constraint  of the size of that resource takes its toll in system
+operation.   In  most cases where ALLOCATION LOCKS occur only one
+sub-system,  and  sometimes  only  one  drive,  is  significantly
+loaded, this can be seen as a poor utilization of resources.
+
+     The  first phase of the disk project removes the 'free_q' in
+each  sub-system  structure, and makes it a system wide resource,
+with  the  number  of  queue elements being a CONFIG DECK tunable
+parameter.   Thus  if  a site requires a larger queue resource it
+can  be created at boot time with a CONFIG DECK parameter change.
+By  the  removal  of  the  queue  resource limit as a function of
+sub-systems one is now able to express the true connectability of
+
+
+MTB-635                                Multics Technical Bulletin
+                                                     Disk Volumes
+
+a sub-system in its definition without clouding the issue through
+attempt to alleviate a completely distinct problem.
+
+     Another  problem  exists  in  the  fixed limit of eight disk
+channels  per  disk  sub-system.  Since in the HIS hardware there
+can  be  as many as eight disk channels per Physical Link Adaptor
+(LA)  this  does not permit full exploitation of either full disk
+seek  overlap,  nor the hardware limits without mis-declaring the
+disk sub-systems to being sub-sets of the true connectability.
+
+     The  first phase of the disk project also makes this channel
+table a configuration dependant table, which can grow to the size
+necessary  to handle all the channels configured logically to the
+MPC's  which  connect a set of disk drives.  Thus if more logical
+channels  can  be  configured according to the physical makeup of
+the IOM/MPC combinations, then they can also be configured in the
+software to the sub-system which defines the drives they connect.
+This  will  be  able  to  typically  increase  the  level of seek
+overlap, and hence the sub-system IO throughput rates, as well as
+permitting  over-comittment  of  channels  to  a sub-system (more
+channels  than  drives)  to  handle degraded operation situations
+without a corresponding degradation of service capabilities.
+
+AFFECTED ROUTINES
+
+     The following list of routines may be incomplete, it is from
+MR7  information and has not been updated as yet to the necessary
+level of an MR10.2 baseline.
+
+          Routine                                 Function
+          -------                                 --------
+
+     dskdcl.incl.(alm pl1)    Defines the data structures involved.
+
+     get_io_segs.pl1          Initializes size of disk_data for
+                              queue so segment can be wired.
+
+     disk_init.pl1            Generates and initializes queue
+                              entries according to CONFIG DECK
+                              parameters.
+
+     dctl.alm                 ALM disk driver, must manage queue
+                              allocation and free.
+
+     disk_control.pl1         PL/I disk driver, must manage queue
+                              allocation and free, and situations of
+                              ESD.
+
+EXPECTED EFFECT OF MODIFICATION
+
+
+Multics Technical Bulletin                                MTB-635
+Disk Volumes
+
+     It is expected that the effect of the modification will be a
+great  reduction  in ALLOCATION LOCKS even in the busiest system.
+It  will further permit tuning of the 'free_q' resource according
+to  the  requirements  of  a  site,  and  full declaration of the
+hardware channel capabilities of the hardware.
+
+     Since  the  'free_q'  resource is no longer tied to a single
+sub-system  there  will be much better utility obtained per queue
+element  allocated,  and  one  will  not  have  to sub-split disk
+sub-systems  to  attempt  to allocate more queue resource.  Since
+one  is  no  longer  limited  in the declaration of channels to a
+sub-system,   there  will  no  longer  be  a  need  to  sub-split
+sub-systems  to  permit  sufficient  channels  per drive.  Thus a
+sub-system  will  be  a true declaration of the connectability of
+disk drives.
+
+EXPECTED COST OF MODIFICATION
+
+     It  is  expected  that this modification will take roughly a
+man-week  from  its  present  state  to  be ready for testing.  A
+further  week  should  be allocated for testing and production of
+statistics  either  confirming or denying the above expectations,
+and quantifying the actual results.
+
+REQUIRED TESTING
+
+     To  be  valid  testing  should  include  ALL  expected,  and
+emergency,  disk situations.  A system should be load tested both
+in  the  current  state,  and  after  modification  to  determine
+bottleneck points.
+
+     Further  testing  should  include  shutdown  situations,  of
+normal  shutdown,  ESD and shutdown situations in which an MPC or
+drive   failure   is   sponsored   to   test  robustness  of  the
+modifications.   Testing should also include salvaging situations
+on system startup and should include salvage of both the root and
+public drives.
+
+PHASE TWO - Modification of queuing and locking
+
+FEATURES:
+
+     Reduction  of  queue  scanning  overheads, reduction of lock
+contention and delays, better sub-system metering and statistics,
+on-cylinder seek optimizations under all situations.
+
+
+MTB-635                                Multics Technical Bulletin
+                                                     Disk Volumes
+
+PROBLEM
+
+     The  current  method  of  locking  and  the  grouping of all
+requests  into  two  common queues artificially constrains access
+and increases overheads in management of disk sub-systems.
+
+CAUSE
+
+     The  current  method  of  queuing and locking of sub-systems
+uses  a  pair  of  queues per disk sub-system, with a common lock
+controlling access to the entire sub-system.
+
+     This  has  the  effect  of creating an artificial bottleneck
+with  the constrained access through the lock to all functions to
+be performed on the sub-system.  This lock is necessitated by the
+use of two queues, common to all drives of the sub-system, a high
+priority queue and a low priority queue.
+
+CORRECTION
+
+     There  are  two  situations to correct, but one is dependant
+upon  the  other.   The  correction  in  this  case  is to make a
+separate  queue  for  each drive, rather than a set of queues for
+the entire sub-system.  This reduces the number of requests which
+get  scanned  to  determine  a nearest-seek candidate for IO on a
+single  drive.   Further,  by eliminating the complete separation
+between  the high priority IO queue and the low priority IO queue
+within the sub-system, and combining them into a single queue per
+drive,  we  will  be  able  to optimize situations of on-cylinder
+mixes of high and low priority requests.
+
+     One  method of retaining the logical separation between high
+priority  requests  (which should be done first if they require a
+head  seek)  and low priority requests (which are non-blocked) is
+through  the  use  of  a multiplier to make low priority requests
+look  much  longer  than  high  priority seek requests.  A normal
+nearest-seek  physical seek-length is calculated, and transformed
+into  a  logical  seek length by multiplying it by the separation
+factor for that type of IO.
+
+     Another  method  is  through  the  use  of a seek offset, to
+increase  the  logical  length  of  a  seek  to a low priority IO
+request.
+
+     Using  a  multiplier  of  the  same  value  as the number of
+cylinders  on  the  spindle will give complete separation between
+high   and   low  priority  seeks,  while  retaining  on-cylinder
+optimization.  Using an offset of the same value as the number of
+
+
+Multics Technical Bulletin                                MTB-635
+Disk Volumes
+
+cylinders  on  the  spindle  will give exactly the same effect as
+having  completely  separate  queues for high and low priority IO
+and will lose on-cylinder optimization.
+
+     Once  the common queue has been split into queues per drive,
+then  the locking strategy becomes simpler.  Each sub-system will
+then consist of three resources:
+
+ 1.   The  drives  of  the  sub-system.  These contain the actual
+    requests  which  need to be done and are a description of the
+    requests  for the drive complete in themselves.  They are not
+    dependant upon acquiring any other sub-system resource.
+
+ 2.  The channels of the sub-system.  These contain access to the
+    physical path necessary to actually effect the IO.  These are
+    a  simple blocking mechanism.  Once a free_q element has been
+    acquired,  and  a  drive has been acquired, then a channel is
+    requested.   If  it  is not available the IO is simply queued
+    (as  it  is  if the drive is doing IO).  The operating system
+    does not block due to unavailability of a channel.
+
+ 3.   The  metering  base  per  sub-system.  This consists of two
+    parts:
+
+    a.  The immutably updateable meters for the sub-system.  This
+       will  be meters updated with simple immutable instructions
+       (i.e.    'aos')   which   implicitly   lock   through  the
+       processor/memory access.
+
+    b.   Meters  requiring  locked  instruction  sequences,  such
+       things  as timers and error counts which cannot be updated
+       with  immutable instructions, and situations which require
+       a  sub-system  wide lock.  Typically this lock access will
+       be  straight-line  and will not control physical resources
+       which could introduce realtime delays.
+
+     In  situations  requiring the sub-system-wide resource, such
+as channels and drives, the locking procedure would be to lock
+the  sub-system  lock,  then the individual drive locks.  In this
+manner  one  would  not require any individual wait on the normal
+sub-system lock.
+
+AFFECTED ROUTINES
+
+     The  following  routines  will be affected by this level, in
+addition  to  all  the routines already affected by PHASE ONE, as
+listed above.
+
+
+MTB-635                                Multics Technical Bulletin
+                                                     Disk Volumes
+
+          Routine                      Function
+          -------                      --------
+
+     disk_queue.pl1           A metering   routine  to  check
+                              disk queue loading and channel use.
+
+     disk_meters.pl1          A metering routine to provide
+                              sub-system use statistics.  It will
+                              need updating for the metering
+                              structure changes.
+
+     device_meters.pl1        As for disk_meters.
+
+     spg_fs_info_.pl1         As for disk_meters.
+
+     ioi_assign_disk_channels.pl1 Changes for channel locking etc.
+
+EXPECTED EFFECT OF MODIFICATIONS
+
+     These  split-outs  will decrease the throughput demands upon
+the  individual  locks  and  will reduce situations which require
+realtime  based  lock  delays.   The  net  effect of the combined
+modifications  will  be  faster  locking,  reduction  of  locking
+overheads and queue management overheads, and the introduction of
+on-cylinder  IO optimization.  Further, moving some of the meters
+which are really drive specific, rather than sub-system specific,
+into   the   drive   structure   will   lessen   sub-system  lock
+requirements, and introduce new statistical collection situations
+which  will  provide  better  metering  and  meterability of disk
+sub-systems and drive bottleneck situations.
+
+EXPECTED COST OF MODIFICATIONS
+
+     To  do  a  thorough job of this portion of the modifications
+there should be some consulation with the current CISL developers
+and  a  definition  of possible interactions of the modifications
+with future system development and planning.
+
+     This  would  take  in  the  range of one to two man-weeks to
+complete  the  modifications  of this stage and to verify none of
+the error recovery/reporting functionality has been lost.
+
+     Testing  should cover the same basic range as for PHASE ONE,
+attempting  to  validate  the  modifications  in all possible and
+impossible  situations.   In  addition  there  should  be again a
+thorough  collection  of  statistics,  this time basing against a
+normal  system,  the PHASE ONE modified system, and the PHASE TWO
+
+
+Multics Technical Bulletin                                MTB-635
+Disk Volumes
+
+system.  This will provide a metering base to track the sucess of
+the design and design criteria.  It will also provide information
+to be finally placed into site tuning documentation.
+
+PHASE THREE - Adaptive optimization of IO
+
+PROBLEM
+
+     The  optimization  of disk IO keeps a complete separation of
+high  and  low priority requests.  This produces bottlenecking of
+IO  optimization,  which has in the past produced ALLOCATION LOCK
+problems.   Even with PHASE ONE and TWO modifications major burst
+IO   characteristics   will  remain  unoptimized  for  situations
+requiring  throughput,  by always favoring attempting best demand
+IO response.
+
+     While  favouring  best  IO  demand  response is a desireable
+characteristic in disk system management, the blindness by which
+it  is  followed  sometimes produces inoptimal system response to
+storage  system  demands, and requires higher multiprogramming to
+attain  full system efficiency.  Further, it does not necessarily
+produce  maximum  user/system  responsiveness,  since  it ties up
+large  amounts of memory to hold buffers for the poorly optimized
+IO.
+
+CAUSE
+
+     The  current method of disk optimization is invariant to the
+changing  demands of the system.  As a result it is an attempt at
+a fixed general solution to a rapidly changing dynamic situation.
+
+     VTOCE  IO  is  highly  optimized  since it is important, but
+there  is no differentiation of its importance from the viewpoint
+of  the  computer  system, rather than the disk system.  Thus the
+demand  read  characteristic of VTOCE read is no better optimized
+than   the  lower  priority  VTOCE  write.   (In  this  case  the
+priorities  are  on a blocking basis, rather than the requirement
+for a consistent IO system.)
+
+     The  current complete separation between page read and write
+will  be  somewhat  optimized  by  PHASE ONE and TWO changes, but
+there  will  still  be  no  method  to  improve the IO throughput
+optimization  of  disk  page  writes  as  the IO system starts to
+saturate  with  them.   Thus ALLOCATION LOCKS are still possible.
+If  they  are avoided by simply increasing the size of the queue,
+and WRITE_LIMIT, the system will degrade by the removal of a high
+
+
+MTB-635                                Multics Technical Bulletin
+                                                     Disk Volumes
+
+degree  of  available  pages.   In  other  words the inability to
+respond  the  changing  requirements  of  a storage system as the
+inherent   priority   situations   change  will  increase  system
+overheads and delays beyond what is necessary.
+
+CORRECTION
+
+     The  final  stage of the disk system modifications is termed
+ADAPTIVE  DISK  optimization.   This  optimization depends upon a
+site  setting  tuning  parameters which define the site's view of
+the  importance of two situations on an IO type by IO type basis.
+The two situations are:
+
+ 1.   Maximum  response.   This  is the degree of optimization to
+            give  to IO requests of this type in situations where
+            there   is   no  IO  of  this  type  queued  up.   It
+            essentially  defines  the importance of doing this IO
+            with  respect to any other IO without regard to queue
+            loadings.
+
+ 2.   Maximum  throughput.   This is the number of IO requests of
+            this  type  which can be allowed to queue up to which
+            the  system  should respond with the maximum possible
+            throughput  optimization.   It  essentially defines a
+            limit of resource allocation at which the system must
+            protect  itself by attempting to speed the throughput
+            of IO requests of this type to clear the queue.
+
+     Though these two values are simple points, they are taken as
+the   definition   of   a  straight  line  which  determines  the
+optimization  to  be  afforded IO requests of each IO type at any
+point  within  the  x-y  space of optimization and queue loading.
+NOTE that these optimizations are per IO type and IO types do not
+necessarily have a relationship to each other.
+
+     The  optimization  value assigned is a multiplier and is the
+inverse of the degree of optimization.  Where PHASE TWO separated
+the  page read and page write IO's by weighting the physical seek
+length  by  a  multiplier  to make it a logical seek length, this
+modification simply makes this weighting factor a function of the
+queue loading and the desired initial optimization.  The use of a
+logical  seek  length  permits  the  existing  nearest-seek-first
+algorithm to produce a true optimization according to the desired
+criteria.
+
+     As  queue loadings increase, the desireability to the system
+as  a  whole  to  increase  the  throughput  of a certain IO type
+increases.   (This desirability is evaluated by the site and set
+as  a  tuning  parameter.)  The specific situation of loading and
+
+
+Multics Technical Bulletin                                MTB-635
+Disk Volumes
+
+priority  is represented as a point along the defined line in the
+loading/optimization  plane.  The relationship of this IO type to
+other  IO types is defined by the produced optimization value for
+this type in relation to the produced optimization values for the
+other  IO types.  So the situation is widely dynamic and operates
+beyond   the  bounds  of  the  two  dimensions  input  as  tuning
+parameters.
+
+     By  indicating different optimizations and loadings for each
+IO  type  it  is  possible to have their optimizations cross each
+other  at  different  points during normal system operation.  For
+example:
+
+   A  site  sets  tuning parameters such that VTOC read is always
+   maximally  optimized by indicating optimization = 1, loading =
+   1.
+
+   VTOC  write  is  seen  as  a clearing operation which will not
+   block the system, but which should not be left too long due to
+   the  constrained  resource  of VTOC buffers and storage system
+   consistency.  So parameters are set to have an optimization of
+   the  number  of cylinders of a drive for the first VTOC write,
+   but  to fully optimize if 3 VTOC writes are outstanding.  This
+   gives complete separation for non-on-cylinder VTOC operations.
+
+   A  page  read  is  seen as a high priority operation, since it
+   blocks,  but  as  less  demanding  than  a VTOC read, which is
+   necessary  to  unlock  access  to  a  number of potential page
+   reads.   So  the  site  sets  initial optimization at 1/4 of a
+   drive's cylinders (200) but requires full optimization if more
+   than 1/2 of 'maxe' process's are waiting for pages to optimize
+   multi-programming.
+
+   A  page  write  is  seen as the lowest priority of all, but it
+   will  cause  blocking  if too many are queued up.  So the site
+   sets  initial  optimization  as  the  number of cylinders of a
+   drive,   but   requires  full  optimization  at  1/2  'free-q'
+   allocation.
+
+     As  can be seen a number of factors have been considered and
+are  in  effect.   The  instantaneous optimization of the system
+will take into account all the above situations dynamically.  For
+example,  VTOC reads will fly through, but if we get up to 3 VTOC
+writes  per  drive they will get fully optimized too.  Page reads
+will  get  nearly  maximal throughput, and will fully optimize if
+too  many  processes  get  bottlenecked on any particulary drive.
+But  if  we get up to 3 VTOC writes outstanding they will surpass
+page  reads  in  optimization till the demand slacks off.  Finally
+page  write will be allowed to queue up to a high degree, but not
+high enough to start to block system operation.
+
+
+MTB-635                                Multics Technical Bulletin
+                                                     Disk Volumes
+
+     What  is  perhaps  not  totally  obvious  in addition is the
+effect  of  grouping  which  will occur through this optimization
+technique.   For example the optimization of any IO type not only
+depends  upon  the  optimization  factor  applied,  but  also the
+nearness of the true physical position of an IO seek of its type,
+in  relation  to the nearness of the true physical position of an
+IO seek of another type.  Thus we may hold off doing writes for a
+while  til  they  build  up,  but  when  we  start to do them the
+statistics  are  fairly  good  that  we will be able to do a high
+degree  of local seek length optimizations through the buildup of
+candidates  within  that  area.   When the span between areas, in
+relation  to  the  current  queue  loadings,  reaches  a  dynamic
+separation  point,  we  will  return to doing optimization of the
+higher  priority  IO  and  will  probably  be  able  to  do group
+optimization of them too.
+
+     So  the  optimizations  afforded by the above method go well
+beyond  the  simple possibilities of a non-dynamic method, and in
+fact out-reach the imaginations of those entering the parameters.
+It  is  a  means to put extra intelligence into the managing of a
+computer  system as a whole, and not just the storage system, but
+an  intelligence  which follows exactly the dictates given to it,
+though  the final effect may well surpass the generality that was
+presumed  for it.  In other words, it will do what you want, even
+in  situations you might not have accounted for, and which you do
+not have to account for.
+
+HISTORY
+
+     Some history of these proposals is appropriate.  About three
+years  ago  they  were first conceived, though in a rougher form.
+Over  the suceeding three years they have been put into effect to
+a  slightly  limited  extent  on  a  UNIX  system  owned  by  the
+Department of Computer Science, running on a VAX 11/780.  On this
+system, which had a difference queuing method without the locking
+and  'free_q' problems of MULTICS, only the adaptive optimization
+technique,   and  a  correctly  functioning  'nearest-seek-first'
+algorithm  needed to be created, and this was done according to a
+design document similar to this which was supplied to the systems
+programmers of the UNIX system.
+
+     To  this  point  the  adaptive  optimization  has  performed
+without  flaw, and appears to be quite robust, with a high degree
+of  tolerance  to  a  wide  range of tuning parameters.  The UNIX
+system  has  also  benefited from the extra statistics and meters
+which the modifications made possible.
+
+
+Multics Technical Bulletin                                MTB-635
+Disk Volumes
+
+     To  date  there is no one thing which can be pointed to with
+flag  waving,  there  are  no spectacular situations in which the
+optimization  really  becomes  apparent.  However they have noted
+that  it  is  much  more  difficult,  while  running  'emacs'  to
+determine  that  the  system is loaded, and for the first several
+months  of  existence  of  the  optimization  the  ability of the
+systems  programmers  to sense the loading of the system by their
+old  performance  measures  always  produced  much  lower loading
+levels than were actually the case when meters were consulted.
+
+     Through  rough  testing with thrashing programs it is easily
+possible  to  bring  the disk drives to individual busy levels of
+80-92%  without  significant  queue  buildup,  and  in most cases
+system  responsiveness is maintained much better than without the
+optimization.
+
+     It  is very infrequent when any significant queue buildup of
+writes  can be noticed, but some situations have occurred where a
+queue  buildup  of  150 elements was maintained for any prolonged
+period, with a reportedly good system response.
+
+     As  a  result  it  is quite desireable to be able to produce
+better  measures  of  sucess and tuning than have been available,
+certainly we should progress beyond the seat-of-the-pants feeling
+and  get  quantitative  measures.   Indications to this point are
+that  the  optimizations should produce a better system for total
+system  throughput  than  can  be  achieved  by previous methods,
+including disk combing, but no hard numbers stand to attest this.
+
+     Though  the above sections appear to enter into the world of
+science  fiction/fantasy  and  intelligent  machines, this is not
+really the case.  It is merely a situation where the statement of
+the  rules  provided  by the system are interpreted to be able to
+provide  a  similacrum  of  thought  in  the  optimization of the
+system.   The  driver  does  not  originate  anything,  it simply
+follows  the rules provided.  The fact that the rules are in some
+sense  a valid mixture of different critera (apples and oranges?)
+provides much of the groundwork to enable the system to work.  In
+essance  the  tuner  is  not  stating 'do this at this time', but
+instead  is laying down conditions which must be fulfilled by the
+driver,  and  is  able to state these conditions in terms of disk
+seek priority and queue loadings.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

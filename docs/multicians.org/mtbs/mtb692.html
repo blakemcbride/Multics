@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-692</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-692: A New Ring-0 Auditing Mechanism.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-692
+Ring 0 Auditing
+
+To:       Distribution
+
+From:     Ed Sharpe
+
+Date:     11/07/84
+
+Subject:  A New Ring-0 Auditing Mechanism
+
+1 ABSTRACT
+
+The  B2  security project  requires  that Multics  maintain audit
+trails of many system events.  That set of events is much greater
+than those currently audited.
+
+The set  of things which are  audited is not the  concern in this
+MTB.
+
+The  current  auditing  module  and  its  calling  sequences  are
+unsuitable  for   use  in  expansion  of   the  Multics  auditing
+facilities.   This MTB  describes a  new auditing  module and its
+calling sequences.
+
+This  MTB supplements  MTB679 "Security  Audit Trails"  by Benson
+Margulies.
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   EJSharpe at either System-M, or CISL-SERVICE.
+
+via Forum:
+   B2_Security_Design at System-M
+
+via telephone:
+   (617/HVN) 492-9367
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+MTB-692                                Multics Technical Bulletin
+                                                  Ring 0 Auditing
+
+2 CONTENTS
+
+         1 Abstract
+         2 Contents
+         3 Current Auditing Approach
+         4 The New Approach, In General
+         5 access_audit_$check_* Entries
+         6 access_audit_$log_* Entries
+         7 access_audit_ Misc Entries
+         8 Using the New Entries
+         9 Metering
+        10 Performance
+        11 Include Files
+        12 Current Programs Which Require Modification
+
+3 CURRENT AUDITING APPROACH
+
+A  Multics subsystem,  upon encountering  a potentially auditable
+event,   will  inspect   the  process's  audit   flags.   If  the
+appropriate  flag  is on,  a  call to  protection_audit_  will be
+executed to log  the event.  The subsystem itself  is supposed to
+maintain  the audit  flag check  meters (although  only directory
+control actually does).
+
+Most  entries  in  protection_audit_  are very  specific  for the
+calling  subsystem.   The  one  general entry  provides  only the
+capability of entering a textual message into the log.
+
+4 THE NEW APPROACH, IN GENERAL
+
+protection_audit_ is  completely replaced by a  new module called
+"access_audit_".
+
+The first  goal of the  reimplementation is that  the decision of
+whether to audit must be  centralized.  Checking of process audit
+flags  (and  metering  of  this  task)  will  no  longer  be  the
+responsibility of  the individual subsystem.   This checking will
+be done  from the access_audit_ module  itself.  In addition, the
+entrypoints which perform the  check will be externally available
+so that a TCB subsystem may avoid costly audit message setup when
+unnecessary.   The  audit check  entries have  names of  the form
+"access_audit_$check_*",   where   "*"  is   replaced   by  words
+describing the type of information  that must be supplied to that
+entrypoint.
+
+The  logging  itself  is  performed by  a  number  of entrypoints
+generally  suitable for  use by  different TCB  subsystems.  They
+will  accept binary  information as well  as textual information.
+
+
+Multics Technical Bulletin                                MTB-692
+Ring 0 Auditing
+
+Some specialized entries will be necessary for certain subsystems
+(e.g.   fim).   The  logging  entries  have  names  of  the  form
+"access_audit_$log_*".
+
+There are some utility entries to perform tasks such as returning
+the process audit flags to the caller.
+
+The entrypoints are described in detail in the following pages.
+
+
+---------------------                       ---------------------
+access_audit_$check_*                       access_audit_$check_*
+---------------------                       ---------------------
+
+5 ACCESS_AUDIT_$CHECK_ ENTRIES
+
+The  access_audit_$check_*  entries  determine  whether  an audit
+message  should be  logged.  Entries  return a  single bit  to be
+interpreted as:
+
+    "1"b -&gt; logging of the event is desired
+    "0"b -&gt; logging of the event is not desired
+
+The algorithm is:
+
+    if event_flags.special_op then return ("1"b); /* always */
+    obtain audit_flags
+    if   event_flags.cc_1_10 | event_flags.cc_10_100
+    then do
+         obtain user_authorization
+         if   user_authorization &gt;= covert_channel_threshold
+         then if  event_flags.cc_1_10
+              then return (audit_flags.cc_1_10)
+              else if event_flags.cc_10_100
+                   then return (audit_flags.cc_10_100)
+                   else return ("0"b)
+         else return ("0"b)
+    end
+    else do
+         obtain object_access_class
+         if  event_flags.deny
+         then if object_access_class &lt;
+                    unsuccessful_access_threshold
+              then return ("0"b)
+              else nothing /* fall through to next test */
+         else if object_access_class &lt;
+                    successful_access_threshold
+              then return ("0"b)
+              else nothing /* fall through to next test */
+
+         if event_flags.admin_op &amp; audit_flags.admin_op
+         then return ("1"b)
+         else nothing /* fall through to next test */
+
+         if event_flags.priv_op &amp; audit_flags.priv_op
+         then return ("1"b)
+         else nothing /* fall through to next test */
+
+
+---------------------                       ---------------------
+access_audit_$check_*                       access_audit_$check_*
+---------------------                       ---------------------
+
+         extract object_type from oper_code
+         determine operation_level from oper_code.operation_type
+         if event_flags.deny
+         then if audit_flags.objects(object_type).deny_level
+                                             &gt;= operation_level
+              then return ("1"b)
+              else return ("0"b)
+         else if audit_flags.objects(object_type).grant_level
+                                             &gt;= operation_level
+              then return ("1"b)
+              else return ("0"b)
+    end
+
+There are a number  of access_audit_$check_* entrypoints for ease
+of use by  various subsystems.  They allow the  caller to provide
+the access class  of an arbitrary object, a  pointer to a storage
+system object, or  a pointer to the directory  entry of a storage
+system  object.   The  event_flags   and  oper_code  provide  the
+information necessary  for inspecting the process  audit flags in
+respect to the event.   The object_class provides the information
+necessary for inspecting the system audit thresholds.
+
+The entrypoints are provided in pairs.  The first of a pair is to
+be called when an operation is performed within a process for the
+benefit of that process.  The second  of the pair is to be called
+when  the  operation  is  performed for  the  benefit  of another
+process  by  a  proxy  (trusted  user).   This  second entrypoint
+accepts information  about the user process  to determine whether
+auditing  is required  (i.e.  the  user's audit  flags and access
+authorization).
+
+The parameters are:
+
+    event_flags (bit (36) aligned)
+        is a set of flags  supplied by the caller which describes
+        particulars  of  an  event.   It's  format  is  given  in
+        access_audit_eventflags.incl.pl1.   (The   flags  include
+        special_op, deny, admin_op, priv_op, cc_1_10, cc_10_100.)
+
+    oper_code (bit (36) aligned)
+        is the value of an  entry in access_operations_.  It is a
+        coding  which includes  a unique  TCB operation  index, a
+        generic  type  of the  object  associated with  the event
+        ("object_type" =  seg, dir, rcp, admin,  or other), and a
+        generic type of the  operation itself ("operation_type" =
+        read, modify, or modify_access).
+
+    obj_class_range ((2) bit (72) aligned)
+
+
+---------------------                       ---------------------
+access_audit_$check_*                       access_audit_$check_*
+---------------------                       ---------------------
+
+        is  the  access  class  range  of  the non-storage-system
+        object in question.
+
+    obj_class (bit (72) aligned)
+        is the access class of  the storage system or non storage
+        system object in question.
+
+    obj_ptr (pointer)
+        is a pointer to the storage-system object in question.
+
+    obj_entry_ptr (pointer)
+        is a pointer to the directory entry of the storage-system
+        object in question.
+
+    user_auth (bit (72) aligned)
+        is  the  authorization level  of the  user for  which the
+        operation is being done.
+
+    user_audit_flags (bit (36) aligned)
+        is  the  audit  flag string  of  the user  for  which the
+        operation is being done.
+
+Entry:  access_audit_$check_general
+                    (event_flags, oper_code) returns (bit(1));
+
+Entry:  access_audit_$check_general_user
+                    (event_flags, oper_code, user_auth,
+                    user_audit_flags) returns (bit(1));
+
+These  two entries  are used when  there is  no object associated
+with the event (e.g.  setting privileges, sending a wakeup).
+
+Entry:  access_audit_$check_obj_class_range
+                    (event_flags, oper_code, obj_class_range)
+                    returns (bit(1));
+
+Entry:  access_audit_$check_obj_class_range_user
+                    (event_flags, oper_code, obj_class_range,
+                    user_auth, user_audit_flags)
+                    returns (bit(1));
+
+
+---------------------                       ---------------------
+access_audit_$check_*                       access_audit_$check_*
+---------------------                       ---------------------
+
+These  two entries  are used  when the  object involved  is not a
+storage system entity (e.g.  tape volumes) and whose access class
+is a  range.  The caller  supplies the access class  range of the
+object in question.
+
+Entry:  access_audit_$check_obj_class
+                    (event_flags, oper_code, obj_class)
+                    returns (bit(1));
+
+Entry:  access_audit_$check_obj_class_user
+                    (event_flags, oper_code, obj_class,
+                    user_auth, user_audit_flags)
+                    returns (bit(1));
+
+These two entries  may be used for storage  system objects or non
+storage  system objects  where the access  class is  not a range.
+The  caller  supplies the  access  class value  of the  object in
+question.
+
+Entry:  access_audit_$check_obj_ptr
+                    (event_flags, oper_code, obj_ptr)
+                    returns (bit(1));
+
+Entry:  access_audit_$check_obj_ptr_user
+                    (event_flags, oper_code, obj_ptr,
+                    user_auth, user_audit_flags)
+                    returns (bit(1));
+
+These two entries are used when  the object involved is a storage
+system object.   The caller supplies  a pointer to  the object in
+question.  The access class is then determined internally.
+
+Entry:  access_audit_$check_entry_ptr
+                    (event_flags, oper_code, obj_entry_ptr)
+                    returns (bit(1));
+
+Entry:  access_audit_$check_entry_ptr_user
+                    (event_flags, oper_code, obj_entry_ptr,
+
+
+---------------------                       ---------------------
+access_audit_$check_*                       access_audit_$check_*
+---------------------                       ---------------------
+
+                    user_auth, user_audit_flags)
+                    returns (bit(1));
+
+These  two entries  are also used  when the object  involved is a
+storage  system  object.   In  this case  the  caller  supplies a
+pointer to  the directory entry  of the object  in question.  The
+access class is extracted from the entry.
+
+
+-------------------                           -------------------
+access_audit_$log_*                           access_audit_$log_*
+-------------------                           -------------------
+
+6 ACCESS_AUDIT_$LOG_ ENTRIES
+
+The access_audit_$log_* entries form the actual audit message for
+logging.  There  are a number  of entrypoints for ease  of use by
+various TCB subsystems.  In  general, each entrypoint is supplied
+with a the name of the caller, a set of event specific flags, the
+access  operation  code, a  related  error code,  a  structure of
+binary   data,   and   a    textual   message.    As   with   the
+access_audit_$check_*  entries,  separate   logging  entries  are
+provided which require the access class of an arbitrary object, a
+pointer to a storage system object, or a pointer to the directory
+entry  of a  storage system object.   Also, pairs  of entries are
+provided for proxy and  non-proxy type operations.  These entries
+check  whether  auditing is  required  regardless of  whether the
+calling  subsystem  has already  called  an access_audit_$check_*
+entrypoint in  respect to the  same operation (the  redundancy is
+not expensive).
+
+The algorithm is:
+
+          if auditing is required
+          then do
+
+               if text info not provided by caller
+               then build default text info
+
+               build audit record header
+
+               if binary info not provided by caller
+               then if object is a storage-system entity
+                    then build default binary object info
+
+               create a log entry including the text info,
+                    the audit record header, and the binary info
+
+          end
+
+(Note:   All  examples below  are contrived  and not  intended to
+depict actual system coding.)
+
+The parameters are:
+
+    caller (char (*))
+        is  the name  of the caller.   This will be  added to the
+        text portion of the log entry.
+
+    event_flags (bit (36) aligned)
+        is a set of flags  supplied by the caller which describes
+        particulars  of  an  event.   It's  format  is  given  in
+        access_audit_eventflags.incl.pl1.   (The   flags  include
+
+
+-------------------                           -------------------
+access_audit_$log_*                           access_audit_$log_*
+-------------------                           -------------------
+
+        special_op, deny, admin_op, priv_op, cc_1_10, cc_10_100.)
+        (Same as for access_audit_$check_*.)
+
+    oper_code (bit (36) aligned)
+        is the value of an  entry in access_operations_.  It is a
+        coding  which includes  a unique  TCB operation  index, a
+        generic  type  of the  object  associated with  the event
+        ("object_type" =  seg, dir, rcp, admin,  or other), and a
+        generic type of the  operation itself ("operation_type" =
+        read,   modify,   or   modify_access).    (Same   as  for
+        access_audit_$check_*.)
+
+    obj_class_range ((2) bit (72) aligned)
+        is  the  access  class  range  of  the non-storage-system
+        object in question.  (Same as for access_audit_$check_*).
+
+    obj_class (bit (72) aligned)
+        is the access class of  the storage system or non storage
+        system    object    in    question.     (Same    as   for
+        access_audit_$check_*).
+
+    obj_ptr (pointer)
+        is  a pointer  to the storage-system  object in question.
+        (Same as for access_audit_$check_*).
+
+    obj_entry_ptr (pointer)
+        is a pointer to the directory entry of the storage-system
+        object in question.  (Same as for access_audit_$check_*).
+
+    obj_name (char (*))
+        is  the textual  name of  the object  associated with the
+        event to be audited.  This  argument is required only for
+        those    logging    entries   which    may    deal   with
+        non-storage-system   objects.   It   is  used   only  for
+        insertion in  the default audit message  text (i.e.  when
+        the "msg_str"  argument is not supplied).   It may be the
+        null string if "msg_str" is supplied.
+
+    error_code (fixed bin (35))
+        is  a standard  system error code  or 0.  This  is a code
+        associated with the event being audited.
+
+    info_ptr (pointer)
+        is a pointer to binary  information to be included in the
+        logged  audit  message.   The  first  8  characters  must
+        specify the type of  binary structure which describes the
+        data.  This  will be used  to form the name  of a routine
+        that can  be called to format  the binary information for
+        display  ("format_XXXXXXXX_audit_info_").   A  null value
+        indicates  there  is no  binary info.   If null,  and the
+
+
+-------------------                           -------------------
+access_audit_$log_*                           access_audit_$log_*
+-------------------                           -------------------
+
+        object is a storage system entity, binary info compatable
+        to   format_ssobj_audit_info_  will   be  generated  (see
+        access_audit_ssobj_info.incl.pl1   in   section  "Include
+        Files" below).   The binary information  is inserted into
+        the data  portion of the system  log message preceeded by
+        the audit_record_header (see Benson's audit MTB-697).
+
+    info_size (fixed bin (18))
+        is  the size  (in words)  if the  binary information.  It
+        should be 0 if no information is provided.
+
+    user_info_ptr (pointer)
+        is a  pointer to a  structure of user  data.  Included is
+        the user's user_id,  validation level, authorization, max
+        authorization,   audit   flags,   and   process_id.   The
+        structure is  included in access_audit_user_info.incl.pl1
+        listed in the section titled "Include Files".
+
+    msg_str (char (*))
+        is  a  control  string  (acceptable  to  formline_) which
+        contains  any added  textual information  and the control
+        characters  needed   to  format  any   supplied  optional
+        arguments.   If  omitted,  the  access_audit_$log_* entry
+        will  generate one  in a  default format.   The formatted
+        string is placed into the  text portion of the system log
+        message.  In  either case, the prefix  "AUDIT:" is always
+        placed in the actual log entry.
+
+    optional args (any type acceptable to formline_)
+        are  those  arguments  to  be  formatted  by  the control
+        characters in msg_str.
+
+Entry:  access_audit_$log_general
+                    (caller, event_flags, oper_code, obj_name,
+                    error_code, info_ptr, info_size,
+                    msg_str {, optional args});
+
+Entry:  access_audit_$log_general_user
+                    (caller, event_flags, oper_code, obj_name,
+                    error_code, info_ptr, info_size,
+                    user_info_ptr, msg_str {, optional args});
+
+These  two  entries enter  an  audit log  message for  events not
+related  to  storage-system  objects  (e.g.   privilege  setting,
+sending wakeup).
+
+
+-------------------                           -------------------
+access_audit_$log_*                           access_audit_$log_*
+-------------------                           -------------------
+
+Example:
+    call access_audit_$log_general ("set_priv", "110100"b,
+          access_operations_$set_priv_rcp, "", 0, null, 0,
+          "Set RCP privilege.");
+
+Entry:  access_audit_$log_obj_class_range
+                    (caller, event_flags, oper_code,
+                    obj_class_range, obj_name, error_code,
+                    info_ptr, info_size,
+                    msg_str {, optional args});
+
+Entry:  access_audit_$log_obj_class_range_user
+                    (caller, event_flags, oper_code,
+                    obj_class_range, obj_name, error_code,
+                    info_ptr, info_size,
+                    user_info_ptr, msg_str {, optional args});
+
+These  two entries  are used  when the  involved object  is not a
+storage-system entity.   The caller must supply  the access class
+range of the object in question.
+
+Example:
+    call access_audit_$log_obj_class_range ("rcp_mount_",
+          "010010"b, access_operations_$rcp_tape_read,
+          rcpr_entry.access_class, rcpr_entry.volume_name,
+          error_table_$ai_restricted, null(), 0);
+
+Entry:  access_audit_$log_obj_class
+                    (caller, event_flags, oper_code, obj_class,
+                    obj_name, error_code, info_ptr, info_size,
+                    msg_str {, optional args});
+
+Entry:  access_audit_$log_obj_class_user
+                    (caller, event_flags, oper_code, obj_class,
+                    obj_nam, error_code, info_ptr, info_size,
+                    user_info_ptr, msg_str {, optional args});
+
+These two entries are used when  the involved object is or is not
+a storage-system entity.  The caller must supply the access class
+of  the  object in  question.   For storage  system  objects, the
+binary   info   structure  should   be  given.    This  structure
+corresponds to "audit_ssobj_info" (see "Include Files" below).
+
+
+-------------------                           -------------------
+access_audit_$log_*                           access_audit_$log_*
+-------------------                           -------------------
+
+Example:
+    call access_audit_$log_obj_class ("status_", "010010"b,
+          access_operations_$dir_status, get_pathname_ (ep),
+          error_table_$no_s_permission, addr (local_ssobj_info),
+          size(local_ssobj_info), "");
+
+Entry:  access_audit_$log_obj_ptr
+                    (caller, event_flags, oper_code, obj_ptr,
+                    error_code, info_ptr, info_size,
+                    msg_str {, optional args});
+
+Entry:  access_audit_$log_obj_ptr_user
+                    (caller, event_flags, oper_code, obj_ptr,
+                    error_code, info_ptr, info_size,
+                    user_info_ptr, msg_str {, optional args});
+
+These two entries are used when  the object involved is a storage
+system  entity.   The caller  supplies  a pointer  to  the actual
+object.
+
+Example:
+    call access_audit_$log_obj_ptr_user ("imft_get_", "000000"b,
+          access_operations_$seg_read,
+          seg_ptr, 0, addr(seg_info_struct),
+          size(seg_info_struct), addr(user_audit_info),
+          "Copying to IMFT host ^a.", imft_request.dest);
+
+Entry:  access_audit_$log_entry_ptr
+                    (caller, event_flags, oper_code,
+                    obj_entry_ptr, error_code, info_ptr,
+                    info_size, msg_str {, optional args});
+
+Entry:  access_audit_$log_entry_ptr_user
+                    (caller, event_flags, oper_code,
+                    obj_entry_ptr, error_code, info_ptr,
+                    info_size, user_info_ptr,
+                    msg_str {, optional args});
+
+These  two entries  also are used  when the object  involved is a
+storage-system  entity.   The caller  supplies  a pointer  to the
+directory entry of the object in question.  (This entry is useful
+only by ring-0 callers.)
+
+
+-------------------                           -------------------
+access_audit_$log_*                           access_audit_$log_*
+-------------------                           -------------------
+
+Example:
+    call access_audit_$log_entry_ptr ("status_", "010000"b,
+          access_operations_$dir_status,
+          addr(entry), error_table_$no_s_permission, addr(entry),
+          size(entry), "Unable to list contents.");
+
+Entry:  access_audit_$log_no_process
+                    (caller, event_flags, oper_code, obj_name,
+                    as_error_code, info_ptr, info_size,
+                    user_group_id, msg_str {, optional args});
+
+This is a special entry used by the answering service for logging
+events   associated   with    no   process   (e.g.    preaccess).
+"as_error_code" is a standard  answering service error code (from
+as_error_table_).   "user_group_id"  is  a  string  of  the  form
+"Person_ID.Project_ID.Tag".
+
+Entry:  access_audit_$log_fault
+                    (mc_ptr);
+
+This  is  a  special entry  used  by "fim.alm"  in  logging audit
+messages when ACV and IPR faults occur.  "mc_ptr" is a pointer to
+the  machine  conditions.  All  necessary information  is derived
+from the machine conditions.
+
+
+------------------                             ------------------
+access_audit_$MISC                             access_audit_$MISC
+------------------                             ------------------
+
+7 ACCESS_AUDIT_$MISC ENTRIES
+
+This  section   describes  some  miscellaneous   entries  in  the
+access_audit_ module.
+
+Entry:  access_audit_$get_audit_meters
+                    (area_ptr, n_buckets, meter_info_ptr,
+                    err_code);
+
+This  entry  returns the  value  of the  metering data  stored in
+active_hardcore_data.   "area_ptr"  is a  pointer to  user's area
+(input).  "n_buckets"  is a fixed binary  number representing the
+number   of   metering    data   "buckets"   returned   (output).
+"meter_info_ptr" is  a pointer set to  the structure allocated in
+the supplied area.  "err_code" is  a standard system status code.
+See section "Metering" for details.
+
+Entry:  access_audit_$get_audit_flags (flags);
+
+This entry returns  the value of the audit  flags for the current
+user.  "flags" is a bit(36) aligned value returned to the caller.
+
+
+MTB-692                                Multics Technical Bulletin
+                                                  Ring 0 Auditing
+
+8 USING THE NEW ENTRIES
+
+This section details the mapping of protection_audit_ entrypoints
+into new access_audit_ entry points.
+
+The  current callers  of "protection_audit_$general"  should call
+one of the following as appropriate:
+
+          access_audit_$log_general
+          access_audit_$log_general_user
+          access_audit_$log_obj_class_range
+          access_audit_$log_obj_class_range_user
+          access_audit_$log_obj_class
+          access_audit_$log_obj_class_user
+          access_audit_$log_obj_ptr
+          access_audit_$log_obj_ptr_user
+          access_audit_$log_entry_ptr
+          access_audit_$log_entry_ptr_user
+
+The  current callers  of "protection_audit_$wakeup_denied" should
+instead use "access_audit_$log_general".
+
+The  current  callers  of  "protection_audit_$access_denied"  and
+"protection_audit_$access_denied_user" should instead call one of
+the following as necessary:   (note that the old "contents/entry"
+switch is now implicit in which entry is being used.)
+
+          access_audit_$log_obj_ptr
+          access_audit_$log_obj_ptr_user
+          access_audit_$log_entry_ptr
+          access_audit_$log_entry_ptr_user
+
+The current caller  (fim.alm) of "protection_audit_$fault" should
+instead call "access_audit_$log_fault".
+
+The  current callers  of "protection_audit_$lv_create_restricted"
+should instead use "access_audit_$log_entry_ptr".
+
+The  current  callers   of  "protection_audit_$get_flags"  should
+instead call "access_audit_$get_audit_flags".
+
+
+Multics Technical Bulletin                                MTB-692
+Ring 0 Auditing
+
+9 METERING
+
+Each entrypoint in  access_audit_$log_* and access_audit_$check_*
+will update a set of  meters in active_hardcore_data.  In the old
+protection_audit_,  a separate  "bucket" was  maintained for each
+entrypoint,  and  one for  audit  checking in  general.   The new
+approach will be to maintain a  bucket for each event type.  This
+will give site personnel some numbers  as to the cost of auditing
+certain  events.   They  may  adjust  audit  flags  or thresholds
+accordingly (i.e.  drop some auditing they aren't sure they need,
+in order to improve performance).
+
+The new entries in active_hardcore_data will be:
+
+     access_audit_count
+          is the total number of  calls made to the access_audit_
+          check and log entrypoints.
+
+     access_audit_check_count
+          is the  total number of calls  made specifically to the
+          access_audit_ check entrypoints.
+
+     access_audit_cpu_time
+          is  the total  cpu time  consumed by  the access_audit_
+          check and log entrypoints.
+
+     access_audit_pagefaults
+          is the  total pagefaults taken during  execution of the
+          access_audit_ check and log entrypoints.
+
+Each of these  is an array dimensioned to  include one bucket for
+each event type as shown below:
+
+     (seg dir rcp admin other)_modify_access_grant
+     (seg dir rcp admin other)_modify_grant
+     (seg dir rcp admin other)_read_grant
+     (seg dir rcp admin other)_modify_access_deny
+     (seg dir rcp admin other)_modify_deny
+     (seg dir rcp admin other)_read_deny
+     admin_ops
+     priv_ops
+     faults
+     cc_1_10
+     cc_10_100
+          /* 35 buckets for each of the four meter entries */
+
+The audit data can be obtained through the entrypoint:
+
+          access_audit_$get_audit_meters
+
+
+MTB-692                                Multics Technical Bulletin
+                                                  Ring 0 Auditing
+
+The   data   is   returned    in   the   structure   defined   in
+access_audit_meter_info.incl.pl1  found  in the  section "Include
+Files".
+
+
+Multics Technical Bulletin                                MTB-692
+Ring 0 Auditing
+
+10 PERFORMANCE
+
+The  new  logging mechanisms  (MTB666)  are expected  to increase
+efficiency  of entering  messages of  all types,  including audit
+messages.  The  use of good  programming practices in  coding the
+new access_audit_  module will also  help.  Aside from  these two
+points, there's little that can  be done to decrease the overhead
+where auditing is required.
+
+However, sites  that don't want auditing  shouldn't feel too much
+overhead.  This is where the individual subsystems can help:
+
+A call to access_audit_$check_*, before embarking on an expensive
+path to set up audit information, will save time when auditing is
+not   required.    (If   auditing   is   necessary   the   called
+access_audit_$log_* entry will check the audit flags again.  This
+small redundancy is relatively inexpensive.)
+
+For  storage system  objects, if  the subsystem  can conveniently
+find      the      access      class      of      the     object,
+access_audit_$check_obj_class should be used  instead of the more
+expensive             access_audit_$check_entry_ptr            or
+access_audit_$check_obj_ptr entries.
+
+
+MTB-692                                Multics Technical Bulletin
+                                                  Ring 0 Auditing
+
+11 INCLUDE FILES
+
+The first  include file describes  the format of  the per-process
+audit flags.  They are built at process creation from information
+in the  user PNT entry and  the project SAT entry  (i.e.  the two
+are "ored" together to provide a superset).
+
+The  flags  are divided  into  two groups:   1) those  related to
+particular types  of objects; and 2)  those related to particular
+types of events  which may involve any type of  object or none at
+all.
+
+The  object  oriented  flags  are  divided  into  grant  and deny
+"levels".    With  higher   levels,  more   refined  auditing  is
+performed.
+
+The event oriented flags have "all or none" control over auditing
+of certain events regardless of the type of object involved.
+
+A  particular event  may be audited  due to either  type of flag.
+For instance, a  successful privileged read of a  segment will be
+audited if  either:  1) the priv_op  audit flag is on;  or 2) the
+segment grant level is "read".
+
+/* begin include file - access_audit_flags.incl.pl1 */
+
+/* The following structure describes the per-process audit
+data which determines which events must be audited. */
+
+dcl 1 audit_flags             based aligned,
+      2 objects (6),          /* n_audit_objects */
+        3 grant_level         fixed bin (2) uns unal,
+        3 deny_level          fixed bin (2) uns unal,
+      2 pad                   bit (7) unal,
+      2 admin_ops             bit (1) unal,
+      2 priv_ops              bit (1) unal,
+      2 faults                bit (1) unal,
+      2 cc_1_10               bit (1) unal,
+      2 cc_10_100             bit (1) unal;
+
+dcl n_audit_objects           init (6)
+                    fixed bin int static options (constant);
+dcl n_audit_flags             init (5)
+                    fixed bin int static options (constant);
+
+/* constants for indexing into the "objects" array */
+dcl (
+    FSOBJ_AUDIT_OBJECT_INDEX  init (1),
+    FSATTR_AUDIT_OBJECT_INDEX init (2),
+    RCP_AUDIT_OBJECT_INDEX    init (3),
+
+
+Multics Technical Bulletin                                MTB-692
+Ring 0 Auditing
+
+    ADMIN_AUDIT_OBJECT_INDEX  init (4),
+    SPECIAL_AUDIT_OBJECT_INDEX init (5),
+    OTHER_AUDIT_OBJECT_INDEX  init (6)
+    )               fixed bin int static options (constant);
+
+/* constants which define the meaning of the level values */
+dcl (
+    NONE                      init (0),
+    MODIFY_ACCESS             init (1),
+    MODIFY                    init (2),
+    READ                      init (3)
+    )     fixed bin (2) uns int static options (constant);
+
+/* Note:  "MODIFY" implies "MODIFY_ACCESS" as well;
+          "READ" implies "MODIFY" and "MODIFY_ACCESS" as well */
+
+/* end include file - access_audit_flags.incl.pl1 */
+
+
+MTB-692                                Multics Technical Bulletin
+                                                  Ring 0 Auditing
+
+The following  include file defines  textual names for  the audit
+flags.  "Audit_Object_Names" defines  names corresponding to each
+of the object related "flags".  "Audit_Level_Names" defines names
+for  the object  grant/deny levels.   "Audit_Event_Names" defines
+names corresponding to each of the event related flags.
+
+/* begin include file - access_audit_names.incl.pl1 */
+
+dcl Audit_Object_Names (6) char (7) int static options (constant)
+     init (
+          "FSObj",
+          "FSAttr",
+          "RCP",
+          "Admin",
+          "Special",
+          "Other");
+
+dcl Audit_Level_Names (3) char (13) int static options (constant)
+     init (
+          "Modify Access",
+          "Modify",
+          "Read");
+
+dcl Audit_Event_Names (5) char (9) int static options (constant)
+     init (
+          "Admin Op",
+          "Priv Op",
+          "Fault",
+          "CC 1-10",
+          "CC 10-100");
+
+/* end include files - access_audit_names.incl.pl1 */
+
+
+Multics Technical Bulletin                                MTB-692
+Ring 0 Auditing
+
+The following include  file describes the set of  flags passed to
+the  access_audit_ module  from the  TCB subsystem.   These flags
+describe the conditions under which the given operation occurred,
+and whether the operation was granted or denied.
+
+/* begin include file - access_audit_eventflags.incl.pl1 */
+
+dcl 1 audit_event_flags       based aligned,
+      2 special_op  bit (1) unal,  /* special sys operation */
+      2 grant       bit (1) unal,  /* operation was successful */
+      2 admin_op    bit (1) unal,  /* administrative operation */
+      2 priv_op     bit (1) unal,  /* privileged operation */
+      2 cc_1_10     bit (1) unal,  /* small covert channel */
+      2 cc_10_100   bit (1) unal,  /* moderate covert channel */
+      2 pad         bit (30) unal;
+
+/* end include file - access_audit_eventflags.incl.pl1 */
+
+
+MTB-692                                Multics Technical Bulletin
+                                                  Ring 0 Auditing
+
+The following  include file describes  the format of  the encoded
+access operation.  A unique code of this form can be obtained for
+each TCB operation from  the access_operations_ table.  This cade
+can  be  translated into  a  textual string  which  describes the
+event.
+
+/* begin include file - access_audit_encoded_op.incl.pl1 */
+
+dcl 1 encoded_access_op       aligned based,
+      2 audit_type,
+        3 object_type         fixed bin (4) uns unal,
+        3 access_type         fixed bin (2) uns unal,
+      2 operation_index       fixed bin (12) uns unal,
+      2 detailed_operation    fixed bin (18) uns unal;
+
+/* object_type = Seg, Dir, Rcp, Admin, Special, Other
+   access_type = None, Modify_Acl, Modify, Read
+   operation_index is the index of this code in
+     access_operations_$oper_codes and the index of
+     the text descriptor in access_operations_$text_offest_table
+     (see access_operations_.incl.pl1)
+   detailed_operation is additional info inserted by the
+     caller of the subsystem performing the operation
+*/
+
+/* end include file - access_audit_encoded_op.incl.pl1 */
+
+
+Multics Technical Bulletin                                MTB-692
+Ring 0 Auditing
+
+The following include file describes the structure of information
+about a user.  This is passed  to the access_audit_ module by TCB
+subsystems  acting  as a  proxy for  another user  (e.g.  printer
+daemon).
+
+/* begin include file - access_audit_user_info.incl.pl1 */
+
+/* The structure defined here is passed to the audit_log_
+entrypoints which deal with proxy users:
+
+          audit_log_$general_user
+          audit_log_$obj_class_range_user
+          audit_log_$obj_class_user
+          audit_log_$obj_ptr_user
+          audit_log_$entry_ptr_user
+*/
+
+dcl audit_user_info_ptr       pointer;
+
+dcl 1 audit_user_info  based (audit_user_info_ptr) aligned,
+      2 version               char (8),
+      2 user_id               char (32),
+      2 ring                  fixed bin (3) uns unal,
+      2 pad                   bit (33) unal,
+      2 process_id            bit (36) aligned,
+      2 authorization         bit (72) aligned,
+      2 max_authorization     bit (72) aligned,
+      2 audit_flags           bit (36) aligned;
+
+dcl audit_user_info_version_1 char (8) init ("adtusrv1")
+          internal static options (constant);
+
+/* end include file - access_audit_user_info.incl.pl1 */
+
+
+MTB-692                                Multics Technical Bulletin
+                                                  Ring 0 Auditing
+
+The following  include file describes the  format of the metering
+data as returned by the "get_audit_meters" entrypoint.
+
+/* begin include file - access_audit_meter_info.incl.pl1 */
+
+/* audit logging and flag checking meters are returned in the
+   following structure */
+
+dcl audit_meter_info_ptr pointer;
+dcl audit_meter_info_num fixed bin;
+
+dcl 1 audit_meter_info based (audit_meter_info_ptr) aligned,
+      2 version     char (8),
+      2 meters (audit_meter_info_num),
+        3 name                char (32),
+        3 cpu_time            fixed bin (71),
+        3 pagefaults          fixed bin (71),
+        3 count               fixed bin (35),
+        3 check_count         fixed bin (35);
+
+dcl audit_meter_info_version_1 char (8) init ("adtmtrv1")
+          internal static options (constant);
+
+/* end include file - access_audit_meter_info.incl.pl1 */
+
+
+Multics Technical Bulletin                                MTB-692
+Ring 0 Auditing
+
+The following  include file describes  the format of  binary data
+stored   in  the   audit  message   for  operations   related  to
+storage-system objects.
+
+/* begin include file - access_audit_ssobj_info.incl.pl1 */
+
+/* This structure describes the default binary information
+   for storage system objects in an audit log message */
+
+dcl audit_ssobj_info_ptr      pointer;
+
+dcl 1 audit_ssobj_info   based (audit_ssobj_info_ptr) aligned,
+      2 info_type             char (8) unal,
+      2 parent_uid_path (0:15) bit (36) aligned,
+      2 entry_uid             bit (36),
+      2 dtem                  bit (36),
+      2 raw_mode              bit (36),
+      2 ex_mode               bit (36),
+      2 access_class          bit (72),
+      2 ring_brackets (3)     bit (3) unal,
+      2 ex_ring_brackets (3)  bit (3) unal,
+      2 flags,
+        3 (
+          dirsw,
+          per_process_sw,
+          safety_sw,
+          multiple_class,
+          audit_flag,
+          security_oosw,
+          entrypt_sw,
+          master_dir
+          )                   bit (1) unal,
+        3 pad                 bit (19) unal,
+      2 dtcm                  bit (36),
+      2 vtoce_name            char (32);   /* original name */
+
+dcl  audit_ssobj_info_type_v1 char (8) init ("ssobj_v1")
+                                   static options (constant);
+
+/* slightly shorter info for links, first three components are same */
+
+dcl audit_link_info_ptr       pointer;
+
+dcl 1 audit_link_info   based (audit_link_info_ptr) aligned,
+      2 info_type             char (8) unal,
+      2 parent_uid_path (0:15) bit (36) aligned,
+      2 entry_uid             bit (36),
+      2 dtem                  bit (36);
+
+
+MTB-692                                Multics Technical Bulletin
+                                                  Ring 0 Auditing
+
+dcl  audit_link_info_type_v1  char (8) init ("sslnk_v1")
+                                   static options (constant);
+
+/* end include file - access_audit_ssobj_info.incl.pl1 */
+
+
+Multics Technical Bulletin                                MTB-692
+Ring 0 Auditing
+
+12 CURRENT PROGRAMS WHICH REQUIRE MODIFICATION
+
+The    following   system    programs,   which    currently   use
+protection_audit_, must be changed to use the new modules:
+
+    access_class_check.pl1
+    reclassify.pl1
+    salv_check_vtoce_.pl1
+    salv_dir_checker_.pl1
+    salv_directory.pl1
+    set_privileges.pl1
+    tty_index.pl1
+    hc_ipc.pl1
+    dc_find.pl1
+    illegal_procedure.pl1
+    fim.alm
+    create_vtoce.pl1
+    admin_gate_.alm (get_audit_flags, ring1_audit)
+    system_privilege_.alm (get_audit_flags)
+    mseg_add_.pl1 (actually, this one will use
+                               the ring-1 auditing module )
+
+Their logic must  also be altered to log  audit messages for more
+than just denial of access  situations.  Of course, there will be
+additional modules which must have auditing introduced.
+
+In  addition,  "active_hardcore_data.cds"  must  be  modified  to
+include  meter  data  for  the   new  audit  flag  design.   Only
+access_audit_  will  access those  meters  (currently dc_find.pl1
+updates the check frequency meter).
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

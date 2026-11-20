@@ -1,0 +1,522 @@
+Multics Technical Bulletin                                MTB-510
+DM: Container Access Layer
+
+
+
+To:       Distribution
+
+From:     Lindsey Spratt and Matthew Pierret
+
+Date:     05/15/81
+
+Subject:  Data Management: Container Access Layer -- Overview
+
+
+
+1 ABSTRACT
+
+    This  paper describes  the Container  Access Layer  (CAL), a
+layer  of  the Data  Management  Architecture's Data  Storage and
+Retrieval  System  (DS&R).   The  CAL lies  between  the External
+Access Layer and the Page Access  Layer of the DS&R.  It provides
+services to  the External Access  Layer and uses  the services of
+the Page  Access Layer.  Among  these services are  address space
+management and  logical grouping of data.   This layer supports a
+number  of  storage  allocation  methods.  The  reader  should be
+familiar   with   MTB-508,   "Data   Management:    Architectural
+Overview".
+
+
+
+
+Comments should be sent to the author:
+
+via Multics Mail:
+  Spratt.Multics on either MIT Multics or System M.
+
+via US Mail:
+  Lindsey Spratt
+  Honeywell Information Systems, inc.
+  4 Cambridge Center
+  Cambridge, Massachusetts 02142
+
+via telephone:
+  (HVN) 261-9321, or
+  (617) 492-9321
+
+
+
+_________________________________________________________________
+
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+
+                            Page i. 
+
+
+
+
+
+
+
+
+
+
+                           CONTENTS
+
+
+                                                        Page
+
+                1 Abstract . . . . . . . . . . . . . .     i
+                2 Introduction . . . . . . . . . . . .     1
+                3 Objects  . . . . . . . . . . . . . .     1
+                   3.1 Container . . . . . . . . . . .     1
+                   3.2 Container Element . . . . . . .     2
+                4 Naming . . . . . . . . . . . . . . .     2
+                5 Services . . . . . . . . . . . . . .     3
+                6 Methods of Storage Management  . . .     6
+                   6.1 Allocation Blocks . . . . . . .     6
+                   6.2 Allocation Methods  . . . . . .     7
+                   6.3 Special Actions taken on
+                    Allocate/Free  . . . . . . . . . .     7
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                              iii Multics Technical Bulletin                                MTB-510
+DM: Container Access Layer
+
+
+
+2 INTRODUCTION
+
+    The CAL centralizes and  formalizes methods of address space
+management, i.e.  allocation and freeing, for use by the External
+Access Layer.   Subsystems in the External  Access Layer, such as
+index and record managers, use the CAL to allocate and free space
+for objects  of the subsystem.  The  CAL supports many techniques
+of address space management, relieving EAL subsystems from having
+to do address space  management, without relinquishing control of
+how  the  address  space is  managed.   The CAL  also  provides a
+convenient mechanism for grouping data in a logical fashion, such
+as grouping nodes of an index or collections of records.
+
+
+3 OBJECTS
+
+    There are  two objects of  interest in the  container access
+layer, the container and the container element.
+
+
+3.1 Container
+
+    The space in a container  is taken up by container elements,
+which  may  be allocated  or  freed.  Containers  are potentially
+limitless in size.  All of  a particular container must reside on
+one and  only one page  file, as described  in MTB-508.  However,
+there  can  be  more  than  one  container  per  page  file.  The
+container elements of a container are managed by a single address
+space management technique.
+
+    The  motivation  for having  multiple containers  within one
+page file is  to be able to group together  sets of data that are
+related but are  best managed in different ways.   A good example
+is  an  index  and  the set  of  records  that  index references.
+Separating  the data  and index allows  for the  use of different
+storage management  techniques, but being  in the same  page file
+keeps them logically connected.
+
+    All   containers  have   associated  with  them   a  set  of
+characteristics that  govern how the CAL  reacts to requests from
+the External Access Layer.  One is  the page file with which this
+container is associated.  Another is the storage management style
+that  this  container uses.   This  includes how  to  manage free
+storage  and  default  allocation  block  sizes,  whether storage
+should be  zeroed on free, if  container elements are fixed-sized
+or  variable.   The  intent is  to  relieve all  programs  of the
+External  Access Layer,  and in  particular the  index and record
+managers,  from  the burden  of having  to do  storage allocation
+within  the page  file to store  their objects, and  of having to
+reference their  objects using page file  addresses, and to allow
+
+
+                            Page 1. 
+MTB-510                                Multics Technical Bulletin
+                                      DM: Container Access Layer
+
+
+
+for  different  allocation and  freeing techniques  for different
+containers.
+
+    The  CAL  supports  the  concept of  a  "container  within a
+container", though it is not  clear at this point how efficiently
+this can be  done.  An "interior" container is  a container which
+is  a part  of another  container.  An  interior container cannot
+overlap containers.
+
+
+3.2 Container Element
+
+    A container element is a piece of a container.  The External
+Access Layer  calls upon the  CAL to allocate, get,  put and free
+container elements.   When a container element  is allocated, the
+CAL  returns  a container  element  identifier to  the requesting
+program  in  the External  Access  Layer.  External  Access Layer
+programs  must  present  this  identifier  to  the  CAL  for  any
+subsequent get,  put or free operation  on the container element.
+The CAL must be able  to convert the container element identifier
+into a  page file offset  and length where  the container element
+lives in  the page file.   A container element  is independent of
+actions  taken on  other container elements  by the  CAL, and can
+only be referenced through the CAL.
+
+    The  External Access  Layer views  a container  element as a
+contiguous piece of storage.  However, it may or may not occupy a
+contiguous set of page file addresses.  It may be a collection of
+offsets  and  lengths.   In  effect, the  CAL  keeps  a  table of
+container elements  and the pieces  of storage that  make them up
+for each container, to keep  track of what storage each container
+element  takes  up.  There  is no  restriction on  the size  of a
+container element in a given  container, except that it be wholly
+contained within its  parent container and that it  obey any size
+restrictions that may have been defined by the user of the CAL.
+
+
+4 NAMING
+
+    When an  External Access Layer  program requests the  CAL to
+create a  container, it gives  a container name to  the CAL; this
+name must  be unique within  its external file.   External Access
+Layer programs  can refer to  the container with  a pathname-like
+construct  which  consists  of external_file_name$container_name.
+For the case of interior  containers, this convention is extended
+to external_file_name>container_name>interior_container_name.
+
+    These  pathname-like  names  are  obviously  cumbersome  and
+inefficient to use every time a container or container element is
+referenced, so local identifiers are used.  Before a container is
+
+
+                            Page 2. 
+Multics Technical Bulletin                                MTB-510
+DM: Container Access Layer
+
+
+
+used in a process, an  External Access Layer program requests the
+CAL to open  it.  This opening returns an  opening identifier for
+use  for  this  process.   This  opening  identifier  is  used to
+reference  the  container.   If  two  processes  opened  the same
+container,  they  would  not  necessarily  get  the  same opening
+identifier; opening identifiers are  unique only within a process
+and not constant accross process.
+
+    The  CAL  generates  a  container  element  identifier  when
+allocating  a  container  element.   The  External  Access  Layer
+requests  this  allocation, but  unlike  the case  of  creating a
+container,  does not  specify a  name for  the container element.
+The External  Access Layer references a  container element by the
+container  opening identifier  and container  element identifier.
+An analogy can  be made to the referencing of  a piece of data by
+initiated  segment  number  and  offset  in  the  current Multics
+virtual memory.
+
+
+5 SERVICES
+
+    The  Container Access  Layer provides  a set  of services to
+manage the address  space of page files as  a resource, entailing
+management  of   containers  and  of   container  elements.   The
+discussion of each service includes  a description of the service
+in  terms  of the  caller's point  of view;  this caller  is some
+program in the External Access Layer.
+
+CREATE CONTAINER:  in specified external  file.  A program in the
+    External Access Layer uses this service when a new container
+    is  needed,  such as  a relational  data base  manager which
+    needs  a  container to  put  a new  index in.   Needed input
+    information  includes the  name to  give the  container, the
+    name of the external file to put it in, the name of the page
+    file the container is  associated with and information about
+    the method of address space  management, such as the maximum
+    size  of  a  container  element, storage  style  and whether
+    container elements are fixed  or variable sized (See Section
+    6  for  examples of  this type  of information).   The given
+    container name must be unique  within the external file, and
+    the external file must exist.  There is no output.
+
+    From  the caller's  point of  view, creating  a container is
+    like creating a segment; the result is an empty container of
+    a given name.
+
+    For each external file the  CAL keeps a catalogue containing
+    information about the containers  of which it consists.  The
+    CAL uses this catalogue  internally to organize the contents
+    of external files.  When  a container is created appropriate
+
+
+                            Page 3. 
+MTB-510                                Multics Technical Bulletin
+                                      DM: Container Access Layer
+
+
+
+    information is  entered into the catalogue  of the specified
+    external file.
+
+DESTROY CONTAINER:  in specified external file.  A program in the
+    External Access Layer destroys a container, such as an index
+    manager  deleting  an  index  which  was  represented  as  a
+    container.   The  full  container name,  which  includes the
+    external file name, or the  opening identifier is given (See
+    below), and there is no output.
+
+    To  the  caller it  is  much like  deleting a  segment.  All
+    interior container opening identifiers and container element
+    identifiers  are  no longer  valid to  the caller.   The CAL
+    removes all information about the container and its contents
+    from the catalogue it is defined  in, and frees all space in
+    the  page file  which is  taken up  by the  container.  This
+    results  in the  destruction of all  interior containers and
+    container elements.  Before a container can be destroyed, it
+    must first be closed (See CLOSE CONTAINER below).
+
+OPEN CONTAINER:  for future use by  this process.  A container is
+    made available for use in a process by External Access Layer
+    programs by  first opening it.   The caller supplies  a full
+    container pathname,  which includes the  external file name,
+    and  an  opening  identifier  is  returned,  along  with, if
+    appropriate  to  the storage  style, the  maximum size  of a
+    container  element.   The  maximum   size  is  important  to
+    External Access Layer programs  that must initialize buffers
+    in  preparing  to GET  container  elements (See  GET below).
+    This service is very analogous to initiating a segment.
+
+CLOSE CONTAINER:  referred to  by given opening identifier.  When
+    the External Access Layer is finished with all expected work
+    on a given container, it gets  rid of the opening by closing
+    the container.  An opening  identifier is expected as input;
+    no  output  results.   This  is analagous  to  terminating a
+    segment.
+
+ALLOCATE  ELEMENT:   of a  specified size  in a  given container.
+    When a record manager in  the External Access Layer is ready
+    to  store  a  new record,  it  may  have to  allocate  a new
+    container element to put it  in.  Input would be the opening
+    identifier of the container that the container element is to
+    go in (the container must be  open) and probably the size of
+    the element.  The  size may not be needed  if the allocation
+    method  in  force for  the  container deals  with containers
+    elements of a pre-defined size.  The CAL returns a container
+    element identifier, unique across the container.
+
+
+
+
+                            Page 4. 
+Multics Technical Bulletin                                MTB-510
+DM: Container Access Layer
+
+
+
+    The  caller  only sees  that an  identifier is  returned and
+    knows that  storage has been allocated  in the container and
+    can  be referenced  by the container  opening identifier and
+    container element  identifier.  If the  allocation method so
+    permitted,  the caller  may have  been able  to specify some
+    details about where he wanted the storage allocated relative
+    to some other container elements.
+
+    The  allocation  of  space  for   the  element  is  done  in
+    accordance  with the  storage style of  the container, which
+    was set when  the container was created.  The  CAL would not
+    necessarily  allocate  one  physically  contiguous  chunk of
+    storage;  the  allocated container  element could  be pieced
+    together with  more than one piece  of storage.  However, to
+    the caller it would look like one piece of storage.
+
+FREE ELEMENT:  referred to by  given container element identifier
+    in  specified container.   When deleting  a record  a record
+    manager in the External Access Layer would call upon the CAL
+    to  free  the  container  element  which  holds  the deleted
+    record.   A  container  element identifier  and  a container
+    opening identifier are given as input; no output results.
+
+    In the  caller's eyes the given  container element no longer
+    exists.  The container element identifier is no longer valid
+    for use by the caller.  To the CAL, the container element is
+    now  available  for allocation.   The  freeing of  the space
+    occupied  by  the element  is  done in  accordance  with the
+    storage style  of the container.  This  may involve zero-ing
+    out the  piece or pieces  of storage previously  occupied by
+    the container  element, and any  of a number  of methods for
+    making that storage part of the available storage.
+
+PUT: into  an allocated  container element.   This would  be like
+    storing the record for which  the record manager allocated a
+    container element (See ALLOCATE ELEMENT).  Required as input
+    is  the container  opening identifier  and container element
+    identifier, a piece of data or pointer to a piece of data to
+    put into the container element, and the length of the data.
+
+    To the  caller PUT is  a simple write.  The  contents of the
+    supplied piece  of data is written  into the given container
+    element.  The CAL knows how  the container element maps onto
+    the page file being worked with and how much of it is needed
+    for   the   PUT.   The   container  element   identifier  is
+    transformed,  by  the  CAL,  into  page  file  offset(s) and
+    length(s) and the data is  written into the page file, using
+    the Page Access Layer PUT service.  A portion of a container
+    element may  be PUT.  A record  manager which stores records
+    as container  elements can PUT  a field of a  record in this
+
+
+                            Page 5. 
+MTB-510                                Multics Technical Bulletin
+                                      DM: Container Access Layer
+
+
+
+    way.   Input, in  addition to  that specified  above, is the
+    offset in  the container element at  which the portion being
+    PUT is to start.  This offset is "zero"-ed at the beginining
+    of the container element.
+
+GET: the contents of a container  element.  This is how a program
+    in the  External Access Layer  reads data, such  as a record
+    manager looking at the contents  of a record that was stored
+    as  a  container element.   Input  is the  container opening
+    identifier  and  the  container  element  identifier  and  a
+    pointer to  a buffer where  the data is  desired.  Output is
+    the contents of the container element, placed in the buffer,
+    and the length of the transferred data.
+
+    To  the  caller this  is  a straightforward  read.   The CAL
+    transforms the  container element identifier  into page file
+    offset(s)  and  length(s),  and simply  reads  that storage,
+    using the Page Access Layer GET service.
+
+    GET also works on a portion of a container element, with the
+    addition input of an offset within the container element and
+    a length of the portion.  In this way a record manager reads
+    part of a record.
+
+
+6 METHODS OF STORAGE MANAGEMENT
+
+    As  stated  above, one  of  the purposes  of  the CAL  is to
+centralize  and  formalize address  space  management techniques.
+There   are   many   possible  techniques   with   many  possible
+combinations  of attributes.   Some examples  are given  below of
+technologies which will be implemented.
+
+
+6.1 Allocation Blocks
+
+    The  caller of  the CAL  may give the  size of  the block of
+storage  to allocate  (container element) at  allocation time, or
+the  size may  be known by  the CAL.   Blocks can be  of fixed or
+variable size.  In the case of a b-tree index manager which knows
+that it will always allocate nodes  of a fixed, known size in the
+container  which   represents  the  index,   that  container  has
+associated  with  it  attributes to  tell  the CAL  that  when an
+allocate is  requested the container element  allocated should be
+of a particular fixed size.  A  record manager might not know how
+big  each record  may be,  so the  container which  holds records
+allows  variable  sizes  to  be  specified  when  allocations are
+requested.
+
+
+
+
+                            Page 6. 
+Multics Technical Bulletin                                MTB-510
+DM: Container Access Layer
+
+
+
+    Once  a  container  element  is allocated,  it  cannot grow,
+except by the allocation of  a new, larger container element, but
+it can shrink.
+
+
+6.2 Allocation Methods
+
+    How allocation is done can make a great impact on the amount
+of  storage space  used and  in efficiency  of access.   Of prime
+concern  on Multics  is getting a  handle on paging  i/o, and one
+method of doing so is to  use the concept of control intervals (a
+la GCOS and L6) to group records  that are likely to be wanted at
+the  same time.   At the price  of a relatively  small ammount of
+overhead,  speed of  allocation and  of access  are likely  to be
+greatly enhanced in some situations.
+
+    If storage  space is tight  and speed of  allocation not too
+great a concern, a best-fit  method is desirable.  On allocation,
+all of the free space is  searched and the piece of storage which
+will accomodate  the container element  with the least  amount of
+fragmentation is chosen.
+
+    If speed of the allocation  is of prime concern, a first-fit
+method  can be  used.  In this  approach, free  space is searched
+until space is found that  can accomodate the requested container
+element, regardless of the resulting fragmentation.
+
+    There  are technologies  that trade-off  speed of allocation
+and  wisest  use  of  storage.   One  such  method  is  a bucket,
+first-fit  method.  Buckets  of pieces  of free  space of similar
+size  are kept,  such as  the 1K  and less  bucket, the  1K to 4K
+bucket, the 4K to 8K bucket  and so on.  When a container element
+is allocated, the  bucket which holds pieces of  space closest in
+size to the container element is searched in a first-fit fashion.
+If  no space  is found,  the bucket  of the  next larger  size is
+searched,  until  space is  found.  For  instance, if  a 3K-sized
+container element  were to be  allocated, the 4K  bucket would be
+searched,  then the  8K.  A  record manager  that knows  that its
+records will  be of widely different  sizes, but that performance
+is also an issue, might opt for this style.
+
+
+6.3 Special Actions taken on Allocate/Free
+
+    For security and initialization purposes, an External Access
+Layer program may require that  its container elements are zeroed
+when freed or allocated.  For  performance reasons this might not
+be desirable.
+
+
+
+
+                            Page 7. 

@@ -1,0 +1,1913 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Multics Command Level I/O redirection (pipes)..">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+MULTICS TECHNICAL BULLETIN                              MTB763-03
+
+To:       MTB Distribution
+
+From:     G. William May
+
+Date:     July 9, 1987
+
+Subject:  Multics Command Level I/O redirection (pipes).
+
+               -----------------------------------
+
+This MTB describes an addition to the Multics command line syntax
+that will facilitate passing  data between unrelated commands and
+data storage devices via the standard I/O switches user_input and
+user_output.
+
+Rev  1:    06/15/87)  Rewritten  to  include   additional  design
+information.  Rev 2:  06/23/87) Modified to show new pipe syntax.
+Rev  3:  07/09/87)  Revised  Appendix  B Manual  Documentaton and
+general cleanup.
+
+               -----------------------------------
+
+Send comments by Multics mail to:
+
+   &gt;udd&gt;Multics&gt;GWMay&gt;mtgs&gt;pipe_design_review.forum on System M
+
+   or
+
+   GWMay.Multics on System M
+
+_________________________________________________________________
+
+Multics project  internal documentation; not to  be reproduced or
+distributed outside the Multics project without permission of the
+Director of MDC.
+
+
+MTB763-03                             Multics Command Level Pipes
+
+                             CONTENTS
+
+                                                         Page
+
+   1:  Introduction  . . . . . . . . . . . . . . . . . . . .     1
+   2:  Background Information  . . . . . . . . . . . . . . .     2
+   3:  Evaluation of the Uses of I/O Redirection . . . . . .     7
+   4:  Proposal to Change Multics  . . . . . . . . . . . . .     9
+   5:  Detailed Proposal . . . . . . . . . . . . . . . . . .    10
+   5.1:  Syntax  . . . . . . . . . . . . . . . . . . . . . .    11
+   5.2:  Usage . . . . . . . . . . . . . . . . . . . . . . .    13
+   5.3:  Implementation  . . . . . . . . . . . . . . . . . .    16
+   5.4:  Placement of the I/O Redirection Facility . . . . .    18
+   5.5:  Limitations . . . . . . . . . . . . . . . . . . . .    19
+   5.6:  Impact to the Current System  . . . . . . . . . . .    20
+   6:  End Result  . . . . . . . . . . . . . . . . . . . . .    21
+   7:  MCR Decision Criteria Summary:  . . . . . . . . . . .    22
+   8:  Appendix A:  Program Changes  . . . . . . . . . . . .    24
+   9:  Appendix B:  Manual Documentation . . . . . . . . . .    31
+
+
+Multics Command Level Pipes                             MTB763-03
+
+1:  INTRODUCTION
+
+One  of the  goals of   the Multics  organization for  the MR12.1
+release of  the operating system is  to make it possible  to move
+programs from other systems to Multics with little or no changes.
+As part  of the support for  this effort, the design  of the UNIX
+system  was  reviewed.   What  we  learned  is  that  many of the
+programs developed there rely on I/O redirection in order to move
+data from one program to another.  To see if these programs would
+work on Multics, the capabilities  for I/O redirection at command
+level were  evaluated.  The evaluation showed that  a need exists
+for a simplified I/O redirection facility.
+
+In  an effort to  make Multics available  to a wider  audience of
+users and to  make I/O redirection easier for  our current users,
+this project  was requested to simplify  Multics I/O redirection.
+It is not  the intent of this project to  recreate any portion of
+another operating system.
+
+This design document includes:
+
+1) background information on command  level I/O redirection as it
+   exists in Multics today and as it is now being used in several
+   operating systems with large user communities.
+
+2) an evaluation of the benefits of command level I/O redirection
+   to the Multics system as a whole.
+
+3) a  proposal  for  a  change  to  the  Multics  system to add a
+   simplified method for redirecting I/O at command level.
+
+4) a  detailed  proposal  of  the  changes  needed  to  implement
+   simplified command level I/O redirection.
+
+5) detailed program and documentation changes.
+
+
+MTB763-03                             Multics Command Level Pipes
+
+2:  BACKGROUND INFORMATION
+
+Terminology
+
+attach
+     the act of  associating an I/O switch with a  file, or other
+     I/O switch.
+
+detach
+     the  act of  disassociating an  I/O switch  with a  file, or
+     other I/O switch.
+
+filter
+     commands that  get input from standard input  and put output
+     to standard output with each command modifying the input and
+     passing the data out through a standard path.
+
+pipe
+     A logical stream of data created by redirecting the standard
+     input  and output  switches  through  a series  of commands,
+     filters and I/O modules.
+
+I/O module
+     a program that processes  input and output requests directed
+     to  a given  switch.  It   may perform  operations on  other
+     switches, or call the supervisor.
+
+I/O redirection
+     The act of changing the path in the I/O system through which
+     information is sent.
+
+I/O switch
+     A path in the I/O system through which information is sent.
+
+Multics I/O
+
+     A  complete  description  of   the  current  I/O  facilities
+     available  in  the  Multics  environment  is  located in the
+     Multics Programmer's  Reference Manual section 5.   This MTB
+     assumes  that the  reader is  familiar with  the Multics I/O
+     system command io_call and the iox_ system subroutine.
+
+
+Multics Command Level Pipes                             MTB763-03
+
+I/O Redirection in Multics
+
+     To facilitate control of the sources and targets of I/O, the
+     Multics system  makes use of a  software construction called
+     an I/O switch.   An I/O switch is like a  channel in that it
+     controls the flow of data between program accessible storage
+     and devices, files, etc.  The switch must be attached before
+     it can be used.   The attachment specifies the source/target
+     for  I/O  operations  and  the  particular  I/O  module that
+     performs the operations.
+
+     The  ability to  establish or   change the  path in  the I/O
+     system  through which  information is  sent is  available at
+     command level, language I/O level and system I/O level.  The
+     command  level  capabilities  for  I/O  redirection  are  of
+     particular interest.
+
+     To   redirect  I/O  at   command  level,  the   io_call  and
+     file_output commands are used.
+
+     The user_output and error_output  switches can be controlled
+     by  use of  the file_output,  terminal_output and syn_output
+     commands.   To feed the  output of one  command as input  to
+     another, the following command sequence is used:
+
+     file_output file
+     command
+     revert_output
+     command2 ([contents file -nl]);
+
+     Any switch  can be redirected by using  the io_call command.
+     To redirect a switch like user_input, the following commands
+     are required:
+
+     io_call move_attach user_input save_user_input
+     io_call attach input_sw vfile_ some_file
+     io_call open input_sw stream_input
+     io_call attach user_input syn_ input_sw
+
+     command
+
+     io_call detach user_input
+     io_call close input_sw
+     io_call detach input_sw
+     io_call move_attach save_user_input user_input
+
+UNIX I/O redirection
+
+     Several currently available operating  systems use a concept
+     known as  "pipes" to simplify I/O  redirection.  The concept
+     was  developed for  the UNIX  operating environment  and was
+
+
+MTB763-03                             Multics Command Level Pipes
+
+     designed as  a command level simplification of  the UNIX I/O
+     facilities which are modeled after the Multics I/O system.
+
+     To   help  readers   of   this   document  gain   a  general
+     understanding of pipes, the  following section "UNIX pipes",
+     is  taken from the  text "The Design  of the UNIX  Operating
+     System" (Bach, 1986).
+
+UNIX pipes
+
+     "The philosophy  of the UNIX system is  to provide operating
+     systems primitives that enable users to write small, modular
+     programs that can  be used as building blocks  to build more
+     complex programs.  One such primitive visible to shell users
+     is the capability to redirect I/O.  Processes conventionally
+     have access  to three files:  they read  from their standard
+     input file,  write to their standard output  file, and write
+     error  messages  to  their  standard  error file.  Processes
+     executing at a terminal typically use these three files, but
+     each may  be "redirected" independently.  For  instance, the
+     command line
+
+     ls
+
+     list  all files  in the  current directory  on the  standard
+     output, but the command line
+
+     ls &gt; output
+
+     redirects the standard output to the file called "output" in
+     the  current   directory,  using  the  creat   system  call.
+     Similarly, the command line
+
+     mail mjb &lt; letter
+
+     opens the file "letter" for its standard input and mails its
+     contents  to the user  named "mjb".  Processes  can redirect
+     input and output simultaneously, as in
+
+     nroff -mm &lt; doc1 &gt; doc1.out 2&gt; errors
+
+     where the  text formatter nroff  reads the input  file doc1,
+     redirects  its standard  output  to  the file  doc1.out, and
+     redirects  error messages to  the file errors  (the notation
+     "2&gt;"  means to  redirect the  output for  file descriptor 2,
+     conventionally the standard error).   the programs ls, mail,
+     and  nroff  do  not  know  what  file  their standard input,
+     standard  output,  or  standard  error  will  be;  the shell
+     recognizes the  symbols "&lt;", "&gt;",  and "2&gt;" and  sets up the
+     standard   input,  standard   output,  and   standard  error
+     appropriately before executing the processes.
+
+
+Multics Command Level Pipes                             MTB763-03
+
+     The second building block primitive is the pipe, a mechanism
+     that allows a stream of data to be passed between reader and
+     writer  processes.  Processes   can redirect  their standard
+     output  to a pipe  to be read  by other processes  that have
+     redirected their standard input to  come from the pipe.  The
+     data  that the first  processes write into  the pipe is  the
+     input for the second  processes.  The second processes could
+     also  redirect  their  output,   and  so  on,  depending  on
+     programming need.   Again, the processes need  not know what
+     type of file their standard  output is; they work regardless
+     of whether their standard output  is a regular file, a pipe,
+     or a  device.  When using  the smaller programs  as building
+     blocks  for a  larger more  complex program,  the programmer
+     uses the pipe primitive and  redirection of I/O to integrate
+     the piece parts.  Indeed, the system tacitly encourages such
+     programming  style  so  that  new  programs  can  work  with
+     existing programs.  For example, the program grep searches a
+     set of files (parameters to grep) for a given pattern:
+
+     grep main a.c b.c c.c
+
+     searches  the  three  files  a.c,  b.c,  and  c.c  for lines
+     containing the  string "main" and  prints the lines  that it
+     finds onto standard output.  Sample output may be:
+
+     a.c: main(argc, argv)
+     c.c:/* here is the main loop in the program */
+     c.c: main()
+
+     the program wc with the option -1 counts the number of lines
+     in the standard input file.  The command line
+
+     grep main a.c b.c c.c|wc -1
+
+     counts  the number of  lines in the  files that contain  the
+     string "main"; the output from grep is "piped" directly into
+     the wc  command.  For the previous sample  output from grep,
+     the output from the piped command is
+
+     3
+
+     The use  of pipes frequently makes it  unnecessary to create
+     temporary files."
+
+Different Programming Philosophies
+
+     The concept of program modularity has always been one of the
+     many attractive features of  the Multics system.  It becomes
+     clear after reading the philosophy of the UNIX system above,
+     that  there is  a slight   divergence between  how the  UNIX
+     community and Multics community view program modularity.
+
+
+MTB763-03                             Multics Command Level Pipes
+
+Multics
+
+     The Multics  view is that commands should  be modularized by
+     function with each command  providing a complete solution to
+     a set of requirements within  the boundaries of the program.
+     The  Multics command  set provides  control to  its commands
+     through  the  use  of  control  arguments.   To complete the
+     model,  commonly used  system  functions  are provided  by a
+     complete set  of documented system subroutines.   When it is
+     necessary  to route the  output of one  command as input  to
+     another, the  active function capability or  the file_output
+     command is used.
+
+UNIX
+
+     The  UNIX system  follows much   of the  Multics design.   A
+     documented subroutine  library is available and  commands do
+     accept Multics  style control arguments.   However, commands
+     are  not organized  to solve  large sets  of requirements or
+     offer  generalized uses.   Instead, UNIX  commands are small
+     and very  limited in functionality.   As a result,  they use
+     very few control arguments.  The strength of the UNIX system
+     is realized  when these small commands are  combined to form
+     more powerful overall functions.
+
+
+Multics Command Level Pipes                             MTB763-03
+
+3:  EVALUATION OF THE USES OF I/O REDIRECTION
+
+     Part  of this  design project  is to  determine whether  the
+     Multics I/O redirection facilities are sufficient to support
+     the  programs written  on  UNIX  and UNIX-like  systems.  In
+     answer to this question, the  Multics I/O system is flexible
+     and  device independent.  However,  to redirect the  flow of
+     I/O data  is complex because  the mechanisms are  not hidden
+     from  the  user  and  the  tools  provided  require  a  full
+     understanding of how to do I/O work.
+
+     For example to use the UNIX commands shown above on Multics,
+     the following commands would need to be given:
+
+    UNIX                    MULTICS
+------------------+----------------------------------------------
+ls &gt; output         ready_off
+                    file_output output
+                    ls
+                    revert_output
+                    ready_on
+
+mail mjb &lt; letter   io_call move_attach user_input sv_user_input
+                    io_call attach input_sw vfile_ letter
+                    io_call open input_sw stream_input
+                    io_call attach user_input syn_ input_sw
+                    mail mjb
+                    io_call detach user_input
+                    io_call close input_sw
+                    io_call detach input_sw
+                    io_call move_attach sv_user_input user_input
+
+nroff -mm &lt; doc1 &gt; doc1.out 2&gt; errors
+
+                    io_call move_attach user_input sv_user_input
+                    io_call attach input_sw vfile_ doc1
+                    io_call open input_sw stream_input
+                    io_call attach user_input syn_ input_sw
+                    ready_off
+                    file_output doc1.out
+                    file_output -isw error_output errors
+                    nroff -mm
+                    revert_output -isw error_output
+                    ready_on
+                    io_call detach user_input
+                    io_call close input_sw
+                    io_call detach input_sw
+                    io_call move_attach sv_user_input user_input
+
+     It  is clear  that some   improvement is  needed to  the I/O
+     redirection  facilities if  Multics plans  to host  commands
+     like  those shown above.   The next step  is to decide  what
+
+
+MTB763-03                             Multics Command Level Pipes
+
+     other  benefits are  possible from  improved I/O redirection
+     facilities.   Benefits to the  Multics system and  its users
+     include:
+
+     1) The ability  to develop small single  function filters on
+        the Multics system.  By using the portable C compiler, it
+        is  possible  to  move  applications  written  as filters
+        directly to other computer systems.
+
+     2) It will be easy to redirect data through commands.
+
+     3) It  will be  possible  to  use existing  Multics commands
+        which are not active functions as active functions.
+
+        For example, the  output of the list command  can be used
+        directly as input to a filter that uses entrynames.
+
+     4) New  Multics  commands  may  take  advantage  of the pipe
+        concept to  improve the Multics environment  by providing
+        broad   based   application   of   data   across  command
+        boundaries.   This  would  be  accomplished  by  creating
+        filters  which perform  the tasks  currently provided  by
+        control arguments in the Multics system.
+
+        For example,  a command that outputs lines  which match a
+        given string can  be used in a pipe  string.  This single
+        filter  could eliminate  the  need  for duplication  of a
+        -match  control  argument  and  supporting  code in every
+        command that needs to match string data.
+
+
+Multics Command Level Pipes                             MTB763-03
+
+4:  PROPOSAL TO CHANGE MULTICS
+
+Problem Description
+
+     The  evaluation  of  the   Multics  system  I/O  redirection
+     facilities above indicates that it  is not convenient to use
+     filter type commands on Multics.
+
+     To make it  possible to move filter commands  to Multics and
+     use  them there,  the I/O  redirection facility  needs to be
+     simplified.
+
+Summary of Change
+
+     To  simplify  the  Multics  I/O  redirection  facility,  the
+     functions  of  the  current  I/O  commands  that perform I/O
+     redirection  will be hidden  from users.  The  solution will
+     provide a  shorthand method of performing  I/O attach, open,
+     close and detach operations.
+
+Design Constraints
+
+     The simplified I/O redirection interface must:
+
+     1) provide a simple useful syntax.
+
+     2) provide  the  ability  to  easily  redirect  the  Multics
+        standard user_input and user_output I/O switches.
+
+     3) provide   the   ability   to   specify   the  I/O  attach
+        descriptions for user_input and user_output.
+
+     4) make a minimal impact on the existing system.
+
+     5) interact   with  the    existing  system   command  level
+        facilities.
+
+Expected Results
+
+     A simple interface that provides the ability to:
+
+     1) move filters to Multics and use them there.
+
+     2) move data directly from one file to another.
+
+     3) move data directly from one command to another.
+
+     4) move data  directly from a file  to a command and  from a
+        command to a file.
+
+
+MTB763-03                             Multics Command Level Pipes
+
+5:  DETAILED PROPOSAL
+
+     In order  to develop a simplified  I/O redirection interface
+     the following steps were followed:
+
+     1) Design a simple useful syntax.
+
+     2) Develop the usage scenario for the syntax.
+
+     3) Develop    the   implementation   for    simplified   I/O
+        redirection.
+
+     4) Determine the placement of  simplified I/O redirection as
+        a facility within the Multics system.
+
+     5) Determine the impact to the system.
+
+
+Multics Command Level Pipes                             MTB763-03
+
+5.1:  Syntax
+
+     The following section details  the development of the syntax
+     that  will  be  used  for  the  simplified  I/O  redirection
+     capability.
+
+The UNIX Redirection Syntax
+
+     The  syntax used  by the   UNIX system  at command  level to
+     facilitate I/O  redirection as detailed  above is:  &lt;,  |, &gt;
+     and 2&gt; and on some systems "&gt;&gt;".
+
+     Part  of   the  investigation  for  this   project  included
+     determining the importance of  the syntax.  Because the UNIX
+     syntax has  been implemented on many  UNIX-like machines, it
+     was a consideration  to try to make the  syntax available on
+     Multics.
+
+     The conflicts of implementing this syntax in Multics are:
+
+     1) The characters  "&lt;" and "&gt;"  are an integral  part of the
+        Multics  file system.   They are  reserved for delimiting
+        relative  and  absolute   pathnames  within  the  Multics
+        hierarchy.
+
+     2) The character "|" is used to delimit the base offset from
+        the word offset of a virtual pointer.
+
+
+MTB763-03                             Multics Command Level Pipes
+
+The Multics Redirection Syntax
+
+     Because the characters "&lt;", "&gt;" and "|" have special meaning
+     at  command level  on the  Multics system,  the UNIX  syntax
+     cannot be used.
+
+     Since a new syntax must be developed, it can be tailored for
+     use  on the  Multics system.    By designing  a pipe  syntax
+     specifically  for  Multics,  the  full  capabilities  of the
+     system  may be used  to simplify and  improve upon the  UNIX
+     design.
+
+     The  syntax proposed  for  denoting  I/O redirection  on the
+     Multics system is:
+
+              &lt;input&gt; ;| &lt;output&gt;
+
+     where input and output may be a command, filter or file.
+
+     The syntax is designed to show the logical flow of data from
+     one place to another.
+
+     The  Multics pipe syntax  may consist of  one or all  of the
+     following components:
+
+Pipe Delimiter
+
+     The syntax used  to delimit the components of a  pipe is the
+     string ";|".   The string is  used within a  command line to
+     delimit each component of the pipe.
+
+I/O Switch Attach Descriptions
+
+     The I/O switch attach description can consist of the name of
+     a  program which  is an  I/O module,  arguments and  control
+     arguments or a pathname or a file name.
+
+Commands / Filters
+
+     This component is a Multics  command line which contains the
+     name  of a  command, arguments  and control  arguments.  The
+     command line can behave as a command or filter.
+
+
+Multics Command Level Pipes                             MTB763-03
+
+5.2:  Usage
+
+     The  pipe facility  can be   used to  redirect data  between
+     commands and files.  When a file  is specified as input to a
+     command, implied calls to the io_call command are made.  The
+     calls  attach and  open the  file using  the user_input  I/O
+     switch.   After the  command is  called, more  implied calls
+     close and detach the input file.
+
+     It  is also possible  in this design  to route data  between
+     files.  When  a file is  specified as input  to another file
+     the same  implied calls to  the io_call command  will attach
+     and open the files.  Then  an implied command is executed to
+     copy the data from the input file to the output file.  After
+     the data has been copied the files are closed and detached.
+
+     It is also possible to  route data between commands.  When a
+     command  is specified as  input to another  command, implied
+     calls  are made  to the  io_call command.   A temporary work
+     file is attached and opened  as output to the first command.
+     The  command  is  executed.   Then  the  file  is closed and
+     detached.  The file is then  attached and opened as input to
+     the next command.  This command  is executed.  Then the file
+     is closed, detached and deleted.
+
+Type of I/O
+
+     The pipe facility is designed to work with stream I/O only.
+
+Pipe Delimiter
+
+     The  pipe delimiter  will  be  interpreted similarly  to the
+     command line delimiter semi-colon  (;).  When a command line
+     contains pipe delimiters, it  will be broken into individual
+     components delimited by the  pipe delimiter.  The individual
+     pipe components  can then be evaluated by  type as described
+     below.
+
+     The  string ";|"  should not  appear at  the beginning  of a
+     command line or active string.
+
+     When  the token  appears at  the  end  of a  command line  a
+     default output file is implied.  For example:
+
+     the command line:   ls ;|
+           expands to:   ls ;| vfile_ [wd]&gt;pipeout -extend
+
+     The  usage of  pipes on  Multics assigns  the file "pipeout"
+     special meaning as the default output file of a pipe.
+
+
+MTB763-03                             Multics Command Level Pipes
+
+     If  the token  appears at  the end  of an  active string the
+     output  of  the  last  command  is  returned  as  the active
+     function return string.  For example,
+
+     the active string:  [ls &gt;udd&gt;Multics&gt;lib&gt;s&gt;*.pl1;|]
+
+     will  return the output  of the list  command as the  active
+     function return string.
+
+Attach Descriptions
+
+     When the  pipe component begins with pathname  or file name,
+     the component  is expanded to include the  vfile_ I/O module
+     as the default.  For example,
+
+     the string:  list ;| list_file
+     expands to:  list ;| vfile_ [working_dir]&gt;list_file -extend
+
+     When the pipe component begins  with a known I/O module, the
+     pipe  component is  used as   an attach  description to  the
+     specified I/O  module for either user_input  or user_output.
+     When the attach  description is located on the  left side of
+     the  pipe delimiter,  it is  attached to  the user_input I/O
+     switch and opened  for input.  When it is on  the right side
+     of the pipe token, it  is attached to the user_output switch
+     and opened for output.   All currently available I/O modules
+     are described  in the "Multics Subroutines  and I/O Modules"
+     (AG93) manual.
+
+Commands
+
+     If  the  pipe  component  begins  with  an executable object
+     segment, the command line is executed.
+
+     The commands given within the pipe can take advantage of the
+     automatic  I/O   redirection  by  using  the   I/O  switches
+     user_input and user_output.
+
+     When  commands that behave  as filters are  invoked directly
+     from command level, they will  need to check each input line
+     for an appropriate end of information character like "f" or
+     ".".
+
+
+Multics Command Level Pipes                             MTB763-03
+
+Sample Usage
+
+The command line: tape_mult_ m9999 ;| command
+
+is logically expanded to:
+
+            io_call move_attach user_input sv_user_input
+            io_call attach input_sw tape_mult_ m9999
+            io_call open input_sw stream_input
+            io_call attach user_input syn_ input_sw
+            command
+            io_call detach user_input
+            io_call close input_sw
+            io_call detach input_sw
+            io_call move_attach sv_user_input user_input
+
+The command line: tape_mult_ m9999 ;| command ;| output_file
+
+is logically expanded to:
+
+            io_call move_attach user_input sv_user_input
+            io_call attach input_sw tape_mult_ m9999
+            io_call open input_sw stream_input
+            io_call attach user_input syn_ input_sw
+            io_call move_attach user_output sv_user_output
+            io_call attach output_sw vfile_ [wd]&gt;pipeout -extend
+            io_call open output_sw stream_output
+            io_call attach user_output syn_ output_sw
+            command
+            io_call detach user_output
+            io_call close output_sw
+            io_call detach output_sw
+            io_call move_attach sv_user_output user_output
+            io_call detach user_input
+            io_call close input_sw
+            io_call detach input_sw
+            io_call move_attach sv_user_input user_input
+
+
+MTB763-03                             Multics Command Level Pipes
+
+     The command line: tape_mult_ m9999 ;| output_file
+
+     is logically expanded to:
+
+                 io_call move_attach user_input sv_user_input
+                 io_call attach input_sw tape_mult_ m9999
+                 io_call open input_sw stream_input
+                 io_call attach user_input syn_ input_sw
+                 io_call move_attach user_output sv_user_output
+                 io_call attach output_sw vfile_ [wd]&gt;pipeout -extend
+                 io_call open output_sw stream_output
+                 io_call attach user_output syn_ output_sw
+                 &lt;implied copy&gt;
+                 io_call detach user_output
+                 io_call close output_sw
+                 io_call detach output_sw
+                 io_call move_attach sv_user_output user_output
+                 io_call detach user_input
+                 io_call close input_sw
+                 io_call detach input_sw
+                 io_call move_attach sv_user_input user_input
+
+5.3:  Implementation
+
+The implementation of the usage of the pipe syntax will:
+
+     1) add  the implied  calls to  the io_call  command into the
+        system at the appropriate place.
+
+     The  implementation   will  call  the  iox_   subroutine  to
+     accomplish  the  implied  calls  to  the  io_call command to
+     redirect the user_input and user_output I/O switches.
+
+     2) add  control   for  the  temporary  files   used  between
+        commands.
+
+     The  implementation  will  create,  maintain  and delete two
+     temporary files  in the user's process  directory.  The pipe
+     files will  be named in such  a way as to  uniquely identify
+     them.  These  files will be toggled through  a command line.
+     For each pipe component in a command line, the file that was
+     the previous output file will be attached as the input file.
+     When a pipe component is a  file, the temporary file that is
+     assigned as available input is truncated.
+
+     3) provide  the implied  copying of  data from  one file  to
+        another.
+
+     To accomplish this function, a subroutine will be added that
+     enters a get_line / put_chars loop that terminates at end of
+
+
+Multics Command Level Pipes                             MTB763-03
+
+     data.  A temporary  segment will be used as  the data buffer
+     and the error_table_$short_record error will be overridden.
+
+     4) provide  the ability to  use the same  file as input  and
+        output.
+
+     In the case  where the same file is given  as both input and
+     output and  the vfile_ I/O  module is not  used, a temporary
+     file will be used.  For example,
+
+     the command line:
+
+     tape_mult_ m9999 ;| foo ;| tape_mult_ m9999 -write -den 6250
+
+     will  result in a  temporary file being  used as the  output
+     file of foo.  Once the  foo command completes, the file will
+     be copied to the tape m9999.
+
+     However, the command line:
+
+     file ;| file
+
+     will not use a temporary file.  The component "file" expands
+     to  "vfile_ [wd]&gt;file  -extend"  and  the vfile_  I/O module
+     supports  use of  the same  source file  for both  input and
+     output.
+
+
+MTB763-03                             Multics Command Level Pipes
+
+5.4:  Placement of the I/O Redirection Facility
+
+     Because  implementation  of  this  design  can  be  added in
+     several places  in the system, it is  important to determine
+     the  best fit.  It  is possible to  add the pipe  syntax I/O
+     redirection  facility  as  a   command,  a  wrapper  command
+     processor  and directly  to the  Multics command  processor.
+     Each  of  these  options  will  meet  the design constraints
+     listed above.
+
+     It is recommended that the command processor is the best fit
+     for the pipe facility for these reasons:
+
+     1) The concept  of simplified I/O  redirection as part  of a
+        command line should be part of the command language.
+
+     The pipe token ";|" can be  interpreted to be a command line
+     delimiter  much the same  as a semi-colon.   To this end  it
+     seems  that  the  command  processor  should  be  doing this
+     interpreting.
+
+     2) A command  or wrapper command processor will  need to use
+        the  command   language  to  interpret  a   command  line
+        containing pipe tokens.
+
+     This is a duplication of functionality.
+
+     3) It is believed that the  pipe facility will become a part
+        of  many users  daily use  command set.   A heavily  used
+        facility  should implement  the option  that requires the
+        least overhead to the system.
+
+     A  command will push  a minimum of  2 stack frames  for each
+     call.  If  there is an  additional command processor  in use
+     such as abbrev, the number of  frames goes to a minimum of 4
+     before  the command line  reaches the command  processor for
+     execution.   In addition, each  component that is  a command
+     will push a call to the command processor.
+
+     A wrapper command  processor will push a minimum  of 2 stack
+     frames when  only it and  the command processor  are in use.
+     When abbrev is added, 3 frames are needed.
+
+     A change to the command processor will result in 1 frame for
+     the command processor.  If abbrev is added, 2 frames will be
+     pushed at the time the command line is evaluated for pipes.
+
+
+Multics Command Level Pipes                             MTB763-03
+
+5.5:  Limitations
+
+I/O Switches
+
+     In order  to provide a pure  flow of data to  the pipe model
+     for  the  Multics  system,  only  the  standard I/O switches
+     user_input  and user_output  will be  redirectable with  the
+     pipe delimiter ";|".
+
+     The file_output command is an acceptable alternative for the
+     special case  when the Multics standard  error output switch
+     error_output needs to be redirected.
+
+Syntax
+
+     Because  the syntax  does not   make it  possible to  tell a
+     command from a file it is ambiguous.
+
+     In the command line:
+
+     a ;| b
+
+     it  is  not  clear  whether  the  entities  "a"  and "b" are
+     commands or files.
+
+     The syntax  is designed to  show a sequential  left to right
+     flow of data and control.  The  intent is to provide all I/O
+     redirection   capabilities   with   the   simplest  possible
+     interface.  The cost of this simplicity is some ambiguity.
+
+     The ambiguity  arises through the defaulting of  files to be
+     vfile_ attach descriptions.  It is possible to eliminate the
+     ambiguity of the syntax by always specifying complete attach
+     descriptions.
+
+     the command line:
+
+     a ;| vfile_ b
+
+     is an example of a complete attach description.
+
+     If attach descriptions are given then  it is clear that a is
+     a command and b is a file.
+
+     Because commands are always executed,  it is not likely that
+     a user will accidently write output to a file named the same
+     as a command.
+
+
+MTB763-03                             Multics Command Level Pipes
+
+5.6:  Impact to the Current System
+
+Performance
+
+     The  command_processor_ program  is affected  by the changes
+     for checking  pipes.  The cost  is the extra  time needed to
+     check  for   the  vertical  bar  (|)   when  evaluating  the
+     semi-colon break character.
+
+     This is  a very minor  degradation to the  command processor
+     execution   time.   Tests   were  made   using  a  prototype
+     processor.   The average  of  1000  executions of  a command
+     showed  the installed  command processor  and the  prototype
+     returned comparable execution times.
+
+
+Multics Command Level Pipes                             MTB763-03
+
+6:  END RESULT
+
+The  finished product of  this MTB design  proposal will make  it
+possible to use filters with  the Multics system.  The comparison
+shown  in section 3,  Evaluation of the  Uses of I/O  redirection
+above will have the  following comparison after implementation of
+this design.
+
+    UNIX                    MULTICS
+------------------------+----------------------------------------
+ls &gt; output                 ls ;| output
+
+mail mjb &lt; letter           letter ;| mail mjb
+
+nroff -mm &lt; doc1 &gt; doc1.out 2&gt; errors
+
+                            file_output
+                               -source_switch error_output errors
+                            nroff -mm ;| doc1.out
+                            revert_output
+                               -source_switch error_output
+
+This design provides the Multics system with the added ability to
+move data from one file to  another.  This ability does not exist
+in UNIX or UNIX-like systems.
+
+    UNIX                    MULTICS
+------------------------+----------------------------------------
+file &lt; file *              file ;| file
+
+* UNIX does not support this ability because the first component
+  of a command line is required to be a command name.
+
+
+MTB763-03                             Multics Command Level Pipes
+
+7:  MCR DECISION CRITERIA SUMMARY:
+
+     1) Does the I/O redirection facility need to be simplified?
+
+     The need to support the movement of UNIX programs to Multics
+     is  a Marketing Requirement.   The current mechanism  is not
+     convenient enough to support the use of UNIX filters.
+
+     2) Is the pipe syntax functional and useful ?
+
+     The single token pipe syntax recommended for the design will
+     provide all  needed functions and support  for UNIX programs
+     on Multics.
+
+     The syntax can  be confusing to those who  do not understand
+     that a  file name is expanded  to a set of  implied calls to
+     perform  I/O  redirection.   The  syntax  can  be  made more
+     detailed, but the  cost will be a loss of  function and ease
+     of use.
+
+     Other syntax have been evaluated.   None have proved to meet
+     the objective  to provide simplicity and  show a directional
+     flow through a command stream as well as this one.
+
+     It has been suggested that a modified UNIX syntax is needed.
+     The  syntax  will  need  to  be  implemented  using  obscure
+     characters  because  the  Multics  command  language assigns
+     meaning to almost every character.
+
+     Also,  a  UNIX  style  syntax  will  result  in  a  loss  of
+     functionality.  The explicit denoting of input files, output
+     files and commands will not permit  the use of a file as the
+     first  component  of  a   command  line.   Thus,  the  added
+     functionality of moving  a file to a file  provided with the
+     single token syntax would have to be given up.
+
+     3) Is the method for redirecting I/O acceptable ?
+
+     The method  for implementing I/O redirection  recommended in
+     the  design is  the best  solution for  the current  Multics
+     system.   A better  solution is  to implement  multi-process
+     tasking.  In a tasked  environment, temporary storage can be
+     eliminated  between  commands.    However,  current  Multics
+     resouces  do not  exist to   undertake such  a project.   If
+     tasking is available in the  future, the design above can be
+     reimplemented to  take advantage of the  environment without
+     changes to the pipe user interface.
+
+     5)  Does  the  change  belong  within the command_processor_
+     program ?
+
+
+Multics Command Level Pipes                             MTB763-03
+
+     Any  pipe  facility  will  require  the  ability  to parse a
+     command  line using  much of  the command  processor parsing
+     code.  It is possible to eliminate a duplication of executed
+     code  by  integrating  the  pipe  facility  into the command
+     processor.   Also, integrating  the pipe  facility into  the
+     command processor will reduce  the amount of overhead needed
+     to execute a command line containing pipes.
+
+     Because the impact to the performance of the current command
+     processor  functions will be  very small, it  is recommended
+     that this is  a good fit for the  simplified I/O redirection
+     code.
+
+
+MTB763-03                             Multics Command Level Pipes
+
+8:  APPENDIX A:  PROGRAM CHANGES
+
+command_processor_
+
+     The  Multics  system   routine  command_processor_  will  be
+     modified to support the pipe syntax.  Changes:
+
+     1) add the token ";|" as part of the command language.
+
+     The  actual implementation  will be  to add  meaning to  the
+     break characters ";|".  When the semi-colon is detected, the
+     next character will  be checked for a vertical  bar (|).  If
+     the "pipe" token  is detected in the command  line, new code
+     will be run that establishes information about the line that
+     will be needed at the time the command is executed.
+
+     The  pipe  token  will   be  interpreted  similarly  to  the
+     semi-colon  (;).  When  a pipe  token is  found, the  string
+     before it is treated as an individual command.
+
+     In order  for the pipe process  to be able to  determine the
+     correct  attachments,  three  elements  of  a  pipe  will be
+     evaluated at a  time.  When it is able to,  the command line
+     parser  will  return  the  previous,  current  and next pipe
+     components.
+
+     At  this  point  the  command  line  parser  returns and the
+     individual command is processed.
+
+     2)  Modify the  command_processor_ routine  that builds  the
+     argument list and then executes  a given command line.  When
+     the command line  contains a pipe, a new  subroutine will be
+     called to evaluate the pipe.  The new subroutine will:
+
+     a) Establish cleanup and command_abort condition handlers in
+        the  command processor  to call  the pipe_  subroutine to
+        restore the I/O switches when an abort occurs.
+
+     b) determine whether the component  is an attach description
+        or an executable object.
+
+     c) If the current component is an attach description:
+
+        The previous component is checked.
+
+        If  it is  a command,   the routine  returns because  the
+        attach description  was used at the time  the command was
+        executed.   If  it  is  an  attach  description, then the
+        previous component is attached and opened for input.  The
+        current  component is attached  for output and  the entry
+        pipe_$copy is called to copy from the previous attachment
+        to    the   current    one.    After    encountering   an
+
+
+Multics Command Level Pipes                             MTB763-03
+
+        error_table_$end_of_information code,  the components are
+        detached.
+
+     d) If the current component is an executable object:
+
+        The  previous  component  is  checked.   If  the previous
+        component  does not  exist,  no  attachment for  input is
+        made.  If  it is an attach description  then the previous
+        component  is attached  for input.   If it  is a command,
+        then the temporary pipe file  that was attached to it for
+        output is attached for input to the current command.
+
+        The next component is checked.
+
+        If the component does not exist and the command line ends
+        with  the pipe  token, "vfile_  [wd]&gt;pipeout -extend"  is
+        attached and opened for output.  If the command line does
+        not end with the pipe token, no attachment is made.
+
+        If the next component is  an attach description, then the
+        attach description  is compared with the  previous attach
+        description.   If the  same  file  is specified  for both
+        input and output, then a  temporary pipe file is attached
+        for  output using  the I/O   module given  in the  output
+        attach  description and a  switch is set  indicating that
+        the pipe file  should be copied to the  output file after
+        the command line completes.  Otherwise the next component
+        file is attached and opened for output.
+
+        If the next component is  a command then a temporary pipe
+        file is attached and opened for output.
+
+        The  entry  cu_$generate_call  is  called  to execute the
+        command.
+
+        After the  command is run,  the input file  is closed and
+        detached and the output file is evaluated.  If the switch
+        that requests a copy is set, the pipe file is closed then
+        opened  for input,  the  next  component is  attached and
+        opened for  output and the pipe_$copy entry  is called to
+        copy the  contents of the  pipe file to  the output file.
+        After the  copy, all files  are closed and  detached.  If
+        the copy switch is not set, the output file is closed and
+        detached.
+
+Example scenario:
+
+     Given:
+           a filter "get"
+           usage: "get &lt;id&gt;"
+           function: locates an identifier string in a file header
+           then copies delimited file data to user_output.
+
+
+MTB763-03                             Multics Command Level Pipes
+
+     1)  input line = mtape_ m0001 ;| get x.pl1 ;| x.pl1
+     2)  parse                   mtape_ m0001
+     3)  call to find_command_$fc_no_message ("mtape_")
+     4)  result shows that the entry point does not exist.
+     5)  call to find_command_$fc_no_message ("mtape_$mtape_attach")
+     6)  result shows that the entry point exists.
+     7)  "mtape_" is determined to be an I/O module.
+     8)  an attach made for user_input through the
+         mtape_ I/O module to tape m0001.
+     9)  parse                   get x.pl1
+     10) call to find_command_$fc_no_message ("get")
+     11) result shows that this is an object.
+
+     12) parse                  x.pl1
+     13) call to find_command_$fc_no_message ("x.pl1")
+     14) result shows that this is not an object.
+     15) call to find_command_$fc_no_message ("x.pl1$x.pl1_attach")
+     16) result shows that this is not an object.
+     17) x.pl1 is defaulted to be a file.
+     18) user_output is attached to "vfile_ [wd]&gt;x.pl1" through
+         the vfile_ I/O module.
+     19) get is executed.
+     20) user_input and user_output are reattached to the
+         users terminal.
+
+Semi-colons
+
+     The semi-colon (;) and the pipe token (;|) will both be used
+     to indicate  the end of a command.   Therefore, pipes cannot
+     span  command  lines.   The  semi-colon  and  the pipe token
+     differ  in  that  the  pipe  token  will  result  in special
+     handling of the command lines as described above.
+
+Quotes
+
+     The  pipe token  will not   be interpreted  when it  is used
+     within a quoted string.
+
+Active Strings
+
+     The command_processor_  program will be modified  to process
+     pipes within active strings.  Pipe strings that exist within
+     an  active string  will be  treated as  separate pipes  from
+     those  that  exist  at  command  level.   To  provide  added
+     functionality to Multics commands, the pipe facility will be
+     implemented to include the ability to return the output of a
+     pipe as  the active function return string.   When an active
+     string is  ended with a pipe  token, the last piece  of data
+     processed  in  the  pipe  will  be  returned  as  the active
+     function return string.
+
+
+Multics Command Level Pipes                             MTB763-03
+
+     For  example:  pl1 ([ls  *.pl1 -name -primary  -no_header ;|
+     match /tap/;|])
+
+     Will execute the list command,  route the output as input to
+     a  filter match  that returns  lines which  match the  given
+     expression, then  return the output  of match as  the active
+     function return string.
+
+     To  facilitate this  operation, the  command_processor_ will
+     treat the contents of the  active string as a normal command
+     line.  The line  will be executed, placing output  in a pipe
+     file.   After the  command is  complete the  contents of the
+     pipe  file will  be returned  as the  active function return
+     string.   This will  make it   possible to  use all  Multics
+     commands in an active function.
+
+Iteration
+
+     Iteration  with the  pipe facility  will be  limited to each
+     component  of the  pipe command  line.  The  rational behind
+     this is  that allowing parenthesis  to span pipe  tokens can
+     create command lines too complex to comprehend, interpret or
+     execute.  Therefore, the pipe  token will be interpreted the
+     same way  the semi-colon (;) is when  dealing with iteration
+     parenthesis.   Please see  the Appendix  B documentation  of
+     PIPES for more information.
+
+
+MTB763-03                             Multics Command Level Pipes
+
+pipe_
+
+     A  new subroutine  will be  written and  added to  the bound
+     segment  which  contains  command_processor_.   The  routine
+     "pipe_"  will supply  the  functions  needed by  the command
+     processor  in  order  to   deal  with  pipes.   Because  the
+     subroutine is  not intended as a system  subroutine and will
+     be  internal to the  bound segment, no  manual documentation
+     will  be provided.  The  entries supplied by  the subroutine
+     will be:
+
+     pipe_$attach_pipe (Ppipe_info, attach_description, code);
+
+     Attaches a uniquely named switch to the specified I/O module
+     and saves the specified switch_name for use by the open_pipe
+     entry.
+
+     pipe_$close (Ppipe_info, code);
+
+     Closes the I/O module  passed to the pipe_$attach_pipe entry
+     and  detaches  the  switch  passed  to the pipe_$attach_pipe
+     entry.  Then,  if the switch given to  the attach_pipe entry
+     point was previously attached,  the saved attach description
+     is  moved back  to the  switch assigned  to the  attach_pipe
+     entry.
+
+     pipe_$copy (Pinput, Poutput, code)
+
+     Performs  a get_line/put_chars  loop until  the end  of data
+     error code is returned by the I/O module.
+
+     pipe_$detach (Ppipe_info, code);
+
+     Detaches the uniquely named  switch entry from the specified
+     I/O module established by the attach_pipe.
+
+     pipe_$initiate (Ppipe, code)
+
+     Creates a  temporary pipe file in the  process directory and
+     returns  a pointer to  information about it  for use by  the
+     caller.
+
+     pipe_$open_pipe (Ppipe_info, mode, code);
+
+     Opens the I/O  module given in to the  attach_pipe entry for
+     input or output based on the mode value specified.  Then, if
+     the switch  given to the attach_pipe entry  point is already
+     attached,  the attach  description is  saved.  Finally,  the
+     switch  is attached  through the  "syn_" I/O  module to  the
+     uniquely named switch attached by the attach_pipe entry.
+
+     pipe_$terminate (Ppipe, code)
+
+
+Multics Command Level Pipes                             MTB763-03
+
+     Destroys the  I/O control block  of a temporary  pipe.  Then
+     calls  hcs_  to  delete  the  temporary  pipe  file from the
+     process directory and set the pointer to null.
+
+     These  entries will  call  the  appropriate iox_  entries in
+     order  to correctly redirect  the standard I/O  switches for
+     each command in the pipe.
+
+
+MTB763-03                             Multics Command Level Pipes
+
+  abbrev
+
+     The abbrev  processor will require modifications  to support
+     pipes.   The current  abbrev  break  character set  does not
+     recognize a  pipe token as  a beginning of  line break.  The
+     result is that abbreviations will not be expanded, when used
+     in a pipe.  For example,
+
+     The abbreviations:    .abf lsc list -sort -all
+                           .abf dis discard_
+
+     The command line:    lsc ;| dis
+
+     will not be expanded by  the abbrev processor properly.  The
+     first abbreviation will be expanded, but because the verical
+     bar is not recognized as a beginning of line break the "dis"
+     abbreviation will be left untouched.  This command line will
+     result in the output of list  -sort -all being placed into a
+     file named "dis".
+
+     Changes to the abbrev processor will include adding the pipe
+     token  (;|) to  the code  to the  list of  beginning of line
+     breaks.
+
+vfile_
+
+     The current  vfile_ I/O module does not  provide the ability
+     to  override  the  -extend  control  argument.   Because the
+     default for output  files used by the pipe  facility will be
+     to extend the file, the ability to truncate the file must be
+     added.
+
+     To  add  the  ability  to  specify  truncation  of a file to
+     vfile_,  the new  control argument  -truncate (-tc)  will be
+     added.
+
+
+Multics Command Level Pipes                             MTB763-03
+
+9:  APPENDIX B:  MANUAL DOCUMENTATION
+
+Modifications to AG91 Multics Programmer's Reference Manual
+
+SECTION 1:
+
+under "GLOSSARY OF MULTICS TERMS" page 1-14
+
+add in alphabetic order within the glossary:
+
+filter
+          A  command  designed  to  receive  input  data from the
+          switch  user_input  and  output   data  to  the  switch
+          user_output.
+
+pipe
+          A  logical stream  of data  created by  redirecting the
+          standard input and output  switches through a series of
+          commands, filters and I/O modules.
+
+SECTION 3
+
+ page 3-1:  Under the title "ENTRYNAMES", second paragraph.
+
+CHANGE:
+
+Since   standard  commands   attach  special   meaning  to  them,
+several......  ..  , two  consecutive colons (::) and parenthesis
+characters.
+
+TO:
+
+Some characters  are reserved by the Multics  system command set.
+To avoid conflicts, entrynames should not contain:
+
+     less than (&lt;)              equal sign (=)    left parenthesis (
+      asterisk (*)             dollar sign ($)   right parenthesis )
+ question mark (?)          quotation mark (")
+  percent sign (%)  two consecutive colons (::)
+
+entrynames should not begin or end with a period (.).
+
+entryname should not begin with a hyphen (-) or vertical bar (|).
+
+END CHANGE:
+
+ADDITION
+
+Page   3-41:    Between   the   Headings   "ACTIVE  STRINGS"  and
+"CONCATENATION" add the new section "PIPES".
+
+
+MTB763-03                             Multics Command Level Pipes
+
+PIPES
+
+The pipe  facility of the command processor  provides the ability
+to  redirect  stream  I/O.    The  delimiter  string  semi-colon,
+vertical bar  (";|") instructs the command  processor to redirect
+the  I/O  attachments  of  the  standard  switches user_input and
+user_output.   The   pipe  component  delimiter   is  interpreted
+similarly  to the  command line  delimiter ";"  with pipe streams
+limited to one command line.  The command processor pipe facility
+is  designed to  provide simplified   data flow  control.  For  a
+description  of the Multics  input and output  facilities, please
+see Section 5 of this manual.
+
+BASIC USAGE
+
+The simplest form of a pipe is:
+
+cmd1 ;| cmd2
+
+where cmd1 is the name of  a command which outputs to user_output
+and  cmd2 is  a command  that gets  data from  user_input and may
+output data to user_output.
+
+The command line:
+
+pwd ;| sm User_id
+
+results in  the output of the command  print_wd(pwd) being routed
+as  input to  the command  send_message (sm).   Some commands are
+will not  execute correctly without an end  of information token.
+To use the  pipe facility with these commands it  is necessary to
+add the value at the end of the input.
+
+The command line:
+
+pwd ;| input; ioa_ "." ;| input ;| sdm User_id -sj "the pathname"
+
+routes  the output  of the   print_wd (pwd)  command to  the file
+"input".   Then ioa_  is used  to add  a period  to the  file and
+finally  the  file  is  routed  as  input  to the send_mail (sdm)
+command.
+
+COMMANDS AND FILES USAGE
+
+In  addition to  the ability  to route  data from  one command to
+another,  the  pipe  facility   is  available  for  more  complex
+functions.
+
+Data can be routed from a command to a file.
+
+The command line:
+
+
+Multics Command Level Pipes                             MTB763-03
+
+list ;| list_command_output
+
+is expanded to:
+
+list ;| vfile_ [wd]&gt;list_command_output -extend
+
+The  expanded command  line  instructs  the command  processor to
+attach the user_output switch  to the file list_command_output in
+the current working directory.  The output of the list command is
+then placed into the file.
+
+COMMANDS AND I/O MODULE USAGE
+
+It is possible to specify an  I/O module in the description of an
+output data store.
+
+The command line:
+
+list ;| tape_mult_ M9999 -write -den 6250
+
+will route  the output of the  list command to the  magnetic tape
+M9999  through  the  Multics  standard  format  tape  I/O  module
+tape_mult_.
+
+Any Multics  I/O module may  be specified.  For  a description of
+the  Multics   I/O  modules  see  the   Multics  manual  "Multics
+Subroutines and I/O Modules" (AG93) and Section 4 of this manual.
+
+Data can be routed from a file to a command.
+
+The command line:
+
+input_file ;| sm GWMay
+
+expands to:
+
+vfile_ [wd]&gt;input_file -extend ;| sm GWMay
+
+The  expanded command  line  instructs  the command  processor to
+route the data  contained in the file input_file as  input to the
+command send_message (sm).
+
+Any  Multics I/O  module may  be given  to specify  the source of
+stored data.
+
+INTERFILE USAGE
+
+Data can be routed from one file to another.
+
+vfile_ [wd]&gt;input_file -extend ;| tape_mult_ m9999 -write -den 6250
+
+results in the file input_file being copied to the tape m9999.
+
+
+MTB763-03                             Multics Command Level Pipes
+
+The command line:
+
+file1 ;| file2
+
+is expanded to:
+
+vfile_ [wd]&gt;file1 -extend ;| vfile_ [wd]&gt;file2 -extend
+
+The expanded command line instructs the command processor to copy
+the  contents of  the file  file1 to  the file  file2.  The  pipe
+facility will allow the same file  name to be given for input and
+output.
+
+file ;| file
+
+will result in the contents of the file being appended to the end
+of itself.
+
+Because most data  storing done on the Multics  system is handled
+with  magnetic disk,  the defaulting   of file  names to  the I/O
+module vfile_ is  provided for ease of use.   If desired, control
+arguments  for  vfile_  may  be  specified  with  the  file name.
+Pathnames may also be given.
+
+The command line:
+
+&gt;udd&gt;Multics&gt;file1 ;| file2 -truncate
+
+expands to:
+
+vfile_ udd&gt;Multics&gt;file1 -extend ;| vfile_ [wd]&gt;file2
+                                       -extend -truncate
+
+The pipe facility may be used for more complex functions.
+
+The various components of a pipe may be chained together in order
+to create a stream of data that accomplishes many tasks.
+
+ls ;| list_file ;| sm GWMay
+
+expands to:
+
+ls ;| vfile_ [wd]&gt;list_file -extend ;| sm GWMay
+
+The expanded  command line results in  several functions.  First,
+the  output  of  the  list  (ls)  command  is  placed in the file
+list_file.   Then the file  list_file is routed  as input to  the
+command send_message (sm).
+
+There  is no  limit on  the number  of pipe  delimiters used in a
+command line.
+
+
+Multics Command Level Pipes                             MTB763-03
+
+DEFAULT PIPE OUTPUT
+
+The  pipe facility  provides for   the default  output of  a pipe
+stream.
+
+The command line:
+
+ls ;|
+
+is expanded to:
+
+ls ;| vfile_ [wd]&gt;pipeout -extend
+
+The output of the list command  is placed into the file "pipeout"
+in the current working directory.
+
+ITERATION WITH PIPES
+
+The  pipe facility  can be   combined with  iteration.  The  pipe
+facility limits iteration to a single delimited pipe component.
+
+The command line:
+
+(pwd ls who) ;| output
+
+The  effect of  the command  line is  to route  the output of all
+three commands to the file "output".
+
+The command line:
+
+input ;| (cmd1 cmd2 file1) ;| output
+
+instructs the command processor to route the data from "input" to
+the commands "cmd1" and "cmd2" and the file "file1" where "input"
+is either  a command or file.   The output of all  three are then
+routed to "output" which may be a command or file.
+
+A possible  use of this command  line would be when  the commands
+cmd1 and cmd2 use input from  "input" but do not output any data.
+In such  a case, the file  "file" would contain the  same data as
+was routed out  of "input".  This makes it possible  to route the
+data through the pipe to "output".
+
+The command line:
+
+a (;|b-c -d;|e) ;| f
+
+is not an acceptable use of iteration and pipe facility.
+
+ACTIVE STRINGS WITH PIPES
+
+The pipe facility can be use as active strings.
+
+
+MTB763-03                             Multics Command Level Pipes
+
+The command line:
+
+([segs **]);| file
+
+will copy the contents of each file and output of each command in
+the current working directory to the file "file".
+
+The command line:
+
+pl1 ([ls &gt;udd&gt;pl1_dir&gt;ab*.pl1 -no_header -primary -name;|])
+
+instructs  the command  processor to   return the  output of  the
+command  ls as the  active return string.   The output of  a pipe
+stream is returned only when the active string is terminated with
+the pipe delimiter just before the ending right bracket "]".
+
+By  default, new  line characters   are removed  from the  active
+function return string.  When it  is desirable to retain new linw
+characters, an additional vertical bar is appended.
+
+The command line:
+
+value_set command_results ||[string [ls -all -sort;||]
+
+will return the output of the ls command with new line characters
+unaltered.
+
+The pipe facility, iteration and active string can be combined in
+a single command line.
+
+The command line:
+
+sm ([who ;| match /Multics/;|]) [pwd;|]
+
+routes the  output of the who  command to a filter  "match".  The
+names  output by  match are   returned to  the send_message  (sm)
+command in  the active function return string  as the destination
+of  the message.   The output  of the  print_wd (pwd)  command is
+returned as the message to be sent.
+
+RESTRICTION ON ACTIVE STRINGS
+
+It is not  possible to intermix pipes and  normal active function
+invocations within the same active function bracket pair.
+
+The command line:
+
+string [time; pwd;|]
+
+attempts to call  the time active function then  execute the pipe
+pwd;| and is in error.  The correct usage is:
+
+
+Multics Command Level Pipes                             MTB763-03
+
+string [time][pwd;|]
+
+Active functions can be used within pipes as long as they are not
+within the same active string level as the pipe.  For example:
+
+string [ls [hd]&gt;*.[date];|]
+
+ALTERNATE I/O TYPES
+
+The pipe  facility can be used  with I/O types other  than stream
+I/O.   In  order  to  access  sequential  data  type  files,  the
+record_stream_ I/O module must be  used as the intermediary.  The
+command line:
+
+ls ;| record_stream_ -length 80
+  -target "tape_nstd_ m9999 -block 80 -write -den 1600"
+
+will output the stream data of the list command to the sequential
+data store m9999 controlled by the tape_nstd_ I/O module.
+
+COMMAND/FILE CONFLICTS IN PIPES
+
+The simplicity of the pipe  facility syntax may lead to conflicts
+between file and command names.  In order to supply the simpliest
+possible  syntax, the  ability  to  explicity identify  files and
+commands can be overridden.  When using the pipe facility, a pipe
+string may begin with one of the following:
+
+1) a Multics command name.
+
+2) a Multics I/O module name.
+
+3) a Multics file name that can be followed by
+   vfile_ control arguments.
+
+The  Multics  pipe  facilty  uses  the  current  search  list  to
+automatically  determine the  type of  entry that  starts a  pipe
+string.  A segment is determined to be a command when it contains
+a linkage  section and an  entrypoint matching the  name given in
+the command line.   A description of a Multics  object segment is
+available in Appendix G of this manual.
+
+A  Multics I/O module  is a special  type of object  segment that
+does not contain an entrypoint that matches the name given on the
+command line.   All I/O modules do however  contain an entrypoint
+which is a composite of the name given with an attach identifier.
+
+To facilitate the fewest number  of key stokes, lines which start
+with a name that is not a command or an I/O module are considered
+filenames by default.
+
+
+MTB763-03                             Multics Command Level Pipes
+
+Files  have no  particular identifying  features other  than that
+they do not meet the requirements of an object segment.
+
+Because  of the  defaulting of  names to  be files,  there may be
+occasions when a  file name is given when a  command was intended
+and the  other way around.   When this happens,  the pipe command
+line may perform differently than was intended.
+
+LOCATING A CONFLICT
+
+When  a  pipe  command  line  does  not  perform as expected, the
+where(wh) command may help determine the cause.
+
+With the command line:
+
+ls ;| list
+
+the user may  have intended the output of the  "ls" command to be
+placed into  a file named  "list".  The actual  execution of this
+line will  result in the  ls command being  executed twice.  With
+the second execution displaying to the terminal.  By typing:
+
+where ls
+
+and
+
+where list
+
+the  user will  easily see  where the  list entry  is being taken
+from.
+
+To   determine  if  the   entry  is  a   file  or  command,   the
+print_link_info  (pli) command  can be  used.  Using  the example
+from above with the pli command results in the command line:
+
+pli [wh list] -he
+
+If the list entry is an object segment, the information displayed
+by the  command line will  indicate so.  If  the entry is  not an
+object, an inconsistency in the segment is diagnosed.
+
+RESOLVING COMMAND/FILE CONFLICTS
+
+The  conflicts between  files and   commands can  be resolved  by
+explicitly stating the I/O module  in the attachment and by using
+complete pathnames.
+
+If  the user really  does want to  override the list  command and
+create a file named "list" then the command line:
+
+ls ;| [wd]&gt;list
+
+
+Multics Command Level Pipes                             MTB763-03
+
+should be used.
+
+If by chance there is a  command in the current working directory
+named  "list", the  I/O module   name should  be included  in the
+attachment.  The command line:
+
+ls ;| vfile_ [wd]&gt;list
+
+will replace the command with a file named "list.
+
+Whenever it  is necessary to override commands  with filenames or
+when  a  specific  location  of  a  file  is  important, complete
+pathnames  should be  given.  For  example, when  using the  pipe
+facilty in exec_coms  or abbreviations, it is a good  idea to use
+complete  pathnames  to  make  sure  that  the  proper  files and
+commands are referenced.
+
+END ADDITION
+
+entryname.gi.info
+
+add
+
+7) entrynames should not begin with a hyphen (-) or vertical bar (|).
+   Many of the Multics commands will interpret entrynames which start
+   with a hyphen to be a control argument.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

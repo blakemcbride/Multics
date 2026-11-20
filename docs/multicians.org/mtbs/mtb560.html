@@ -1,0 +1,2282 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-560</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-560: Data Management:  Before Journal Manager Design.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+To:  Distribution
+
+From:  Andre Bensoussan
+
+Date:  06/20/83
+
+Subject:  Data Management:  Before Journal Manager Design
+
+ABSTRACT
+
+The  services provided  by the  Before Journal  Manager have been
+specified in MTB 559, in terms of a set of primitives callable by
+the rest of the system, with  a detailed description of what they
+do and how to call them.
+
+This document  describes in some  detail how these  primitives do
+their job and how the data structures they use are organized.
+
+The reader is supposed to be familiar with the following MTB's:
+
+     - MTB-509:  Recovery overview
+     - MTB-511:  File manager overview
+     - MTB-559:  Before journal manager specifications.
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Bensoussan.Multics on System M.
+
+via US Mail:
+   Andr&eacute; Bensoussan
+   Honeywell Information Systems, inc.
+   575 Tech Square
+   Cambridge, Massachusetts 02139
+
+via telephone:
+   (HVN) 261-9334, or
+   (617) 492-9334
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project.
+
+
+
+                            CONTENTS
+
+                                                         Page
+
+                 Abstract . . . . . . . . . . . . . . .     i
+                 1 Introduction . . . . . . . . . . . .     1
+                 2 Before Journal Logical Records . . .     1
+                    2.1 Logical Record Types  . . . . .     1
+                    2.2 Logical Record Contents and
+                     Formats  . . . . . . . . . . . . .     3
+                    2.3 Summary of the Logical Records
+                     Formats  . . . . . . . . . . . . .     9
+                 3 Before Journal File Characteristics     11
+                 4 Before Journal File Format . . . . .    12
+                    4.1 The before journal header in CI
+                     zero . . . . . . . . . . . . . . .    12
+                    4.2 The Control Interval Structure     13
+                       4.2.1 The file manager ci_header
+                        structure.  . . . . . . . . . .    13
+                       4.2.2 The before journal bj_ci
+                        structure.  . . . . . . . . . .    14
+                    4.3 Elements  . . . . . . . . . . .    16
+                    4.4 Logical Record Identifiers  . .    17
+                 5 Logical Records Storage and
+                  Retrieval Operations  . . . . . . . .    18
+                 6 Logical vs Physical Journalization .    19
+                    6.1 Logical Journalization  . . . .    19
+                    6.2 Physical Journalization . . . .    20
+                    6.3 File manager services . . . . .    21
+                    6.4 Page Control Services . . . . .    22
+                 7 Tables used by the Before Journal
+                  Manager . . . . . . . . . . . . . . .    23
+                    7.1 Per Process Information . . . .    23
+                       7.1.1 The bj_ppt structure.  . .    23
+                       7.1.2 The bj_ppte structure. . .    25
+                    7.2 Per System Information  . . . .    26
+                       7.2.1 The bj_pst structure.  . .    27
+                       7.2.2 The bj_pste structure. . .    29
+                       7.2.3 The bj_pn_table structure     35
+                       7.2.4 The bj_check_in_table
+                        Structure . . . . . . . . . . .    36
+                    7.3 Per Transaction Information . .    38
+                       7.3.1 The bj_txt structure.  . .    38
+                       7.3.2 The bj_txte structure. . .    39
+                 8 Table used by the Hardcore . . . . .    43
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+1 INTRODUCTION
+
+The before journal manager is organized into a set of primitives,
+callable  as  a  set  of  before_journal_manager_$  entry points.
+These primitives,  in order to  perform their job,  have to write
+some information into the before journal or read some information
+from it.   When writing, they  prepare the data to  be written in
+what is  referred to as a  logical record; then they  call upon a
+storage utility module of the  before journal manager to actually
+store  the data  in the  journal.  Each  time the  storage module
+stores  a logical  record into the  journal, it  returns a record
+identifier  which  can be  used  later to  retrieve  that logical
+record.   When  reading,  these  primitives call  again  upon the
+storage  module,  with a  record  identifier; they  get  back the
+logical record as  it was presented to the  storage module at the
+time the record was stored.
+
+2 BEFORE JOURNAL LOGICAL RECORDS
+
+Logical records stored  in a before journal are  of various types
+depending on their function in  the journal.  Each type of record
+contains  specific  information  stored according  to  a specific
+format.
+
+2.1 Logical Record Types
+
+The following logical record types have been defined:
+
+o The "begin" type record, stored in the journal at the beginning
+  of a transaction.
+
+o The "committed" type  record, stored in the journal  at the end
+  of  a  transaction to  indicate that  the transaction  has been
+  committed.  The  transaction is in  fact committed at  the very
+  instant the committed record physically appears on the journal.
+
+o The "aborted" type record, stored in  the journal at the end of
+  a  transaction  to  indicate  that  the  transaction  has  been
+  aborted.   The  transaction  is  in fact  aborted  at  the very
+  instant the abort record physically appears on the journal.
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+o The "checkpoint" type record, stored in the journal to indicate
+  that the transaction has performed a checkpoint and to keep (or
+  point  to)   the  information  describing  the   state  of  the
+  transaction at the time of the checkpoint.
+
+o The "rolled_back"  type record, stored  in the journal  after a
+  transaction has been rolled  back, partially or completely.  It
+  indicates  up  to  which   checkpoint  the  rollback  has  been
+  performed; it  also indicates that  all I/O's generated  by the
+  rollback have been physically completed.
+
+o The "before_image" type record, stored in the journal each time
+  a transaction is about to  modify a protected file, to indicate
+  what  file  is  about  to  be  modified  and  how  to  undo the
+  modification if the transaction is to be rolled back.
+
+o The "rollback_handler" type record,  stored in the journal each
+  time a transaction is about to perform an action that could not
+  be rolled  back using the standard  before image mechanism.  In
+  theses  situations, the  transaction stores in  the journal the
+  name of a procedure which would  have to be invoked at rollback
+  time to undo the action; the record containing the name of this
+  procedure is called a rollback handler record; it also contains
+  any input information needed by the procedure to do its job.
+
+o The "fm_rollback_handler" type record, used by the file manager
+  as  a specially  tailored rollback  handler.  The  file manager
+  could  have used  the general  form of  rollback handler record
+  described   above.   For   ease  of   implementation,  and  for
+  robustness reasons, it uses a special form of record.
+
+o The  "fm_post_commit_handler"  type  record, used  by  the file
+  manager to postpone an action until the transaction commits.  A
+  typical  example  of  its usage  is  when a  protected  file is
+  deleted in the middle of  a transaction.  Suppose that the file
+  manager really  deletes the file.  If  the transaction needs to
+  be aborted  a little later,  it would be  difficult to recreate
+  the file as it was at  the beginning of the transaction, unless
+  the entire file was saved, just  in case of an abort.  Instead,
+  the file manager does a logical deletion of the file, and makes
+  arrangement with  the commit mechanism to  get control when the
+  transaction is committed, in order to turn the logical deletion
+  into a real deletion, as a post_commit action.
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+  There  may  be  several  post_commit  actions  awaiting  for  a
+  transaction to  commit.  For each  of them, the  description of
+  what is to be done is  kept in a fm_post_commit handler record.
+  This list of records associated with a transaction must be such
+  that  it can  be available  even after  a system  crash.  Since
+  records in  the before journal have  this property, the journal
+  has  been chosen  as the  place where  to keep  that list, even
+  though the list is not needed for rollback purposes.
+
+o The  "begin_commit"  type  record   is  used  to  indicate  the
+  beginning of a commit  which has post_commit actions associated
+  with it.  The  protocol is to write a  begin_commit mark in the
+  journal,  then do  the post_commit  actions and  then write the
+  committed  mark in  the journal.   As soon  as the begin_commit
+  mark is  physically in the  journal, the transaction  cannot be
+  aborted;  it  has  no  alternative  other  than  executing  the
+  post_commit actions.  If the system crashes while executing the
+  post_commit actions,  they will be re-executed  by the recovery
+  system  and the  transaction will  be committed.   Committing a
+  transaction  that has  no post_commit  actions pending  is done
+  without a begin_commit record.
+
+Additional  record types  may be defined  later, if  and when the
+need for new types arises.
+
+2.2 Logical Record Contents and Formats
+
+All  before  journal  records  start with  a  header  that  has a
+standard format regardless of the  record type; some record types
+consist only  of the header;  some other record  types consist of
+the  header  followed by  information with  a structure  which is
+specific to the record type.
+
+o  The logical record header
+
+   The header has the following structure:
+
+   dcl 1 bj_rec_hdr              aligned based,
+       2 type                    char (4),
+       2 tid                     bit (36),
+       2 process_id              bit (36),
+       2 prev_rec_id             bit (36),
+       2 prev_rec_byte_size      fixed bin (24),
+       2 tx_rec_no               fixed bin (35),
+       2 n_txn                   fixed bin;
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+       where:
+
+       "type" is the  type of the record, i.e.,  one of the types
+            described above.
+
+       "tid"  is  the transaction  identifier of  the transaction
+            which produced the record.
+
+       "pid"  is  the  process  identifier of  the  process which
+            produced the record.
+
+       "prev_rec_id"  is  the record  identifier of  the previous
+            record  produced  by the  same transaction  and still
+            useful to the transaction.  This record identifier is
+            used by the rollback  procedure to get before journal
+            records  in reverse  chronological order  for a given
+            transaction.   It  consists  of  a  [control interval
+            number, slot number] pair.
+
+       "prev_rec_byte_size"  is  the  number   of  bytes  of  the
+            previous record produced by the same transaction.
+
+       "tx_rec_no" is  the record number  within the transaction.
+            This item  is redundant and  is used to  perform some
+            consistency checking on the before journal.
+
+       "n_txn"  is the  number of transactions  still in progress
+            and  that  have stored  at least  one record  in this
+            journal, at the time this particular record is stored
+            in the journal.  This item  is used by recovery after
+            crash   in  the   following  manner:    To  find  all
+            unfinished transactions, recovery  after crash starts
+            with  the  last record  written  in the  journal, and
+            examines  all records  in the reverse  order of their
+            production.  With the n_txn item in every record, the
+            last  record  indicates  to   the  program  how  many
+            unfinished  transactions there  are; as  soon as this
+            number of unfinished transactions  has been found, it
+            is  no longer  necessary to  examine the  rest of the
+            journal.    Without   the    availability   of   this
+            information, the journal would  have to be read until
+            the origin is encountered.
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+o  The "begin" record
+
+   The begin record consists only of  the header.  It has no type
+   specific information.
+
+o  The "committed" record
+
+   The committed record  consists only of the header.   It has no
+   type specific information.
+
+o  The "aborted" record
+
+   The aborted type  record consists of the header  only.  It has
+   no type specific information.
+
+o  The "checkpoint" record
+
+   The checkpoint record consists of  the header followed by some
+   information  about the  checkpoint.  This  information will be
+   defined later, since checkpoints will  not be available in the
+   first release.
+
+o  The "rolled_back" record
+
+   The rolled_back type record has the following structure:
+
+   dcl 1 bj_rolled_back_rec      aligned based,
+       2 header                  like bj_rec_hdr,
+       2 checkpoint_no           fixed bin (35),
+       2 last_written_rec_id     bit (36);
+
+       where:
+
+       "header" is the logical record header.
+
+       "checkpoint_no" is  the number of the  checkpoint to which
+            the transaction was rolled back.
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+       "last_written_rec_id" is the record  id of the last record
+            produced  by  this  transaction.    It  is  kept  for
+            debugging purposes.
+
+o  The "before_image" record
+
+   The before image record has the following structure:
+
+   dcl 1 bj_before_image         aligned based,
+       2 header                  like bj_rec_hdr,
+       2 fm_uid                  bit (36),
+       2 fm_oid                  bit (36),
+       2 ci_no                   fixed bin (35),
+       2 n_parts                 fixed bin (17),
+       2 image_len               fixed bin (24),
+       2 part                    dim (refer
+                                 (bj_before_image.n_parts)),
+         3 byte_offset           fixed bin (24),
+         3 byte_length           fixed bin (24),
+       2 image                   char (refer
+                                 (bj_before_image.image_len));
+
+       where:
+
+       "header" is the logical record header.
+
+       "fm_uid" is  the file unique identifier  of the file about
+            to be modified.  This identifier  will be used by the
+            rollback procedure  in order to identify  the file on
+            which  the modification  has to be  undone when using
+            this  before  image record.   Since the  Multics file
+            system does  not provide a search  facility to find a
+            file by its unique identifier, the recovery mechanism
+            (and more specifically the  file manager) maintains a
+            conversion table from file unique identifiers to file
+            pathnames,  for  all  files  that may  be  needed for
+            rollback.
+
+       "fm_oid" is the file opening  identifier of the file about
+            to be modified.  It is used by the rollback procedure
+            when executing in the same process as the transaction
+            to rollback.
+
+       "ci_no"  is  the control  interval  number of  the control
+            interval which is about to be modified.
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+       "n_parts" is the  number of parts about to  be modified in
+            the control  interval.  In this context,  a part is a
+            bit  string  defined by  its  byte offset  within the
+            control interval and its length in number of bytes.
+
+       "image_len"  is  the length  of  the record  in  number of
+            bytes.
+
+       "part" is an array, with one  entry for each part about to
+            be modified.
+
+       "byte_offset" is the byte offset, in the control interval,
+            of the beginning of the part.
+
+       "byte_length" is the number of bytes of the part.
+
+       "image"   is   the   concatenation  of   the   bit  string
+            representation  of all  parts to be  modified, in the
+            order in which they are described in the part array.
+
+o  The "rollback_handler" record
+
+   This record has the following structure:
+
+   dcl 1 bj_rollback_handler_rec      aligned based,
+       2 header        like bj_rec_hdr,
+       2 name_len      fixed bin (24),
+       2 info_len      fixed bin (24),
+       2 proc_name     char (refer
+                       (bj_rollback_handler_rec.name_len)),
+       2 info_bits     bit  (refer
+                       (bj_rollback_handler_rec.info_len));
+
+       where:
+
+       "header"  is  the standard  header  of any  before journal
+            logical record.
+
+       "name_len"  is the  number of characters  of the proc_name
+            item found below.
+
+       "info_len"  is the  number of  bits of  the info_bits item
+            found below.
+
+       "proc_name" is name of the procedure to be invoked.
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+       "info_bits" is the bit  string representation of the input
+            information that this procedure needs to do its job.
+
+o The "fm_rollback_handler" record.
+
+   This record has the following structure:
+
+   dcl 1 bj_fm_handler_rec      aligned based,
+       2 header                 like bj_rec_hdr,
+       2 fm_uid                 bit (36),
+       2 fm_oid                 bit (36),
+       2 prev_fm_handler_rec_id bit (36),
+       2 info_len               fixed bin,
+       2 info_bytes             char (refer
+                                (bj_fm_handler_rec.info_len));
+
+       where:
+
+       "header" is the standard record header.
+
+       "fm_uid" is the  uid of the file for  which this record is
+            relevant.
+
+       "fm_oid" is the file opening id of that file.
+
+       "prev_fm_handler_rec_id" is the record  id of the previous
+            fm_handler_record in this transaction.
+
+       "info_len"  is  the length,  in  number of  bytes,  of the
+            info_bytes item below.
+
+       "info_bytes" is the information needed by the file manager
+            procedure to do its job.
+
+o The "fm_post_commit_handler" record.
+
+   This  record  has  the  same  structure  and  contents  as the
+   fm_rollback_handler record described above.
+
+o The "begin_commit" record.
+
+   This  record  consists of  the  header only.   It has  no type
+   specific information.
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+2.3 Summary of the Logical Records Formats
+
+The formats of  the various before journal record  types is given
+in terms of PL/1 declarations.
+
+dcl  1 bj_rec_hdr                     aligned based,
+       2 type                         char (4),
+       2 tid                          bit (36),
+       2 process_id                   bit (36),
+       2 prev_rec_id                  bit (36),
+       2 prev_rec_byte_size           fixed bin (24),
+       2 tx_rec_no                    fixed bin (35),
+       2 n_txn                        fixed bin;
+
+dcl  1 bj_committed_rec               aligned like bj_rec_hdr based;
+
+dcl  1 bj_begin_commit_rec            aligned like bj_rec_hdr based;
+
+dcl  1 bj_aborted_rec                 aligned like bj_rec_hdr based;
+
+dcl  1 bj_rolled_back_rec             aligned based,
+       2 header                       like bj_rec_hdr,
+       2 checkpoint_no                fixed bin (35),
+       2 last_rolled_back_rec_id      bit (36);
+
+dcl  1 bj_rollback_handler_rec        aligned based,
+       2 header                       like bj_rec_hdr,
+       2 name_len                     fixed bin (24),
+       2 info_len                     fixed bin (24),
+       2 proc_name                    char (refer
+                                      (bj_rollback_handler_rec.name_len)),
+       2 info_bits                    bit (refer
+                                      (bj_rollback_handler_rec.info_len));
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+dcl  1 bj_before_image                aligned based,
+       2 header                       like bj_rec_hdr,
+       2 fm_uid                       bit (36),
+       2 fm_oid                       bit (36),
+       2 ci_no                        fixed bin (35),
+       2 n_parts                      fixed bin (17),
+       2 image_len                    fixed bin (24),
+       2 part                         dim (refer
+                                      (bj_before_image.n_parts)),
+         3 byte_offset                fixed bin (24),
+         3 byte_length                fixed bin (24),
+       2 image                        char (refer
+                                      (bj_before_image.image_len));
+
+dcl  1 bj_fm_handler_rec              aligned based,
+       2 header                       like bj_rec_hdr,
+       2 fm_uid                       bit (36),
+       2 fm_oid                       bit (36),
+       2 prev_fm_handler_rec_id       bit (36),
+       2 info_len                     fixed bin,
+       2 info_bytes                   char (refer
+                                      (bj_fm_handler_rec.info_len));
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+3 BEFORE JOURNAL FILE CHARACTERISTICS
+
+     Logical records of  the before journal are stored  in a data
+management file, accessed through the file manager.  The contents
+of the  file is to  be manipulated by the  before journal manager
+only.  The type  of file used for the  before journal is referred
+to as a "circular sequential" file.
+
+     Logical  records  are  always  appended to  the  end  of the
+journal.  They are never inserted in the middle, modified, moved,
+grown,  shrunk  or deleted.   The basic  retrieval modes  are (a)
+sequential in reverse order, used by recovery after crash to find
+all  unfinished  transactions,  and  (b)  random  with  a  record
+identifier, used by rollback.
+
+     When  a transaction  terminates, all  before journal records
+that it  produced become useless since  the transaction should no
+longer be  rolled back.  As  a result, after a  certain time, the
+first n records of the journal become useless.
+
+     When  the  file is  full,  the first  n  consecutive useless
+records  are "erased"  from the beginning  of the  file and their
+space is made  available to continue to append  new records.  The
+beginning  of the  file is  redefined to  be at  the first useful
+record.  This is why the file  used for before journal is said to
+be a circular file.
+
+     Because of the special characteristics of Before Journals, a
+new file  format and new  access methods, which  are tailored for
+circular  sequential files  have been defined,  rather than using
+those, more  general, defined for  the record and  index managers
+(MTB 552).
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+4 BEFORE JOURNAL FILE FORMAT
+
+     A before journal is stored  in a data management file, which
+is made of Control Intervals (CI's).  It consists of a header for
+the journal,  stored in CI  zero, followed by a  sequence of CI's
+containing before journal logical records.  These CI's start with
+a  CI header,  which is  very similar to  the header  used by the
+record  and  index managers.   In  each CI  a variable  number of
+variable length  elements can be  allocated, as for  CI's used by
+the  record  and  index  managers;  but  the  structure  of these
+elements has  been simplified for  the before journal  due to the
+sequential nature of the journal.
+
+4.1 The before journal header in CI zero
+
+     The before journal  header is located in CI  zero, after the
+file manager  standard ci_header.  Its structure  is identical to
+the  "bj_pste" stucture  used by  the before  journal manager and
+described  in  section 7.2.2  of this  memo.  Bj_pste  stands for
+"before  journal  per system  table  entry".  The  before journal
+manager uses  a per system  table with one entry  for each before
+journal currently used in the system.  The entry for a journal is
+referred to as the bj_pste for that journal.
+
+     Some items found in the header are of permanent nature, such
+as the journal  identifier, the CI size, the  maximum size of the
+journal;  they  are  used  by   the  before  journal  manager  to
+initialize  the "bj_pste"  structure when  the before  journal is
+made operational for journalization.
+
+     Some  other  items are  very  dynamic in  nature  and change
+frequently while  journalization is being  performed.  The values
+of these items  are always up to date  in the "bj_pste" structure
+and are updated  in the header only periodically.   They are used
+after a system crash, when  the "bj_pste" is no longer available,
+as a starting point to find out  where the end of the journal was
+at the time of the crash.
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+4.2 The Control Interval Structure
+
+     Like  all control  intervals, control intervals  of a before
+journal  start  with  a  standard  file  manager  4-word  header,
+referred to  as the "ci_header".   It is followed  by a structure
+specific to before journal control intervals.
+
+4.2.1 THE FILE MANAGER CI_HEADER STRUCTURE.
+
+      The ci_header structure is  maintained by the file manager.
+It is  described in detail in  MTB-554; it is given  here for the
+reader's convenience.
+
+   dcl 1 ci_header               aligned based,
+       2 stamp,
+         3 version               bit (9) unal,
+         3 bj_idx                fixed bin (9) uns unal,
+         3 time_modified         fixed bin (53) unal,
+       2 id,
+         3 uid                   bit (36),
+         3 size_code             unal,
+           4 exponent            fixed bin (6) uns,
+           4 addon               fixed bin (3) uns,
+         3 num                   fixed bin (27) uns unal;
+
+       where:
+
+       "ci_header.stamp.version"  is  a version  number  for this
+            structure.
+
+       "ci_header.stamp.bj_idx"  is  always zero  for unprotected
+            files;  therefore it  is zero  for a  before journal.
+            For  protected files,  it indicates the  index of the
+            before journal  used to modify  the control interval.
+            This  index  is  the  index  of  the  journal  in the
+            per-system  table (See  section 7.2); it  is also the
+            index of the entry, in the dm_journal hardcore table,
+            which contains the time stamp used by page control to
+            determine if  the control interval should  be held in
+            main  memory or  if it  may be  written to  disk (See
+            section 8).
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+       "ci_header.time_modified" is  clock value at  the time the
+            file manager did the last modification to the control
+            interval.   Since  records are  only appended  to the
+            journal,  control  intervals  in the  journal  have a
+            monotonically  increasing time  value.  This property
+            is  used by  recovery after crash  to determine where
+            the end of the journal was at the time of the crash.
+
+       "ci_header.id.uid"  is  the file  unique  identifier.  The
+            file manager  automatically stores it  in all control
+            intervals of the file.
+
+       "ci_header.id.size_code" specifies the size of the control
+            interval  in  number of  bytes, using  "exponent" and
+            "addon", according to the following expression:  Size
+            = (64 + 8 * addon) * 2 ** exponent.
+
+       "ci_header.id.num" is  the control interval  number of the
+            control  interval.  The  ci_header contains  the full
+            identifier of the control  interval:  file uid and ci
+            number.
+
+4.2.2 THE BEFORE JOURNAL BJ_CI STRUCTURE.
+
+   dcl 1 bj_ci                   based aligned,
+       2 header1                 like ci_header,
+       2 header2,
+         3 layout_type           bit (36),
+         3 first_rec_id          bit (36),
+         3 n_slots               fixed bin (17) unal,
+         3 first_is_contn        bit (1)        unal,
+         3 last_is_contd         bit (1)        unal,
+         3 pad                   bit (16)       unal,
+         3 n_bi                  fixed bin (35),
+         3 reserved              bit (36) dim (4),
+       2 slot                    dim (1:1000),
+         3 offset                fixed bin (18) uns unal,
+         3 length                fixed bin (18) uns unal;
+
+       where:
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+       "header1" is the file manager ci_header described above.
+
+       "header2" is the before journal manager header.  Its items
+            are described below.
+
+       "layout_type"  is a  type indicating what  kind of control
+            interval it  is.  The various  types used so  far are
+            before journal type and  collection manager type.  By
+            convention,  this  type  is  always  found  after the
+            ci_header.
+
+       "first_rec_id" is  the record id of  the logical record of
+            which the  first element of this  control interval is
+            the continuation.  If the first  element of the CI is
+            not  the  continuation of  any  record, this  item is
+            irrelevant and its value is undefined.
+
+       "n_slots" is the number of  elements stored in the control
+            interval.   It  is incremented  by  1 only  after the
+            element has been stored.
+
+       "first_is_contn" is a switch that, when ON, indicates that
+            the  first element  is the  continuation of  a record
+            that  starts  in a  previous control  interval.  This
+            switch is  allocated in the same  word as the n_slots
+            item and is carefuly set in an atomic store operation
+            which  brings into  existence the  first element, the
+            switch indicating it is the continuation of a record,
+            and the record  id of the record in  which this first
+            element belongs.
+
+       "last_is_contd" is a switch  that, when ON, indicates that
+            the last element of the control interval is part of a
+            record  which  is  continued   in  the  next  control
+            interval.   Like  the  first_is_contn  switch,  it is
+            allocated in the same word as the n_slots item and it
+            is set  in an atomic  operation at the  same time the
+            n_slots value is incremeneted.
+
+       "n_bi"  is  the number  of  before images  that  have been
+            stored in this control interval.   It is used to keep
+            a count of how many pages  may be held in main memory
+            until the control interval is known to be on disk.
+
+       "slot" is  the element postion table,  which describes the
+            position and length of all elements stored in the CI.
+            The  protocol  to  add  an  element  into  a  control
+            interval in  an atomic manner is  as follows:  First,
+            write  the contents  of the  element in  the CI, then
+            store  its offset  and length  in the  next available
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+            slot entry; at this point  the element still does not
+            exist.   If  the  element  is the  first  and  is the
+            continuation of  the previous element,  set the value
+            of  first_rec_id.  Finally,  prepare a  word with the
+            incremented  value  of  n_slots  and  the  appropiate
+            values  for  the   first_is_contn  and  last_is_contd
+            switches  and  store  the  word  in  its  location in
+            header2.
+
+       "offset"  is  the  byte  offset of  the  beginning  of the
+            element.  An  element may start at  any byte, it does
+            not have to start at a word boundary.  This offset is
+            relative to the "addressable  portion" of the control
+            interval,  that  is,  relative  to  the  beginning of
+            header2.
+
+       "length" is the length of the element, in number of bytes.
+
+4.3 Elements
+
+     The element_position_table  describes all elements  that are
+allocated in the CI.  An element in the file is identified by its
+CI number (ci) and its index (ix) in the position table:
+
+                    element_id = (ci, ix)
+
+     The first element in a  control interval is the element with
+ix equal  to 1.  The  last element in  a control interval  is the
+element with the highest ix.
+
+     The first element of the journal is the first element of the
+first CI of the journal.  The last element of the journal is last
+element in the last modified CI of the journal.
+
+     Two elements are consecutive if (a)  they are in the same CI
+and their  indices differ by one  or (b) one is the  last in a CI
+and the other is the first in the next CI.
+
+     When a new  element is allocated, it is  always allocated in
+such a way as to become  the next element relative to the element
+that was the last element.
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+     An  element  is allocated  in  a CI  in  order to  contain a
+logical record or part of it.   When a logical record needs to be
+appended to  the journal, a  new element is allocated,  in such a
+way that  it becomes the  last element of  the list and  the next
+element to the one which was  last before the creation of the new
+element.  Since an element is, by definition, entirely in one CI,
+it is possible that the size  of the new allocated element is not
+large enough to contain the  entire logical record.  In this case
+the new  element is used to  store the first part  of the logical
+record, and one or several new elements are allocated to hold the
+rest  of the  logical record.   By convention,  if more  than one
+element is needed  to store a logical record,  all these elements
+are consecutive elements.
+
+     Like  in  control intervals  used  by the  record  and index
+managers, whose storage is managed by the Collection Manager (MTB
+552), elements come in fours flavors, depending on whether or not
+they  contain  a full  logical  record and  on  what part  of the
+logical record they contain.  An element may contain:
+
+  - The entire logical record or
+  - Only the first part of a logical record or
+  - Only the last part of a logical record or
+  - Only (one of) the middle part(s) of a logical record.
+
+     The  simplicity of  the operations performed  on the journal
+have led to  the definition of an element  structure simpler than
+the standard  structure used by  the Record Manager.   An element
+contains  no header,  trailer or  pointer to  another element; it
+only contains (all or some) bytes of a logical record.
+
+4.4 Logical Record Identifiers
+
+     A logical record identifier is the element identifier of the
+element in which  it is stored.  If the  logical record is stored
+in several elements,  its identifier is the element  in which its
+first part is stored.  The  other parts are stored in consecutive
+elements.
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+5 LOGICAL RECORDS STORAGE AND RETRIEVAL OPERATIONS
+
+     The  Before  Journal  Manager  has  a  utility  module which
+provides  a  set  of  operations to  store  and  retrieve logical
+records  in  and from  a  Before Journal.   This module  does not
+understand the contents  of a logical record and  views it merely
+as a bit string.
+
+     This  storage  module and  its  primitives are  described in
+detail in MTB-567:  "DM:  Before journal storage operations".  It
+provides the following services:
+
+1. Append  a logical  record at the  end of a  Before Journal and
+   return the record id assigned to the appended record.
+
+2. Flush  the  journal  to disk  up  to, and  including,  a given
+   logical record, and wait for I/O completion.
+
+3. Get the logical record specified by its record identifier from
+   a Before Journal.
+
+4. Get  the  logical  record  that  precedes  the  logical record
+   specified  by its  record id from  a Before  Journal, with its
+   record identifier.
+
+5. Get  the last  logical record  that was  appended to  a Before
+   Journal, with its record identifier.
+
+6. Recycle that portion of the journal which is no longer useful.
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+6 LOGICAL VS PHYSICAL JOURNALIZATION
+
+     When  the  Before Journal  Manager is  called to  write some
+information  in the  journal, say  it is  called to  journalize a
+protected file  modification about to take  place, it appends the
+appropriate  logical  record to  the journal  and returns  to its
+caller with no guarantee that  the appended record is effectively
+on disk.  Logical journalization is completed after the record is
+appended to  the journal and  control is returned  to the caller.
+Physical  journalization  is  completed when  the  logical record
+physically appears on disk.
+
+     The Transaction Manager must be aware of this distinction in
+order  to correctly  implement the  commitment of  a transaction.
+The  Before  Journal  Manager,  in  turn,  must  provide adequate
+support  for  the  Transaction  Manager  to  deal  with  physical
+journalization.
+
+6.1 Logical Journalization
+
+     When  the  Before Journal  Manager is  called to  store some
+information  in the  Journal, it manufactures  the logical record
+and  calls  the storage  utility primitive  bj_storage_append, to
+append  it  to  the end  of  the journal.   The  append procedure
+appends the record by storing it in a temporary buffer that looks
+exactly like  the control interval  in which the record  is to be
+stored.   When a  new record  needs to  be appended,  possibly by
+another transaction, it is put in the temporary buffer, and so on
+while the temporary buffer has enough room to accommodate the new
+record.   For  all  these   records,  logical  journalization  is
+considered completed,  even though they  have not been  stored in
+the journal file yet.
+
+     When  the  temporary buffer  is  full, the  append procedure
+copies it in the journal file,  in the appropriate CI, by calling
+the file manager at its "put" entry point.
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+6.2 Physical Journalization
+
+     The physical  journalization of a logical  record start when
+the write to  disk request has been queued;  it is completed when
+the disk  I/O is completed.  The  Before Journal Manager provides
+the  "flush" primitive  which allows  the transaction  manager to
+request that physical journalization be performed for all logical
+records appended to the journal by a given transaction:
+
+  call before_journal_manager_$flush_transaction (txn_id,...)
+
+When  issuing this  call, the Transaction  Manager requests that,
+for  all   records  appended  to  the   journal  by  the  current
+transaction, physical journalization be started if necessary, and
+completed.  What happens when the  flush procedure is executed is
+described below.
+
+The      before_journal_manager_$flush_transaction      procedure
+determines the record  id of the last logical  record appended by
+the transaction to the journal.  It finds it in the "bj_txte" for
+this  transaction,  which  contains  before  journal  information
+related to that transaction (See section 7.3).  It translates the
+request  into  a call  to  its storage  utility module,  to cause
+physical journalization of all records  of the journal, up to and
+including the last record appended by the transaction:
+
+  call bj_storage_flush (bj_oid, last_record_id,...)
+
+The bj_storage_flush procedure keeps track of the last record for
+which physical  journalization is completed, the  last record for
+which physical  journalization has been started,  the last record
+which was  copied from the  temporary buffer to  the journal file
+and  the  last  record  still   in  the  temporary  buffer.   The
+sequential nature of the journal makes this housekeeping easy.
+
+By  looking at  the last_record_id passed  by the  caller, it can
+determine which ones of the following  steps have to be taken, if
+any, in order to satisfy the caller's request:
+
+- Copy the temporary buffer  into the journal file, if necessary.
+- Flush the necessary CI's.
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+In  order to  flush the  journal, the  bj_storage_flush procedure
+calls upon  a file manager  primitive provided for  that purpose,
+which  causes physical  journalization of  a specified  number of
+consecutive control  intervals starting from  a specified control
+interval of a given file.
+
+  call file_manager$flush_consecutive_ci (pf_oid, first_ci, n_ci)
+
+The  file  manager,  in  the   first  implementation  on  top  of
+multi-segment files, will call upon  page control to really issue
+the  necessary  I/O's  and  wait for  them.   When "non-segmented
+files"  are implemented,  the file  manager will  probably be the
+"non-segmented  file"  manager  and  will be  able  to  issue I/O
+requests and wait for them without going through page control.
+
+6.3 File manager services
+
+     The  before journal  manager expects  that the  file manager
+will provide the following services:
+
+1.  file_manager$flush_consecutive_ci (pf_oid, first_ci, n_ci)
+
+     This  procedure   flushed  a  number   of  consecutive  CI's
+specified by  "n_ci", starting at the  CI specified by "first_ci"
+in the page file specified by  its opening id "pf_oid", and waits
+until all CI's specified by  the caller are physically written to
+disk.
+
+2.  file_manager$open_by_uid (file_uid, file_opening_id)
+
+     This  function  is  needed  by the  rollback  facility, when
+executed in  a process other  that the process  which started the
+transaction.  When a before image is recorded in the journal, the
+file is identified by its  unique id; storing the entire pathname
+of the  file in the  before image would be  too inefficient.  So,
+the file manager is responsible  for keeping a uid-pathname table
+with one entry for each file susceptible of being rolled back.
+
+     The   open_by_uid   procedure   starts   by   searching  the
+uid_pathname table for the  pathname associated with the file_uid
+passed by the caller; then it uses the standard open mechanism.
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+6.4 Page Control Services
+
+     In order  to be able  to rollback after a  system crash with
+ESD failure, it is necessary to enforce a protocol referred to as
+the  "Write  Ahead  Log"  (WAL) protocol,  which  requires always
+writing a  before image to  disk before the  associated data base
+modification  is   itself  written  to  disk.    In  the  current
+implementation,  all control  intervals are pages  written out by
+page  control.  It  is therefore  necessary to  have page control
+cooperate with the data management system in order to enforce the
+WAL protocol.  This is described  in detail in MTB-564:  "Phasing
+Page Control  and Before Journal".   A short description  is also
+given in section 8.
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+7 TABLES USED BY THE BEFORE JOURNAL MANAGER
+
+      During  journalization,  the  before  journal  manager uses
+several tables  in addition to the  journal itself.  These tables
+contain before journal information of 3 categories:
+
+      - Per process information
+      - Per system information
+      - Per transaction information
+
+7.1 Per Process Information
+
+     The  before journal  manager uses  a per  process table, the
+pj_ppt,  which  consists  of a  header  followed by  an  array of
+entries, one for  each journal open in this  process.  This table
+is created and initialized at dm_per_process initialization.
+
+     The bj_ppt table  is read and modified by  one process only;
+no  lock is  necessary.  Modifications to  the table  are made by
+carefully  written programs  in such a  way as  to appear atomic,
+even if a process fails in the middle of an update operation.
+
+     The  PL/1 declarations  for the  bj_ppt and  the bj_ppte are
+given  below,  with  a short  description  for each  item  in the
+structures.
+
+7.1.1 THE BJ_PPT STRUCTURE.
+
+   dcl 1 bj_ppt                       based aligned,
+       2 version                      fixed bin,
+       2 max_n_entries                fixed bin,
+       2 n_entries_used               fixed bin,
+       2 highest_ix_used              fixed bin,
+       2 default_bj,
+         3 user_set_oid               bit (36),
+         3 last_opened_oid            bit (36),
+       2 process_id                   bit (36),
+       2 process_ix                   fixed bin,
+       2 mod_list_area                (100) fixed bin (35),
+       2 e                            dim (dm_system_data_$
+                                      bj_max_n_journals refer
+                                      (bj_ppt.max_n_entries))
+                                      like bj_ppte;
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+    where:
+
+    "version" is the version of the bj_ppt structure.
+
+    "max_n_entries" is the maximum number  of "e" entries in this
+         table.    It   is   initialized   with   the   value  of
+         dm_system_data$bj_max_n_journals,    at   dm_per_process
+         initialization, when the bj_ppt table is created.
+
+    "n_entries_used" is the number of  entries used, that is, the
+         number of journals opened by this process.
+
+    "highest_ix_used" is the highest index of all used entries.
+
+    "default_bj.user_set_oid" is the bj opening id of the journal
+         established as the default journal in this process by an
+         explicit call  to the entry point  set_default_bj in the
+         before journal manager.
+
+    "default_bj.last_opened_oid"  is the  opening id  of the last
+         journal opened in this process, and still open.
+
+    "process_id" is the process id of the current process.  It is
+         set at dm_per_process initialization, and is used in any
+         fast  paths where  it is  desirable to  save an external
+         call to get_processid_ ( ).
+
+    "bj_process_ix" is  the index assigned  to this process  in a
+         system  table   of  the  before   journal  manager,  the
+         bj_check_in_table.  This  table has 2  parts:  The first
+         part consists of an array  of process_ids, with one used
+         entry for every process registered in the before journal
+         manager;  bj_process_ix  is  the index  assigned  to the
+         process  in   this  array.   The  second   part  of  the
+         bj_check_in_table  consists  of a  2  dimensional matrix
+         where each element (p, j) is a one bit element, equal to
+         1 if the journal with index  j is opened by process with
+         index p (See section 7.2.4).
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+7.1.2 THE BJ_PPTE STRUCTURE.
+
+   dcl 1 bj_ppte                      based aligned,
+
+       2 version                      fixed bin,
+       2 bj_uid                       bit (36),
+       2 pf_oid                       bit (36),
+       2 n_opening                    fixed bin,
+       2 bj_pste_ptr                  ptr,
+       2 open_time                    fixed bin (71);
+
+    where:
+
+    "version" is the version number of this structure.
+
+    "bj_uid"  is  the  unique  identifier  of  the  journal.   By
+         convention, it is the same as the file uid.
+
+    "file_oid" is the opening id  assigned by the file manager to
+         the data management file  used to implement the journal.
+         This file_oid is how the file must be referred to by the
+         before journal manager when  calling the file manager to
+         perform a get, put or flush operation on the file.
+
+    "n_opening"  is the  number of  times this  process requested
+         this before journal to be  opened, by calling the "open"
+         entry  point  of  the  before  journal  manager.   It is
+         incremented by 1  each time before_journal_manager_$open
+         is   called,   and   decremented    by   1   each   time
+         before_journal_manager_$close   is   called.    When  it
+         reaches  0,  the process  is  "checked out"  of  the per
+         system  bj_check_in_table,  that is,  its  process_id is
+         removed   from   the   table  of   process_ids   in  the
+         bj_check_in_table,  and  the number  of  processes using
+         this  journal is  decremented in the  bj_pste entry (See
+         section 7.2.2).
+
+    "bj_pste_ptr" is a pointer to the per system entry describing
+         this journal, in the per system table bj_pst.
+
+    "open_time"  is  the  time  this  journal  was  open  in this
+         process.   It  is  used  to determine  what  the default
+         before journal should be, when no default is in effect.
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+7.2 Per System Information
+
+     The  before journal  manager uses  a per  system table which
+consists  of  a header  and  an array  of  entries, one  for each
+journal opened by at least one process in the system.  This table
+is created and initialized  at dm_per_system initialization.  The
+table is referred to as the bj_pst,  and an entry in the table as
+a  bj_pste.    Every  bj_pste  in  use   contains  system  shared
+information  describing a  particular before  journal currenly in
+use  by at  least one  process.  If  a given  journal is  open in
+several  processes,  each process  has its  own bj_ppte,  but all
+these bj_ppte  point to a  unique bj_pste for  this journal.  Two
+bj_pste's never describe the same journal.
+
+     The  bj_pst  and  bj_pste's  are  shared  by  all  processes
+executing  in the  before journal manager.   Concurrent access to
+the same information is prevented  by the use of exclusive locks.
+These locks must be fast to  acquire and to release and they must
+not be held until the end of the transaction.  The before journal
+manager must be able to set  them and release them as required by
+its  logic.   Fast  locks  will be  available  for  this purpose,
+modeled  after the  locks provided by  "set_lock" but implemented
+with actual notification rather than with the calender clock.
+
+     Two classes of  operations need synchronization:  Operations
+on the  header of the  table, to allocate  or free an  entry; and
+operations on  a specific entry,  to perform journalization  on a
+given journal.  A lock will be  associated with the header, and a
+lock will be associated with each entry.
+
+     Modifications  to the  header or  to individual  entries are
+made  by carefully  written programs in  such a way  as to appear
+atomic,  even  if a  process  fails in  the  middle of  an update
+operation.
+
+     The PL/1 declarations for  the bj_pst and bj_pste structures
+are given  below, with a  short description for each  item in the
+structure.
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+7.2.1 THE BJ_PST STRUCTURE.
+
+   dcl 1 bj_pst                       based aligned,
+       2 version                      fixed bin,
+       2 pad1                         bit (36),
+       2 lock,
+         3 pid                        bit (36),
+         3 event                      bit (36),
+       2 time_of_bootload             fixed bin (71),
+       2 max_n_entries                fixed bin,
+       2 n_entries_used               fixed bin,
+       2 highest_ix_used              fixed bin,
+       2 pn_table_offset              fixed bin (18) uns,
+       2 check_in_table_offset        fixed bin (18) uns,
+       2 buffer_table_offset          fixed bin (18) uns,
+       2 max_n_buffers                fixed bin,
+       2 pad2                         bit (36),
+       2 meters,
+         3 n_calls_begin_txn          fixed bin (71),
+         3 n_calls_before_image       fixed bin (71),
+         3 n_calls_abort              fixed bin (71),
+         3 n_calls_commit             fixed bin (71),
+         3 n_calls_rb_mark            fixed bin (71),
+         3 n_calls_fm_pc_mark         fixed bin (71),
+         3 n_calls_fm_rbh             fixed bin (71),
+         3 n_calls_rollback           fixed bin (71),
+         3 meter dim (9:50)           fixed bin (71),
+       2 mod_list_area                (100) fixed bin (35),
+
+       2 e                            dim (dm_system_data_$
+                                      bj_max_n_journals refer
+                                      (bj_pst.max_n_entries))
+                                      like bj_pste;
+
+    where:
+
+    "version" is the version number of the structure.
+
+    "lock"  is a  2-word lock in  the format assumed  by the fast
+         lock  facility  of  the  lock manager.   The  first word
+         contains  the  process id  of the  process that  has the
+         lock.   The  before journal  manager  uses this  lock to
+         perform open and close operations.  Any process doing an
+         open or a  close of the before journal  must acquire the
+         lock, and keeps it for the entire operation.
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+    "time_of_bootload"  is the  time the Multics  system was last
+         initialized.  It is  set at dm_per_system initialization
+         using the value of system_control_$time_of_bootload.
+
+    "max_n_entries" is the maximum number of before journals that
+         can be "active"  at the same time.  This  item is set at
+         dm_per_system_init   time   to   the   value   found  in
+         dm_system_data_$bj_max_n_journals.
+
+    "n_entries_used"  is  the  number  of entries  in  this table
+         actually used.
+
+    "highest_ix_used" is  the highest index in  this table of all
+         used entries.
+
+    "pn_table_offset"  is  the offset  of the  uid_pathname table
+         maintained  by  the  before   journal  manager  for  all
+         journals that  are active, i.e.,  that have an  entry in
+         the   bj_pst  segment.    This  uid_pathname   table  is
+         allocated in the same segment as the bj_pst.  It is used
+         by  recovery  after  crash   to  determine  what  before
+         journals must be recovered.
+
+    "check_in_table_offset"     is    the     offset    of    the
+         bj_check_in_table.  This table is  allocated in the same
+         segment as the  bj_pst table; it is used  to record what
+         process has what journal open.
+
+    "buffer_table_offset" is  the offset to  the bj_buffer_table.
+         This  table  is allocated  in  the same  segment  at the
+         bj_pst table.  Each entry in this table is one page long
+         and starts  at a page  boundary.  Entry i  is associated
+         with the  journal described in bj_pst.e(i),  and is used
+         as the buffer for that journal.
+
+    "max_n_buffers" is no longer used.
+
+    "meters"  are  various  meters maintained  by  before journal
+         manager procedures.
+
+    "mod_list_area" is not used currently.
+
+    "e" is an array of entries  like bj_pste's.  Each entry, when
+         used, describes an active before journal.  The number of
+         entries    of    this     array    is    specified    by
+         dm_system_data_$bj_max_n_journals.
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+7.2.2 THE BJ_PSTE STRUCTURE.
+
+   dcl 1 bj_pste                      based aligned,
+       2 version                      fixed bin,
+       2 bj_ix                        fixed bin,
+
+       2 lock                         aligned,
+         3 pid                        bit (36),
+         3 event                      bit (36),
+
+       2 bj_uid                       bit (36),
+       2 ci_size                      fixed bin,
+       2 max_size                     fixed bin,
+       2 active                       bit (1) aligned,
+       2 time_header_updated          fixed bin (71),
+       2 earliest_meaningful_time     fixed bin (71),
+       2 update_frequency             fixed bin,
+       2 last_rec_id                  bit (36),
+
+       2 n_processes                  fixed bin,
+       2 n_txn                        fixed bin,
+
+       2 last_ci_info                 aligned,
+         3 last_ci_buffered           fixed bin (24) uns,
+         3 last_ci_put                fixed bin (24) uns,
+         3 last_ci_flushed            fixed bin (24) uns,
+         3 last_ci_on_disk            fixed bin (24) uns,
+
+         3 stamp_for_last_ci_put      fixed bin (71),
+         3 stamp_for_last_ci_on_disk  fixed bin (71),
+
+       2 n_bi_still_unsafe            fixed bin,
+       2 n_bi_being_saved             fixed bin,
+
+       2 buffer_offset                fixed bin (18) uns,
+       2 pad1                         fixed bin,
+
+       2 cl                           aligned,
+         3 origin_ci                  fixed bin (24) uns,
+         3 lowest_ci                  fixed bin (24) uns,
+         3 highest_ci                 fixed bin (24) uns,
+         3 number_ci                  fixed bin (24) uns,
+
+       2 append_state                 aligned,
+         3 current_operation          char (4),
+         3 pending_n_txn              fixed bin,
+         3 pending_last_rec_id        bit (36),
+         3 pending_last_element_id    bit (36),
+         3 txte_rec_id_relp           bit (18),
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+       2 pad_to_even_word1            bit (36) aligned,
+
+       2 meters                       aligned,
+         3 n_bi_written               fixed bin (71),
+         3 n_bi_bytes_written         fixed bin (71),
+         3 n_journal_full             fixed bin (71),
+         3 n_successful_recycles      fixed bin (71),
+         3 n_ci_recycled              fixed bin (71),
+         3 n_txn_started              fixed bin (71),
+         3 n_non_null_txn             fixed bin (71),
+         3 meter (8:10)               fixed bin (71),
+
+       2 pad_to_64_words (6)          bit (36);
+
+    where:
+
+    "version" is the version number of the bj_pste structure.  By
+         convention,  if  version =  0,  the entry  is  not used.
+         While  an  entry  is  being  initialized  to  describe a
+         journal being activated, the value  of version is 0.  It
+         is set  to the non null  value only as the  last step of
+         the journal activation.
+
+    "bj_ix" is the index of this entry in the array of bj_pste's.
+         It is used for consistency  checking and also to get the
+         index  of  the  entry  when one  has  a  pointer  to the
+         bj_pste.
+
+    "lock"  is a  2-word lock in  the format assumed  by the fast
+         lock facility of the lock manager.  It is used always as
+         an  exclusive   lock.   All  storage   operations,  i.e.
+         append, get and flush must acquire this lock.  A process
+         can be working on only 1  bj_pste at a time, so there is
+         no possibility of deadlock due  to locks on 2 bj_pste's.
+         The bj_pst.lock is set by a process that does an open or
+         close operation;  this does not  prevent another process
+         from acquiring the lock on  a particular bj_pste for the
+         purpose of doing an append,  get or flush operation on a
+         journal already  active and not  involved in an  open or
+         close operation.
+
+    "bj_uid" is the unique id  of the before journal described by
+         this entry.  It is copied from the before journal header
+         kept in CI, when the journal is activated.
+
+    "ci_size"  is  the control  interval  size for  this journal,
+         expressed in number of bytes.
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+    "max_size" is the maximum size of the journal file, expressed
+         in the number of control intervals.
+
+    "active" is a switch showing that the journal is active, i.e.
+         that  it  is being  used  by at  least 1  process.  This
+         switch is always ON in  the bj_pste.  The before journal
+         header, bj_header in CI zero,  has the same structure as
+         the bj_pste.   When this switch  is ON in  bj_header, it
+         indicates that the journal  is currently active, or that
+         it  was  active in  a  previous invocation  of  the data
+         management  system,  while the  system crashed,  and may
+         contain information about unfinished transactions.
+
+    "time_header_updated" is the calendar clock time at which the
+         before journal  header was last updated.   The header is
+         updated  periodically  to help  finding  the end  of the
+         journal after a system crash.
+
+    "earliest_meaningful_time" is a calendar clock time also kept
+         in  the header  to help finding  the end  of the journal
+         after  a system  crash.  Any  CI whose  time modified is
+         smaller than this "earliest_meaningful_time" contains no
+         useful  information.  This  time is  set to  the current
+         time when the journal is activated.
+
+    "update_frequency"  is  a  number  indicating  how  often the
+         header is  to be updated.  Updating  the header consists
+         of  writing the  bj_pste information  into the bj_header
+         structure in  CI zero.  An  update frequency of  N means
+         that  the  header  should  be  updated  after  N control
+         intervals have been written.
+
+    "last_rec_id"  is  the record  identifer  of the  last record
+         successfully appended to the journal.
+
+    "n_processes"  is the  number of  processes that  have opened
+         this journal.  The journal cannot be "deactivated" while
+         n_processes is greater than zero.  The list of processes
+         using the journal is  recorded in the bj_check_in_table.
+         Each  process  that  has  the  journal  opened  has  its
+         process_id  registered  in   the  check_in_table.   Dead
+         processes  have   their  process_id  removed   from  the
+         check_in_table   by   a    "garbage   collector"   which
+         automatically adjusts bj_pste.n_processes  to the number
+         of alive processes.
+
+    "n_txn"  is the  number of unfinished  transactions that have
+         stored at  least 1 record  in the journal.   The journal
+         cannot  be deactivated  while this item  is greater than
+         zero, even if  n_processes = 0.  The reason  is that all
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+         processes that were using the journal may have died, but
+         some unfinished transactions are still to be rolled back
+         by the Data Management Daemon, using this journal.
+
+    "last_ci_buffered" is the CI  number currently in the buffer.
+         When a CI is in the buffer, its info is not in the file.
+         When the buffer is full, it is written into the file, by
+         a "put"  request to the  file manager.  When  the put is
+         completed, the  buffer is initialized as  the next CI of
+         the journal, showing no element in it.
+
+    "last_ci_put" is the CI number of the last CI copied from the
+         buffer to the file.  It is updated only after the buffer
+         is completely "put" in the  file.  For a short time, the
+         last_ci_put is equal to the last_ci_buffered.  This is a
+         legitimate situation, indicating that the buffer must be
+         initialized with the next CI.
+
+    "last_ci_flushed" is the CI number of the last CI for which a
+         flush was requested.  The I/O may still be in progress.
+
+    "last_ci_on_disk" is the CI number of the last CI on disk and
+         such that all previous CI's are also on disk.
+
+    "stamp_for_last_ci_put" is the time stamp associated with the
+         last CI put.  It is needed by the flush function.
+
+    "stamp_for_last_ci_on_disk" is the time stamp associated with
+         the last  CI on disk.   This stamp is the  stamp that is
+         stored  in the  ring zero  dm_journal_seg, in  the entry
+         associated  with this  journal (See  section 8).   It is
+         used by the flush function.
+
+    "n_bi_still_unsafe"  represents the  number of  before images
+         that  have not  yet been  secured to  disk.  This number
+         indicates how many data base  CI's may be pinned in main
+         memory.  (It actually is an upper bound.)  It is used by
+         the "append"  procedure to decide if  the journal should
+         be flushed because  too many data base CI's  are held in
+         main memory, in order to allow them to go to disk.
+
+    "n_bi_being_saved"  indicates  how  many  before  images  are
+         actually being written to disk.  It is used by the flush
+         function.
+
+    "buffer_offset" is the offset of  the beginning of the buffer
+         associated with this journal.  The size of the buffer is
+         the same as the size of the CI for this journal.  In the
+         current design, all buffers are  one page long and start
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+         at a page boundary.  They  are all allocated in the same
+         segment as the bj_pst.
+
+    "cl.origin_ci" is the CI number  of the CI which is currently
+         the origin  of the cirular  list.  Each time  the end of
+         the journal is reached, the origin is "advanced" as much
+         as possible, over all CI's that no longer contain useful
+         information.
+
+    "cl.lowest_ci" is the lowest CI  number in the circular list.
+         In  the  current design  it  is always  1, and  does not
+         change when the origin is advanced.
+
+    "cl.highest_ci"  is  the highest  CI  number in  the circular
+         list.  In the  current design, it is aways  equal to the
+         last CI number of the file, and does not change when the
+         origin is advanced.
+
+    "cl.number_ci" is  the number of  CI's in the  circular list.
+         In the current design, it is always equal to the maximum
+         size of the  file minus 1 (control interval  zero is not
+         part of the circular list), and does not change when the
+         origin is advanced.
+
+    "append_state"   contains   information   about   the  append
+         operation,  while  a  record  is being  appended  to the
+         journal.   The information  is used  to make  the append
+         operation "atomic".   Regardless of where  a process may
+         stop (or die) while in  the before journal manager, if a
+         record  has been  completely stored in  the journal, all
+         before journal  manager control structures  (bj_pste and
+         bj_txte)  are  automatically   updated  to  reflect  the
+         existence of this record.
+
+    "current_operation" is a character string which is null while
+         no  record  is being  appended.  It  is equal  to "appe"
+         while a record  is being appended.  It is  restored to a
+         null  character  string after  the record  is completely
+         stored  in  the  journal,  and  the  various  structures
+         (bj_pste and bj_txte) have been updated accordingly.
+
+    "pending_n_txn" is  the value that  bj_pste.n_txn should have
+         after the record is  successfully appended.  This allows
+         for  potentially   redoing  any  number   of  times  the
+         adjustment of  an interrupted append  operation, even if
+         the process crashes during the adjustment.
+
+    "pending_last_rec_id"  is the  value that bj_pste.last_rec_id
+         should have after the record is successfully appended.
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+    "pending_last_element_id"  is the  element id  of the element
+         about to  be stored in the  journal.  Storing an element
+         is atomic:   storing the last element  of a record makes
+         the  entire record  appear in  the journal  in an atomic
+         manner.   The  protocol  is  as  follows:   All  storage
+         operations  are  done  under  the bj_pste  lock.   If an
+         append  operation  is  interrupted  in  the  middle, the
+         process  executes  a  cleanup  handler  which  finds the
+         pj_pste  lock set  to the process;  if it  finds that an
+         append operation  was in progress,  it finds out  if the
+         last  element  of  the  record was  stored.   If  it was
+         stored,  the relevant  items in the  bj_pste are updated
+         and  the record  id of the  new record is  stored in the
+         bj_txte, causing  a more complete update  of the bj_txte
+         items later.  Then the bj_pste  lock is relased.  If the
+         cleanup handler  is not given  a chance to  be executed,
+         the process  must execute a crawl  out procedure to exit
+         the  data   management  inner  ring.    This  crawl  out
+         procedure executes  what the cleanup  handler would have
+         executed.   In  the  worst  case  where  the  crawl  out
+         procedure is not given a chance to run, the process must
+         soon  be terminated.   At a later  time, another process
+         will try  to lock the  bj_pste and will find  that it is
+         locked  by  a dead  process; then  it executes  what the
+         cleanup handler would have executed.
+
+    "txte_rec_id_relp" determines  the location, in  the bj_txte,
+         which  must  be filled  with  the record  id of  the new
+         appended record,  as explained above.  It  is a relative
+         pointer in the segment containing the bj_txte.
+
+    "meters" are various meters.
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+7.2.3 THE BJ_PN_TABLE STRUCTURE
+
+     The bj_pn_table is a table  maintained by the before journal
+manager to  associate the pathname  of a journal  with its unique
+id.  For each journal which has a bj_pste, that is, which is open
+in at  least one process,  there is an entry  in the bj_pn_table,
+with  the  pathname and  the  uid of  the  journal.  For  a given
+journal, the index in the array of bj_pste's and the index in the
+bj_pn_table array are the same.
+
+     The bj_pn_table  is necessary to perform  the recovery after
+crash.  It  is the starting  point, showing what  before journals
+were open at  the time of the crash.   Therefore, this table must
+be  modified   using  careful  coding,   so  that  it   is  never
+inconsistent;  in  addition, the  table must  be flushed  to disk
+after  every  modification.   It  is  the  only  table,  with the
+uid-pathname  table  maintained  by  the file  manager,  which is
+needed by recovery after crash.
+
+     The bj_pn_table has the following structure:
+
+   dcl 1 bj_pn_table             based  aligned,
+
+       2 max_n_entries           fixed bin,
+       2 bj_path_to_uid_relation dim
+                                 (dm_system_data_$bj_max_n_journals
+                                 refer (bj_pn_table.max_n_entries)),
+         3 dir                   char (168),
+         3 entry                 char (32),
+         3 bj_uid                bit (36);
+
+    where:
+
+    "max_n_entries"  is  the  maximum  number of  entries  in the
+         table.  It is needed by recovery after crash.  It is set
+         at  dm_per_system initialization.   Its value  is copied
+         from dm_system_data_$bj_max_n_journals, and  is equal to
+         the maximum number of bj_pste entries.
+
+    "bj_path_to_uid_relation" is an array with one entry for each
+         journal.  Entry  i contains the uid  and pathname of the
+         journal described by entry i of the array of bj_pste's.
+
+    "dir" is the directory name of the journal.
+
+    "entry" is the entry name of the journal.
+
+    "bj_uid" is the unique id of the journal.
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+7.2.4 THE BJ_CHECK_IN_TABLE STRUCTURE
+
+     The  before journal  manager maintains a  table showing, for
+each journal that has a bj_pste  entry, what are the processes in
+which the journal  is open.  It is allocated  in the same segment
+as the bj_pst.  It is not  needed for recovery after crash and it
+does not have to be flushed to disk after every modification.  It
+is initialized at dm_per_system  initialization, with the rest of
+the bj_pst segment.
+
+     The bj_check_in_table has the following structure:
+
+   dcl 1 bj_check_in_table  based aligned,
+
+       2 max_n_processes    fixed bin,
+       2 max_n_journals     fixed bin,
+
+       2 process_id         dim
+                            (dm_system_data_$ bj_max_n_processes refer
+                            (bj_check_in_table.max_n_processes))
+                            bit (36),
+
+       2 cross_proc_bj      dim
+                            (dm_system_data_$bj_max_n_processes refer
+                            (bj_check_in_table.max_n_processes),
+                            dm_system_data_$bj_max_n_journals refer
+                            (bj_check_in_table.max_n_journals))
+                            bit (1) unaligned;
+
+    where:
+
+    "max_n_processes" is the maximum  number of processes allowed
+         to do  data management at  the same time.   This item is
+         initialized     with     the      value     found     in
+         dm_data_$bj_max_n_processes.
+
+    "max_n_journals"  is  the maximum  number of  before journals
+         that can be described in the before journal tables, that
+         is the maximum number of  bj_pste entries.  This item is
+         initialized     with     the      value     found     in
+         dm_data_$bj_max_n_journals.
+
+    "process_id"  is  an array  of  process ids.   The  number of
+         entries    in    this    array    is    determined    by
+         dm_data_$bj_max_n_processes.  Each entry  is either zero
+         or contains the value of a process id.  The first time a
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+         process uses the before  journal manager, its process_id
+         is  entered  in  this  array.  The  index  of  the entry
+         assigned to this process is used to identify the process
+         in the cross_proc_bj table (See below).
+
+    "cross_proc_bj"  is  a  2 dimentional  matrix.   Each element
+         [p,j]  has  a one  bit  value; it  is  equal to  "1"b if
+         process  with index  p in the  table of  process ids has
+         open the journal with index j in the array of bj_pste's.
+         One  might think  that a  count of  processes associated
+         with each journal would have been sufficent.  In theory,
+         this  is true;  but in practice,  it is  not possible to
+         know, from a count, which  processes are still alive and
+         which  processes  are  dead.   This is  the  reason why,
+         instead of a count, the list  of process ids is kept for
+         each journal.
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+7.3 Per Transaction Information
+
+     For each transaction in progress, the before journal manager
+maintains  some information  relevant to the  transaction and the
+Before Journal associated with it.  This information is kept in a
+system shared  table which consists  of a header,  referred to as
+the  bj_txt,  followed by  an  array of  entries, referred  to as
+bj_txte's,  with one  entry for  each transaction.   The array of
+bj_txte's  is  an  array  parallel  to  the  array  used  by  the
+transaction  manager  to describe  transactions.  In  fact, entry
+number  (i) in  the array  of bj_txte's  must be  regarded as the
+extention of  entry number (i)  in the array of  tm_tdte's in the
+transaction  definition  table used  by the  transaction manager.
+The   bj_txt   is  created   and  initialized   at  dm_per_system
+initialization.
+
+     Modifications to the structure are made by carefully written
+programs, in  such a way as  to appear atomic, even  if a process
+fails in the middle of an update operation.
+
+     The PL/1 declarartions for the  bj_txt and bj_txte are given
+below, with a short description of each item in these structures.
+
+7.3.1 THE BJ_TXT STRUCTURE.
+
+   dcl 1 bj_txt                       based aligned,
+
+       2 version                      fixed bin,
+       2 max_n_entries                fixed bin,
+       2 n_entries_used               fixed bin,
+       2 pad_header_to_32_words       bit (36) dim (29),
+       2 entry                        dim (dm_system_data_$
+                                      max_n_transactions refer
+                                      (bj_txt.max_n_entries))
+                                      like bj_txte;
+
+    where:
+
+    "version" is a version number associated with this stucture.
+
+    "max_n_entries"  is  the maximum  number  of entries  in this
+         table.    It   is   initialized    to   the   value   of
+         dm_system_data$max_n_transactions,  when  the  table  is
+         created, at Data Management system initialization.
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+    "n_entries_used" is the number of entries currently used.
+
+    "entry" is an  array each element of which  has the structure
+         of bj_txte described below.
+
+7.3.2 THE BJ_TXTE STRUCTURE.
+
+   dcl 1 bj_txte                             based aligned,
+
+       2 tid                                 bit (36),
+       2 bj_uid                              bit (36),
+       2 entry_state aligned,
+         3 last_completed_operation          char (4),
+         3 ok_to_write                       bit (1),
+       2 owner_info aligned,
+         3 process_id                        bit (36),
+       2 operator_info aligned,
+         3 process_id                        bit (36),
+         3 ppte_ptr                          ptr,
+         3 bj_oid                            bit (36),
+       2 records_info aligned,
+         3 curr_checkpoint_rec_id            bit (36),
+         3 first_bj_rec_id                   bit (36),
+         3 last_bj_rec_id                    bit (36),
+         3 n_rec_written                     fixed bin (35),
+         3 n_bytes_written                   fixed bin (35),
+         3 last_fm_postcommit_handler_rec_id bit (36),
+       2 append_state aligned,
+         3 current_operation                 char (4),
+         3 pending_bj_rec_id                 bit (36),
+         3 pending_n_rec_written             fixed bin (35),
+         3 pending_n_bytes_written           fixed bin (35),
+       2 pad_entry_to_32_words               bit (36) dim (13);
+
+    where:
+
+    "tid" is the transaction id  of the transaction that has been
+         assigned this  entry.  It is  initialized at the  time a
+         transaction  begins.  The  entry number  as well  as the
+         transaction id  are assigned by  the transaction manager
+         and  passed  as  input  argument to  the  before journal
+         manager.
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+    "bj_uid"  is  the  uid of  the  before journal  used  by this
+         transaction.
+
+    "last_completed_operation" is  the last operation  the before
+         journal manager  performed for this  transaction.  It is
+         used for consistency checking.
+
+    "ok_to_write" is a switch which is  set ot 1 at the beginning
+         of the  transaction and turned off  after a committed or
+         aborted mark has been written.
+
+    "owner_info.process_id"  is  the  process id  of  the process
+         which  started  the  transaction.   It  is  kept  in the
+         bj_txte even though the process may be dead.
+
+    "operator_info.process_id" is  the process id  of the process
+         operating on this transaction.   In general this process
+         id is the  same as the owner's process  id.  However, if
+         the  process  that  started   the  transaction  dies  or
+         abandons the transaction while  the transaction is still
+         in  progress,   it  is  the   Data  Management  Daemon's
+         responsibility   to   abort   that   transaction.   When
+         performing  its duty  on the transaction,  the Daemon is
+         said to be the "operator" of the transaction, and before
+         being  able  to  do  any before  journal  operation, the
+         bj_txte.operator_info items have  to be initialized with
+         information relevant to the Daemon process.
+
+    "operator_info.ppte_ptr"   is  a   pointer  to   the  bj_ppte
+         structure  associated  with the  before journal  used by
+         this  transaction,  in  the process  which  is currently
+         operating the transaction.
+
+    "record_info.current_checkpoint_rec_id"  is the  record id of
+         the  current  checkpoint  record.    At  the  end  of  a
+         checkpoint, a checkpoint record is written in the before
+         journal.
+
+    "records_info.first_bj_rec_id"  is  the   record  id  of  the
+         earliest record written by this transaction and which is
+         still  of  interest  to  the  transaction.   The  before
+         journal manager uses the following optimization:  when a
+         transaction begins,  the bj_txte is  initialized, but no
+         "begin" record is actually  written in the journal.  The
+         first_bj_rec_id is null.  If  the transaction commits or
+         aborts  without  having  written   in  the  journal,  no
+         commit/abort  mark is  actually written  in the journal.
+         The first time a transaction writes a record (other than
+         commit  or  abort),  first_bj_rec_id  is set  to  be the
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+         record id  of the record.  When  a transaction is rolled
+         back, a "rolled_back" record  is written in the journal,
+         and  its record  id becomes  the first_bj_rec_id, unless
+         the  transaction  was rolled  back  to a  checkpoint, in
+         which case first_bj_rec_id retains its value.
+
+    "records_info.last_bj_rec_id"  is the  record id  of the last
+         record written  in the journal by  this transaction.  If
+         no record was written yet, this item is null.
+
+    "records_info.n_rec_written" is the number of records written
+         by  this transaction.   It is  used for  consistency and
+         metering purposes.
+
+    "records_info.n_bytes_written"  is the  number of  bytes this
+         transaction  has written  in the before  journal.  It is
+         used for consistency and metering purposes.
+
+    "records_info.last_fm_postcommit_handler_rec_id"    is    the
+         record id  of the last file  manager post commit handler
+         record  written  by  this transaction.   For  economy of
+         mechanism, the information needed at post commit time is
+         stored  in  the  before  journal  as post_commit_handler
+         records.   The  before   journal  manager  threads  them
+         together and keeps the end of the thread in this item of
+         the bj_txte.
+
+    "append_state"  contains  some information  to  implement the
+         atomicity of  the append operation, with  respect to the
+         bj_txte items.  When an append operation is interrupted,
+         either the record  is in the journal or  it is not.  The
+         storage  manager part  of the before  journal manager is
+         capable of  finding out; if  the record was  written, it
+         updates    the    bj_pste   items    accordingly.    The
+         bj_txte.items relevant  to the appended  record are also
+         updated using the same method as for the bj_pste.
+
+    "append_state.current_operation" is a  character string which
+         is null when  no append is in progress.   It is non-null
+         when an append is in progress.
+
+    "append_state.pending_bj_rec_id"  is  the  record  id  of the
+         record  which has  just been appended.   It appears here
+         just after the storage manager has successfully appended
+         the  last  element of  a new  record, indicating  to the
+         bj_txte manager  that the record  is in the  journal and
+         that the  bj_txte items relevant to  this record must be
+         updated.  If the append  operation is interrupted in the
+         little  window after  the record is  appended and before
+         its record id  appears in this item of  the bj_txte, the
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+         mechanism described for  bj_pste.append_state causes the
+         bj_txte to be adjusted.
+
+    "append_state.pending_n_rec_written"   is   the   value  that
+         bj_txte.records_info.n_rec_written"  should  have  after
+         the  record  is  successfully  appended.   This  item is
+         initialized before calling the storage manager to append
+         the  record.   If  the append  operation  is interrupted
+         after the  record appears in  the journal, this  item is
+         copied  into  bj_txte.records_info.n_rec_written  by the
+         bj_txte manager adjustment mechanism.
+
+    "append_state.pending_n_bytes_written"  is   the  value  that
+         bj_txte.records_info.n_bytes_written  should  have after
+         the  record  is  successfully  appended.   Used  as  the
+         previous item.
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+8 TABLE USED BY THE HARDCORE
+
+     The dm_journal table is a  ring 0 system table maintained by
+the hardcore  support programs for data  management.  Its purpose
+is  to  provide page  control  with some  of  the data  needed to
+implement the "Write Ahead Log" (WAL) protocol.
+
+It consists of three parts:
+
+o A header with various constants and counters for metering.
+
+o An  array  with one  entry  per before  journal; the  number of
+  entries in this array is equal  to the maximum number of before
+  journals that can be open at the same time in the system.
+
+o An array with one entry for each  page that can be held in main
+  memory to honor  the "WAL" protocol.  The number  of entries in
+  this array  is equal to  the maximum number of  pages that page
+  control  is  willing  to hold  at  the  same time.   It  is the
+  responsibility  of the  before journal manager  to regulate the
+  number  of  these temporarily  wired  pages by  flushing before
+  journals as required.
+
+The  dm_journal  table is  in  a hardcore  segment whose  name is
+dm_journal_seg  and  whose  ring  brackets  are  0,  2,  2.   The
+declaration  for  the  entire  table   is  given  below,  with  a
+description of only  those items that are relevant  to the before
+journal manager.
+
+   dcl 1 dm_journal           aligned based,
+
+       2 lock                 bit (36) aligned,
+       2 wait_event           bit (36) aligned,
+       2 notify_sw            bit (1) aligned,
+       2 n_journals           fixed bin,
+       2 n_journals_inuse     fixed bin,
+       2 max_held_pages_mem   fixed bin,
+       2 n_held_pages_mem     fixed bin,
+       2 max_held_per_journal fixed bin,
+       2 per_aste_pool (0:3)  aligned,
+         3 threshold          fixed bin,
+         3 n_active           fixed bin,
+       2 free_list_relp       bit (18) aligned,
+       2 synch_write_calls    fixed bin (35),
+       2 synch_write_holds    fixed bin (35),
+       2 synch_write_invalid  fixed bin (35),
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+       2 synch_write_tosses   fixed bin (35),
+       2 unlink_calls         fixed bin (35),
+       2 unlink_steps         fixed bin (35),
+       2 activate_calls       fixed bin (35),
+       2 deactivate_calls     fixed bin (35),
+       2 activate_denied      fixed bin (35),
+       2 set_stamp_calls      fixed bin (35),
+       2 allocate_calls       fixed bin (35),
+       2 free_calls           fixed bin (35),
+
+       2 per_journal          (n_dm_journals refer
+                              (dm_journal.n_journals))
+                              aligned
+                              like dm_per_journal,
+
+       2 page_entry           (max_dm_pages refer
+                              (dm_journal.max_held_pages_mem))
+                              aligned
+                              like dm_page_entry;
+
+   dcl 1 dm_per_journal       aligned based,
+       2 time_stamp           fixed bin (71),
+       2 n_held               fixed bin,
+       2 uid                  bit (36) aligned,
+       2 access_class         bit (72) aligned,
+       2 entry_relp           bit (18) aligned,
+       2 pad                  bit (36) aligned;
+
+   dcl 1 dm_page_entry        aligned based,
+       2 fp                   bit (18) unal,
+       2 bp                   bit (18) unal,
+       2 cme_relp             bit (18) unal,
+       2 journal_relp         bit (18) unal;
+
+    where:
+
+    "dm_journal.n_journals"  is  the  maximum  number  of  before
+         journals  that may  be "active",  i.e.  that  may have a
+         bj_pste entry, at the same time in the system.
+
+    "dm_journal.n_journal_inuse" is  the actual number  of before
+         journals currently active in the system.
+
+
+Multics Technical Bulletin                                MTB-560
+DM: Before Journal Design
+
+    "dm_journal.max_held_pages_mem" is the maximum number of held
+         pages that  page control is  willing to honor.   It is a
+         constant defined at bootload time.
+
+    "dm_journal.n_held_pages_mem"   is   the   number   of  pages
+         currently  in  main  memory   that  page  control  would
+         normally have written out but actually did not, in order
+         to honor the "WAL" protocol.
+
+    "dm_journal.max_held_per_journal"   is  the   result  of  the
+         division     of     dm_journal.max_held_pages_mem     by
+         dm_journal.n_journals_inuse.   The   hardcore  maintains
+         this  item  and  updates  it  each  time  the  number of
+         journals in use changes.
+
+         The before journal manager  can read the dm_journal_seg_
+         from ring  2.  It uses  this item to make  sure that the
+         total number  of held pages never  exceeds the threshold
+         allowed by  page control.  For each  journal, it keeps a
+         count  of  the number  of  pages currently  held  by the
+         journal;   when   this   count   becomes   greater  than
+         max_held_per_journal, it flushes the journal.
+
+    "dm_journal.per_journal"  is  an  array  with  one  entry per
+         journal.  By convention, for  a given journal, the index
+         in this  array is the  same as the index  of the bj_pste
+         entry.   Each  entry  has  a  structure  defined  by the
+         "dm_per_journal" declaration.
+
+    "dm_per_journal.time_stamp" is a  clock value indicating that
+         all before  images produced in  this journal up  to this
+         time are known to be  on disk; any before image produced
+         after  this  time is  not  on disk  yet.  Each  time the
+         before journal  manager flushes a journal,  it knows the
+         value of this time stamp;  it calls upon the hardcore to
+         enter the time stamp in the entry with the same index as
+         the  bj_pste  of  the  journal.  When  a  file's control
+         interval is modified, a before image is first taken, say
+         at time T.  This time T and the index of the journal are
+         then  stored in  the header  of the  CI to  be modified.
+         Before  writing out  a page,  page control  compares the
+         time  stored  in  the  CI and  the  time  stored  in the
+         corresponding dm_per_journal entry.  If  the time in the
+         CI is  greater, it means  that the journal  has not been
+         flushed  far enough  yet, and  the page  is to  be held.
+         Otherwise, the page can be written out.
+
+    "dm_per_journal.n_held" is  the number of  pages currently in
+         main  memory  that  page  control  would  normally  have
+
+
+MTB-560                                Multics Technical Bulletin
+                                        DM: Before Journal Design
+
+         written  out but  actually did  not because  of the time
+         stamp in this entry.
+
+    "dm_per_journal.uid" is  the unique id of  the before journal
+         described by this entry.  By  convention, if it is zero,
+         this  entry is  free.  When  the before  journal manager
+         "activates" a new journal, it  calls ring zero, with the
+         uid  of the  journal, to  allocate an  entry.  Ring zero
+         finds  a free  entry in  the dm_journal,  initializes it
+         with the  uid of the  journal, and returns  the index to
+         the before  journal manager, which uses  it as a bj_pste
+         index.
+
+    "dm_per_journal.access_class" is the AIM  access class of the
+         process  which  activated the  journal.  In  the current
+         implementation, there  is only one  dm_journal table for
+         the entire Multics system.  It  is not possible to use 2
+         data bases of different AIM classes in the same process.
+         It is  possible to have data  bases of different classes
+         in  the system;  however, this requires  having one data
+         management  system  for  each access  class.   Each data
+         management system  would have its own  set of bj_pst and
+         bj_txt tables.  Since the dm_journal table is unique for
+         all AIM classes, it is necessary  for ring 2 to ask ring
+         0  to allocate  an entry and  use the  index assigned by
+         ring 0.
+
+    "dm_per_journal.entry_relp" is a relative pointer to the list
+         of pages held for this journal.
+
+    "page_entry" is  an array with  one entry for  each page that
+         can be held.   It is not relevant to  the before journal
+         manager design.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

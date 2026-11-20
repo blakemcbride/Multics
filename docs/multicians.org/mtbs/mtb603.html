@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-603</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-603: Data Management:  Crash Recovery.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-603
+DM:  Crash Recovery
+
+To:       Distribution
+
+From:     Lee A. Newcomb
+
+Date:     02/15/83
+
+Subject:  Data Management:  Crash Recovery
+
+1 ABSTRACT
+
+     This document describes the crash recovery mechanism for the
+current  implementation of  the Data  Management System  (DMS) on
+Multics.  The following items are discussed:
+
+     o Finding the state of the last invocation of DM
+
+     o Recovery of DM files to a consistent state
+
+     o Deletion of DM tables from previous invocations
+
+Comments should be sent to the author:
+
+via Multics forum:
+   &gt;udd&gt;Multics&gt;Spratt&gt;meetings&gt;DMS_Development
+
+via Multics Mail:
+   Newcomb.Multics  on  System  M   or  LNewcomb.Multics  on  MIT
+   Multics.
+
+via US Mail:
+   Lee A. Newcomb
+   Honeywell Information Systems, Inc.
+   575 Tech Square
+   Cambridge, Massachusetts 02139
+
+via telephone:
+   (HVN) 261-9332, or
+   (617) 492-9332
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+
+                             CONTENTS
+
+                                                         Page
+
+                 1 Abstract . . . . . . . . . . . . . .     i
+                 2 Introduction . . . . . . . . . . . .     1
+                 3 DMS Initialization and Recovery  . .     1
+                 4 Find recovery tables . . . . . . . .     2
+                 5 Unfinished Transaction Rollback  . .     3
+                    5.1 Open before journals for
+                     recovery . . . . . . . . . . . . .     3
+                    5.2 Create a Temporary Transaction
+                     Table  . . . . . . . . . . . . . .     4
+                    5.3 Finish the Transactions Found .     4
+                       5.3.1 Set Crash Recovery
+                        Indicator . . . . . . . . . . .     5
+                       5.3.2 Create Transaction
+                        Manager's Tables  . . . . . . .     5
+                       5.3.3 Create Before Journal
+                        Manager's Tables  . . . . . . .     5
+                       5.3.4 Do the Rollback  . . . . .     5
+                 6 Cleanup various things . . . . . . .     5
+                 7 Delete Useless Directories and Files     6
+                 8 DMS Shutdown . . . . . . . . . . . .     6
+                 9 Note . . . . . . . . . . . . . . . .     6
+
+
+Multics Technical Bulletin                                MTB-603
+DM:  Crash Recovery
+
+2 INTRODUCTION
+
+     After  a Multics  system crash,  the Data  Management System
+(DMS) must  be recovered to make  all protected (or synchronized)
+DM files consistent (simply referred to  as DM files for the rest
+of this  MTB).  In the current  DMS implementation, this involves
+rolling back  any unfinished transactions recorded  in the before
+journals (BJ's) open at crash time.  As DMS recovery is very tied
+up  with  DMS  initialization,  the  reader  should  have  a good
+understanding of MTB 592, "Data Management:  System Structure and
+Initialization".   The reader  should be familiar  with the MTB's
+concerning  the DM  before journal  manager, esp.   "Phasing page
+control and before journal".  These are MTB's 513, 559, 560, 563,
+564,   567,   and  568.    Also,   MTB  508,   "Data  Management:
+Architectural Overview" would be very useful to know.
+
+     One of the major factors in this design of crash recovery is
+the use of normal DMS software whenever possible.  Crash recovery
+does not have the critical time  constraints on it that a running
+DMS does; however, DMS should be available to users as quickly as
+possible.  A few minutes between  Multics and DMS availability is
+not felt to be crucial, but  it certainly should not take half an
+hour.  It is felt that time can be better spent making the normal
+DMS  software  run better  and reduce  the number  of specialized
+programs needed (and the associated maintainence cost).
+
+3 DMS INITIALIZATION AND RECOVERY
+
+     Crash  recovery is  an integral part  of DMS initialization,
+done by a DMS Daemon, after a Multics bootload.  Recovery is done
+about half-way through DMS  initialization, after a temporary DMS
+has  been  created.   See  MTB  592,  "DMS  System  Structure and
+Initialization" for more detail about initialization proper; this
+MTB will attempt to stay  within the recovery process except when
+initialization must be referenced.
+
+     The  following  is a  basic list  of the  steps done  in DMS
+recovery  (by the  program dm_recovery_.pl1).  The  items will be
+discussed in more detail in later sections.
+
+    o  Find the  bootload directory for the  DMS to be recovered.
+       This step may fail if the DMS is running, or the hierarchy
+       leading  to  and/or including  the bootload  directory has
+       been lost.
+
+    o  See if the previous DMS  bootload needs to be recovered by
+       examining  the  state indicator  in  the old  tables; stop
+       recovery if normal shutdown was indicated.
+
+
+MTB-603                                Multics Technical Bulletin
+                                              DM:  Crash Recovery
+
+    o  Find the previous bootload's file_manager_ UID to pathname
+       table.   This  is used  to  open DM  files that  have been
+       modified and must be made consistent.
+
+    o  Open all before journals open at crash time.
+
+    o  Loop  through  the  opened  journals  finding  all  active
+       transactions and rolling them back.
+
+    o  Delete  or  rename  the  previous  bootload's  tables  and
+       hierarchy and generally cleanup  the DMS system hierarchy.
+       This completes the recovery procedure.
+
+     In  the course  of the  above operations,  errors may occur.
+These  errors  are  logged  in  a  DMS  system  log  kept  by the
+initializer  of Data  Management.  A primitive  handling of these
+errors is  done by flags  set by an administrator  of DMS.  These
+flags are:  initializing,  always_enable, and rename_old_dms_dir.
+If initializing is on, a previous bootload of DMS must not exist,
+and  the  other two  flags  are ignored;  basically,  recovery is
+useless as  nothing exists to  recover.  Otherwise, the  last two
+flags are used.  If recovery takes any error and always_enable is
+on, the errors will be reported as normal, but DMS initialization
+will  continue with  the step  after recovery.   Regardless if an
+error occurs, if rename_old_dms_dir is on, the previous directory
+containing   the   DMS   tables   will  be   renamed   for  later
+investigation.  This is only recommended for debugging.
+
+4 FIND RECOVERY TABLES
+
+     One  premise  of  crash   recovery  is  a  DMS  per-bootload
+directory  exists containing  two critical tables:   the DMS file
+and  before  journal  managers'  UID-pathname  tables,  which are
+flushed to disk  each time ANY modification is  made to them, and
+so are guaranteed accurate.  If a per-bootload directory does not
+exist and  the initializing indicator is  off, or if initializing
+is on and a per-bootload DOES exist, recovery takes an error that
+is fatal to the current attempt to boot DMS.
+
+     Once the directory is found, an attempt is made to check the
+state  of  the DMS  invocation  found.  If  a normal  shutdown is
+indicated,  nothing  more  needs  to  be  done  and  recovery  is
+finished.   Next,  the  file   manager's  UID-pathname  table  is
+located;  the finding  of the  before journal  manager's table is
+left to later.
+
+
+Multics Technical Bulletin                                MTB-603
+DM:  Crash Recovery
+
+     Three  programs  are  used  to check  for  the  above items:
+dm_util_$find_old_boot_dir                (to                find
+dm_dir.&lt;Multics_bootload_time&gt;), dm_util_$dm_status (to  see if a
+normal             shutdown             occured),             and
+file_manager_$find_old_uid_pn_table.
+
+5 UNFINISHED TRANSACTION ROLLBACK
+
+     At  this   point,  it  is  important   to  realize  two  DMS
+per-bootload    directories    are    in    use    by   recovery:
+dms_dir.&lt;Multics_bootload_time&gt;                               and
+dms_dir.&lt;Multics_bootload_time&gt;.temp.  The first is the directory
+containing  the data  required for  recovery.  The  latter is the
+active   version   of  DMS   where  the   DMS  Daemon   is  doing
+initialization, and so recovery.
+
+     It is possible that no  active transactions were left in the
+last  DMS  invocation, but  the  old transaction  tables  are not
+guaranteed consistent, only the file and before journal managers'
+UID-pathname  tables.  The  only way  to be  sure no transactions
+were left unfinished is to read all the before journals listed in
+the  before journal  UID-pathname table  and read  them backwards
+looking for active transactions.  The  before images and marks in
+a before journal  are trusted (according to the  protocol that DM
+files  control intervals  will not be  written to  disk until the
+matching before image(s) are on disk).
+
+5.1 Open before journals for recovery
+
+     The  procedure  before_journal_manager_$open_all_after_crash
+does  this step.   It finds  the old  before journal UID-pathname
+table and loops through it opening all journals listed as active.
+If  no  journals  are found  in  the  list, nothing  needs  to be
+recovered.   Any  journal opened  is recorded  in the  new before
+journal         UID-pathname         table         in         the
+dm_dir.&lt;Multics_bootload_time&gt;.temp directory.
+
+     In the process of opening  the journals, they are positioned
+to the  last control interval written  to.  This control interval
+is recorded  in CI0 of  the journal.  The definition  of the last
+control interval in  a journal is that CIn  is last if time_stamp
+(CIn)  &gt;  time_stamp  (CIn +  1).   (Remember that  a  journal is
+circular and if CI_ is the last CI in the journal, CI_ + 1 is CI1
+of the journal.)
+
+
+MTB-603                                Multics Technical Bulletin
+                                              DM:  Crash Recovery
+
+     Note the control interval found as being last in the journal
+is not necessarily the last one written on the operational system
+we are recovering.  Especially in a no-ESD crash, a CI could have
+been  written in  memory, but the  contents not be  on disk.  The
+result is a transaction could  have been started or completed and
+no record is left for recovery.  However, since the writing of BJ
+CI's and DM file CI's are phased  so the BJ CI's will always make
+it  to disk  first (except for  abort and commit  marks, in which
+case the situation is reversed), recovery does not care.  Minimal
+work will be  lost in this situation.  See MTB's  563 and 564 for
+more detail on this.
+
+5.2 Create a Temporary Transaction Table
+
+     Build a table of all transactions recorded in the BJ's which
+have  not  completed.   Two  lists are  kept:   one  of completed
+transactions  (do  not  rollback),  and  one  of  transactions in
+progress  as  far  as recorded  data  indicates in  the  BJ's.  A
+transaction with extra work to do  after it is committed is still
+considered  in  progress; it  will  not be  rolled back,  but the
+post-commit actions will be done.
+
+     Each BJ record has the  number of active transactions in the
+BJ  at the  time the  record is  written recorded  in its header.
+This  is  used  so  the entire  BJ  does  not have  to  be walked
+backwards  to guarantee  all active transactions  are caught.  By
+convention (and  common sense), commit  and abort records  do not
+count themselves as active transactions when written to a BJ.
+
+     Note the previous step does  not have to be completed before
+this one is  called.  The steps are put in  a loop where only one
+BJ is  examined and worked over  at a time.  If  at this point in
+recovery, no transactions  were active, we simply go  to the step
+to close all BJ's opened.
+
+5.3 Finish the Transactions Found
+
+     If the temporary transaction table  is not empty, invoke the
+procedure transaction_manager_$recover_after_crash with a pointer
+to the temporary transaction table.  It does the following steps:
+
+
+Multics Technical Bulletin                                MTB-603
+DM:  Crash Recovery
+
+5.3.1 SET CRASH RECOVERY INDICATOR
+
+     The  DMS state  indicator, dm_system_data_$current_dm_state,
+is set to show recovery is in  progress.  This is used by some of
+the  DMS Daemon's  transaction adjustment  programs to  know that
+some  special  calls need  to  be made.   (This is  actually done
+earlier, but only has relevance to recovery now.)
+
+5.3.2 CREATE TRANSACTION MANAGER'S TABLES
+
+     The temporary transaction table is looped through building a
+valid transacton definition table for transaction manager.
+
+5.3.3 CREATE BEFORE JOURNAL MANAGER'S TABLES
+
+     Call  before_journal_manager_$rebuild_after_crash  with  the
+pointer to the temporary transaction table.
+
+5.3.4 DO THE ROLLBACK
+
+     Now loop  calling tm_adjust_txn.  This is  the normal method
+of adjusting a  transaction for a dead process  in an active DMS.
+This is done  so the before journals will  be consistent when the
+adjustment is  finished.  In a sense,  the transactions read from
+the BJ's have been adopted by  the now partially active DMS (i.e.
+users still cannot access it).
+
+6 CLEANUP VARIOUS THINGS
+
+     All  of  crash  recovery  is  done  except  for  some  house
+cleaning.   First,  call  file_manager_$end_of_crash_recovery  to
+null   out   the  internal   pointer   kept  for   the   call  to
+file_manager_$open_by_uid_after_crash.   This is  to help prevent
+accidental  modification  to a  file  through this  pointer after
+recovery is complete.  Next, close all BJ's opened in the process
+of doing the above examinations  and rollbacks (Note the DM files
+have  already  been  closed).   This is  done  to  clear  the per
+bootload BJ UID to pathname table for a fresh start.
+
+
+MTB-603                                Multics Technical Bulletin
+                                              DM:  Crash Recovery
+
+7 DELETE USELESS DIRECTORIES AND FILES
+
+     At this point, recovery is  actually done.  However, the old
+dm_dir.&lt;Multics_bootload_time&gt;   is   simply   using   quota  for
+(usually) no good reason.  If the rename_old_dms_dir flags is on,
+the      old      directory      will      be      renamed     to
+dm_dir.&lt;Multics_bootload_time&gt;.hold  and  will  be  available for
+examination by a suitably  privileged user later.  Otherwise, the
+directory will be deleted and  its quota recovered.  This step is
+not necessary  before the users  are allowed into  DMS.  Although
+this  step  is  somewhat  part of  recovery  processing,  it will
+actually be done as part of DMS initialization.
+
+8 DMS SHUTDOWN
+
+     DMS crash recovery requires  some conventions be observed by
+DMS shutdown.  The major  requirement is the dms_dir.BOOTLOAD not
+be  deleted.   This  serves  to  give  crash  recovery  an  extra
+assurance the  system shutdown normally  (if it did),  instead of
+not being sure the directory was lost  in a crash or not.  If the
+state  indicator  in the  old  dm_system_data_ is  set  to normal
+shutdown, no crash recovery need be done.
+
+9 NOTE
+
+     One  of  the  major  assumptions  of  DMS  recovery  is  the
+directory hierarchy containing the  critical system-wide DMS data
+can be found.  Directories are not DM files, however.  If when an
+invocation of DMS is made  available to users, the DMS per-system
+hierarchy is  flushed up to  the root directory,  some cases that
+are possible for  lossage can be avoided.  The  use of DIRW seems
+extreme for just this one instance.   If this is not feasible, it
+is still unlikely to even show a problem in most crashes.
+
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

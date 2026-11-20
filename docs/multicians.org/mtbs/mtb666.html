@@ -1,0 +1,1657 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : New Logging Facilities.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+MULTICS TECHNICAL BULLETIN                                MTB-666
+
+From:     W. Olin Sibert
+
+Date:     July 4, 1984
+
+Subject:  New Logging Facilities
+
+To:       MTB Distribution
+
+                            ABSTRACT
+
+This MTB describes a new facility for collecting and displaying
+information in log files.  Because logged information is critical
+to system integrity and security, the mechanism must be as robust
+as possible.  It must also operate in hostile environments, such
+as the ring zero supervisor and system initialization.
+Consequently, it is implemented using very simple techniques for
+managing log contents, and with minimal dependence on other
+system facilities.
+
+This MTB covers the following topics:
+   * Overview
+   * Organization of new log segments
+   * New interfaces for perusing logs
+   * Log message format
+   * Replacing the existing syserr mechanism
+   * Subroutine interfaces for log messages
+   * Appendix A: MR11 SRB Notice
+   * Appendix B: Info files
+   * Appendix C: Summary of changes to existing programs
+   * Appendix D: Differences from prototype implementation
+
+The initial result will be replacement of the existing syserr log
+mechanism.  The new primitives are designed, however, so that any
+other application (such as the Internet) requiring logged
+information can easily be converted to use them.
+
+Comments should be sent to the System-M forum meeting:
+   &gt;udd&gt;Multics&gt;Sibert&gt;logging&gt;logging
+
+or via Multics mail to Sibert -at System-M.
+
+_________________________________________________________________
+
+Multics  Project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside  the project without consent of
+the author or Director, Multics Development Center.
+
+
+Introduction                                              MTB-666
+
+INTRODUCTION:
+
+Why do we need a new set of log mechanisms?  Well, for starters,
+we already have two mechanisms, incompatible with each other.
+There is a "general-purpose" log mechanism, used principally by
+the Answering Service and Message Coordinator, and another used
+solely for recording syserr messages (messages produced by the
+supervisor and other privileged code).
+
+The new mechanism ultimately will replace both of the existing
+log mechanisms, though for MR11.0, only the syserr log is due to
+be replaced.  The new mechanism has many advantages when compare
+to either of the current ones.  Problems with the current
+mechanism are detailed in the next section; succeeding sections
+describe various aspects of the new mechanism.
+
+The important advantages of the new mechanism are:
+
+  1) Greatly improved robustness.  It is intended that it will be
+     impossible to damage new format logs in such a way as to
+     cause the log perusal tools or the log subroutines to
+     malfunction catastrophically.  Of course, in the case of
+     damage, information will be lost, but the system will
+     continue to operate.
+
+  2) Reduced storage usage.  The new logs require less storage
+     for overhead information than either of the current formats.
+
+  3) Improved efficiency.  The new mechanism can write messages
+     faster than the existing syserr mechanism, which is
+     important for handling the higher volume of messages from
+     increased B-2 security auditing.
+
+  4) Improved log reading tools.  The new log printing command,
+     print_sys_log, allows more selection options than either of
+     the current ones.  It is integrated with the new log
+     monitoring command, monitor_sys_log, so that now the syserr
+     log can be monitored.  The performance of syserr log
+     printing is also greatly improved, by elimination of a
+     message copying step.
+
+  5) Simple application interface.  The new log subroutine
+     interfaces are easily used in arbitrary application
+     environments.
+
+
+Introduction                                              MTB-666
+
+  6) Better support of binary data in messages.  The ability to
+     specify an interpretation procedure for binary messages
+     means that non-system applications will be able to create
+     their own binary data message types and interpret them using
+     standard software.  Binary data may now be up to 16K words
+     long.
+
+  7) Lockless operation.  New format logs are manipulable
+     entirely without locks, making them usable in any
+     environment without worrying about going blocked, etc.
+
+
+Current Mechanisms                                        MTB-666
+
+General Purpose Logs:
+
+The general-purpose log mechanism is very limited in its
+capabilities:  log messages are fixed in size, limited to ASCII
+strings, and the only attributes they have are a time stamp and a
+severity.  This format of log is also very easily confused by
+file system damage (pages of zeros), although because the log
+messages are fixed format, a page of zeros can only do a limited
+amount of damage.
+
+A general-purpose log consists of a family of segments, each of
+which records the name of the previous member of the family.
+Like the messages themselves, the segments are fixed in size and
+format:  each one holds precisely 2048 messages, and, when it
+overflows, a new segment is automatically created.  By
+convention, the segments for any particular log are found in two
+directories:  one directory where the "live" log segment is, as
+well as any that have been created since the last time they were
+copied, and another directory to which filled log segments
+(except for the live one) are moved, once per day, by the crank.
+If the crank is not used to copy filled log segments, they
+continue to accumulate indefinitely in the first directory.
+
+General-purpose logs are used solely by user-ring programs.  They
+are simply segments in the directory hierarchy, and vulnerable to
+all the types of damage that the directory hierarchy can sustain.
+
+The Syserr Log:
+
+The syserr log is handled by a completely separate mechanism.
+The ring zero supervisor, and certain other privileged programs,
+needs the ability to write messages that may be of interest to
+system administrators and maintenance personnel.  Rather than
+simply writing all such messages to the operator console, they
+are written to a per-system log called the syserr log (possibly
+in addition to being written to the console).
+
+Because the supervisor runs in many differently restricted
+program environments, it is important that it be able to create
+and log syserr messages in any of those environments.
+Additionally, because the supervisor must be able to run without
+the presence of an operational file system and directory
+hierarchy, the syserr log must exist outside the hierarchy so it
+can record messages during system initialization.
+
+These goals are achieved by having each syserr message travel
+through three different places before finally coming to rest.
+When the supervisor calls syserr, the message is placed into a
+wired buffer segment in ring zero (syserr_data), and optionally
+written to the console.
+
+
+Current Mechanisms                                        MTB-666
+
+Because the wired buffer is small, and also because it does not
+correspond to any permanent location on disk, as soon as a
+message is written to the wired buffer, a wakeup is sent to a
+hardcore process (one that runs only in ring zero) called the
+SyserrLogger daemon.  Upon receiving the wakeup, the daemon
+copies the message from the wired buffer into a ring zero paged
+segment (syserr_log).
+
+The syserr_log segment is specially treated during system
+initialization.  Unlike most other paged ring zero segments, it
+has a permanent home on disk, and persists across bootloads.
+Rather than creating it during initialization, the supervisor
+merely constructs a page table describing this permanent region
+of disk (the LOG partition) and makes it accessable in ring zero.
+This is done early in Collection 2 initialization; prior to this
+point, no syserr messages are logged, and those that would have
+been logged are written to the console instead.
+
+Once in the syserr_log segment, the message stays until it is
+copied out into the permanent syserr log, a keyed vfile called
+&gt;sc1&gt;perm_syserr_log.  This copying is performed by the
+Initializer:  at system startup, at system shutdown, and whenever
+the syserr_log segment gets to be more than a settable percentage
+full.  Although messages are copied as quickly as possible from
+the wired buffer, they may stay in the syserr_log for a long
+time-- this is done to avoid awakening the Initializer for every
+single message.
+
+The syserr log perusal tools must therefore be able to read
+messages from both the ring zero segment and from the keyed
+vfile.  Since these have two very different formats, a utility
+program, syserr_log_util_, exists to search for and read messages
+as if they were in only one place.
+
+It is important that the syserr log be as available and robust as
+possible, because it is used to record important messages about
+system damage, and for security auditing.  Unfortunately, despite
+this requirement, it is actually a very fragile thing.  The ring
+zero syserr_log is easily damaged by a non-ESD crash, and
+although a program is automatically run to inspect for such
+damage, the damage is not fixed, and the program will not
+necessarily even find some types of damage.  Similarly, the
+perm_syserr_log vfile is very vulnerable:  any file system damage
+can make the vfile index wholly unusable, and there are no
+salvaging tools available.
+
+Messages in the syserr log are more complex than those in
+general-purpose logs.  Syserr messages can be arbitrarily long,
+and additionally can contain an arbitrary amount of binary data,
+which can be interpreted by the log printing commands.  The
+
+
+Current Mechanisms                                        MTB-666
+
+binary data is used to avoid the necessity of translating
+information (such as pathnames) into a printable representation
+at the time the message is written, since that may not even be
+possible in the environment where the message is generated.
+
+Syserr messages also have a sequence number, in addition to a
+timestamp.  The sequence number is supposed to be unique for the
+life of the system, and monotonically increasing; in practice,
+however, this laudable goal is compromised by the inability to
+detect and repair damage to the sequence numbers kept in the ring
+zero syserr_log segment.
+
+All knowledge of how to interpret binary syserr messages is kept
+in a single program (print_syserr_msg_), which makes it awkward
+to add new types of binary messages; consequently, this part of
+the facility is little used outside the file system part of the
+supervisor.
+
+
+New Log Structure                                         MTB-666
+
+STRUCTURE OF NEW LOGS:
+
+The new logging mechanism is designed so that it can be used by
+syserr, as well other applications requiring logs of events.  It
+provides all the features of the present syserr mechanism, and
+has some additional features for other applications.  The new
+mechanism makes great improvements in robustness, and should
+solve the reliability problems caused by syserr today.
+
+There are two main levels of structure in the new mechanism:  log
+segments, the lower level, and families of log segments, the
+higher level.  The two levels are distinguished primarily by the
+environments in which they can run:  the low level interface can
+run in any environment, any ring, and does not require a file
+system.  The higher level requires a file system, and can only
+run outside the supervisor.
+
+Log Segments:
+
+The basic unit of a new log is the log segment.  Each log segment
+is a self-contained collection of log messages, and a header,
+identifying the log and its contents.  The subroutines dealing
+with contents of individual log segments(1) can all be run in any
+environment.
+
+A single log segment can be updated concurrently by multiple
+processes.  In order to eliminate the need for explicit locking,
+concurrent updating is handled by a mechanism that uses STACQ to
+simultaneously reserve space in the segment and assign a message
+sequence number.  Once the space has been reserved, the caller
+can fill it in as desired.
+
+The lockless updating strategy guarantees that any message in the
+log will have a sequence number greater than a message preceding
+it in the segment.(2)  This monotonic increase of sequence
+numbers and storage allocation is the only thing guaranteed by
+the primitives.  In particular, and messages may not appear in
+the log in correct time sequence, because the caller supplies the
+
+_________________________________________________________________
+
+(1) log_segment_, log_search_, log_initialize_, and some
+    entrypoints in log_salvage_ and log_wakeup_
+
+(2) Unless one of log_segment_$create_message_number or
+    log_write_$general was used to write the message; however,
+    these entrypoints are intended for use only when a single
+    process knows that it is the only one updating the log
+    segment.
+
+
+New Log Structure                                         MTB-666
+
+time after the message storage is reserved.  Also, the time and
+sequence limits in the header may be slightly inaccurate.  Any
+errors are assumed to be small, however, and the log_search_
+routine is coded to assume sufficient slop.
+
+A log segment contains a flag indicating whether it is currently
+"in service" or not.  This flag is used to accomodate the higher
+level message writing interfaces; when a log segment is found to
+be full, it is taken out of service, and a new segment created.
+Whenever a log segment is initialized, it must explicitly be
+placed "in service" before the low level primitives will reserve
+message space within it.
+
+When log_segment_ is called to reserve space for a message, it
+returns an error code if the log segment is damaged, out of
+service, or if there is no room to allocate the message.  It is
+then up to the caller to handle this condition, and this is what
+the log segment family interfaces do.
+
+To be used with the low-level subroutines, a log "segment" need
+not be a whole segment, or begin at offset zero in a segment,
+although the all the higher level subroutines do enforce that
+restriction.  An application (such as the syserr replacement) can
+take advantage of this by using small "logs" as a temporary home
+for messages before copying them into a log occupying a full
+segment.
+
+An individual log segment may be salvaged, if damaged, and this
+will be performed automatically where appropriate.  In general,
+if there is any valid information available in the log segment,
+it will be found and recovered.  Sentinels are used in log
+messages to allow the salvager to locate messages as reliably as
+possible.  Each log segment is a distinct entity in terms of
+salvaging; no information is required from outside the segment in
+order to perform the best possible reconstruction.
+
+
+New Log Structure                                         MTB-666
+
+Contents of a Log Segment:
+
+Each log segment contains a header, followed by a block of
+unstructured space containing sequentially allocated messages.
+The header of the log segment contains the following items:
+
+   * Offset of next free word within the log segment, and next
+     sequence number to be used.
+   * A flag indicating whether this log is currently in use.
+   * Name of the log segment family to which this segment
+     belongs; this is not necessarily ever the entryname of the
+     segment in the file sysetm (see below).
+   * Sequence numbers of the first and last messages in this log
+     segment; if the log is being updaetd by multiple processes,
+     this information may be slightly inaccurate.
+   * Time stamps for the first and last messages in this log
+     segment; as with sequence numbers, this may be slightly
+     inaccurate.
+   * List of up to 25 processes "listening" for new messages to
+     be placed in the log, and a minimum time interval between
+     wakeups to avoid excess wakeups.
+   * Pathname of previous log segment in this family; this is set
+     when a log segment fills or is migrated.  This is only
+     meaningful when the log segments occupy whole segments.
+
+Header information is copied from the old to the new log segment
+whenever a log segment fills up and is replaced with a new one.
+
+
+New Log Structure                                         MTB-666
+
+Families of Log Segments:
+
+When a log segment fills, another segment must be created to
+contain new messages.  In all but the syserr environment, this is
+done with file system operations:  the current log segment is
+renamed, a new one is created, the header and control information
+is copied, and the new one is placed in use.  In the syserr
+environment, this operation is somewhat more complex, but
+effectively does the same thing.
+
+Like old style logs, each log segment contains (in the header)
+its own name, and the name of the previous segment in the family.
+When a log segment fills, it is renamed and and a new log segment
+is created; the headers of both logs are updated to record the
+names appropriately.  Older (non-live) log segments have a
+date/time suffix of the form YYYYMMDD.HHMMSS, which gives the
+time that the log segment was taken out of service and replaced
+by an empty one.  The time is calculated in GMT to avoid time
+zone problems.  Because of this suffix (which is 16 characters
+long), the original name of a log must not be more than 16
+characters long.
+
+A family of log segments consists of one or more "live" segments
+at the beginning (usually only one, except for syserr, where
+there may be two), and zero or more "history" segments.  The
+"history" segments all must have a name consisting of the log
+family name followed by a date/time suffix.  The "live" segments
+are identified by pointer, and their names in the file system are
+not used; however, the "family name" in the header of the live
+segments must be the name of the log segment family.
+
+The names for the "history" segments are the ultimate arbiter of
+their positions in history, and those names must not be changed.
+When reading messages from a log family, all log segments with
+appropriately constructed names are sorted into chronological
+order and searched in that order.  This makes the history
+mechanism robust against damage that may have destroyed some
+segment in the middle of the history; while the contents of that
+particular segment will be lost, previous messages will still be
+easily accessable.
+
+Because the names of the segments themselves are used when
+searching the history, the only use for the previous log pathname
+in the log segment header is to identify directories where
+earlier segments may be found.  The previous log pathname is also
+used when locating newer logs when reading from a log family
+after the initial opening.
+
+
+New Log Structure                                         MTB-666
+
+Subroutine Interfaces for Log Families:
+
+The primary interfaces for families of log segments are log_read_
+and log_write_.  These are user-ring programs that read and write
+messages using the appropriate primitives, and switch between
+segments as necessary.  The log_write_ subroutine is responsible
+for renaming old log segments and creating new ones as they fill.
+The log_read_ subroutine is responsible for searching through
+families of log segments and switching between them as messages
+are read.
+
+When a log segment fills and is replaced by a new one, a pointer
+to the old segment remains valid; however, log_read_ will not
+automatically update its knowledge of the segments that make up a
+log family to find the new segment.  As long as the first segment
+in the family is still current, log_read_ will be able to find
+the newest message in that segment.
+
+There is also a log_migrate_ interface which is used by the
+administrative tools to copy whole log segments from one
+directory to another, updating the previous log pathname as it
+does so.
+
+
+Reading New Format Logs                                   MTB-666
+
+NEW INTERFACES FOR LOG READING:
+
+There is a new command interface for reading logs, and a new
+subroutine interface as well.  The new command interface is
+called "print_sys_log", and is based on the existing
+print_syserr_log and print_log commands.  The subroutine
+interafce is called log_read_, and is similar to the old
+syserr_log_util_ interface.  Both the print_syserr_log command
+and the syserr_log_util_ subroutine are eliminated by this
+installation.
+
+The print_sys_log command is described in Appendix B, which
+contains its info file.  The chief differences are some renamed
+control arguments (the old ones are still accepted for
+compatibility), a -reverse control argument to print messages in
+reverse chronological order, and some additional control over the
+expansion of messages.
+
+     NOTE:  As of this writing (84-06-07), no mechanism has been
+     designed for specifying explicitly the directories where
+     members of a log family may be found, although it is clear
+     that some mechanism to do this is essential in order to deal
+     with log segments copied from other systems, or simply from
+     elsewhere in the hierarchy.
+
+     A mechanism will be specified in the next revision of the
+     MTB; it will consist of appropriate control arguments for
+     print_sys_log and another entrypoint for log_read_.
+
+The log_read_ interface is described in the subroutines section,
+below.  It requires that the family of log segments be "opened"
+and "closed", and provides entrypoints to search for individual
+messages by time or sequence number, as well as for stepping
+sequentially through the messages.  In order to avoid copying
+messages, it returns pointers directly into the log segments; the
+data pointed to should never be modified.
+
+Callers of the log_read_ interface must be able to interpret the
+message structure stored in the log.  Messages may be formatted
+for printing by the format_log_message_ subroutine; this includes
+performing the standard formatting for any binary data in the
+messages.
+
+Messages containing user-defined binary data can be interpreted
+by providing a format_XXXX_log_msg_ subroutine, which will
+automatically be called by format_log_message_.  The XXXX in the
+subroutine name is the "data_class" value from the
+sys_log_message structure; it may be up to ten characters long.
+
+
+Log Message Structure                                     MTB-666
+
+FORMAT AND CONTENTS OF LOG MESSAGES:
+
+A message in a log segment, or copied out by a log-reading
+program, has the following declaration (declared in
+sys_log_message.incl.pl1).  The contents of a message should
+never be altered except between calls to the $create_message and
+$finish_message entrypoints in log_segment_; fields marked with
+"(*)" should not be altered then, either.
+
+   dcl 1 sys_log_message_header          aligned based,
+     2 sentinel       bit (36) aligned,                (*)
+     2 sequence       fixed bin (35),                  (*)
+     2 severity       fixed bin (8) unal,
+     2 data_class_lth fixed bin (9) unsigned unal,     (*)
+     2 time           fixed bin (53) unal,
+     2 text_lth       fixed bin (17) unal,             (*)
+     2 data_lth       fixed bin (17) unal,             (*)
+     2 process_id     bit (36) aligned;
+
+   dcl 1 sys_log_message aligned based (sys_log_message_ptr),
+     2 header      aligned like sys_log_message_header,
+     2 text        unal char (sys_log_message_text_lth
+               refer (sys_log_message.text_lth)),
+     2 data_class  unal char (sys_log_message_data_class_lth
+               refer (sys_log_message.data_class_lth)),
+     2 data        aligned dim (sys_log_message_data_lth
+               refer (sys_log_message.data_lth)) bit (36);
+
+Elements of sys_log_message structure:
+
+header
+   Every log message is word-aligned, and begins with this
+   eight-word header.
+
+sentinel
+   This is a flag used only by the log software itself to mark
+   the beginning of a valid message.  It is set when the message
+   is created and should never be altered.  Along with the time
+   stamp, it is used for consistency checks.
+
+sequence
+   This is the sequence number assigned to the message when it
+   was allocated in the log.  It is set when the message is
+   created, and should never be altered.
+
+severity
+   This is a severity value for the message; its meaning is up to
+   the subsystem writing the messages.  It can be used in
+   combination with the -severity argument of print_sys_log to
+   select specific groups of messages.
+
+
+Log Message Structure                                     MTB-666
+
+time
+   This is the clock reading at the time the message originated.
+   This must be set by the caller of log_segment_$create_message,
+   because the message may be added to a log significantly later
+   than when it was initially formatted.
+
+text_lth
+   This is the length, in characters, of the text portion of the
+   message.  It must not be zero; every message should have a
+   text portion.
+
+data_lth
+   This is the length, in words, of the binary portion of the
+   message.  If there is no binary portion, this must be zero; in
+   that case, the data_class should be blank and the data_type
+   must be zero also.
+
+process_id
+   This is the process_id of the process generating the message.
+   It can be used to identify processes at a later time.
+
+text
+   This is the text (printable) portion of the log message.
+
+data_class
+   This is a ten-character (or shorter) field used to identify
+   the message formatting procedure for the binary data in this
+   message.  When the print_sys_log command is used to display
+   the message, it will look for a procedure called
+   format_XXXX_log_msg_ to format binary messages.  Valid values
+   for this field depend on the application; see
+   print_sys_log.info for a list.
+
+data
+   This is the binary (non-printable) portion of the log message.
+   It must be interpreted by a special format procedure (see
+   data_class, above) before it can be printed.
+
+
+Conversion of Syserr                                      MTB-666
+
+REPLACEMENT OF SYSERR:
+
+As stated in the introduction, the immediate goal of this project
+is replacement of the existing syserr log mechanism.  The
+existing syserr log mechanism is unreliable, and has been a
+common source of system problems (including, in its worst forms,
+total inability to boot for no apparent reason).
+
+New Syserr Log Structure:
+
+The new syserr log will consist of two log segments and one data
+segment, all kept in the LOG partition, and a new directory,
+&gt;sc1&gt;syserr_log, where older log segments will be kept.  The
+three new segments will replace the existing &gt;sl1&gt;syserr_log
+segment, and the &gt;sc1&gt;syserr_log directory will replace the
+&gt;sc1&gt;perm_syserr_log MSF.
+
+The two new log segments, &gt;sl1&gt;syserr_log_laurel and
+&gt;sl1&gt;syserr_log_hardy, will be filled and emptied alternately.
+When either one fills, it will be copied wholesale into
+&gt;sc1&gt;syserr_log, and log messages will start being placed into
+the other one.  If both become full before either can be copied
+and emptied, the oldest will be re-used, and a log overflow will
+occur, just as it does today.  The data segment,
+&gt;sl1&gt;syserr_log_data, will describe the current state of the
+syserr log segments.
+
+Additionally, the logs will be swapped at system initialzation
+and shutdown, and, if desired, whenever a specified interval
+elapses, in order to ensure that the copy in the hierarchy is as
+up-to-date as possible.  There will not be an analogue for the
+log copy threshold of today, however:  log copying will simply
+take place whenever one of the two log segments is full; that is,
+when the log partition itself is half-full.
+
+Syserr Interface Changes:
+
+This conversion will involve some incompatible changes, in the
+interests of overall better interfaces.  Because syserr is a
+deeply buried part of the system, the effects on system code are
+relatively minor and easily located.  The same should be true of
+any user code that references syserr messages as well; an
+informal poll asking about site-written syserr log scanning
+tools, taken in March 1984, received only one response (from
+AFDSC).  The hardcore changes are even easier to isolate.
+
+
+Conversion of Syserr                                      MTB-666
+
+No changes will be made to the standard syserr interface.  The
+syserr$binary interface will be changed to include a data_class
+and data_type in its calling sequence, and the eleven programs(1)
+that reference it will be changed to use the new calling
+sequence.
+
+     NOTE:  As of this writing, the new syserr$binary interface
+     has not yet been specified.  Subroutine documentation for it
+     will appear in the next revision of this MTB (which, I
+     imagine, will be the first time syserr has ever been
+     documented.  *sigh*).
+
+Syserr initialization and the syserr daemon will be changed to
+accomodate the new format of syserr messages.  The wired buffer
+will be changed to have a two-part copying scheme just like the
+one used for the paged buffer:  it will be divided into two
+(tiny) log segments, and one will be filled while the other is
+being copied out by the daemon.  The daemon will still be invoked
+for every message, however, and will not bother to wait until one
+of the wired log parts is full.
+
+The Answering Service log copier will be changed to support the
+new log formats; mostly, this means making the whole thing
+simpler.
+
+Because the format of syserr messages changes (it becomes the
+sys_log_message format), the dozen or so programs that reference
+syserr_message.incl.pl1(2) will be changed to use the new
+sys_log_message data structure.  This is probably the most
+significantly incompatible change, because there may be
+site-specific programs that reference this structure as well.  To
+make this more apparent in the field, the names of the
+syserr_log_util_ entrypoints will be changed so that existing
+unconverted programs will get linkage errors.
+
+_________________________________________________________________
+
+(1) activate, disk_control, hardware_fault, ioi_log_status,
+    mos_memory_check, ocdcm_, page_error, salvage_pv,
+    scavenge_volume, scavenger, verify_lock
+
+(2) azm_syserr_, daily_syserr_process, display_cpu_error,
+    fnp_data_summary, heals_collect_data_, heals_cpu_reports_,
+    io_error_summary, mos_edac_summary, mpc_data_summary,
+    print_syserr_log, print_syserr_msg_, syserr_log_util_
+
+
+Conversion of Syserr                                      MTB-666
+
+Converting the Existing Syserr Log:
+
+In order to avoid losing valuable information, a tool will be
+provided which can be run in admin mode immediately after
+installation of the new syserr software which will convert the
+existing perm_syserr_log vfile into a family of segments in the
+&gt;sc1&gt;syserr_log directory.  If this is not done, that directory
+will be created automatically, and the contents of the
+perm_syserr_log will be lost.
+
+The ring zero syserr log will be converted automatically during
+bootload, and, so long as the previous shutdown was clean and
+successful, no messages will be lost, because the perm_syserr_log
+vfile is updated at shutdown.  The syserr log initialization for
+the new mechanism will treat the presence of an old-format log
+partition precisely as it would have treated an empty partition:
+the partition will be completely reinitialized.
+
+Performance of New Syserr Log:
+
+The new log mechanism will have significantly higher bandwidth
+than the old one, because of its simpler copying mechanism.  The
+copying mechanism will also be runnable by any process with the
+necessary access, so this function can be given to the Utility
+SysDaemon, and, more importantly, can easily be restarted if
+problems occur.
+
+The new syserr log mechanism is more storage-efficient than the
+old one.  Each syserr message in the new logs has a six-word
+header.  In the current system, the messages in the LOG partition
+have a seven-word header.  The keyed vfile_ in the current system
+has a six-word header for each message, as well as the overhead
+for the keys themselves, an additional seven words per message
+(plus 4K words of fixed vfile_ overhead for the whole vfile_).
+This means that the new log segments should require about 20 to
+30 percent less storage than the existing vfile_.(1)
+
+_________________________________________________________________
+
+(1) Thanks to Gary Dixon for providing these calculations
+
+
+Subroutine Outlines                                       MTB-666
+
+LOW LEVEL SUBROUTINES
+
+The following subroutines and include files make up the low level
+interface for log segments.  They are the only subroutines that
+perform any manipulations of the log segment headers.  Except as
+noted, they are all usable from ring zero, wired environments.
+
+sys_log_message.incl.pl1
+   This include file describes the format of an individual log
+   message.  It is used by all programs reading and writing logs,
+   not just the low level subroutines.
+
+sys_log_info.incl.pl1
+   This include file describes the format of a log segment.  All
+   header information is described here, with the exception of
+   the allocation information, which is declared only in
+   log_segment_.  Most high-level programs have no need to
+   include this file, but instead should rely on low level
+   programs to extract the necessary information.
+
+Error codes:  the following new error_table_ codes are required
+to support the new log primitives.  Details of when they may
+occur will be supplied later, but a brief description is supplied
+for each one.
+
+  error_table_$log_segment_full
+     "The log segment is full"-- when attempting to add a message
+     and there is no room to do so.
+  error_table_$log_segment_damaged
+     "The log segment is damaged"-- any operation may return this
+     when it discovers a problem it can't deal with.  Some
+     operations will do an automatic salvage, however.
+  error_table_$log_out_of_service
+     "The log segment is not currently in service"-- when
+     attempting to write to a log segment that hasn't had its
+     "in-service" bit turned on.  Used to synchronize creations
+     of new log segments.
+  error_table_$no_log_message
+     "The specified log message does not exist"-- when attempting
+     to position to a log message that isn't there.
+
+
+Subroutine Outlines                                       MTB-666
+
+log_segment_
+   This is the subroutine that creates messages, and performs
+   miscellaneous manipulations of the log segment header.  This
+   is the ONLY subroutine that can interpret the space and
+   sequence number allocation information in the header of a log
+   segment.
+
+   A message is created in a log segment by calling either the
+   create_message or create_message_number (used to assign a
+   specific sequence number) entrypoint to reserve space for the
+   message, filling in the message contents, and then calling the
+   finish_message entrypoint to mark the message as completed.
+
+log_initialize_
+   This subroutine initializes the headers of empty log segments.
+   It can either initialize the header from scratch, or copy the
+   relevant header information from another log segment.  It
+   calls log_segment_ to set up the allocation information, but
+   does all other initializations itself.
+
+log_search_
+   This subroutine searches within a single log segment for a
+   message at or near the specified sequence number or time.  It
+   is used by the log reading primitives to do positioning.
+
+log_wakeup_
+   This subroutine manages the list of 25 "registered" wakeup
+   recipients for the log.  It also contains the entrypoints
+   called to deliver the wakeups, one for use from ring zero, and
+   one for use outside.
+
+log_salvage_
+   This subroutine performs consistency checks and salvages on a
+   single log segment.  Because it embodies all the knowledge of
+   log segment salvaging, it has separate entrypoints specifying
+   how the repairs are to be announced (if at all), some of which
+   can be used only outside ring zero.
+
+
+Subroutine Outlines                                       MTB-666
+
+HIGH LEVEL SUBROUTINES
+
+The following subroutines and include files constitute the high
+level interface to log families.  They can run only outside of
+ring zero, because they reference the file system and make calls
+to timer_manager_$sleep.
+
+log_read_write_data.incl.pl1
+   This include file declares the structures used to record
+   "openings" of log families for reading and writing.  It is
+   included ONLY by log_read_, log_write_, and their wholly-owned
+   subsidiaries.
+
+log_read_
+   This is the application interface for log reading.  It
+   contains entrypoints to open and close a log family, search
+   for specific messages, and step sequentially through the
+   messages in a log family.  To "read" a message, log_read_
+   returns a pointer to the message text in the log segment.
+   This is the interface responsible for keeping track of the
+   entire history of a log family.
+
+log_write_
+   This is the application interface for log writing.  It
+   contains entrypoints to open and close a log family, and to
+   write text-only and binary messages into the log.  This is the
+   interface responsible for writing messages into log segments
+   and creating new ones when the old ones fill up.
+
+log_create_
+   This subroutine creates log segments.  It is used only by
+   log_write_ and the syserr applications.  It can either create
+   a new log segment from scratch, or create one with attributes
+   identical to an existing segment.
+
+log_initiate_
+   This subroutine initiates log segments.  It is used only by
+   log_read_ and log_write_.  It is responsible for waiting
+   (briefly, for a caller-specified delay) until a newly-created
+   log segment (created by another process, that is) has been
+   initialized and placed in service.
+
+log_name_
+   This subroutine constructs names for the history segments, of
+   the form &lt;family&gt;.YYYYMMDD.HHMMSS.
+
+log_list_history_
+   This subroutine, used only by log_read_, is used to list the
+   complete set of historical logs in a log family, and create a
+   log_read_data describing that family.
+
+
+Subroutine Outlines                                       MTB-666
+
+LOG PERUSAL TOOLS
+
+The following commands and subroutines are used to peruse
+information in logs.  The commands are documented in info files
+of their own; by and large, the subroutines are not intended for
+use except by the standard log commands.
+
+     NOTE:  As of this writing (84-06-07), several of these
+     commands and subroutines have not yet been designed, and
+     consequently no further documentation appears elsewhere in
+     the MTB.  Detailed documentation will be provided where
+     appropriate in the next revision of the MTB.
+
+print_sys_log
+   Prints selected messages from a log family, with various
+   selection and message expansion options.
+
+monitor_sys_log
+   Prints new messages as they appear in a log ("monitors" the
+   log).
+
+migrate_sys_log
+   Moves log segments from one directory to another, updating the
+   pathnames in the log headers as it does so.
+
+display_log_segment
+   Displays header and message information from a selected log
+   segment.  This is a debugging tool.
+
+format_log_message_
+   This subroutine can be used to format or print a specific log
+   message according to various options.  It is essentially
+   equivalent to today's print_syserr_msg_.
+
+format_XXXXXXXXXXX_log_msg_
+   Application writers can construct subroutines of this name to
+   interpret specific types of binary data in their messages.
+   The appropriate format subroutine, whose name is derived from
+   the "data_class" field in the log message, will be called by
+   format_log_message_ when it is expanding log messages with
+   binary data.
+
+log_monitor_
+   This subroutine contains the important mechanisms for the
+   monitor_sys_log command, and can be used by applications to
+   perform the same sort of monitoring.
+
+
+Subroutine Outlines                                       MTB-666
+
+log_match_
+   This subroutine, intended for use only by monitor_sys_log and
+   print_sys_log, matches text strings against a series of -match
+   and -exclude strings.
+
+log_test
+   This "command" is really a collection of miscellaneous
+   entrypoints for testing various aspects of the logging
+   software.  It is not intended for use except as an
+   implementation aid.
+
+
+Appendix A: SRB Notice                                    MTB-666
+
+SRB NOTICE:
+
+In MR11, the syserr logging mechanism has been replaced.  In
+addition to being used for the syserr log, the new log mechanism
+is available for general use by any application needing to
+maintain logs of messages.  This new mechanism is not currently
+used for any system logs other than the syserr log.
+
+Important changes:
+   * "print_syserr_log" becomes "print_sys_log -syserr"
+   * audit_gate_ eliminated, replaced by log segment ACLs
+   * syserr message declaration changes
+   * "trim_syserr_log" replaced by "date_deleter" (in crank)
+   * &gt;sc1&gt;perm_syserr_log becomes &gt;sc1&gt;syserr_log
+
+The print_syserr_log command has been eliminated.  In its place
+is the print_sys_log command; the interfaces are substantially
+similar, except that print_sys_log must be given the "-syserr"
+control argument to direct its attention to the syserr log.  See
+the new print_sys_log.info distributed with this release.
+
+The syserr log gate, audit_gate_, has been eliminated.  Instead,
+the syserr log appears as three segments in &gt;sl1:
+syserr_log_data, syserr_log_laurel, and syserr_log_hardy.  The
+ACLs on these segments should include "rw Initializer.SysDaemon",
+and "r" access for any process which formerly had access to
+audit_gate_.  The default ACL provides "r" access for the
+SysDaemon, SysMaint, and SysAdmin projects only.  The ACL on the
+syserr log segments is copied whenever a new segment is created
+in &gt;sc1&gt;syserr_log.
+
+All other commands for perusing the syserr log (such as
+daily_syserr_process, display_cpu_error, etc.)  have been
+converted to use the new log_read_ interfaces.  If your site has
+its own syserr log perusal tools, these must be modified to use
+log_read_, as the syserr_log_util_ interface has been eliminated.
+
+The format of syserr log messages has been changed; see the
+include file sys_log_message.incl.pl1 for details.  The calling
+sequence for syserr$binary has also changed; see the source for
+syserr_real.pl1.
+
+The trim_syserr_log command has been deleted.  In its place, you
+must use the date_deleter command on &gt;sc1&gt;syserr_log to delete
+old log segments.  The crank has been modified to do this.
+
+A migrate_log command is included which can be used to move log
+segments into a history directory elsewhere in the hierarchy, if
+desired; see the info file for details.  This is not used by the
+syserr log; all old syserr log segments remain in &gt;sc1&gt;syserr_log
+until trimmed.
+
+
+Appendix A: SRB Notice                                    MTB-666
+
+The mechanism available for user applications is the log_read_
+and log_write_ subroutines.  See the info files for details.
+
+The existing syserr log must be converted to the new format
+during installation of the release.  This is done as follows:
+
+ *** [This belongs in the installation instructions]
+
+     After installing the MR11 libraries, but before starting the
+     Answering Service (that is, at ring four "standard" command
+     level in admin mode), run the "convert_syserr_log" program.
+     This will create the directory &gt;sc1&gt;syserr_log, and copy the
+     contents of the &gt;sc1&gt;perm_syserr_log vfile into a family of
+     log segments in that directory.
+
+The existing &gt;sc1&gt;perm_syserr_log vfile is converted into the new
+format by running the "convert_syserr_log" program before
+starting the MR11 Answering Service.  If this step is omitted,
+the &gt;sc1&gt;syserr_log directory will be created automatically
+during Answering Service initialization, but it will contain only
+messages generated after the installation of MR11; no messages
+from the perm_syserr_log will be preserved.
+
+The LOG partition will be converted automatically to the new
+format when MR11 is first booted, and its previous contents will
+be lost.  This is not a problem, however, since the previous
+shutdown will have copied all messages from the partition into
+the perm_syserr_log vfile, where they can be collected using
+"convert_syserr_log".
+
+
+Appendix B, Info File: print_sys_log                      MTB-666
+
+84-06-06 print_sys_log, psl
+
+Syntax:  psl -syserr {-control_args}
+         psl PATHNAME {-control_args}
+
+Function:  prints selected portions of system logs, including the
+syserr log.  Various control arguments are used to determine
+which portions of the log are printed, and the format of the
+output.
+
+Arguments:
+PATHNAME
+   is the pathname of the current segment in a family of logs.
+   Information in this segment will be used to locate earlier
+   segments in the log family, if required.
+-syserr
+   specifies that the syserr log is to be examined; the syserr
+   log segments in &gt;sl1 are examined to locate the members of the
+   syserr log family.
+
+Control arguments:
+-reverse, -rv
+   specifies that the log is to be examined starting with the
+   most recent message selected by other control arguments, and
+   proceed backwards.
+-forward, -fwd
+   specifies that the log is to be examined starting with the
+   oldest message selected by other control arguments, and
+   proceed forwards.  (Default)
+
+-from TIME, -fm TIME, -from NUMBER, -fm NUMBER
+   specifies that the first message examined is the first message
+   at or after the specified time or sequence number; if -reverse
+   is specified, the first message is the one at or before the
+   specified value.  If no -from value is specified, the default
+   is the first message in the log, or the last if -reverse is
+   specified.  This is incompatible with -last.
+-to TIME, -to NUMBER
+   specifies the last message to be examined, either by message
+   time or sequence number.  If not specified, the default is all
+   the remaining messages in the log.  This is incompatible with
+   -for.
+
+
+Appendix B, Info File: print_sys_log                      MTB-666
+
+-for TIME, -for NUMBER
+   specifies a number of messages to print, or a time interval
+   relative to the starting time (specified by -from) in which
+   the messages must be contained.  The number of messages is the
+   actual number of messages printed, not the number of messages
+   examined in the log.  This is incompatible with -to and -last.
+-last NUMBER, -lt NUMBER, -last TIME, -lt TIME
+   specifies that only the last NUMBER messages, or the messages
+   since TIME, are to be printed.  If a NUMBER is specified, it
+   specifies the actual number of messages to be printed, not the
+   number of messages examined in the log.  This is incompatible
+   with -to and -last.
+
+-severity S1 ...  Sn, -sv S1 ...  Sn
+   only messages with the severity specified by an Si are
+   printed.  The severities, Si, may either be decimal integers,
+   or ranges, consisting of a pair decimal integers separated by
+   a colon ("20:29").  If multiple severities are specified, all
+   messages with any of those severities are printed.  A severity
+   value must be between -250 and 250.
+-all_severities, -asv
+   messages of all severities are printed.  (Default)
+
+-exclude STR1 ...  STRn, -ex STR1 ...  STRn
+   any message whose text contains one of the specified strings
+   STRi is not printed.  A string is interpreted either as a text
+   string, or as a regular expression if it is surrounded by
+   slashes.  See Notes on String Matching, below, for details.
+-match STR1 ...  STRn
+   all messages text contains one of the specified strings STRi
+   are printed.  Strings are interpreted as for -exclude.
+
+-expand {T1 ...  Tn}
+   in addition to printing the text portion of messages, prints
+   the expanded representation of any binary data contained in
+   the message.  If any Ti type values are specified, only
+   messages of the specified types are printed in expanded form.
+   See List of Message Types, below.
+-expand_octal {T1 ...  Tn}, -eo {T1 ...  Tn}
+   in addition to printing the text portion of messages, prints
+   the octal representation of any binary data contained in the
+   message.  The type argument(s) are interpreted as for -expand,
+   above.
+-no_expand {T1 ...  Tn}, -nex {T1 ...  Tn}
+   does not expand mesages of any of the specified types; cancels
+   the effect of a previous -expand or -expand_octal.
+
+
+Appendix B, Info File: print_sys_log                      MTB-666
+
+-exclude_data STR1 ...  STRn, -ed STR1 ...  STRn
+   any message whose expanded binary data contains one of the
+   specified strings STRi is not printed.  These tests are
+   applied after the tests for matching and exclusion on the text
+   of the message.  Strings are interpreted as for -exclude.
+-match_data STR1 ...  STRn, -md STR1 ...  STRn
+   any message whose expanded binary data contains one of the
+   specified strings STRi is printed.  These tests are applied
+   after the tests for matching and exclusion on the text of the
+   message.  Strings are interpreted as for -exclude.
+
+-duplicates, -dup
+   inhibits the printing of "=" messages for messages whose text
+   is the same as the previous message printed.  All messages are
+   printed exactly as they appear in the log.
+-no_duplicates, -ndup
+   prints "=" for messages whose text is the same as the previous
+   message printed.  (Default)
+
+-header, -he
+   prints a header giving the times and sequence numbers of the
+   first and last messages that will be examined.  This is the
+   default.
+-no_header, -nhe
+   suppresses printing of the header.
+-limits
+   reads only the first and last messages in the log and prints
+   their times and sequence numbers.  No other action is
+   performed, regardless of what other control arguments are
+   used.
+
+-single, -sg
+   specifies that only messages from the single log segment whose
+   pathname was given in the command line are to be examined.
+   This is incompatible with -syserr.
+-family, -fm
+   specifies that messages from the entire log family whose first
+   segment was specified given in the command line are to be
+   examined.  This is incompatible with -syserr.  (Default)
+-absolute_pathname, -absp
+   prints the absolute pathname of all log segments examined
+   while printing log messages.
+-no_absolute_pathname, -nabsp
+   does not print the pathname of log segments.  (Default)
+
+
+Appendix B, Info File: print_sys_log                      MTB-666
+
+List of Syserr Message Types:
+A message type is a short string, up to ten characters,
+specifying a particular expansion routine to be called to display
+the binary data in printable format.  The message type is
+specified when the message is written, and is used to distinguish
+between various types of binary messages.  The following types
+appear in the syserr log:
+
+pc
+   Page control detected error; binary data gives the pathname
+   and location of the affected segment.
+config
+   Config deck information, logged when the configuration
+   changes.
+mc
+   Any message containing a set of machine conditions for a
+   fault, such as a hardware error, a fault audit message, or a
+   crawlout from ring zero.
+ioi
+   Messages logged to save I/O error status from peripheral
+   devices.
+
+Access required:
+For logs other than the syserr log, read permission is required
+on all segments in the family, and search permission on all the
+directories containing log segments.
+
+For the syserr log, read permission is required on the segments
+in &gt;sc1&gt;syserr_log, along with status permission on the
+directory, and read permission is required on the following three
+segments in &gt;sl1:  syserr_log_data, syserr_log_laurel, and
+syserr_log_hardy.
+
+Notes on message selection:
+Messages are selected for printing in a series of steps, each of
+which filters out certain messages according to the control
+arguments specified.  The set of messages at each step is any
+that were left after the previous step.  If a control argument
+was not specified, then its corresponding step eliminates no
+messages.  Note that the -expand control arguments do NOT select
+messages, but only affect how their contents are displayed
+
+
+Appendix B, Info File: print_sys_log                      MTB-666
+
+     1) -to            (stop looking after specified message)
+     2) -from          (stop looking before specified number)
+     3) -for TIME      (stop looking after specified time)
+     4) -last TIME     (stop looking before specified time)
+     5) -severity
+     6) -exclude       (eliminate matching messages)
+     7) -match         (eliminate non-matching messages)
+     8) -exclude_data  (eliminate matching messages)
+     9) -match_data    (eliminate non-matching messages)
+    10) -for NUMBER    (stop after NUMBER are printed)
+    11) -last NUMBER   (stop after NUMBER are printed)
+
+Compatibility features:
+The following control arguments are accepted for compatibility
+with the old print_syserr_log and print_log commands:
+   -action =&gt; -severity
+   -next =&gt; -for
+   -octal, -oc =&gt; -expand_octal
+   -debug, -db =&gt; -duplicates
+The effect of print_syserr_log's -class argument can be achieved
+by supplying a range to the -severity argument:  "-class 2" is
+replaced by "-severity 20:29".
+
+
+Appendix B, Info File: monitor_sys_log                    MTB-666
+
+06-06-04 monitor_sys_log, msl
+
+Syntax:  msl LOG_IDENTIFIER {-control_args}
+
+Function:  prints selected portions of system logs, including the
+syserr log.  Various control arguments are used to determine
+which portions of the log are printed, and the format of the
+output.
+
+Arguments:
+LOG_IDENTIFIER
+   is either the pathname of the first segment in the log family
+   to be monitored, or one of the following control arguments.
+   If one of these control arguments is specified, no log
+   pathname may be specified.  If pathname specifies a log not
+   currently being monitored, the log specified is added to the
+   list; otherwise, its monitoring status is altered.
+
+Control arguments (log selection):
+-syserr
+   specifies that the syserr log is to be monitored.
+-all, -a specifies that all logs currently being monitored are
+   affected by the other control arguments; normally, only the
+   specified log is affected.  (Default)
+-number N, -nb N
+   specifies the number (from a monitor_log -status listing) of
+   one of the logs being monitored.
+
+Control arguments (action):
+-add
+   Adds the specified log to the list being monitored.  This may
+   only be given with a log pathname.  (Default)
+-remove
+   Removes the specified log(s) from the list being monitored.
+-off
+   Turns off monitoring of the specified log(s), without removing
+   them from the list.
+-on
+   Turns monitoring back on for the specified log(s).
+
+
+Appendix B, Info File: monitor_sys_log                    MTB-666
+
+-call STR
+   specifies that when new entries appear in the specified
+   log(s), their text is passed as arguments to the specified
+   command line STR instead of being printed.  If STR is a null
+   string (""), command line processing is turned off, and new
+   entries are printed instead.  The arguments passed to the
+   command line are:
+     1) name of log family
+     2) sequence number of message
+     3) severity of message
+     4) text of message
+     5) expanded text of message (if -expand specified)
+-status, -st
+   displays the monitoring status of the specified log(s).
+
+-remove_exclude, -rmex
+   clears the set of exclude strings for the specified log(s).
+   This is processed before any of the -exclude strings are
+   added.
+-remove_match, -rmm
+   clears the set of match strings for the specified log(s).
+   This is processed before any of the -match strings are added.
+-remove_exclude_data, -rmed
+   clears the set of data exclude strings for the specified
+   log(s).  This is processed before any of the -exclude_data
+   strings are added.
+-remove_match_data, -rmmd
+   clears the set of data match strings for the specified log(s).
+   This is processed before any of the -match_data strings are
+   added.
+
+
+Appendix B, Info File: monitor_sys_log                    MTB-666
+
+-time N, -tm N
+   specifies the monitoring interval, in seconds; the specified
+   log(s) will be sampled once every monitoring interval.  If the
+   specified interval is zero, periodic monitoring is turned off.
+-register, -rg
+   causes the users process to be registered as a recipient of
+   wakeups whenever a message is added to the specified log(s).
+   This is more efficient than periodic monitoring.  Registered
+   monitoring can be used in combination with periodic
+   monitoring, but this is usually not a useful thing to do.
+-deregister, -drg
+   removes the users process from the list of registered monitors
+   of the specified log(s).
+
+Control arguments (message selection):
+-severity S1 ...  Sn, -sv S1 ...  Sn
+   only messages with the severity specified by an Si are
+   processed.  The severities, Si, may either be decimal
+   integers, or ranges, consisting of a pair decimal integers
+   separated by a colon ("20:29").  If multiple severities are
+   specified, all messages with any of those severities are
+   processed.  A severity value must be between -250 and 250.
+-all_severities, -asv
+   messages of all severities are printed.  (Default)
+
+-exclude STR1 ...  STRn, -ex STR1 ...  STRn
+   adds the specified strings to the set of exclude strings for
+   the specified log(s).  Any message whose text contains one of
+   the set of exclude strings for this log is not processed.  A
+   string is interpreted either as a text string, or as a regular
+   expression if it is surrounded by slashes.  See Notes on
+   String Matching, below, for details.
+-match STR1 ...  STRn
+   adds the specified strings to the set of match strings for the
+   specified log(s).  All messages whose text contains one of the
+   set of match strings for this log are processed.
+
+
+Appendix B, Info File: monitor_sys_log                    MTB-666
+
+-expand {T1 ...  Tn}
+   in addition to printing the text portion of messages, prints
+   the expanded representation of any binary data contained in
+   the message.  If any Ti type values are specified, only
+   messages of the specified types are printed in expanded form.
+   See List of Message Types, below.
+-expand_octal {T1 ...  Tn}, -eo {T1 ...  Tn}
+   in addition to printing the text portion of messages, prints
+   the octal representation of any binary data contained in the
+   message.  The type argument(s) are interpreted as for -expand,
+   above.
+-no_expand {T1 ...  Tn}, -nex {T1 ...  Tn}
+   does not expand mesages of any of the specified types; cancels
+   the effect of a previous -expand or -expand_octal.
+
+-exclude_data STR1 ...  STRn, -ed STR1 ...  STRn
+   adds the specified strings to the set of data exclude strings
+   for the specified log(s).  any message whose expanded binary
+   data contains one of the set of data exclude strings is not
+   printed.  These tests are applied after the tests for matching
+   and exclusion on the text of the message.  Strings are
+   interpreted as for -exclude.
+-match_data STR1 ...  STRn, -md STR1 ...  STRn
+   adds the specified strings to the set of data match strings
+   for the specified log(s).  any message whose expanded binary
+   data contains one of the set of data exclude strings is
+   printed.  These tests are applied after the tests for matching
+   and exclusion on the text of the message.  Strings are
+   interpreted as for -exclude.
+
+Access required:
+For logs other than the syserr log, read permission is required
+on all segments in the family, and search permission on all the
+directories containing log segments.
+
+For the syserr log, read permission is required on the segments
+in &gt;sc1&gt;syserr_log, along with status permission on the
+directory, and read permission is required on the following three
+segments in &gt;system_library_1:  syserr_log_data,
+syserr_log_laurel, and syserr_log_hardy.
+
+Write access to the segments is required if -register or
+-deregister is specified.
+
+
+Appendix B, Info File: monitor_sys_log                    MTB-666
+
+Notes on message selection:
+Messages are selected for printing in a series of steps, each of
+which filters out certain messages according to the control
+arguments specified.  The set of messages at each step is any
+that were left after the previous step.  If a control argument
+was not specified, then its corresponding step eliminates no
+messages.  Note that the -expand control arguments do NOT select
+messages, but only affect how their contents are displayed
+
+   1) -class and -severity
+   2) -exclude       (eliminate matching messages)
+   3) -match         (eliminate non-matching messages)
+   4) -exclude_data  (eliminate matching messages)
+   5) -match_data    (eliminate non-matching messages)
+
+
+Appendix C: Changes to Existing Programs                  MTB-666
+
+EFFECTS OF INCOMPATIBLE CHANGES:
+
+The incompatible changes to data structures and syserr message
+formats will require at least minor changes in the 43 programs
+listed below.  This list comes from the MR10.2 libraries (more or
+less-- System-M in April 1984).  Some of these programs will be
+completely replaced or rewritten; others, however, will just
+require small amounts of attention.  They are broken down into
+group, by include file, later on; those that will be completely
+revamped have been removed from the detailed listings.
+
+In this list, the prefixes have the following meanings:
+     F: Message format or binary type change (minor)
+     M: Medium scale modification required for different logic
+     R: Completely reimplemented
+     D: Deleted from system
+
+AFFECTED PROGRAMS:
+
+     F: activate                   F: poll_fnp
+     M: azm_display_fdump_events   F: poll_mpc
+     R: azm_syserr_                R: print_syserr_log
+     F: daily_syserr_process       R: print_syserr_msg_
+     F: disk_control               M: process_dump_segments
+     F: display_cpu_error          M: real_initializer
+     R: display_syserr_            F: salvage_pv
+     D: display_syserr_log_part    F: scavenge_volume
+     F: fnp_data_summary           F: scavenger
+     F: hardware_fault             M: structure_library_5_
+     R: heals_collect_data_        R: syserr_copy_paged
+     R: heals_cpu_reports_         R: syserr_data
+     R: io_error_summary           D: syserr_log_copy
+     R: ioi_masked                 R: syserr_log_init
+     R: mc_con_rec_                R: syserr_log_man_
+     F: mdc_repair_                R: syserr_log_util_
+     F: mos_edac_summary           R: syserr_logger
+     F: mos_memory_check           M: syserr_real
+     F: mpc_data_summary           R: syserrlog_segdamage_scan_
+     F: ocdcm_                     F: system_startup_
+     F: page_error                 M: verify_lock
+
+
+Appendix C: Changes to Existing Programs                  MTB-666
+
+     Changes to syserr_log.incl.pl1 and syserr_data.incl.pl1
+
+These programs will be changed substantially, since the whole
+syserr log format has changed.  Some programs, those not directly
+concerned with maintaining the log segments, will only require
+replacement of code that manually examines the log with simpler
+code that uses the log_search_ entrypoints.  The display and
+analysis tools will be reworked.
+
+               Changes to syserr_message.incl.pl1
+
+This include file is to be deleted.  At the least, programs
+referencing syserr_message will be changed to reference
+sys_log_message instead, and will also have some of the structure
+element names changes.  Programs that process binary messages
+will also be changed to check the data_class and data_type,
+instead of the old binary message type number.  The message
+formatting and display tools will be reimplemented.
+
+              Changes to syserr_binary_def.incl.pl1
+
+This include file will be deleted, and replaced with a new one
+defining some of the standard data_class and data_type values.
+The ring zero programs that reference this need only be changed
+for the new calling sequence to syserr$binary.  The outer ring
+programs, primarily log scanning programs, will be changed to
+look for the appropriate data_class and data_type values; most of
+these are already covered under the changes for syserr_message.
+
+
+Appendix D: Changes from Prototype                        MTB-666
+
+CHANGES FROM PROTOTYPE IMPLEMENTATION:
+
+An earlier version of this new logging mechanism, written by
+Benson Margulies, served as the base for this implementation.
+The two are similar in overall structure, but are quite different
+in actual implementation.  The changes, and their justifications,
+are listed below:
+
+  All log information in single segments
+
+     The original design used families of log segments, but also
+     included a "control segment" for each family that listed the
+     listeners for new messages in the logs.  Because it is, in
+     general, difficult to ensure consistency between two
+     separate segments, this information was moved into the
+     header of the log segments themselves, and a fixed maximum
+     limit of 25 listening processes per log was imposed.
+
+  Recording full pathnames in the log segment header
+
+     The original design recorded only the entryname of a
+     previous log segment in the header of a newly created log,
+     and used a search list to specify directories where older
+     logs were to be found.  This was changed to include the full
+     pathname in order to eliminate the need for a search list,
+     and also to make handling the syserr log case easier, since
+     that requires a special case to find the first one or two
+     segments in the log.
+
+  Elimination of I/O module interface
+
+     Use of an I/O module for reading logs was not particularly
+     convenient, and also introduced considerable inefficiencies
+     because of the required data copying.  The log_read_
+     subroutine interface is sufficient to handle all existing
+     applications, and, if an I/O module interface is required in
+     the future, would be required as the base for it anyway.
+
+  Introduction of binary data classes
+
+     The original design carried over from syserr the notion of a
+     single, system-wide set of binary message types.  This makes
+     it difficult to use user-defined binary messages, because
+     there is no standard mechanism for locating a procedure to
+     interpret the messages.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

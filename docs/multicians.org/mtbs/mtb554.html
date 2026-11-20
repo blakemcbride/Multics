@@ -1,0 +1,3622 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-554, Revision 1</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-554, Revision 1: Data Management: File Manager Design..">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+To:       Distribution
+
+From:     Jeffrey D. Ives
+
+Date:     02/15/84
+
+Subject:  Data Management: File Manager Design.
+
+1 ABSTRACT
+
+Data-management  files are  designed to protect  data better than
+segments  or vfile_  can.  The  file manager  stores data  in the
+pages of multi-segment files.  Before  accessing a page, it calls
+the  lock  manager to  lock the  page against  concurrent access.
+Before modifying  a page, it calls  the before-journal manager to
+journalize  a  before-image.   When  a  transaction  commits,  it
+flushes all  pages remaining in main-memory  to mass-storage.  It
+permits   data-management   files  to   be  treated   as  Multics
+file-system extended-objects.
+
+Comments invited
+
+via Multics Mail:
+   Pierret.Multics on either MIT Multics or System M.
+
+via US Mail:
+   Matthew C. Pierret
+   Honeywell Information Systems, inc.
+   4 Cambridge Center - 9th Floor
+   Cambridge, Massachusetts 02142
+
+via telephone:
+   (HVN) 261-9338, or
+   (617) 492-9338
+
+________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+                             CONTENTS
+
+                                                         Page
+
+                 1 ABSTRACT . . . . . . . . . . . . . .     i
+                 2 INTRODUCTION . . . . . . . . . . . .     1
+                    2.1 pathnames, UIDs, and OIDs . . .     1
+                    2.2 control-intervals . . . . . . .     1
+                    2.3 protection and transactions . .     1
+                    2.4 locks . . . . . . . . . . . . .     2
+                    2.5 before-journals . . . . . . . .     2
+                    2.6 extended-objects  . . . . . . .     2
+                    2.7 related documents . . . . . . .     2
+                 3 DATA STORAGE . . . . . . . . . . . .     2
+                    3.1 multi-segment files (MSFs)  . .     3
+                    3.2 proposed large-files  . . . . .     4
+                    3.3 data-management-ring  . . . . .     4
+                    3.4 control-interval management . .     5
+                    3.5 control-interval structure  . .     6
+                    3.6 file attributes management  . .     9
+                    3.7 file attributes structure . . .     9
+                 4 FILE IDENTIFICATION  . . . . . . . .    11
+                    4.1 pathnames . . . . . . . . . . .    11
+                    4.2 component zero FSUID  . . . . .    11
+                    4.3 component zero segment number .    11
+                    4.4 opening identifiers (OIDs)  . .    12
+                    4.5 unique identifiers (UIDs) . . .    13
+                    4.6 UID/pathname table management .    13
+                    4.7 UID/pathname table structure  .    14
+                    4.8 old UID/pathname table  . . . .    15
+                 5 FILE ACCESS MECHANISM  . . . . . . .    15
+                    5.1 keeping OIDs valid for bj . . .    16
+                    5.2 file access-data management . .    16
+                    5.3 file access-data structure  . .    17
+                    5.4 access-data table management  .    20
+                    5.5 access-data table structure . .    20
+                 6 BASIC PROTECTION . . . . . . . . . .    21
+                    6.1 modified CI table management  .    21
+                    6.2 modified CI table structure . .    22
+                    6.3 protection incompleteness . . .    24
+                 7 CONCURRENCY CONTROL  . . . . . . . .    25
+                    7.1 lock hierarchy  . . . . . . . .    25
+                    7.2 lock advice . . . . . . . . . .    26
+                    7.3 fast locks  . . . . . . . . . .    27
+                 8 PROTECTION AGAINST FAILURES  . . . .    27
+
+
+
+                         CONTENTS (cont)
+
+                                                         Page    
+
+                    8.1 before-images . . . . . . . . .    28
+                    8.2 rollback-handlers . . . . . . .    29
+                    8.3 postcommit-handlers . . . . . .    29
+                    8.4 write-sync protocol . . . . . .    30
+                    8.5 support for before-journals . .    31
+                 9 PROPOSED ROLLBACK HANDLERS . . . . .    31
+                    9.1 existing rollback protection  .    31
+                       9.1.1 create (unprotected) . . .    32
+                       9.1.2 delete (unprotected) . . .    32
+                       9.1.3 allocate (unprotected) . .    32
+                       9.1.4 free (inefficiently
+                        protected)  . . . . . . . . . .    32
+                    9.2 proposed full rollback
+                     protection . . . . . . . . . . . .    33
+                       9.2.1 create (protected) . . . .    33
+                       9.2.2 delete (protected) . . . .    33
+                       9.2.3 allocate (protected) . . .    33
+                       9.2.4 free (protected) . . . . .    33
+                    9.3 proposed partial rollback
+                     protection . . . . . . . . . . . .    34
+                       9.3.1 create (unprotected) . . .    34
+                       9.3.2 delete (unprotected) . . .    34
+                       9.3.3 allocate (protected) . . .    34
+                       9.3.4 free (inefficiently
+                        protected)  . . . . . . . . . .    34
+                    9.4 user environment implications .    34
+                       9.4.1 create (with and without)     34
+                       9.4.2 delete (with and without)     35
+                       9.4.3 allocate (with and
+                        without)  . . . . . . . . . . .    35
+                       9.4.4 free (existing and
+                        proposed) . . . . . . . . . . .    35
+                    9.5 implementing features later as
+                     an incompatable change . . . . . .    36
+                       9.5.1 create and delete  . . . .    36
+                       9.5.2 allocate and free  . . . .    36
+                 10 PROPOSED FILE DUMPING . . . . . . .    36
+                 11 PROPOSED AFTER JOURNALS . . . . . .    37
+                 12 THE DATA MANAGEMENT DAEMON  . . . .    38
+                    12.1 transaction adoption . . . . .    38
+                    12.2 recovery after crash . . . . .    38
+                    12.3 daemon access  . . . . . . . .    38
+                 13 EXTENDED OBJECT SUPPORT . . . . . .    38
+                 14 ACCESS CONTROL  . . . . . . . . . .    39
+                    14.1 ring brackets  . . . . . . . .    39
+                    14.2 access control lists (ACLs)  .    39
+                    14.3 access isolation mechanism
+                     (AIM)  . . . . . . . . . . . . . .    39
+
+
+
+                         CONTENTS (cont)
+
+                                                         Page    
+
+                 15 ERROR HANDLING AND STATUS REPORTING    39
+                    15.1 status reporting . . . . . . .    39
+                    15.2 error reporting  . . . . . . .    40
+                    15.3 condition handling . . . . . .    40
+                 16 INITIALIZATION  . . . . . . . . . .    40
+                    16.1 system initialization  . . . .    40
+                    16.2 process initialization . . . .    40
+                 17 FILE MANAGER MODULARIZATION . . . .    40
+                    17.1 fm_attribute_.pl1  . . . . . .    40
+                    17.2 fm_combos_.pl1 . . . . . . . .    41
+                    17.3 fm_data_.alm . . . . . . . . .    41
+                    17.4 fm_fetch_.pl1  . . . . . . . .    41
+                    17.5 fm_get_.pl1  . . . . . . . . .    41
+                    17.6 fm_open_.pl1 . . . . . . . . .    42
+                    17.7 fm_put_.pl1  . . . . . . . . .    42
+                    17.8 fm_read_.pl1 . . . . . . . . .    42
+                    17.9 fm_std_error_handler_.pl1  . .    42
+                    17.10 fm_validate_.pl1  . . . . . .    42
+                 18 DESCRIPTIONS OF OPERATIONS  . . . .    42
+                    18.1 acl_add  . . . . . . . . . . .    43
+                    18.2 acl_delete . . . . . . . . . .    43
+                    18.3 acl_list . . . . . . . . . . .    43
+                    18.4 acl_replace  . . . . . . . . .    43
+                    18.5 add_acl_entries  . . . . . . .    43
+                    18.6 adopt  . . . . . . . . . . . .    43
+                    18.7 allocate . . . . . . . . . . .    43
+                    18.8 chname_file  . . . . . . . . .    44
+                    18.9 close  . . . . . . . . . . . .    44
+                    18.10 create  . . . . . . . . . . .    44
+                    18.11 create_open . . . . . . . . .    44
+                    18.12 delentry_file . . . . . . . .    44
+                    18.13 delete  . . . . . . . . . . .    44
+                    18.14 delete_acl_entries  . . . . .    44
+                    18.15 delete_close  . . . . . . . .    44
+                    18.16 end_of_crash_recovery . . . .    44
+                    18.17 fetch . . . . . . . . . . . .    44
+                    18.18 find_old_uid_pn_table . . . .    44
+                    18.19 flush_consecutive_ci  . . . .    44
+                    18.20 flush_modified_ci . . . . . .    44
+                    18.21 free  . . . . . . . . . . . .    45
+                    18.22 get . . . . . . . . . . . . .    45
+                    18.23 get_ci_header . . . . . . . .    45
+                    18.24 get_exclusive . . . . . . . .    45
+                    18.25 get_max_length  . . . . . . .    46
+                    18.26 get_switch  . . . . . . . . .    46
+                    18.27 get_user_access_modes . . . .    46
+                    18.28 list_acl  . . . . . . . . . .    46
+                    18.29 list_switches . . . . . . . .    46
+
+
+
+                         CONTENTS (cont)
+
+                                                         Page    
+
+                    18.30 lock_advice . . . . . . . . .    46
+                    18.31 open  . . . . . . . . . . . .    46
+                    18.32 open_by_uid . . . . . . . . .    46
+                    18.33 open_by_uid_after_crash . . .    46
+                    18.34 postcommit_do . . . . . . . .    46
+                    18.35 prepare_to_copy . . . . . . .    46
+                    18.36 put . . . . . . . . . . . . .    47
+                    18.37 put_journal . . . . . . . . .    47
+                    18.38 raw_get . . . . . . . . . . .    47
+                    18.39 raw_put . . . . . . . . . . .    47
+                    18.40 read  . . . . . . . . . . . .    47
+                    18.41 redo  . . . . . . . . . . . .    47
+                    18.42 replace_acl . . . . . . . . .    47
+                    18.43 reput . . . . . . . . . . . .    47
+                    18.44 set_bit_count . . . . . . . .    47
+                    18.45 set_max_length  . . . . . . .    47
+                    18.46 set_switch  . . . . . . . . .    47
+                    18.47 status  . . . . . . . . . . .    48
+                    18.48 store . . . . . . . . . . . .    48
+                    18.49 sub_err_flag_get  . . . . . .    48
+                    18.50 sub_err_flag_set  . . . . . .    48
+                    18.51 suffix_info . . . . . . . . .    48
+                    18.52 undo  . . . . . . . . . . . .    48
+                    18.53 unput . . . . . . . . . . . .    48
+                    18.54 validate  . . . . . . . . . .    49
+                    18.55 write . . . . . . . . . . . .    49
+                 19 TESTING AND DEBUGGING TOOLS . . . .    49
+                    19.1 command interface  . . . . . .    49
+                    19.2 create_file and delete_file  .    49
+                    19.3 fm_tester  . . . . . . . . . .    49
+                    19.4 fm_driver  . . . . . . . . . .    49
+                 20 PROPOSED FEATURES . . . . . . . . .    50
+                    20.1 software ring brackets . . . .    50
+                       20.1.1 reason  . . . . . . . . .    51
+                       20.1.2 performance . . . . . . .    51
+                       20.1.3 effort  . . . . . . . . .    51
+                       20.1.4 priority  . . . . . . . .    51
+                    20.2 audit hardcore support . . . .    51
+                       20.2.1 reason  . . . . . . . . .    52
+                       20.2.2 performance . . . . . . .    52
+                       20.2.3 effort  . . . . . . . . .    52
+                       20.2.4 priority  . . . . . . . .    52
+                    20.3 flushing directories . . . . .    52
+                       20.3.1 reason  . . . . . . . . .    52
+                       20.3.2 performance . . . . . . .    52
+                       20.3.3 effort  . . . . . . . . .    52
+                       20.3.4 priority  . . . . . . . .    52
+
+
+
+                         CONTENTS (cont)
+
+                                                         Page    
+
+                    20.4 hardcore support of UID
+                     pathnames  . . . . . . . . . . . .    52
+                       20.4.1 reason  . . . . . . . . .    53
+                       20.4.2 performance . . . . . . .    53
+                       20.4.3 effort  . . . . . . . . .    53
+                       20.4.4 priority  . . . . . . . .    53
+                    20.5 provide a pointer interface  .    53
+                       20.5.1 reason  . . . . . . . . .    54
+                       20.5.2 performance . . . . . . .    54
+                       20.5.3 effort  . . . . . . . . .    55
+                       20.5.4 priority  . . . . . . . .    55
+                    20.6 file manager command interface    56
+                       20.6.1 reason  . . . . . . . . .    56
+                       20.6.2 performance . . . . . . .    56
+                       20.6.3 effort  . . . . . . . . .    56
+                       20.6.4 priority  . . . . . . . .    56
+                    20.7 command to list open files . .    56
+                       20.7.1 reason  . . . . . . . . .    56
+                       20.7.2 performance . . . . . . .    56
+                       20.7.3 effort  . . . . . . . . .    56
+                       20.7.4 priority  . . . . . . . .    56
+                    20.8 better validation of msf
+                     manager's pathname . . . . . . . .    56
+                       20.8.1 reason  . . . . . . . . .    57
+                       20.8.2 performance . . . . . . .    57
+                       20.8.3 effort  . . . . . . . . .    57
+                       20.8.4 priority  . . . . . . . .    57
+                    20.9 dynamic array of msf component
+                     segment numbers  . . . . . . . . .    57
+                       20.9.1 reason  . . . . . . . . .    57
+                       20.9.2 performance . . . . . . .    57
+                       20.9.3 effort  . . . . . . . . .    57
+                       20.9.4 priority  . . . . . . . .    57
+                    20.10 set ring brackets on msf
+                     components to 2 5 5  . . . . . . .    57
+                       20.10.1 reason . . . . . . . . .    57
+                       20.10.2 performance  . . . . . .    58
+                       20.10.3 effort . . . . . . . . .    58
+                       20.10.4 priority . . . . . . . .    58
+                    20.11 make fm_$open_by_uid failsafe    58
+                       20.11.1 reason . . . . . . . . .    58
+                       20.11.2 performance  . . . . . .    58
+                       20.11.3 effort . . . . . . . . .    58
+                       20.11.4 priority . . . . . . . .    58
+                    20.12 make fm_$unput failsafe . . .    59
+                       20.12.1 reason . . . . . . . . .    59
+                       20.12.2 performance  . . . . . .    59
+                       20.12.3 effort . . . . . . . . .    59
+
+
+
+                         CONTENTS (cont)
+
+                                                         Page    
+
+                       20.12.4 priority . . . . . . . .    59
+                    20.13 handle postponed file closing
+                     better . . . . . . . . . . . . . .    59
+                       20.13.1 reason . . . . . . . . .    59
+                       20.13.2 performance  . . . . . .    60
+                       20.13.3 effort . . . . . . . . .    60
+                       20.13.4 priority . . . . . . . .    60
+                    20.14 optimize calls to bjm for new
+                     file . . . . . . . . . . . . . . .    60
+                       20.14.1 reason . . . . . . . . .    60
+                       20.14.2 performance  . . . . . .    60
+                       20.14.3 effort . . . . . . . . .    60
+                       20.14.4 priority . . . . . . . .    60
+                    20.15 optimize calls to bjm for new
+                     CI . . . . . . . . . . . . . . . .    60
+                       20.15.1 reason . . . . . . . . .    60
+                       20.15.2 performance  . . . . . .    61
+                       20.15.3 effort . . . . . . . . .    61
+                       20.15.4 priority . . . . . . . .    61
+                    20.16 find something to lock before
+                     the open operation . . . . . . . .    61
+                       20.16.1 reason . . . . . . . . .    61
+                       20.16.2 performance  . . . . . .    61
+                       20.16.3 effort . . . . . . . . .    61
+                       20.16.4 priority . . . . . . . .    61
+                    20.17 keep modified CI list in
+                     persystem storage  . . . . . . . .    61
+                       20.17.1 reason . . . . . . . . .    61
+                       20.17.2 performance  . . . . . .    61
+                       20.17.3 effort . . . . . . . . .    62
+                       20.17.4 priority . . . . . . . .    62
+                    20.18 give files a type field . . .    62
+                       20.18.1 reason . . . . . . . . .    62
+                       20.18.2 performance  . . . . . .    62
+                       20.18.3 effort . . . . . . . . .    62
+                       20.18.4 priority . . . . . . . .    62
+                    20.19 add a debug switch  . . . . .    62
+                       20.19.1 reason . . . . . . . . .    62
+                       20.19.2 performance  . . . . . .    62
+                       20.19.3 effort . . . . . . . . .    63
+                       20.19.4 priority . . . . . . . .    63
+                    20.20 fix sma patch to delete . . .    63
+                       20.20.1 reason . . . . . . . . .    63
+                       20.20.2 performance  . . . . . .    63
+                       20.20.3 effort . . . . . . . . .    63
+                       20.20.4 priority . . . . . . . .    63
+                    20.21 make protected the default  .    63
+                       20.21.1 reason . . . . . . . . .    63
+
+
+
+                         CONTENTS (cont)
+
+                                                         Page    
+
+                       20.21.2 performance  . . . . . .    63
+                       20.21.3 effort . . . . . . . . .    64
+                       20.21.4 priority . . . . . . . .    64
+                    20.22 ability to change attributes     64
+                       20.22.1 reason . . . . . . . . .    64
+                       20.22.2 performance  . . . . . .    64
+                       20.22.3 effort . . . . . . . . .    64
+                       20.22.4 priority . . . . . . . .    64
+                    20.23 keep opening count per ring .    64
+                       20.23.1 reason . . . . . . . . .    64
+                       20.23.2 performance  . . . . . .    64
+                       20.23.3 effort . . . . . . . . .    65
+                       20.23.4 priority . . . . . . . .    65
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+2 INTRODUCTION
+
+In  many  ways, data-management  files imitate  Multics segments.
+The main purpose of a  segment is to store data.  Data-management
+files also  store data, but  they are potentially  larger and can
+provide protection  against data inconsistencies  that arise from
+failures and concurrent access.   They are usually less efficient
+than  segments  because  segments  are accessed  by  hardware and
+data-management files are accessed by software.
+
+2.1 pathnames, UIDs, and OIDs
+
+A  data-management file  is identified  by three  kinds of names.
+First, its pathnames  identify it by its location  in the Multics
+file-system  hierarchy.   Second,  its 36  bit  unique identifier
+(UID)  distinguishes it  from all other  data-management files in
+the  system.  Its  UID never  changes.  Third,  a 36  bit opening
+identifier (OID) is  created in each process for  use by programs
+when the file is opened.
+
+2.2 control-intervals
+
+The   data   in   the   file   is   divided   into   equal   size
+control-intervals.  The control-interval (CI) is the unit of data
+that  is moved  between mass-storage and  main-memory during file
+access.   Each control-interval  is known by  its ordinal number.
+The   first    control-interval   is   numbered    zero.    Every
+control-interval in  a file is  the same size.  Every  file has a
+control-interval zero.
+
+2.3 protection and transactions
+
+The meaning of protection is abstract.  Protection does not imply
+any specific  mechanisms such as locking  or journalizing.  These
+are the methods  used to implement protection, but  they could be
+replaced  by others.   Protection means  that data  in a  file is
+protected against  inconsistency caused by  concurrent access and
+system failure.   It enables applications to  transform data from
+one consistent  state to another by  delimiting groups of changes
+into transactions, which are atomic  in the sense that either all
+the   changes  take   effect  or   none  of   them  take  effect.
+Furthermore, only the transaction  making the changes can observe
+their  partial effect.   To transactions in  other processes, the
+changes appear to take place simultaneously.
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+2.4 locks
+
+The  file manager  can protect  files from  becoming inconsistent
+when they  are used by several  uncoordinated processes.  This is
+achieved  by   locking  the  files   and  control-intervals  that
+participate  in  a transaction.   The control-intervals  that are
+accessed  during  a  transaction  are  locked  so  that  no other
+transaction  can  modify  them.  The  control-intervals  that are
+modified  during  a  transaction  are  locked  so  that  no other
+transaction can access or modify them.
+
+2.5 before-journals
+
+The  file manager  can almost  always protect  data from becoming
+inconsistent when  an application program, a  process, or Multics
+fails.  This is  achieved by putting a copy of  the data prior to
+modification   into  a   file  called   a  before-image  journal.
+Transactions   are   used  to   group  the   modifications.   All
+transactions  which  can not  continue because  of a  failure are
+aborted.  Abortion restores the before-images to the files.  This
+restoration is called "rollback".
+
+2.6 extended-objects
+
+Users expect  data-management files to have  many of the features
+of   segments,   like  ACLs,   ring  brackets,   pathnames,  etc.
+Furthermore,  users  expect  to  manipulate  them  using ordinary
+commands,  as  if  they  were segments.   Therefore,  it  must be
+possible  to  create them,  delete  them, copy  them,  list them,
+rename them,  etc.  The file manager  provides these capabilities
+through  interfaces   designed  to  be  called   by  the  Multics
+extended-object facility.
+
+2.7 related documents
+
+MTB-508: "Data Management: An Architectural Overview".
+MTB-511: "Data Management: Page Access Layer Overview".
+MTB-514: "Concurrency Management - Overview".
+MTB-553: "Data Management: File Manager Functional Specification".
+MTB-560: "Before-journal Manager Design".
+MTB-561: "Data Management: After Journal Manager Specification".
+MTB-564: "Phasing Page Control and Before Journal".
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+3 DATA STORAGE
+
+The most basic function of  a data-management file is, of course,
+to store  data.  The current  implementation of the  file manager
+stores all  the data of  a file in a  ring-two multi-segment file
+(MSF).   This  section explains  how  it is  done  and how  it is
+expected to be done in the future.
+
+3.1 multi-segment files (MSFs)
+
+An  MSF is  a directory with  a nonzero bit  count which contains
+segments.   The segments  are called  components.  The components
+are named with the ordinal  numbers, starting with "0".  The file
+manager does  not manage the MSFs  itself.  It uses msf_manager_,
+which is a Multics facility which has existed for years.
+
+The file manager  puts one control-interval in each  page of each
+component.    The   control-interval  fills   the   entire  page.
+Currently,  the file  manager only  supports one control-interval
+size  because  Multics has  only  one page  size.  The  number of
+control-intervals in  each component is one  of the attributes of
+the   file.    The   file  manager   can   put  up   to   255  of
+control-intervals in each component.
+
+In  order  to  access  a  particular  control-interval,  the file
+manager calculates its component number and its offset within the
+component.  It  gets the segment  number of the  component from a
+table that  it keeps.  If  the segment number  is not yet  in the
+table,  it  is  obtained  from msf_manager_.   Using  the segment
+number  and the  offset, it  manufactures a  pointer to  the page
+which contains the control-interval.
+
+Multi-segment   files  have   certain  limitations.    A  Multics
+directory can not  contain more than about 4000  branches, so the
+maximum  number  of components  is  limited to  about  4000.  The
+number is not exact because  the limitation results from the fact
+that a directory  must be contained in a  single segment which is
+managed like an area.  Every branch,  name, and ACL term takes up
+space.   The  longer the  ACL  on each  component, the  lower the
+maximum  number  of  components.   This limitation  on  file size
+greatly   increases  the   difficulty  of   implementing  certain
+applications with very large data storage requirements.
+
+Another  MSF limitation  arises from  the Multics  virtual memory
+implementation  of  the  component  segments.   Each  segment  is
+represented by a  table with one word for  each page.  These page
+tables  are read  into main-memory  from the  mass-storage volume
+tables of contents  and are purged from main-memory  if they have
+not been used  recently, because main-memory can only  hold a few
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+thousand of them at once and this capacity is shared by all files
+on the  system.  When pages of  a large MSF or  a large number of
+MSFs  are accessed  randomly, there  can be  almost as  many page
+table reads as page reads, since the likelyhood of the page table
+being in  main-memory can be  almost as low as  the likelyhood of
+the page being in main-memory.
+
+3.2 proposed large-files
+
+In order to overcome the main limitations of multi-segment files,
+a new type of Multics  file, called a "large-file" is envisioned.
+In  this  type  of file,  the  data  is not  stored  in segments.
+Instead, it  is read directly from  mass-storage into main-memory
+buffers.  Instead  of a table of  mass-storage page locations, it
+has a table of equal size mass-storage extents.  Each extent is a
+contiguous area of a mass-storage device and contains many pages.
+The mass-storage  address of a page  is determined by calculating
+the  ordinal  number of  the  extent that  contains the  page and
+calculating  the  offset of  the  page within  the  extent.  This
+method permits  the location of pages  on mass-storage devices to
+be  compactly  represented.   It  allows one  directory  entry to
+describe a very large file.
+
+The  amount  of  effort  necessary to  implement  these  files is
+expected to be large.  The mass-storage allocation is complicated
+because  the large  contiguous extents must  be managed  so as to
+minimize wasted space.  The main-memory buffer space must be well
+managed in order to  efficiently use main-memory.  Many difficult
+modifications to the highly optimized hardcore supervisor will be
+required.
+
+The file  manager has been designed  to anticipate the transition
+to large-files.  In fact, the  MSF implimentation can be regarded
+as a prototype.  It has not been decided whether large-files will
+only be  used for data-management  files or whether  they will be
+made general enough for other applications.
+
+3.3 data-management-ring
+
+Multics rings are  used to protect the data in  the files as well
+as  the  perprocess  and  persystem  data  required  by  the file
+manager.         The         system        global        variable
+sys_info$data_management_ringno   contains  the   number  of  the
+data-management-ring.      Currently,     ring-two     is     the
+data-management-ring.   The  file  manager  runs  mostly  in  the
+data-management-ring, and  so do the  ancillary services (locking
+and  before-journalizing).   Like any  inner ring  subsystem, the
+file  manager has  a gate  to control the  access to  it.  In the
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+following   discussion,   the    data-management-ring   will   be
+represented by the numeral "2".
+
+An MSF directory  is created with directory ring  brackets of 2,2
+so it  can only be  accessed through the file  manager gate.  The
+MSF components  are created with  segment ring brackets  2,5,5 so
+that they can be read from the user ring but can be modified only
+from the data-management-ring.  The file manager's perprocess and
+persystem   data   are   only    accessable   from   within   the
+data-management-ring so  that they can not  be corrupted by outer
+ring programs and  so that outer ring programs  can not develop a
+depedency on their format or content.
+
+In  many  cases  ring  brackets  are  set  implicitly.   The ring
+brackets on perprocess  data are an effect of  the fact that they
+are   allocated   in   the   combined   linkage   area   of   the
+data-management-ring.  The  ring brackets of  the MSF directories
+and components are set by the hardcore to the software validation
+level.  The file manager always  sets the validation level to the
+ring of execution when it expects to call a hardcore primitive.
+
+3.4 control-interval management
+
+The first four words of a  control-interval are used as a header.
+The   header   has   several   purposes.    It   identifies   the
+control-interval  because  it  contains  the  file  UID  and  the
+control-interval  number.  It  contains some  information used to
+prevent the  control-interval from being  written to mass-storage
+until  its  before-image has  been  written to  mass-storage.  It
+tells how big  the control-interval is.  It can  be used to check
+the  consistency of  the control-interval  because the  first two
+words of  the control-interval header  are identical to  the last
+two words  of the control-interval  which is called  the trailer.
+The control interval trailer has the same form and content as the
+first two words of the header.
+
+The   control-interval   header   and   trailer   are  maintained
+exclusively  by  the  file manager.   They  are not  in  the user
+addressable  range of  the control-interval,  so "get"  and "put"
+operations can  not read or write  them.  The addressable portion
+consists of all the bytes  between the header and trailer, except
+in  control-interval  zero,  where  the  addressable  portion  is
+between  the header  and the beginning  of the  area reserved for
+file attributes.  The addressable portion  is always the same for
+get  and   put.   The  control-interval  sizes   of  the  current
+implementation are as follows:
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+                    actual size                   4096 bytes
+                    addressable size              4072 bytes
+                    addressable size of ci 0      3176 bytes
+
+Throughout   the  file   manager  and  in   all  its  interfaces,
+control-interval  numbers are  represented by  fixed binary (27).
+This  representation  was chosen  because  it permits  very large
+files  and because  it fits  evenly in  three bytes  which can be
+efficiently loaded and stored by the CPU.  Its value should never
+be negative.
+
+When a file  is created, it has only  one control-interval, which
+is control interval zero.  It is stored in page zero of component
+zero.   Control-interval  zero  can  never be  freed  because the
+attributes of the file are stored in it.
+
+The present  specification permits the user  to allocate and free
+control intervals  anywhere in the  file.  The file  manager does
+not  have  a list  of which  control-intervals are  allocated and
+which  are  free.   It  must  reference  the  page  in  which the
+control-interval is  stored in order  to determine whether  it is
+allocated.
+
+An  unallocated control-interval  is represented  by a  page that
+contains  nothing but  zeros.  Multics  page-control allocates no
+mass-storage for such a page.  When  the file manager is asked to
+allocate  a control-interval,  it writes the  header and trailer,
+which are never zero.  This  causes page-control to assign a page
+of mass-storage and increase the quota used by the MSF.  When the
+file manager  is asked to  free a control-interval,  it zeros the
+page, which causes page-control to return the page to the pool of
+available  pages  and decrease  the  quota used.   When  the file
+manager  is  asked  to  allocate  a  control-interval  in  an MSF
+component which  does not exist,  it first calls  msf_manager_ to
+create  the  component.  The  file manager  has no  mechanism for
+noticing when  all of the  control-intervals in a  component have
+been freed, so it never deletes a component.
+
+When   the   file  manager   is   asked  to   put  data   into  a
+control-interval   that  is   not  allocated,   it  automatically
+allocates one.  When the file manager is asked to get data from a
+control-interval  that  is  not  allocated, it  simulates  one by
+returning all zeros, but does not actually allocate one.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+3.5 control-interval structure
+
+          dcl  1 ci                   aligned based,
+                 2 header,
+                   3 stamp            fixed bin (71),
+                   3 id               fixed bin (71),
+                 2 addressable_bytes  char (4072),
+                 2 trailer            fixed bin (71);
+
+          dcl  1 ci_stamp             aligned based,
+                 2 version            bit (9) unal,
+                 2 bj_idx             fixed bin (9) uns unal,
+                 2 time_modified      fixed bin (53) unal;
+
+          dcl  1 ci_id                aligned based,
+                 3 uid                bit (36),
+                 3 size_code          bit (9) unal,
+                 3 num                fixed bin (27) uns unal;
+
+          dcl  1 ci_size_code         aligned based,
+                 2 exponent           fixed bin (6) uns unal,
+                 2 addon              fixed bin (3) uns unal;
+
+     "ci" is  a  control-interval.    Its  subsidiary  items  are
+          described in storage order below.
+
+          "header"  is the  first four  words of  every allocated
+          control-interval.   The  stamp and  id are  declared as
+          double  precision numeric  values so  that they  can be
+          atomically  referenced.   This  is  required  when, for
+          example, the before-journal index and the time modified
+          fields   must   be  updated   simultaneously   so  that
+          page-control never sees the old  version of one and the
+          new version of the other.  It also aids efficiency.
+
+     "stamp"   is  the   two  word  modification   stamp  of  the
+          control-interval.   It  contains the  two items  in the
+          header that  change.  Think of the  file manager rubber
+          stamping  this area  whenever the  data content  of the
+          control interal is modified.
+
+     "version"  is  the  version number  of  the control-interval
+          format.   It was  chosen to  be as  unique as possible.
+          Currently its  octal value is 641.   It is not expected
+          to change often.  The value is a reminiscence of the GE
+          645, which  was the first Multics  CPU.  The last digit
+          was changed to 1 to represent version number 1.
+
+     "bj_idx"  is the  index of the  before-journal that contains
+          the before-image taken prior  to the last modification.
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+          Page-control uses  this index in order  to determine if
+          this  page can  be purified  (written to mass-storage).
+          It can not be purified  until its before-image has been
+          written to mass-storage.
+
+     "time_modified" is the Multics clock reading associated with
+          the before-image taken prior  to the last modification.
+          Page-control uses this reading in order to determine if
+          this  page can  be purified  (written to mass-storage).
+          It can not  be purified while the clock  reading of the
+          most  recent  before-image  safely  on  mass-storage is
+          earlier than this one.
+
+     "id" is the two word  control-interval identifier.  It never
+          changes.
+
+     "uid"  is  the  36  bit   unique  identifier  (UID)  of  the
+          data-management  file  to  which  the  control-interval
+          belongs.   It  is  used  to  verify  that  the  control
+          interval  being   referenced  is  of   the  file  being
+          referenced.    It   could   be   used   to   repatriate
+          control-intervals when the file map is lost.
+
+     "size_code"  represents  the size  of  the control-interval.
+          The number  of bytes in  the control-interval is  (64 +
+          8*addon) * 2**exponent.  This representation was chosen
+          because  it  can compactly  represent  a wide  range of
+          sizes.   Currently, the  only valid size  code is octal
+          060 which means 4096 bytes  or one page.  Currently, it
+          is not used  for any purpose.  It could  be very useful
+          to a repatriation scheme.
+
+     "num" is the ordinal number  of the control-interval.  It is
+          used  to verify  that the  desired control-interval has
+          been  read  from  mass-storage.   It could  be  used to
+          repatriate the control-interval to the correct place in
+          the file when the file map is lost.
+
+     "addressable_bytes" is  the user addressable  portion of the
+          control-interval, where the data is stored.
+
+     "ci_trailer"  is the  last two words  of a control-interval.
+          It  always matches  the control-interval  header stamp,
+          except   in  the   midst  of  a   modification.   If  a
+          control-interval   modification  is   interrupted,  the
+          trailer will  not match the header  stamp.  The current
+          file  manager does  not detect  this mismatch condition
+          and  it is  straightened out by  the next modification.
+          The  trailer could  be used to  verify that interrupted
+          operations get rolled back.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+3.6 file attributes management
+
+The  file manager  stores the attributes  of a file  in the upper
+part of control-interval zero.  This  part is inaccessable to the
+user.   The  upper  part  was   chosen  because  it  seemed  more
+straightforward   to   special   case    the   bound   check   on
+ci_parts.length_in_bytes then to bump the  offset to get over the
+attributes.  The  last two bytes  before the trailer  are used to
+contain the length of the attributes area.  Thus, the size of the
+area  could be  variable.  In  the current  implementation, it is
+fixed as the value of a declared constant.
+
+The attributes  are only used  when the file is  opened, at which
+time,  some   of  them  are  copied   into  the  perprocess  file
+access-data structure.  There is no reason why the attributes can
+not be  accessed at any  time, or even modified,  but the current
+implementation does not.  The attributes are set when the file is
+created and  are never changed thereafter.   Eventually, the file
+manager  should permit  the user  to access  and modify  the file
+attributes.  If protection  could be turned on and  off, it would
+permit  bulk  operations  such   as  database  loading,  database
+conversion,   restructuring,  and   long  transactions   such  as
+invoicing to be run  with potentially expensive protection turned
+off.
+
+3.7 file attributes structure
+
+          dcl  1 file_attributes      aligned,
+                 2 version            bit (36),
+                 2 unique_id          bit (36),
+                 2 ci_size_in_bytes   fixed bin (35),
+                 2 blocking_factor    fixed bin,
+                 2 date_time_created  fixed bin (71),
+                 2 mbz_1              (2) fixed bin (71),
+                 2 protected          bit unal,
+                 2 no_concurrency     bit unal,
+                 2 no_rollback        bit unal,
+                 2 mbz_1a             fixed bin,
+                 2 mbz_5              (8) fixed bin (71),
+                 2 time_last_dumped   fixed bin (71),
+                 2 dump_file_path     char (168),
+                 2 mbz_6              (4) fixed bin (71),
+                 2 after_journal_path char (168),
+                 2 mbz_7              (50) fixed bin (71),
+                 2 mbz_8              fixed bin,
+                 2 mbz_9              fixed bin (17) unal,
+                 2 length_of_attributes fixed bin (17) unal;
+where:
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+     "version" is the version of the structure.
+
+     "unique_id" is the unique identifier (UID) of the file.
+
+     "ci_size_in_bytes" is  the control-interval length.   In the
+          current implementation, it is always 4096.
+
+     "blocking_factor" is the number  of control-intervals to put
+          into  each MSF  component.  The  file manager  code can
+          handle  any  number  from  1  to  255,  but  the create
+          operation only allows 64 and 255 on the assumption that
+          these are the only reasonable values.
+
+     "date_time_created" is the reading of the Multics clock when
+          the file was created.
+
+     "protected" means that the file  is given all the protection
+          that  the  file  manager  is  capable  of,  except  for
+          protections  that are  explicitly turned  off.  If this
+          bit is turned on, the  file may only be accessed during
+          a transaction.  "^protected" means  that the file is to
+          be given  none of the protection  that the file manager
+          is capable of.
+
+     "no_concurrency"  is only  meaningful if  "protected" is on.
+          It means  that the file manager  should not protect the
+          file  against inconsistency  arising from uncoordinated
+          access by multiple processes.
+
+     "no_rollback" is  only meaningful if "protected"  is on.  It
+          means that the file manager should not protect the file
+          against inconsistency arising from application program,
+          process, or system failures.
+
+     "time_last_dumped"   is  not   used  because   there  is  no
+          data-management file dumper.
+
+     "dump_file_path"   is   not   used  because   there   is  no
+          data-management file dumper.
+
+     "after_journal_path"   is   not  used   because  after-image
+          journalization has not been implemented yet.
+
+     "length_of_attributes"  is  the  number   of  bytes  in  the
+          attributes  structure minus  two.  The minus  two is so
+          that this  number does not  include its own  two bytes.
+          This may seem silly, but  it permits the possibility of
+          creating  a  file  with  no attributes  at  all  by not
+          storing  anything at  all in  control-interval zero (ie
+          zero means no attributes).
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+4 FILE IDENTIFICATION
+
+4.1 pathnames
+
+Path names are  used to designate files in  the calling sequences
+of  some file  manager primitives.   There are  also two internal
+uses  of pathnames.   One is in  the UID/pathname  table which is
+used to  find a pathname for  a file when its  UID is given.  The
+other is in  the perprocess access-data of a  file.  The pathname
+is actually  stored by the  msf_manager_ in its  perprocess data.
+The  file manager  keeps a  pointer to  msf_manager_'s perprocess
+data which is used in all calls to msf_manager_.
+
+The  main  problem  with  pathnames is  that  they  are  not very
+reliable, in the sense that they are not guaranteed by Multics to
+remain valid.  This is because the  user can change the name of a
+file  or  any  of  the directories  above  it.   After  such name
+changes, the pathname may be invalid or may designate a different
+file.  This  problem is expected  to be solved  in the large-file
+implementation.   Nevertheless,  it is  unfortunate  that Multics
+does not  provide a more  reliable way to designate  an object in
+the hierarchy.
+
+4.2 component zero FSUID
+
+Each Multics  segment has a 36  bit file-system unique identifier
+(FSUID) assigned to it by  the supervisor.  The file manager uses
+the FSUID of  MSF component zero for two  purposes.  First, it is
+the source  of a data-management file's  UID.  Nothing depends on
+the file UID being the same as the FSUID, it is just a convenient
+way  to  get a  36 bit  UID.  Second,  the FSUID  is used  in the
+UID/pathname table  to to verify  that two files do  not have the
+same data-management  file UID.  This could  happen, for example,
+if the same file were retrieved twice, with different pathnames.
+
+The FSUID  of the MSF  directory could have been  used instead of
+the FSUID  of component zero.  Component  zero was chosen because
+there  is  a simple  hardcore  primitive to  get  the FSUID  of a
+segment.
+
+4.3 component zero segment number
+
+The Multics segment  number of MSF component zero  is used by the
+file manager  for two purposes other  than manufacturing pointers
+to control-intervals  in component zero.  First,  when it opens a
+file,  it  calls msf_manager_  to get  a pointer  to the  base of
+component  zero from  which it  extracts the  segment number.  It
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+then searches its table of open files, using this segment number,
+to see if  the file is already open.   Second, the segment number
+is used  to call the  supervisor whenever the  file manager needs
+the pathname of the file.
+
+4.4 opening identifiers (OIDs)
+
+The  36 bit  opening identifier  is a  perprocess nickname  for a
+file.  The user can make as many copies of it as he wants and can
+store it wherever  he wants but it is only  valid in one process.
+The file  can be opened any  number of times in  any ring and all
+openings will return the same OID.  Openings for the same file in
+different processes will usually not match.
+
+Opening identifiers have the following structure:
+
+          dcl  1 oid                  aligned,
+                 2 proc_ad_idx        fixed bin (17) unal,
+                 2 uid_tail           bit (18) unal;
+where:
+
+     "proc_ad_idx" is the index  of the perprocess access-data of
+          the file in the file manager's table of open files.
+
+     "uid_tail" is the last 18 bits of the file UID.
+
+A file may  be opened in a process by  several subsystems that do
+not know about each other.  When one of the subsystems closes the
+file,  openings  held  by  other  subsystems  should  continue to
+function.  In order to achieve this, the file manager maintains a
+count of the  number of times the file has  been opened minus the
+number of times it has been  closed.  The perprocess open data of
+a file  will not be  discarded and therefore  the OID can  not be
+associated with another file until  that count drops to zero.  If
+each subsystem closes a file the same number of times as it opens
+it, none will ever find the OID invalid.
+
+A word of  zeros is the null value of  an OID.  Subsystems should
+initialize  OIDS to  zero.  When  file manager  opens a  file, it
+increments  the  opening  count before  it  sets the  OID  in the
+argument list.   When it closes a  file, it zeros the  OID in the
+argument  list  before it  decrements  the count.   Thus,  if the
+process should be  interrupted in between, the count  will be too
+high  and file  manager will  err by  unnecessarily retaining the
+open  data.   Subsystems  that  initialize  OIDS  to  zero before
+calling the open  primitive can assume that, upon  return, if the
+OID is not zero, it can be safely used.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+When a file is deleted, it  might seem appropriate to discard all
+data  about  the  file.  This  would  be a  mistake  because some
+subsystems may still hold OIDS for  the file.  The open data must
+be retained until all subsystems  close the file.  Obviously, the
+deleted file can not be  used.  The retained access-data provides
+the means for  detecting any further attempts to  use the deleted
+file.  The only operation that  will return a zero status-code is
+close.
+
+4.5 unique identifiers (UIDs)
+
+Each file  has a 36  bit UID which uniquely  identifies it within
+the  data-management  system.  The  UID  has several  uses.  Each
+before-image for the file contains the UID and it is used to open
+the file when rolling back  the transaction after a failure.  The
+header of each  control-interval contains the UID of  the file to
+which  it  belongs.  This  can be  used to  help verify  that the
+correct  control-interval has  been read  from mass-storage.  The
+UID  is  used  to  identify  the  file  when  locking  it.   When
+after-image  journalization is  implemented, it  will be  in each
+after-image.
+
+4.6 UID/pathname table management
+
+The  file  manager  specification includes  an  open_by_uid entry
+point  that  is intended  for use  by the  before-journal manager
+during the  rollback of a  transaction.  In order  for this entry
+point to work, the file manager must be able to find the pathname
+of  the file  when given  its UID.  To  this end,  it maintains a
+UID/pathname table in persystem storage.  The table is managed so
+as to guarantee that a particular UID  can be found in it as long
+as there is any chance that the  UID is used in a before-image in
+an active transaction.
+
+When  the  data-management system  is  initialized, the  table is
+empty.  Whenever a file is opened  in a process, the file manager
+makes an  entry for it  in the table  if it is  protected and the
+no_rollback bit is not set.  If  there is already an entry for it
+in the table, the file manager  adds one to its count.  The count
+represents the  number of processes  that have the  file open and
+therefore could  produce before-images of  it.  When the  file is
+closed in a  process, the file manager decrements  the count and,
+if the it goes to zero, removes the entry from the table.
+
+The  correctness of  the above  policy depends  on another policy
+according  to which  the file  manager never  closes a  file with
+rollback protection during a transaction.   As far as the user is
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+concerned,  it  is closed,  but it  postpones the  actual closing
+until the transaction is over.
+
+The UID/pathname  table is a  segment in the  data-management per
+AIM  level  directory.   It  is  force  written  to  mass-storage
+whenever a  new entry is added  to it, in order  to guard against
+the failure  of Multics emergency shutdown  which normally writes
+all modified pages to mass-storage  after a crash.  The table has
+a lock so that it is accessed by one process at a time.
+
+4.7 UID/pathname table structure
+
+          dcl  1 sys_pn_tbl           aligned based,
+                 2 h,
+                   3 version          bit (36),
+                   3 last_entry       fixed bin,
+                   3 lock             fixed bin (71),
+                   3 mbz              (30) fixed bin (71),
+                 2 e                  (4096),
+                   3 thread           fixed bin,
+                   3 open_count       fixed bin,
+                   3 pfuid            bit (36),
+                   3 fsuid            bit (36),
+                 2 paths              (4096) char (168) unal;
+where:
+
+     "h" is the 64 word header with plenty of room for additional
+          items.
+
+     "version" is the version of the structure.
+
+     "last_entry"  is the  index of the  last entry  in the table
+          that is in use.
+
+     "lock" is  the lock used  to prevent simultaneous  access by
+          several processes.  It is managed by the lock manager's
+          "fast lock" facility.
+
+     "e" is the array of UID entries.
+
+     "thread" was intended to  chain entries together into linked
+          lists.  Actually,  it is only used  to indicate whether
+          an entry is in use.  If  it is zero, the entry is free.
+          If it is minus one, the entry is in use.
+
+     "open_count" is  the number of processes  that have the file
+          open.  When the count is decremented to zero, the entry
+          is removed  from the table by  filling the entire entry
+          with zeros.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+     "pfuid"  is the  data-management file  UID.  Data-management
+          files used to be called "page files".
+
+     "fsuid"  is  the Multics  file-system  UID of  MSF component
+          zero.  It is used to verify that two openings that have
+          the  same data-management  file UID  also refer  to the
+          same Multics file-system object.
+
+     "paths" is an array of data-management file pathnames.  Each
+          element in this array is logically part of the entry in
+          the "e" array with the same index.  This large item was
+          put in a separate array to increase the storage density
+          of  the  "e"  array  which  is  heavily  searched.  The
+          separation  has the  disadvantage that  adding an entry
+          modifies two pages which must both be flushed.
+
+4.8 old UID/pathname table
+
+When  a   new  data-management  system  is   initialized,  a  new
+UID/pathname  table is  created.  If the  previous incarnation of
+the data-management system ended because Multics crashed, the old
+UID/pathname    table    is    kept   for    the    duration   of
+recovery-after-crash which rolls back  the transactions that were
+active  when Multics  crashed.  The  file manager  provides three
+special entry  points for initiating, using,  and terminating the
+old  UID/pathname  table.   This  is  the  only  case  where  the
+UID/pathname table  is used without  locking it.  Locking  is not
+necessary  because recovery-after-crash  is executed  by a single
+process, the data-management daemon.
+
+5 FILE ACCESS MECHANISM
+
+The most central component of the  access mechanism is a block of
+data called the access-data.  It  is perprocess data and there is
+one for  each open file  in a process.  It  provides an efficient
+short term memory for data necessary to access a file.  This data
+includes MSF component segment  numbers, protection switches, the
+number  of  control-intervals  in  each  component,  advice about
+locking  from the  application, etc.  The  access-data blocks are
+kept in an  array which is allocated in  the process directory in
+the data-management-ring.   The first 18  bits of the  OID are an
+index into this array.
+
+There  is  no  persystem   access-data  block,  although  it  was
+considered many times.  Some of the information in the perprocess
+access-data block could have been  shared if there were persystem
+access-data.  Furthermore,  it may be required  in the future for
+the  efficient  implementation of  some desirable  features.  The
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+main disadvantage of persystem data  is that it must be protected
+from  concurrent  access  confusion.  This  requires  either very
+intricate programming  or a lock which  can increase overhead and
+reduce concurrency.   It also raises  complicated questions about
+how to  recover when a  process fails and  leaves the data  in an
+inconsistent state.
+
+5.1 keeping OIDs valid for bj
+
+Each  before-image  contains  the OID  of  the file  to  which it
+belongs.   If a  transaction is rolled  back in  the process that
+created  it,  the  before-journal  manager uses  these  OIDS.  An
+application may close  a file at any time.   Usually, when a file
+is  closed,  the access-data  is  discarded and  the  OID becomes
+invalid.    Potentially,   an   application   could   cause  some
+before-images, close the file, and abort the transaction, causing
+the before-journal manager to use OIDS that are no longer valid.
+
+The  file  manager  has  a  special  mechanism  to  prevent  this
+potentiality.   When  a  file  is  closed  before  the  end  of a
+transaction, the file manager  threads the access-data block onto
+a  list.  After  the transaction is  over, it walks  the list and
+frees  the  access-data blocks.   This  is why  all  file manager
+primitives  that  are available  to  applications check  the open
+count to see if it is zero,  because if it is, the file is closed
+as far as the application  concerned, even if the access-data has
+been kept around for some reason.
+
+5.2 file access-data management
+
+The  most unusual  feature of the  way access-data  is handled is
+that  instead of  getting a pointer  to it and  referencing it in
+place, it is always copied into  the stack frame of the procedure
+that uses it.  Thus, it is important to remember that whenever it
+is modified it must be copied back into its place in the table.
+
+The  access-data  contains a  set  of switches  that  control the
+ancillary   services   which   are  the   flushing   of  modified
+control-intervals,   locking,   before-image   journalizing,  and
+eventually,   after-image   journalizing.   These   switches  are
+arranged in  a single word  which efficiently serves  the need to
+selectively disable some of them  during the execution of certain
+primitives.  The  calculation of the  effective ancillary service
+switches is achieved by anding them with a mask that contains the
+ancillary  services  that  are  permitted by  a  particular entry
+point.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+One of the  most important items in the  access-data block is the
+array of MSF component segment numbers.  It starts with component
+one because  component zero is handled  specially and separately.
+A  value of  zero indicates that  the component has  not yet been
+initiated.  When a  file is opened, this array  is initialized to
+zeros.  The  size of this array  if fixed, but it  can be changed
+relatively easily.   It is only  necessary to change  the include
+file dm_fm_proc_ad  and recompile the modules  which use it.  The
+file manager  calls the MSF  manager to initiate  components that
+are  not  yet  initiated and  to  obtain the  segment  numbers of
+components whose component numbers are greater than the dimension
+of the array.
+
+Component zero is initiated when the file is opened and it is not
+terminated until the access-data is discarded.  The item in which
+its number is stored has a special interpretation.  When the file
+is deleted, the item is set  to zero.  That is why all primitives
+that access  the file check  this item to  see if the  file still
+exists.
+
+The file  access-data does not  have an item  that represents the
+size  of  the  file or  the  number of  control-intervals  in it.
+Correct maintenance of this type  of information requires that it
+be stored in a place where  it can be referenced by all processes
+that have the file open.  This could be achieved one of two ways.
+First, it could be stored in the file header, and a pointer to it
+kept  in  the  access-data.   Second, it  could  be  stored  in a
+persystem table if there were one.  Currently, only one primitive
+returns this kind of information.  It is used by the copy command
+which must know the number  of the last control-interval prior to
+commencing its  work.  The file manager  determines the number of
+the  last control-interval  by surveying the  MSF components with
+hcs_$star_dir_list and  then calling hcs_$status_long  to get the
+current length of the last one.
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+5.3 file access-data structure
+
+          dcl  1 proc_ad              aligned,
+                 2 thread             fixed bin unal,
+                 2 seg_0_num          bit (18) unal,
+                 2 pn_tbl_idx         fixed bin unal,
+                 2 blocking_factor    fixed bin (8) unal,
+                 2 opens              fixed bin (8) unal,
+                 2 uid                bit (36),
+                 2 msf_ptr            ptr unal,
+                 2 lock_advice        fixed bin,
+                 2 last_tid           bit (36),
+                 2 seg_nums           (27) fixed bin (12) uns unal,
+                 2 ass,
+                   3 rtm              bit unal,
+                   3 txn              bit unal,
+                   3 lock             bit unal,
+                   3 bj               bit unal,
+                   3 aj               bit unal;
+where:
+
+     "thread" is used in the  management of the access-data table
+          in which proc_ad is an entry.  If it is zero, the entry
+          is not in use.  If it  is negative one, the entry is in
+          use but is either not part  of a linked list or the end
+          of a linked list.  If it is positive, the entry is part
+          of a  linked list.  It is  intentionally the first item
+          in the  structure so that  the entry can  be removed by
+          unspecing  it  to zero,  and even  if the  operation is
+          interrupted, if it does anything at all, the entry will
+          have been marked as not-in-use.
+
+     "seg_0_num" is the segment number  of MSF component zero.  A
+          value of zero means that the file does not exist.
+
+     "pn_tbl_idx" is the index of  the entry, in the UID/pathname
+          table, associated with this  file.  It is non-zero only
+          for   files   that   are   protected   by  before-image
+          journalizing.
+
+     "blocking_factor" is the number of control-intervals in each
+          MSF  component segment.   It is  used to  calculate the
+          component and offset of a control-interval.
+
+     "opens" is the  number of times the file  has been opened by
+          the user minus the number  of times it has been closed.
+          It  helps   determine  when  the   access-data  can  be
+          discarded.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+     "uid" is the data-management system unique identifier of the
+          file.
+
+     "msf_ptr" points  to the perprocess data  about the MSF that
+          is  managed by  msf_manager_.  It is  used when calling
+          msf_manager_.
+
+     "lock_advice" is the mode in which to lock the file prior to
+          locking  control intervals  in it.   Zero means  do not
+          lock the file because no lock advice has been given.
+
+     "last_tid"  is used  to determine when  to lock  the file in
+          cases  where lock  advice is  available.  If  it is not
+          equal  to the  current transaction  identifier then the
+          process must  have started a new  transaction and it is
+          time  to  lock  the  file in  the  advised  mode before
+          locking any control-intervals in it.
+
+     "seg_nums" is the array of MSF component segment numbers.  A
+          value  of zero  means that  the component  has not been
+          initiated yet.   Twelve bits are  considered sufficient
+          to  represent  the segment  number because  only twelve
+          bits are  allowed for the segment  number in the packed
+          pointer format that is used by the hardware.
+
+     "ass" are the ancillary  service switches.  They are derived
+          from the protection attributes of  the file at the time
+          it is opened.  They are used to calculate the ancillary
+          services that will be effective during the operation of
+          file manager primitives.
+
+     "rtm"  means  record  time  modified.   It  causes  the file
+          manager  to  record  the  time of  modification  in the
+          control-interval header stamp.  It is always turned on.
+          Some operations, such as unput and raw_put, disable it.
+
+     "txn" means this file can  only be accessed when the process
+          is  in  a  transaction.   Its  value  is  same  as  the
+          "protected" switch of the file.
+
+     "lock" means  the lock manager  is to be  called before each
+          access.   It  is  on  if  the  file  is  protected  and
+          no_concurrency is off.
+
+     "bj" means the before-journal manager is to be called with a
+          before-image prior  to each modification.  It  is on if
+          the file is protected and no_rollback is off.
+
+     "aj" means the after-journal manager is to be called with an
+          after-image subsequent  to each modification.   It will
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+          not be  set or used until  the after-journal manager is
+          implemented.
+
+5.4 access-data table management
+
+The  access-data  blocks  are  stored  in  a  table  for  maximum
+efficiency.  The table is allocated  in the user-free-area in the
+data-management-ring   by   the   file   manager   at  perprocess
+initialization time.   The first 18  bits of the file  OID are an
+index  into  the  table.   A   table  of  pointers  to  allocated
+access-data  blocks  could have  been used,  but that  would have
+required a few more instructions during each access.
+
+The entries in the table are  all access-data blocks, but this is
+not necessary.  Table slots could be  used for other data such as
+segment number  array extensions.  The  first half word  in every
+entry is reserved for the purpose of indicating whether the entry
+is in use and threading logically related entries together.
+
+Sometimes,  access-data is  put or left  in the table  for a file
+that  does  not  exist.   During  the  operation  of  the  create
+primitive, the  access-data is built  up while the  file is being
+created.   This   permits  the  file  manager   to  use  standard
+mechanisms  to  allocate  control-interval  zero and  to  put the
+attributes into it.  During the delete operation, the access-data
+is left in the table until the  open count goes to zero and there
+is no  chance that the  before-journal manager will  be using the
+OID.
+
+The file manager can not expand or contract the table dynamically
+but  the  number  of  entries  in the  table  can  be  changed by
+modifying the include file  dm_fm_proc_ad_tbl and recompiling the
+programs that use it.
+
+5.5 access-data table structure
+
+          dcl  1 proc_ad_tbl          aligned based,
+                 2 h,
+                   3 version          bit (36),
+                   3 last_entry       fixed bin,
+                   3 mbz_1            fixed bin,
+                   3 post_txn_closes  fixed bin,
+                   3 mbz_2            (6) fixed bin (71),
+                 2 e                  (1024) like proc_ad;
+where:
+
+     "h" means table header.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+     "version" is the version of the structure.
+
+     "last_entry" is the index of the last table entry in use.
+
+     "post_txn_closes"  is the  head of  the list  of access-data
+          blocks  that  can  be  discarded  at  the  end  of  the
+          transaction.  If its value is negative one, the list is
+          empty.
+
+     "e" is the array of table entries.
+
+6 BASIC PROTECTION
+
+Even  if concurrency  control and protection  against failure are
+turned off,  a protected file  is not the same  as an unprotected
+one  for two  reasons.  First, it  can only be  accessed when the
+process  is  in  a  transaction.   Second,  when  the transaction
+commits, the modified control-intervals  are flushed (written) to
+mass-storage.
+
+6.1 modified CI table management
+
+This  table  contains references  to control-intervals  that have
+been  modified  during  a  transaction.   The  entries  refer  to
+control-intervals  by refering  to the  pages that  contain them.
+Each  entry consists  of a segment  number and  page number.  The
+entries are  kept sorted, first  by ascending segment  number and
+then  by ascending  page number.   Each entry  is one  word.  The
+segment number and page number are  arranged so that the word can
+be treated as a fixed binary  single precision number that can be
+sorted  by  its  value.  This  ordering  is not  required  by the
+supervisor primitive that takes the list as input and flushes the
+pages.   The  supervisor only  requires  that the  pages  of each
+segment be grouped and be in ascending order.
+
+It would be more efficient to keep the table in hash format while
+it is accumulating modified pages and then sort it before calling
+the supervisor, but it is done  a simpler way.  It is kept sorted
+at all times.   There are two stacks of pages,  one at the top of
+the table and one at the  bottom.  There are two pointers, one to
+the  end page  in each  stack.  To insert  a new  page, the pages
+already in the table are moved  from one stack to the other until
+the new  page can be added  to the end of one  of the stacks.  At
+the end of the transaction, all  the pages are moved to the lower
+stack  and  the supervisor  flushing primitive  is called  with a
+pointer to it.
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+The size of the table is fixed  at compile time, so when it fills
+up, the supervisor is called to  flush the pages.  If the file is
+protected by rollback,  some of the pages to  be flushed may have
+before-images  that  have not  been flushed,  so before  the file
+manager flushes  the pages it flushes  the before-journal.  There
+is no  need to flush the  before-journal if none of  the pages in
+the table  are protected by before-images,  so the before-journal
+flushing is mediated by a bit that  is turned on only when a page
+that is protected  by rollback is added to  the table.  At commit
+time,  when  the transaction  manager calls  the file  manager to
+flush  the  modified pages,  the  bit is  turned off  because the
+transaction manager flushes the before-journal before calling the
+file manager.
+
+During rollback the table accumulates modified pages that must be
+flushed when the rollback is complete, but since no before-images
+are   taken   during  rollback,   the   bit  that   mediates  the
+before-journal  flushing  is  not  turned  on.   The  transaction
+manager flushes the before-journal before a rollback, but the bit
+may still  be on from  before the rollback  since the transaction
+manager does not flush the modified pages before a rollback.  The
+file manager compensates  for this by turning the  bit off during
+each "unput" operation.  This works  because during the ill fated
+transaction it  is turned on after  each before-image is written,
+so unput  will certainly be  called if the  transaction is rolled
+back.
+
+These complications could be eliminated  simply by not having the
+transaction manager flush the  before-journal and instead letting
+the  file manager  do it according  to its  journal flushing bit.
+The complications arise from the need  to turn the bit off at the
+correct times in  order to avoid redundent flushes.   There is no
+need to flush the journal before rollback.
+
+Before  a  file  is  deleted  or  its  access-data  is discarded,
+modified  pages  are  flushed  to eliminate  from  the  table the
+segment numbers associated with the file, because the segments to
+which they refer will soon be unknown to the process.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+6.2 modified CI table structure
+
+          dcl  1 proc_txn             aligned based,
+                 2 tid                bit (36),
+                 2 flush_bj_first     bit,
+                 2 going_down         bit,
+                 2 low_idx            fixed bin,
+                 2 high_idx           fixed bin,
+                 2 version            fixed bin,
+                 2 n_pages            fixed bin,
+                 2 mod_pages          (57) fixed bin (33);
+
+          dcl  1 mod_page_breakout    aligned,
+                 2 segment_number     bit (18) unal,
+                 2 page_number        fixed bin unal;
+where:
+
+     "tid"   is  the   transaction  identifier   of  the  current
+          transaction.  It is used to make sure that the pages of
+          one transaction get flushed before the pages of another
+          are entered into the table.
+
+     "flush_bj_first" tells  whether to flush  the before-journal
+          before flushing the pages.
+
+     "going_down" is used to optimize the insertion algorithm for
+          the   case   where   the  pages   are   being  modified
+          sequentially.  Down is toward the head of the table.
+
+     "low_idx" points to the end  of the stack originating at the
+          bottom of the table.
+
+     "high_idx" points to the end of the stack originating at the
+          top of the table.
+
+     "version" is  the version number required  by the supervisor
+          primitive  that flushes  the pages.   This item  is the
+          beginning  of  the  structure  that  is  passed  to the
+          supervisor.
+
+     "n_pages" tells the supervisor how many pages to flush.
+
+     "mod_pages"  is  the  array  of numbers  that  represent the
+          modified   pages.    They  are   kept  in   two  stacks
+          originating  at  the  ends  of the  array  and pointing
+          toward the center.
+
+     "mod_page_breakout" breaks out the internal structure of the
+          numbers in the array.
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+     "segment_number"  is the  segment number  of the  page to be
+          flushed.
+
+     "page_number"  is the  zero relative  ordinal number  of the
+          page within the segment.
+
+6.3 protection incompleteness
+
+Multics  directories  are  not protected  in  the data-management
+sense,  so  data-management files  have  the pecular  defect that
+although the control-intervals modified by committed transactions
+are secure  against system failure,  a recently created  file may
+disappear or a recently deleted  file may reappear after a system
+failure.   Furthermore, recently  allocated control-intervals and
+the data  they contain can  be lost if the  allocation required a
+new  MSF component  to be created.   This is true  even after the
+transaction commits successfully because the file manager can not
+force  modified  directories  to   be  written  to  mass-storage.
+Fortunately, such lossage can only happen when the system crashes
+and emergency shutdown (ESD) is not successful, which is rare.
+
+Directory lossages have several other implications which will not
+be elaborated on.  If the system crashes and ESD fails soon after
+data-management system startup, tables in newly created segments,
+upon  which  the  file  manager  and  the  before-journal manager
+depend,  may  be  lost.   This would  render  the data-management
+system  incapable  of  undoing the  modifications  of uncommitted
+transactions.  The  loss of a newly  created before-journal would
+have  the  same effect  on  the files  which  it was  supposed to
+protect.
+
+Several  solutions  to  this  problem  have  been  proposed.  The
+supervisor could provide a  directory flushing primitive that the
+file  manager would  call after it  creates or deletes  a file or
+component.  Each directory could have  a switch that, when turned
+on, would cause  it to be flushed after  every modification.  Or,
+the  DIRW  card can  be added  to  the config  deck.  This  is an
+existing Multics capability, but causes a lot of overhead because
+it flushes every directory after every modification.
+
+Another solution is to adopt  the orphan segments and directories
+after  an  ESD  failure.    This  would  be  rather  complicated,
+especially if ACLs  and addnames are to be  restored.  Since ACLs
+and addnames are important in  many applications, any scheme that
+does not restore them is probably inadequate.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+7 CONCURRENCY CONTROL
+
+There  are  two  aspects  of  concurrency  control.   One  is the
+protection which  permits users to  read and write  files without
+regard to other users who  are accessing them simultaneously.  It
+is provided by a hierarchical lock manager which is called by the
+file manager.  The  only lock logic in the  file manager is there
+to permit  an application to  give the file  manager optimization
+advice  that allows  it to  skip some  calls to  the lock manager
+without compromising concurrency protection.  The other aspect of
+concurrency control is the so  called fast lock mechanism that is
+used  to regulate  access to  the file  manager's internal tables
+which are shared by all  processes.  Currently, there is only one
+such table, the UID/pathname table.
+
+7.1 lock hierarchy
+
+The lock manager uses a hierarchical lock model which is intended
+to maximize  concurrency and minimize overhead.   The model has a
+two level  hierarchy in which  files occupy the  higher level and
+control-intervals occupy the lower  level.  Locks come in several
+degrees of exclusivity, called  modes.  Some modes are compatible
+with  themselves or  other modes,  which means  that they  can be
+granted  simultaneously.  When  incompatable modes  are requested
+for the same file or control-interval, one of the requesters must
+wait.  A file may be locked without locking any control-intervals
+in it, but  no control-intervals may be locked  without some mode
+of lock on the file.  This model is explained briefly here and in
+detail in MTB-514 "Concurrency Management - Overview".
+
+Files and control-intervals may be locked in the following modes:
+
+     S    Share
+          Let others lock this file or CI in S mode only.
+
+     X    Exclusive
+          Let nobody else lock this file or CI in any mode.
+
+     IS   Intention Share                (only for files)
+          I need to lock at least one CI in S mode.
+
+     IX   Intention Exclusive            (only for files)
+          I need to lock least one CI in S or X mode.
+
+     SIX  Share with Intention Exclusive (only for files)
+          Let others lock this file in IS mode only.
+
+To  the  lock  manager, a  file  is  represented by  its  UID.  A
+control-interval  is represented  by the combination  of its file
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+UID and its  ordinal number.  Normally, the file  manager locks a
+control-interval in S mode before it  reads from it and in X mode
+before it writes  into it.  It uses X mode  to allocate or free a
+control-interval.  It uses X mode at  the file level to create or
+delete  a  file.   It  does   not  remember,  from  operation  to
+operation, what it has locked.
+
+If several  transactions become deadlocked, which  means that the
+first  needs a  lock that  is held by  the second  and the second
+needs  a lock  that is held  by the third  and so on  back to the
+first,   the  lock   manager  signals   the  transaction_deadlock
+condition.  This  usurps control from  the file manager  during a
+call to  the lock manager.   Since this signal is  not handled in
+the  data-management-ring,  a crawlout  occurs which  unwinds the
+stack.   The file  manager is prepared  for this  and has cleanup
+handlers where needed.
+
+7.2 lock advice
+
+The  two  levels  of  the  lock  hierarchy  can  be  seen  as two
+granularities.  File locks are  coarse and control-interval locks
+are fine.   One of the  properties of this model  is that locking
+too coarsely or using a  more exclusive mode than necessary never
+compromises  the  correctness  of  the  locking  protocol.   This
+permits some optimizations.  For example, if the application will
+be reading every  control-interval in the file, it  might as well
+lock the entire  file in S mode and save  the overhead of locking
+each control-interval.
+
+There is  an entry point  by which an application  can advise the
+file  manager  about  what  file  level lock  mode  to  use  on a
+particular file.   The file manager  uses this advice  by calling
+the lock manager to lock the file in the advised mode just before
+calling it to lock the first control-interval in the file, or the
+first control-interval since the lock advice was given.
+
+The lock advice mechanism is designed so that concurrency control
+can not  be compromised even  if the application  gives incorrect
+advice.  If  no lock advice  is given, the file  manager does not
+explicitly   lock    the   file   before    locking   the   first
+control-interval.  Instead,  it relies on the  lock manager which
+automatically locks the file in  the least exclusive mode that is
+sufficient  for the  control-interval mode.   Furthermore, if the
+file  lock  mode  resulting  from lock  advice  is insufficiently
+exclusive, the lock manager automatically upgrades it.
+
+In  the   future  the  file  manager   will  probably  take  full
+responsibility  for  choosing  the  correct  file  lock  mode and
+locking  the file  when necessary, because  it can to  do it more
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+efficiently than the  lock manager.  For the time  being the file
+manager  uncritically uses  the mode supplied  by the application
+and only locks  the file when the operation  applies to the whole
+file or when lock advice has been given.
+
+Two  fields  in  the  perprocess  file  access-data  are  used to
+implement lock advice.  One contains  the lock mode and the other
+contains  the  transaction  identifier  of  the  last transaction
+during which  the lock advice  for this file was  used.  When the
+file manager gets ready to  lock a control-interval, it checks to
+see if  there is any lock  advice.  If there is,  it compares the
+transaction  identifier   in  the  access-data   to  the  current
+transaction identifier,  to see if  a new transaction  has begun.
+If  it  has,  it  updates   the  transaction  identifier  in  the
+access-data and locks the file in the advised mode.
+
+7.3 fast locks
+
+Fast locks are double-word semaphores used in the data-management
+system.   The  file  manager  only uses  one  fast  lock,  on its
+UID/pathname table.   It is treated  as an exclusive  lock on the
+table which  is never accessed without  its protection.  Whenever
+it is  locked, a cleanup  handler is established to  unlock it in
+case  of a  fault and subsequent  unwind.  If  the process should
+fail while  it holds the lock,  the next process to  get the lock
+will  be  advised of  this by  a status-code  from the  fast lock
+manager.   This  status-code is  explicitly ignored,  because the
+UID/pathname  table  is  carefully  updated and  is  never  in an
+inconsistent state.
+
+8 PROTECTION AGAINST FAILURES
+
+Protection  against three  kinds of failures  is provided through
+the mechanism of before-image  journalizing.  The three kinds are
+application,   process,   and  Multics   failures.   Journalizing
+protects only the existence, content,  and some of the attributes
+of files.   It does not  protect perprocess data,  file openings,
+file ACLs, data communications, non-file  data, etc.  Most of the
+journalizing mechanism is in  the before-journal manager which is
+described in MTB-560, "Before-journal Manager Design".
+
+During a  transaction, the file manager  calls the before-journal
+manager  to  journalize   before-images,  rollback-handlers,  and
+postcommit-handlers.  Each image or  handler contains the OID and
+UID  of  the  file  to   which  it  belongs.   Before-images  and
+rollback-handlers  undo  file  modifications  during  a rollback.
+Postcommit-handlers  perform  delayed  actions  after  a  commit.
+During   a   rollback,  the   before-journal   manager  processes
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+before-images and rollback-handlers  in one reverse chronological
+pass.   After  a  commit,  the  before-journal  manager processes
+postcommit-handlers in reverse chronological order.
+
+Multics  page-control, the  before-journal manager,  and the file
+manager  obey   a  write-sync  protocol,   which  prevents  pages
+containing   modified   control-intervals   from   being  flushed
+(written)   to   mass-storage   until   their   before-images  or
+rollback-handlers   are   flushed.    The   write-sync   protocol
+guarantees that,  if Multics crashes  and main-memory can  not be
+flushed,  all modified  control-intervals in  mass-storage can be
+rolled   back  using   before-images  and   rollback-handlers  in
+mass-storage.
+
+8.1 before-images
+
+An application  puts data into a  control-interval by building an
+array of descriptors  called "parts", and passing it  to the file
+manager.  Each part consists of a byte offset, a byte length, and
+a  buffer  pointer.  Before  modifying the  control-interval, the
+file manager copies the parts into a parts-array in its automatic
+storage, so that  there is no chance that  they will change after
+they are  checked.  When it  does the copy, it  copies the buffer
+pointers  into  a  separate  array, and  puts  a  pointer  to the
+location  of the  part in  the control-interval  in the automatic
+parts-array.  It then calls  the before-journal manager with this
+set  of parts,  from which the  before-journal manager constructs
+the before-image.
+
+The automatic  parts-array and the separate  array into which the
+buffer  pointers are  copied have  the same  dimension, which has
+been chosen so that it is almost always larger than the dimension
+of   the   parts-array  built   by   the  application.    If  the
+application's  parts-array  is larger,  it  will be  processed in
+chunks, so there will be more than one before image.  If metering
+shows  that  this  is  happening  regularly,  the  size  of  this
+dimension should  be increased by changing  it in the declaration
+of the two arrays and recompiling the program (fm_put_).
+
+During    rollback,   the    before-journal   manager   processes
+rollback-handlers by  reconstructing the parts-array  and calling
+the  file  manager's  "unput" primitive.   The  "unput" primitive
+differs  from  the "put"  primitive in  that it  does not  take a
+before image  and it does not  modify the control-interval stamp.
+It  does  not  modify  the  stamp  because  the  journal  is  not
+necessarily flushed  before rollback, so  the stamp may  still be
+holding  the  control-interval  in  main-memory  (see "write-sync
+protocol"  below).  If  the rollback does  not take  place in the
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+process that created the  transaction, the before-journal manager
+opens files using the UIDs in the before-images.
+
+8.2 rollback-handlers
+
+The  file  manager uses  rollback-handlers to  protect operations
+such as  "create", "delete", "allocate", and  "free".  Before one
+of   these   operations,   the   file   manager   journalizes   a
+rollback-handler  record  which   identifies  the  operation  and
+contains the information necessary to undo it.
+
+Some  operations  such  as  "allocate"  may  need  to  hold  many
+control-intervals in  main-memory using the  write-sync protocol.
+When the file manager calls the before-journal manager to write a
+rollback-handler, it  always tells the number  of pages that will
+be  held.  The  before-journal manager needs  this information to
+calculate an  upper bound on  the number of pages  that are being
+held by  the write-sync protocol,  so that it  can start flushing
+journals if it gets near the limit.
+
+During   a   rollback,  the   before-journal   manager  processes
+rollback-handlers by calling the  file manager's "undo" primitive
+and passing  it a pointer  to the rollback-handler  record.  Undo
+operations are idempotent, so if  rollback is interrupted, it can
+be  restarted  from  the  beginning.   If  one  process  starts a
+transaction and  another rolls it back,  during the rollback, the
+before-journal  manager  opens  files   using  the  UIDs  in  the
+rollback-handlers.  The  UID passed to  "undo" is used  to double
+check the correctness of the OID.
+
+Some operations, such as "create"  and "free", can not hold their
+effects in  main-memory.  So, they must  flush the before-journal
+before they act.  In order to  save an occasional extra call, the
+file manager  always tells the before-journal  manager whether to
+flush the journal after a rollback-handler is written.
+
+8.3 postcommit-handlers
+
+Some file  modifications are more efficiently  protected by using
+delayed  posting,  instead  of  rollback.   In  delayed  posting,
+instead  of journalizing  a rollback-handler  and then performing
+the action immediately, the action is postponed by journalizing a
+postcommit-handler.  Delayed posting  is complicated because, for
+the remainder of the transaction,  the file manager must maintain
+the deception that the action was actually performed.
+
+File deletion is a good example  of the need for delayed posting.
+Delaying the deletion of a  file until the transaction commits is
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+cheaper than  copying the whole  file into the  before journal so
+that it can be deleted immediately.
+
+Delayed posting requires a  two-phase commit protocol.  The first
+phase   flushes   the  modified   control-intervals,   marks  the
+transaction  as   "committing",  and  executes   delayed  actions
+specified  by  postcommit-handlers  in the  journal.   The second
+phase  flushes  the control-intervals  modified during  the first
+phase,  marks  the  transaction   as  "committed",  discards  its
+before-journalizations, and unlocks its  locks.  If the commit is
+interrupted during either phase, the  recovery action is to begin
+again  from  the  beginning  of  the  phase.   If  a  process  is
+interrupted during the first phase  and another process begins it
+again, the  before-journal manager opens files  using the UIDs in
+the  postcommit-handlers.  The  UID passed  to "postcommit_do" is
+used to double check the correctness of the OID.
+
+Two problems must be taken into  consideration in the design of a
+delayed action.  First, the user  can request an action and later
+request an action that counteracts  it.  Second, since it is much
+easier    for    the    before-journal    manager    to    thread
+postcommit-handlers backward  than forward, and since  it is much
+easier to process  them in thread order, it  presents them to the
+file manager in reverse chronological order during commit.  These
+two   problems    are   solved   with   two    rules.    One,   a
+postcommit-handler  must   act  only  if  the   action  is  still
+postponed.  It will always be  possible to determine this because
+simulating an action  requires that there be some  way of telling
+that  it  has  been  postponed.   Two,  a  counteraction  must be
+prepared to handle the postponed case.
+
+8.4 write-sync protocol
+
+The  write-sync protocol  is described in  MTB-564, "Phasing Page
+Control and Before Journal".  The MSF component segments of files
+protected by rollback  are "synchronized-segments".  They receive
+special handling by page-control which assumes that the first two
+words   of    a   "synchronized-page"   are    formatted   as   a
+control-interval stamp.   When page-control intends  to purify or
+flush  a synchronized-page,  it first  examines the  stamp in the
+control-interval  header.   The stamp  contains  an index  into a
+table  that is  maintained by  the before-journal  manager.  Each
+table  entry represents  a before-journal and  contains the clock
+reading  of  the  latest  before-image  that  has  been  flushed.
+Before-images in  a before-journal are  flushed sequentially.  In
+addition to  the index, the control-interval  stamp also contains
+the  clock reading  of the before-image  taken the  last time the
+control-interval  was modified.   If the  clock reading  from the
+table  is  earlier than  the  clock reading  from the  stamp, the
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+synchronized-page  must be  held in  main-memory.  It  can not be
+purified  yet, because  if it  were and  Multics crashed  and ESD
+failed, its before image might be lost.
+
+When the file manager writes a before-image (or rollback-handler)
+the before-journal manager reads the clock, puts the reading into
+the  before-image, and  adds the before-image  to the  end of the
+journal.  It then  returns to the file manager  with the index of
+the before-journal and the clock  reading.  The file manager puts
+the index and clock reading  into the control-interval header and
+then   proceeds  to   modify  the   control-interval.   When  the
+before-journal  manager flushes  a journal, it  records the clock
+reading of the last before-image  flushed in the table referenced
+by page-control.
+
+8.5 support for before-journals
+
+Before-journals  are  unprotected   data-management  files.   The
+before-journal  manager keeps  track of  the control-intervals it
+has  modified and  flushes them  periodically.  The  file manager
+provides the "flush_consecutive_ci" entry point for this purpose.
+It   is   capable   of    flushing   a   consecutive   group   of
+control-intervals.
+
+The before  journal-manager depends on  the clock reading  in the
+stamp  in  the control-interval  header.   When the  file manager
+modifies a control  interval in an unprotected file,  it sets the
+before-journal  index to  zero and puts  the current  time in the
+clock field.  The before-journal  manager uses this clock reading
+when it is trying to find the end of a journal after a crash.
+
+9 PROPOSED ROLLBACK HANDLERS
+
+There  are  four  file  manager operations  that  are  either not
+protected  against  failures or  are  not protected  in  the most
+efficient way.  The four operations are:
+
+          create file                   (unprotected)
+          delete file                   (unprotected)
+          allocate control-interval     (unprotected)
+          free control-interval         (inefficiently protected)
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+9.1 existing rollback protection
+
+9.1.1 CREATE (UNPROTECTED)
+
+A  file is  created.  If  the transaction  commits, everything is
+fine.  If the transaction aborts, the file remains.
+
+9.1.2 DELETE (UNPROTECTED)
+
+A  file is  deleted.  If  the transaction  commits, everything is
+fine.  If the transaction aborts, the file is lost.
+
+9.1.3 ALLOCATE (UNPROTECTED)
+
+If a control-interval is already allocated, no action is taken.
+
+If  a control-interval  is free, storage  is reserved  for it and
+quota  is taken  up.  If  the transaction  commits, everything is
+fine.  If  the transaction aborts,  the storage is  not freed and
+quota  is not  released.  Unwanted control  intervals produced in
+this way have  an all zero data content  because the data content
+is all zero at creation and subsequent updates are rolled back.
+
+The  lack of  rollback protection  for the  allocate operation is
+compensated  by  the  collection  manager.   It  keeps  a  map of
+control-intervals  that  it  has  allocated.  If  it  allocates a
+control-interval in a transaction that  is later aborted, the map
+is rolled back, and the content of the control-interval is rolled
+back, but the  control-interval is not freed.  The  next time the
+collection  manager tries  to allocate  this control-interval, it
+receives dm_error_$ci_already_allocated.   The collection manager
+treats  this  like  a  zero  status-code.   The  control-interval
+contains all zeros, just like a freshly allocated one.
+
+9.1.4 FREE (INEFFICIENTLY PROTECTED)
+
+If a control-interval is already free, no action is taken.  If it
+is not already free, a before-image of the entire data content of
+the  control  interval  is  written  to  the  before-journal, the
+before-journal is flushed, the storage of the control-interval is
+freed,  and  quota  released.   Flushing  the  before-journal  is
+necessary because the storage is  freed by zeroing the page which
+eliminates  the before-journal  synchronization information which
+would have held the page  until its before-image was written.  If
+the transaction commits, everything  is fine.  If the transaction
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+aborts,  the control-interval  is automatically  reallocated when
+the before-image is restored.
+
+9.2 proposed full rollback protection
+
+9.2.1 CREATE (PROTECTED)
+
+A  file is  created with  a shriek name.   Then its  real name is
+added.  If  the transaction commits, the  shriek name is removed.
+If the transaction aborts, the file is deleted.
+
+9.2.2 DELETE (PROTECTED)
+
+All the  names of a file  are replaced with one  shriek name.  If
+the transaction commits, the file is deleted.  If the transaction
+aborts, the shriek name is replaced with the origional names.
+
+9.2.3 ALLOCATE (PROTECTED)
+
+If a control-interval is already allocated, no action is taken.
+
+If a control-interval is "logically  free", a before-image of its
+data content  is written to the  before-journal, its data content
+is  zeroed, and  the "logically  free" mark  is removed.   If the
+transaction    commits,    everything   is    fine    because   a
+postcommit-handler  for  free  will not  free  a control-interval
+unless it  is "logically free".   If the transaction  aborts, the
+before-image   of   the  content   will   be  restored   and  the
+rollback-handler  for  the  free  operation,  which  removes  the
+"logically free" mark, will do nothing because it is idempotent.
+
+If a control-interval is free,  storage is reserved for it, quota
+is  taken   up,  and  a   rollback-handler  is  written   in  the
+before-journal.  If the transaction  commits, everything is fine.
+If the transaction aborts, the rollback-handler frees the storage
+and releases the quota.
+
+9.2.4 FREE (PROTECTED)
+
+If a control-interval  is free or "logically free",  no action is
+taken.
+
+If a control-interval is allocated, a rollback-handler is written
+to  the   before-journal,  the  control-interval   is  marked  as
+"logically  free",  and a  postcommit-handler  is written  to the
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+before-journal.    If    the   transaction   commits    and   the
+control-interval     is     still    "logically     free",    the
+postcommit-handler frees the storage  of the control-interval and
+releases   quota.    If   the   transaction   commits   and   the
+control-interval   is  allocated,   the  postcommit-handler  does
+nothing.  If the transaction aborts, the rollback-handler removes
+the "logically free" mark.
+
+9.3 proposed partial rollback protection
+
+9.3.1 CREATE (UNPROTECTED)
+
+No change to the existing implementation.
+
+9.3.2 DELETE (UNPROTECTED)
+
+No change to the existing implementation.
+
+9.3.3 ALLOCATE (PROTECTED)
+
+If a control-interval is already allocated, no action is taken.
+
+If a control-interval is free,  storage is reserved for it, quota
+is  taken   up,  and  a   rollback-handler  is  written   in  the
+before-journal.  If the transaction  commits, everything is fine.
+If the transaction aborts, the rollback-handler frees the storage
+and releases the quota.
+
+9.3.4 FREE (INEFFICIENTLY PROTECTED)
+
+No change to the existing implementation.
+
+9.4 user environment implications
+
+9.4.1 CREATE (WITH AND WITHOUT)
+
+MRDS  creates files  during database  creation and restructuring.
+These  operations modify  the database model  which describes the
+files  in the  database directory.   The model  is not protected.
+After a transaction containing database creation or restructuring
+aborts, the  model may be  out of sync  with the contents  of the
+database  directory.   This is  true  regardless of  whether file
+creations  are rolled  back or  not.  If  file creations  are not
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+rolled back, their content is rolled back to all zero so they are
+not formatted as relations.
+
+9.4.2 DELETE (WITH AND WITHOUT)
+
+Data-management  files  in  MRDS  databases are  deleted  by MRDS
+restructuring  and  by the  delete_dir command  which is  used to
+delete  entire  databases.   In  the case  of  restructuring, the
+relations described  by the database directory  can become out of
+sync  with  those described  in the  model regardless  of whether
+deletions  are  rolled  back or  not,  because the  model  is not
+protected.  In  the case of the  delete_dir command, the contents
+of the database directory, including the model, are deleted in an
+unspecified order.   If there is  no current transaction,  one is
+started before  and committed after  each file deletion.   If the
+only  operation in  a transaction  is the  deletion of  one file,
+interrupting  it and  rolling it back  has little  value.  If the
+entire database deletion is to be wrapped in one transaction, the
+delete_dir  command must  be modified  to commit  the transaction
+before  it  deletes  the  directory,  because  rollback  will not
+recreate  the containing  directory of a  file.  Furthermore, the
+proposed implementation of protected deletion does not delete the
+file until the transaction commits.
+
+9.4.3 ALLOCATE (WITH AND WITHOUT)
+
+Not  rolling back  control-interval allocations has  an effect on
+the  quota  taken  up by  a  MRDS database.   When  a transaction
+allocates  control-intervals and  then aborts,  the quota  is not
+released.    These  control-intervals   waste  quota   until  the
+collection manager uses  them again, which might be  a long time.
+There is an unfortunate special case where the transaction aborts
+because it  has allocated so many  control-intervals that it runs
+out of  quota.  The only way  to recover this quota  is to reload
+the database.
+
+9.4.4 FREE (EXISTING AND PROPOSED)
+
+The  free  operation  is  fully protected  in  both  the existing
+implementation  and the  proposed one.  The  only differences are
+the amount  of space used  in the before-journal and  the time at
+which quota  is released.  The existing  implementation records a
+large before-image of the  entire control-interval.  The proposed
+implementation  records  a  small  rollback-handler  and  a small
+postcommit-handler.  Moreover, each handler  may cover a group of
+control  intervals.  The  existing implementation  releases quota
+immediately.   The proposed  implementation releases  quota after
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+the transaction  commits.  Neither of these  differences are very
+significant.
+
+9.5 implementing features later as an incompatable change
+
+9.5.1 CREATE AND DELETE
+
+Without major  enhancements, MRDS can  not take advantage  of the
+ability to  roll back create  and delete.  Providing  the ability
+would not  improve MRDS, nor  does the lack of  the ability injur
+it.  Non-MRDS applications might be able to use this ability, but
+this  is  uncertain because  no  such applications  are currently
+planned.
+
+9.5.2 ALLOCATE AND FREE
+
+Protecting  the  allocate  operation  at a  future  time  will be
+compatible with  the collection manager  and thus MRDS.   This is
+because  the  collection  manager   has  been  designed  to  work
+correctly either way.   It is easy for a  non-MRDS application to
+achieve  this  compatability,  and  it can  be  described  in the
+documentation.
+
+The   free  operation   is  already   fully,  but  inefficiently,
+protected.  The amount of before-journal space needed for various
+operations  is already  a concern.   Protecting free  while using
+less bj space seems like a  good idea, until the amount of effort
+is taken into consideration.  The large amount of bj space is not
+caused by  the current implementation of  rollback protection for
+the  free  operation.   This   is  because  control-intervals  in
+relations are rarely freed, because neither the relation manager,
+the  index manager,  nor the  collection manager,  in the current
+implementation,  do any  garbage collection.  The  only case that
+will cause the  freeing of a control interval is  when all of the
+elements in it  have been deleted.  The only  scenario that would
+cause this is a dsl_$delete where the selection expression causes
+all the  index elements in  an index node  to be freed.   Even if
+every tuple  in the relation  is deleted, the amount  of bj space
+associated with  freeing the control-intervals will  be less than
+the space used up in deleting the elements.
+
+10 PROPOSED FILE DUMPING
+
+In order to protect data-management  files against the failure of
+the  mass-storage  media  upon  which they  reside,  they  can be
+periodically dumped onto archival storage media.  While files are
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+implemented  as MSFs,  the existing Multics  hierarchy and volume
+dumpers can serve  this need.  Their main defect  is that they do
+not honor the  protection provided by the file  manager, so there
+is  no guarantee  that the  dump will  be consistent.  Therefore,
+extra  administrative and  operational effort may  be required to
+get consistent dumps.
+
+The  volume  dumper exhibits  this defect  more severly  than the
+hierarchy   dumper   because   the   component   segments   of  a
+multi-segment  file  on a  logical  volume which  is  composed of
+several  physical  volumes  are  likely  to  reside  on different
+physical  volumes, and  since the  volume dumper  dumps an entire
+physical volume  before proceeding to  the next, there  will be a
+substantial  time  lag  during  which the  file  may  be updated,
+causing  the  dumped  components  to  be  inconsistent  with  the
+components yet to be dumped.   The hierarchy dumper, on the other
+hand, dumps all of the components  in succession so that there is
+less chance that they will be updated during the dump.
+
+The capability to consistently dump data-management files has not
+yet been specified or designed.  It must not only be able to dump
+files  consistently, but  must be  able to  dump groups  of files
+which  constitute  databases   and  other  application  dependent
+assemblages, which  must be kept consistent  with respect to each
+other.
+
+11 PROPOSED AFTER JOURNALS
+
+Dumping  only  protects files  to the  extent of  restoring their
+content as of the time of the last dump.  Protection against mass
+media failure  can be further  improved by journalizing  all data
+updates after a dump.  When the files have been restored from the
+dump, these after-images  can be reapplied to bring  the files up
+to date.
+
+An after-image journal is very similar to a before-image journal.
+It  contains  images of  the data  after modification  instead of
+before.  The after-journal manager  has been specified in MTB-561
+"Data Management:  After Journal  Manager Specification".  It has
+not yet been designed or implemented.
+
+The   file   manager   contains   some   code   that  anticipates
+after-journals.   There is  a bit  in the  perprocess access-data
+structure,  but  there  is  no  corresponding  bit  in  the  file
+attributes  structure.   This bit  is  tested by  "if" statements
+where the  after-journal manager would be  called, but the "then"
+clauses are null.
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+12 THE DATA MANAGEMENT DAEMON
+
+The file manager  has some entry points which  are intended to be
+called  by the  data-management daemon.   These entry  points are
+associated with system  initialization, rolling back transactions
+of dead processes, and recovering after a Multics crash.
+
+12.1 transaction adoption
+
+When  the daemon  attempts to roll  back a  transaction, the file
+manager's list of modified  control-intervals grows.  The attempt
+may  fail,  leaving  modified  control  intervals  in  the table.
+Therefore, before the daemon attempts to roll back a transaction,
+it calls the "adopt" primitive which discards any contents of the
+table.
+
+12.2 recovery after crash
+
+The file manager has three entry points to support recovery after
+a Multics crash.  The first initiates the old UID/pathname table.
+During  the  rollback of  transactions caught  by the  crash, the
+before-journal manager calls "open_by_uid_after_crash" instead of
+"open_by_uid".  Finally, when the  recovery is complete, there is
+an entry point to terminate the old UID/pathname table which will
+soon be deleted by the recovery program.
+
+12.3 daemon access
+
+The  file  manager  always  gives   the  daemon  "rw"  access  to
+data-management  files,  so  that  it  can  roll  them  back when
+necessary.   It  also  tries  to give  the  daemon  "sma"  to the
+containing directory, so that the daemon can roll back the create
+and delete operations,  but the user does not  always have enough
+power to do this.
+
+13 EXTENDED OBJECT SUPPORT
+
+The most fundamental requirement for extended-object support is a
+"validate"  primitive.  Since  it is  heavily used,  it should be
+efficient, so  it is implemented  in a way that  does not require
+the file to be opened or perprocess initialization to be run.
+
+When  a file  is created, the  name "_Data_Management_file_._" is
+added to component zero.   The "validate" primitive verifies that
+component zero  has the correct  ring brackets and  addname.  The
+"validate" primitive  is transfered to directly  from the gate so
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+that  control  does  not  pass  through  the data-management-ring
+transfer-vector, which  would cause perprocess  initialization to
+run.   It is  in a  separate program  (fm_validate_) that  is not
+bound with the vector, for the same reason.
+
+14 ACCESS CONTROL
+
+14.1 ring brackets
+
+Ring brackets for data-management files have not been implemented
+yet.  See "PROPOSED FEATURES".
+
+14.2 access control lists (ACLs)
+
+The file manager uses the ACL primitives of the MSF manager.  The
+file  manager  ACL  primitives  are just  "call-throughs"  to the
+corresponding MSF manager primitives.
+
+14.3 access isolation mechanism (AIM)
+
+The file manager has no explicit  code to support AIM.  It relies
+on Multics  and some data-management system  primitives for that.
+There is a separate data-management system for each AIM level.  A
+process  can only  participate in one  data-management system and
+thus can access data-management files at only one AIM level.
+
+15 ERROR HANDLING AND STATUS REPORTING
+
+Most of the  file manager primitives have a  status-code as their
+last parameter.   The code is  used both for  error reporting and
+status reporting.  More current  thinking is that the status-code
+should only be  used for status reporting and  that errors should
+be signaled.
+
+15.1 status reporting
+
+In the file manager, statuses  are usually represented by one bit
+flags.  Just  before a primitive  returns, it tests  the flag and
+either returns a zero  status-code or some particular status-code
+if the flag is on.
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+15.2 error reporting
+
+In most cases,  when the file manager detects  an error, it jumps
+to an error  label which sets the status-code  to the appropriate
+error-code and returns.  It is  in the process of being converted
+to  call sub_err_  before returning  an error-code.   The modules
+which  have  been converted  have  sub_err_ handlers  that record
+useful messages in dm_system_log.
+
+15.3 condition handling
+
+The  file  manager  does  not handle  any  conditions  other than
+sub_err_, although it does have cleanup handlers where necessary.
+Cleanup is not really a condition,  it is a recovery action.  The
+file  manager  should have  seg_fault_error  handlers so  that it
+could return a proper status-code when a file is deleted out from
+under it.  See "PROPOSED FEATURES".
+
+16 INITIALIZATION
+
+16.1 system initialization
+
+System  initialization  for  the  file manager  consists  only of
+creating and initializing the UID/pathname table.  It runs in the
+data-management daemon's process.
+
+16.2 process initialization
+
+Process  initialization consists  of initiating  the UID/pathname
+table, allocating the access-data table, and allocating the table
+of modified control-intervals.
+
+17 FILE MANAGER MODULARIZATION
+
+The main  consideration governing the modularization  of the file
+manager was performance.  The result  is that the file manager is
+very  unmodularized.   The  primitives   are  divided  among  the
+separately compiled  programs so as to  keep the stack-frame size
+of the most heavily used operations as small as possible.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+17.1 fm_attribute_.pl1
+
+This  module  contains  most   of  the  primitives  that  support
+extended-objects.  In  general it deals with  attributes of files
+such as ACLs, names, switches, etc.
+
+17.2 fm_combos_.pl1
+
+This module contains primitives that  do not need the complicated
+machinery  of fm_open_.   It was  intended to  contain primitives
+that  were  actually combinations  of  calls to  entry  points in
+fm_open_.   Only "create"  and "delete" actually  work like that.
+The  "create"  primitive is  a  combination of  "create_open" and
+"close".  The  "delete" primitive is a  combination of "open" and
+"delete_close".   It  also contains  "open_by_uid" and  the three
+entry points associated with the old UID/pathname table.
+
+17.3 fm_data_.alm
+
+This  is  an alm  data segment.   The segdefs  that refer  to its
+linkage section are external static variables used exclusively by
+the  file manager.   The segdefs in  its text  parameterize a few
+file manager characteristics such as the name of the UID/pathname
+table  and three  switches that  permit protection,  locking, and
+before-journalization to be turned off.  The switches are used in
+the  calculation  of  the   ancillary  service  switches  in  the
+access-data when  a file is opened,  so they can be  used to turn
+off protection,  locking, or before-journalization  for the whole
+system.  Needless to say, they are intended for use by developers
+only.
+
+17.4 fm_fetch_.pl1
+
+This module contains the "fetch" and "store" primitives.  If they
+prove to be  useful, they should be moved  to fm_get_ and fm_put_
+respectively.
+
+17.5 fm_get_.pl1
+
+This  is the  most heavily  used module.   It contains operations
+that  read control-intervals.   It is  a small,  highly optimized
+module  that pushes  a small stack  frame.  It  contains the most
+frequently   called   primitive,   "get".    It   also   contains
+"get_ci_header".  It has only  one subroutine called "INIT" which
+just initializes stack frame variables  to null values and should
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+be  removed  when  performance  becomes  the  main consideration,
+because the logic of the program does not need it.
+
+17.6 fm_open_.pl1
+
+This module contains the slow file manager operations.  It pushes
+a  large stack  frame.  In  general, it  contains primitives that
+apply  to the  file as  a whole,  such as  "create_open", "open",
+"close",  and  "delete_close".   Most  of  the  access-data table
+machinery is in this program.   Also, the machinery for inserting
+and removing entries in the UID/pathname table is here.
+
+17.7 fm_put_.pl1
+
+This  is  the  second  most  heavily  used  module.   It contains
+operations   that   modify  control-intervals.    It   is  highly
+optimized,  pushes a  medium size  stack frame,  and contains the
+frequently called  "put" primitive.  It  also contains "allocate"
+and "free".  It  has a large subroutine that  manages the list of
+modified control-intervals.
+
+17.8 fm_read_.pl1
+
+This  module contains  the "read"  and "write"  primitives, which
+allow a user to view a data-management file as a continuous array
+of bytes.
+
+17.9 fm_std_error_handler_.pl1
+
+This  module  contains what  little  condition handling  the file
+manager currently  has.  It is intended  that all primitives will
+establish any_other handlers that invoke this module.
+
+17.10 fm_validate_.pl1
+
+This module  contains the highly  optimized "validate" primitive.
+It is transfered to directly from  the gate and is not bound with
+the rest of the file manager  so that its invocation does not set
+off perprocess initialization.
+
+18 DESCRIPTIONS OF OPERATIONS
+
+The  names  of  some file  manager  entry  points are  part  of a
+pattern.  The ones marked with a star are not primitives.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+OPERATION    ROLLBACK OP      POSTCOMMIT OP       ROLLFORWARD OP
+             undo             postcommit_do       redo
+create       uncreate*                            recreate*
+delete       undelete*        postdelete*         redelete*
+allocate     unallocate*                          reallocate*
+free         unfree*          postfree*           refree*
+put          unput                                reput
+
+18.1 acl_add
+
+This is just a call-through to msf_manager_$acl_add.
+
+18.2 acl_delete
+
+This is just a call-through to msf_manager_$acl_delete.
+
+18.3 acl_list
+
+This is just a call-through to msf_manager_$acl_list.
+
+18.4 acl_replace
+
+This is just a call-through to msf_manager_$acl_replace.
+
+18.5 add_acl_entries
+
+This just opens the file and calls "acl_add".
+
+18.6 adopt
+
+This is used by the data-management daemon to discard anything in
+the file manager's list of modified control-intervals, so that it
+can begin working on a new transaction.
+
+18.7 allocate
+
+Allocate  allows  applications to  reserve mass-storage  in large
+chunks for better performance.  It avoids the frequent updates to
+the  file  map that  would  occur if  the  control-intervals were
+allocated as needed by the put primitive.  Currently, allocate is
+not  efficiently  implemented,  because  the  way  to  reserve  a
+mass-storage address for  a page is to put  something in it.  The
+semantics   of   allocate   are  designed   to   allow  efficient
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+implementation in  the proposed large-files where  it should only
+reference the file  map.  There must be no need  to IO any of the
+control-intervals being allocated.
+
+18.8 chname_file
+
+This is a call-through to hcs_$chname_file.
+
+18.9 close
+
+This primitive is more complicated  than one would expect because
+it can not close the file if it is in a transaction.  Also it has
+to worry about clearing the list of modified control-intervals.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+18.10 create
+
+18.11 create_open
+
+18.12 delentry_file
+
+18.13 delete
+
+18.14 delete_acl_entries
+
+18.15 delete_close
+
+18.16 end_of_crash_recovery
+
+18.17 fetch
+
+18.18 find_old_uid_pn_table
+
+18.19 flush_consecutive_ci
+
+18.20 flush_modified_ci
+
+18.21 free
+
+18.22 get
+
+18.23 get_ci_header
+
+18.24 get_exclusive
+
+This is in every way identical  to "get" except that it locks the
+control interval  in exclusive mode.   It is intended  for use by
+applications that  expect to do a  "put" into a control-interval,
+but must get from it first.
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+18.25 get_max_length
+
+18.26 get_switch
+
+18.27 get_user_access_modes
+
+18.28 list_acl
+
+18.29 list_switches
+
+18.30 lock_advice
+
+18.31 open
+
+18.32 open_by_uid
+
+18.33 open_by_uid_after_crash
+
+18.34 postcommit_do
+
+The  name of  this primitive  is misspelled  "post_commit" in the
+specification, in the transfer vectors, and in fm_open_.pl1 where
+there is a stub for it.   The name "postcommit_do" is correct and
+consistent with  its meaning and the  naming convention that also
+includes  "unput", "undo",  and "redo".  The  description of this
+primitive   in   the   specification  is   obsolete.    When  the
+specification was written,  the plan was for the  file manager to
+keep a list of postcommit actions.   Now, the plan is to keep the
+postcommit actions in  the before-journal as postcommit-handlers.
+The parameter  list in the  specification and stub  is all wrong.
+It should be:
+
+file_manager_$postcommit_do (OID, UID, postcommit_handler_ptr)
+
+file_manager_$postcommit_do  entry  (bit (36)  aligned,  bit (36)
+aligned, ptr)
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+18.35 prepare_to_copy
+
+18.36 put
+
+18.37 put_journal
+
+18.38 raw_get
+
+18.39 raw_put
+
+18.40 read
+
+18.41 redo
+
+The "redo" entry  point is not specified or  implemented yet.  It
+will be called by  the after-journal manager during roll-forward.
+It is to the after-journal what  the "undo" entry point is to the
+before-journal.  It will probably look something like this:
+
+file_manager_$redo (OID, UID, rollforward_handler_ptr)
+
+file_manager_$redo  entry  (bit (36)  aligned, bit  (36) aligned,
+ptr)
+
+18.42 replace_acl
+
+18.43 reput
+
+This entry point  is not specified or implemented  yet.  It is to
+the after-journal  manager what "unput" is  to the before-journal
+manager.
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+18.44 set_bit_count
+
+18.45 set_max_length
+
+18.46 set_switch
+
+18.47 status
+
+18.48 store
+
+18.49 sub_err_flag_get
+
+18.50 sub_err_flag_set
+
+18.51 suffix_info
+
+18.52 undo
+
+This  entry  point  is  not  in  the  specification  and  is  not
+implemented.   It  exists in  fm_put_.pl1, but  it is  all wrong.
+Even the parameter list is wrong.  It should be:
+
+file_manager_$undo (OID, UID, rollback_handler_ptr)
+
+file_manager_$undo  entry  (bit (36)  aligned, bit  (36) aligned,
+ptr)
+
+18.53 unput
+
+The before-journal  manager needs a special  put primitive in the
+file  manager for  use during  rollback.  Its  parameters are the
+same  as  the regular  put  entry point.   Its action  differs as
+follows:
+
+1.  No before-image is taken.
+
+2.  The control-interval is not locked.
+
+3.  An after-image is taken if the file is so protected.
+
+4.  The process need not be in transaction mode.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+5.  The  date/time modified field of  the control-interval header
+is not updated; nor is it  restored.  It retains the date/time of
+the modification that is being rolled back.
+
+18.54 validate
+
+18.55 write
+
+19 TESTING AND DEBUGGING TOOLS
+
+19.1 command interface
+
+A  tool  to permit  file  manager primitives  to be  invoked from
+command  level  and  exec_coms  would be  useful.   See "PROPOSED
+FEATURES".
+
+19.2 create_file and delete_file
+
+The  commands  create_file  (crf)   and  delete_file  (dlf)  call
+file_manager_$create  and  file_manager_$delete.   These commands
+wrap  the creates  and deletes  in a  transaction if  there is no
+current transaction.  If several files are in the same invocation
+of  the command,  they are all  done in one  transaction.  If any
+error occurs, the transaction is  aborted.  These commands do not
+honor the  star convention.  Create only  creates protected files
+with default attributes.
+
+     create_file (crf)
+     delete_file (dlf)
+
+     usage: create_file file1 file2 file3 ... fileN
+     usage: delete_file file1 file2 file3 ... fileN
+
+19.3 fm_tester
+
+This useful  routine tests the main  file manager primitives.  It
+creates  several  files  and  does  a  lot  of  "get"  and  "put"
+operations on them.  It is a  quick test that is very useful when
+a small change has been made to the file manager.
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+19.4 fm_driver
+
+This  is  intended  for wringing  out  the file  manager  and the
+ancillary  services.   It  copies  every  segment  in  a  certain
+directory into a data-management file.   It is designed to be run
+from multiple processes in order to test concurrency control.  If
+a particular  segment is already  in the file, it  compares it to
+the segment in the directory to make sure the copy in the file is
+correct.
+
+20 PROPOSED FEATURES
+
+This section  describes the features that  have been proposed for
+the  file  manager.   For  each  feature,  it  gives  the reason,
+performance implications, priority, and an estimate of the effort
+necessary  to  provide it.   All  effort estimates  are  given in
+undiluted time.  The actual time can be estimated by doubling the
+undiluted time.
+
+20.1 software ring brackets
+
+Access  to  data-management  files  would be  constrained  by two
+numbers,  called the  write bracket  and the  read bracket.  Each
+file operation would be classified  as either a read operation or
+a write  operation.  Read operations  would be permitted  only if
+the caller's validation level was less  than or equal to the read
+bracket number.  Write operations would  be permitted only if the
+caller's  validation level  was less than  or equal  to the write
+bracket number.
+
+The brackets would be specified in the file creation information.
+If specified, the read bracket could  not be lower than the write
+bracket  and  neither  could  not  be  lower  than  the  caller's
+validation level.   If not specified, they  would both default to
+the caller's  validation level.  In either  case, neither bracket
+could be lower than the data-management-ring.  The brackets would
+constrain the access to  all data-management files, regardless of
+whether they  were "protected" in the  data-management sense.  In
+the initial  implementation, it would  not be possible  to change
+the brackets of an existing file.
+
+Operations that  are only used in  the data-management-ring would
+never be prevented  because the brackets could not  be lower than
+the data-management-ring.  As usual,  the caller must insure that
+the validation level is set.   Operations that affect many files,
+like   fm_$flush_modified_ci    are   only   called    from   the
+data-management-ring.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+20.1.1 REASON
+
+Data-management  files are  intended to be  data storage building
+blocks for  Multics subsystems.  Access  to the data  of an inner
+ring subsystem must be controllable by the subsystem.  Currently,
+no such controllability is  provided.  Brackets would provide the
+same type of control that segments  do.  A real need for brackets
+already  exists  in  the  before-journal manager,  which  can not
+protect its journals from access from outer rings.
+
+20.1.2 PERFORMANCE
+
+The cpu time would be about  60 microseconds on a DPS8 cpu.  This
+includes the call to cu_$level_get and the comparison between the
+level  gotten   and  the  appropriate  bracket   in  the  opening
+information block.  It is 4%  of the 1500 microsecond average cpu
+time  of fm_$get,  the most cpu  time consuming  operation in the
+mrds_driver test.  It is 2.4% of the 2500 microsecond average cpu
+time of fm_$put, the second  most cpu time consuming operation in
+that test.  Checking software  ring brackets would have increased
+the  cpu  time  of  the  test  about  0.4%.   The  extra  storage
+requirements  are small.   They consist of  an extra  word in the
+access-data  block and  a few extra  words in the  stack frame of
+each operation.
+
+20.1.3 EFFORT
+
+The  module  fm_get_  contains  only  operations  that  would  be
+classified as file read  operations.  The module fm_put_ contains
+all write and non-file  operations, except for fm_$get_uid, which
+can  be   moved  to  fm_get_.    This  means  that   fm_get_  can
+unconditionally  check  the  read  bracket,  because  all  of its
+operations  are classified  as file read  operations, and fm_put_
+can  check the  write bracket  whenever the  operation is  a file
+operation, ie whenever it gets the access-data for a file.
+
+20.1.4 PRIORITY
+
+High.
+
+20.2 audit hardcore support
+
+Carefully   examine   the   ring  zero   programs   that  support
+synchronized segments to make  sure they fulfill the expectations
+of the file manager.
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+20.2.1 REASON
+
+This would help assure that we are giving files the protection we
+claim that we are.
+
+20.2.2 PERFORMANCE
+
+20.2.3 EFFORT
+
+20.2.4 PRIORITY
+
+High.
+
+20.3 flushing directories
+
+If a  hardcore primitive were  available, the file  manager could
+flush  changes  it  makes  to  directories  during  its creation,
+deletion, and allocation operations.
+
+20.3.1 REASON
+
+When  a file  is created  or deleted,  the result  of a committed
+transaction  could  be lost  if the  containing directory  is not
+flushed.
+
+20.3.2 PERFORMANCE
+
+20.3.3 EFFORT
+
+20.3.4 PRIORITY
+
+Low.
+
+20.4 hardcore support of UID pathnames
+
+The hardcore  supervisor would provide an  entry point that would
+return  a  string  of  directory UIDs  that  would  represent the
+location  of  the file  in  in the  Multics hierarchy.   The file
+manager  would  store  this  string  in  its  UID/pathname table,
+instead of  the character string representation  of the pathname.
+The  hardcore  would also  provide an  initiate entry  point that
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+accepts such  a string of  directory UIDs instead  of a character
+string pathname.
+
+20.4.1 REASON
+
+Protected files would be  more reliable because reliability would
+not be defeated when the name of a directory is changed.
+
+20.4.2 PERFORMANCE
+
+Performance is not affected because  the uid pathnames would only
+be used during recovery.
+
+20.4.3 EFFORT
+
+Most of the work would be in modifying the hardcore.
+
+20.4.4 PRIORITY
+
+Low.
+
+20.5 provide a pointer interface
+
+Provide an interface that returns a  pointer to the contents of a
+control interval so that it can be accessed more efficiently.  It
+should be done in a way that  can be supported when we upgrade to
+the proposed  large-files.  The pointer  must point to  a segment
+whos  ring  brackets are  set so  that  it can  be read  form the
+caller's ring.
+
+The Multics address space is not large enough to provide a unique
+pointer to every control-interval in  a very large file, so there
+must be ways to remove  control-intervals from the address space.
+One  way is  to provide an  explicit primitive  for this purpose.
+Another way is  to remove the control-intervals when  the file is
+closed.  In  the case of  protected files, the  control intervals
+can   be  automatically   removed  at  the   termination  of  the
+transaction.
+
+Given    the    current   msf    implementation,    passing   out
+control-interval pointers is very easy.  All we have to do is set
+the read bracket  on the msf components so that  they can be read
+from the  outer ring, provide  an entry point  to actually obtain
+the control-interval pointer, and provide  a no-op entry point to
+terminate the  pointer.  One of  the implications of  this simple
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+implementation is that the file  manager could never terminate an
+msf component, unless the file were closed.  This would limit the
+number  of  components  that  could be  accessed  to  about 3000,
+assuming  that  nothing  else  was eating  up  a  lot  of segment
+numbers.
+
+In  the  large-file  implementation,  regardless  of  whether  we
+provide a control interval pointer interface, one or several PTWs
+will  have to  be reserved  for accessing  each control-interval,
+depending   on   its  size.    The  control-interval   would  not
+necessarily have to  be read into memory at  the time the control
+interval  pointer  is created,  because the  page fault  could be
+handled by the file manager.  Also, the control-interval could be
+removed from main-memory on a least recently used basis.
+
+A PTW does not have enough bits to store all the information that
+is  necessary  to  implement  the access  to  a control-interval.
+Twenty seven bits will be needed for the control-interval number.
+There  will probably  be before-journal  and locking information.
+Since  several   processes  could  have  pointers   to  the  same
+control-interval, each control-interval would  need a list of the
+processes  that  have pointers  to  it.  When  a control-interval
+pointer  is to  be terminated,  either explicitly  or because the
+file is  closed or because  the transaction is  over, the process
+must be  removed from the  list.  When a  control-interval has no
+processes on its list, its PTWs can be reused.
+
+20.5.1 REASON
+
+Improve performance by reducing the number of calls to fm_$get.
+
+20.5.2 PERFORMANCE
+
+On October  28, 1983 a  full run of mrds_driver  was metered.  It
+showed that 8.4% of the virtual CPU time was spent in fm_$get and
+that the average virtual CPU  time per call was 1426 microseconds
+on a DPS8 processor.  Of that 1426 microseconds, 621 was spent in
+the lock manager and 805 was spent in the fm_$get code.
+
+The number of  calls to fm_$get was 357472.   The number of calls
+to dsl_$retrieve  was 19043.  The  number of calls  to dsl_$store
+was 6383.   The number of calls  to dsl_$define_temp_rel was 210.
+So,  figuring  roughly, there  were  about 10  fm_$gets  per dsl_
+operation.   In order  to determine  how much  would be  would be
+saved by  providing a control-interval pointer,  we would have to
+know   how  often   successive  gets   were  done   on  the  same
+control-interval.   Normally,  getting one  element  requires two
+calls    to    fm_$get.     There    were    118734    calls   to
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+cm_setup_buffered_ci, which gets  the whole control-interval.  An
+interesting result of  this test was that it  took almost exactly
+the same amount of cpu time to  get one element by doing two gets
+as  it  did  to  get  the  element  by  copying  out  the  entire
+control-interval and getting one element out of the copy.
+
+Providing  a get_ci_pointer  interface would  probably reduce the
+number  of   calls  to  fm_$get  to   negligible.   The  cost  of
+fm_$get_ci_ptr would be  about the same as an  fm_$get that moved
+no  data.    There  would  be   about  half  as   many  calls  to
+fm_$get_ci_ptr  as  there currently  are to  fm_$get, and  on the
+average, each would take about  half as long.  Therefore, the cpu
+time saved would be about 6%.  There would be about as many calls
+to  fm_$terminate_ci_ptr  as  there were  to  fm_$get_ci_ptr, but
+since this is a no-op, it can be neglected.
+
+The  implications for  the large-file implementation  are that we
+would have to  keep a list of processes which  have a pointer for
+each control-interval.   This is probably  an acceptable tradeoff
+considering  the  substantial  performance  gain  associated with
+hardware addressability.
+
+20.5.3 EFFORT
+
+One month.
+
+Given    the    current   msf    implementation,    passing   out
+control-interval pointers is very easy.  All we have to do is set
+the read bracket  on the msf components so that  they can be read
+from the  outer ring, provide  an entry point  to actually obtain
+the control-interval pointer, and provide  a no-op entry point to
+terminate the  pointer.  One of  the implications of  this simple
+implementation is that the file  manager could never terminate an
+msf component, unless the file were closed.  This would limit the
+number  of  components  that  could be  accessed  to  about 3000,
+assuming  that  nothing  else  was eating  up  a  lot  of segment
+numbers.
+
+In the large-file  case, the effort is more  substantial and more
+is achieved.  Keeping the list of processes that have pointers to
+each  control-interval  will  require a  large  and indeterminate
+amount of  per-system storage.  In addition,  users will probably
+want  complicated  optimizations  based  on  concurrency  control
+assumptions.
+
+20.5.4 PRIORITY
+
+High.
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+20.6 file manager command interface
+
+This  is a  tool to access  the file  manager primitives directly
+from command level.  The name of this command may be "flmc".
+
+20.6.1 REASON
+
+This  command would  permit developers can  exercise various file
+manager features for experimental purposes.
+
+20.6.2 PERFORMANCE
+
+20.6.3 EFFORT
+
+20.6.4 PRIORITY
+
+Low.
+
+20.7 command to list open files
+
+Provide a command  to print a list of the  files that are open in
+the process.
+
+20.7.1 REASON
+
+Users often wish to know what files they have open.
+
+20.7.2 PERFORMANCE
+
+20.7.3 EFFORT
+
+20.7.4 PRIORITY
+
+Medium.
+
+20.8 better validation of msf manager's pathname
+
+Msf  manager stores  the pathname that  a file is  opened with in
+perprocess storage.  This pathname can become invalid if the file
+or any of the directories above it are renamed.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+20.8.1 REASON
+
+This would make the file manager more robust.
+
+20.8.2 PERFORMANCE
+
+20.8.3 EFFORT
+
+20.8.4 PRIORITY
+
+Low.
+
+20.9 dynamic array of msf component segment numbers
+
+Currently,  the  file  manager  must  call  the  msf  manager for
+pointers  to components  with numbers  greater than  27.  This is
+because  the  file manager  has fixed  size tables  for component
+pointers.  Only  files with more than  7140 control-intervals are
+affected.  The size of these tables should be made variable.
+
+20.9.1 REASON
+
+Calling the msf manager frequently is inefficient.
+
+20.9.2 PERFORMANCE
+
+20.9.3 EFFORT
+
+20.9.4 PRIORITY
+
+Medium.
+
+20.10 set ring brackets on msf components to 2 5 5
+
+Set ring brackets on msf components to 2 5 5.  This is irrelevant
+if the get_ci_ptr interface is implemented first.
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+20.10.1 REASON
+
+This would  permit examination and  dumping of the  files by user
+ring facilities.
+
+20.10.2 PERFORMANCE
+
+20.10.3 EFFORT
+
+20.10.4 PRIORITY
+
+Very low.
+
+20.11 make fm_$open_by_uid failsafe
+
+When  the  data-management daemon  rolls  back a  transaction, it
+calls file_manager_$open_by_uid  as necessary to  open the files.
+If a file does not  exist, fm_$open_by_uid returns et_$noentry or
+et_$no_dir.    Currently,    the   rollback   portion    of   the
+before-journal manager handles this situation by marking the file
+as nonexistant,  but it would  be more elegant  and consistent if
+the  file manager  did this.   The file  manager already  has the
+concept of a deleted file and already knows to ignore unputs to a
+deleted  file.   When the  file does  not exist,  the open_by_uid
+operation should return a zero  status-code, but mark the opening
+as that of a deleted file.
+
+20.11.1 REASON
+
+This  would  eliminate  some  spurious  error  messages  from the
+data-management log.
+
+20.11.2 PERFORMANCE
+
+20.11.3 EFFORT
+
+20.11.4 PRIORITY
+
+Low.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+20.12 make fm_$unput failsafe
+
+If  a  user  creates a  file  in  her process  directory  that is
+protected by  rollback, puts some  data into it, and  then does a
+new_proc  without  ending  the  transaction,  the data-management
+daemon is likely to  experience a seg_fault_error during rollback
+when the  initializer deletes the  process directory and  all the
+segments in it.  The seg_fault_error  is currently handled by the
+daemon which considers the rollback  a failure and tries it again
+later.   The  rollback will  succeed  later because  the fm_$open
+operation  will   return  et_$noentry  which   is  acceptable  to
+rollback.
+
+20.12.1 REASON
+
+If the file manager handled the seg_fault_error, it would prevent
+the rollback from being interrupted so  that it would not have to
+be retried later.
+
+20.12.2 PERFORMANCE
+
+20.12.3 EFFORT
+
+20.12.4 PRIORITY
+
+Low.
+
+20.13 handle postponed file closing better
+
+The   code  of   lock_manager_$unlock_all  contains   a  call  to
+fm_open_$post_txn so  that the file  manager can close  any files
+whose  closing  was postponed.   The  closing of  files  that are
+protected by rollback must be  postponed until the transaction is
+over because  the before-journal manager stores  the file opening
+id in each before-image and uses  it if the transaction is rolled
+back in the process that began  it.  Hopefully, we can find a way
+to  serve  the  needs   of  the  before-journal  manager  without
+requiring  a  call  to  the  file  manager  at  the  end  of each
+transaction.
+
+20.13.1 REASON
+
+This would  give better performance  by eliminating one  call per
+transaction.
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+20.13.2 PERFORMANCE
+
+20.13.3 EFFORT
+
+20.13.4 PRIORITY
+
+Low.
+
+20.14 optimize calls to bjm for new file
+
+No before-images need to be taken  for a file that was created in
+the current transaction.  This optimization can not be made until
+the rollback of the create operation is implemented.
+
+20.14.1 REASON
+
+This  would  reduce the  amount of  before-journal space  that is
+used.
+
+20.14.2 PERFORMANCE
+
+20.14.3 EFFORT
+
+20.14.4 PRIORITY
+
+Low.
+
+20.15 optimize calls to bjm for new CI
+
+No before-images need to be taken for a control-interval that was
+allocated  in the  current transaction or  for a control-interval
+for which a full before-image has already been taken.
+
+20.15.1 REASON
+
+This  would  reduce the  amount of  before-journal space  that is
+used.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+20.15.2 PERFORMANCE
+
+20.15.3 EFFORT
+
+20.15.4 PRIORITY
+
+Low.
+
+20.16 find something to lock before the open operation
+
+The fm_$open operation is unprotected from concurrency conflicts.
+For example,  a file could  be in the  midst of being  created or
+deleted at the time it is being opened.
+
+20.16.1 REASON
+
+This would make the file manager more robust.
+
+20.16.2 PERFORMANCE
+
+20.16.3 EFFORT
+
+20.16.4 PRIORITY
+
+Very low.
+
+20.17 keep modified CI list in persystem storage
+
+Keep the list of modified control-intervals in persystem storage,
+instead of perprocess storage, where it is now kept.
+
+20.17.1 REASON
+
+So that  the data-management daemon  would not have  to roll back
+transactions  that are  interrupted during the  flush of modified
+control-intervals.
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+20.17.2 PERFORMANCE
+
+20.17.3 EFFORT
+
+20.17.4 PRIORITY
+
+Very low.
+
+20.18 give files a type field
+
+Store  a  32  character type  field  in the  file  attributes (eg
+"collection_manager_").
+
+20.18.1 REASON
+
+This would tell what type of object the file represents.
+
+20.18.2 PERFORMANCE
+
+20.18.3 EFFORT
+
+20.18.4 PRIORITY
+
+Low.
+
+20.19 add a debug switch
+
+The file manager  calls sub_err_ in many cases  and has a handler
+for  the sub_error  condition.  A  debug switch  would permit the
+handler to halt and call the command processor.
+
+20.19.1 REASON
+
+This change  would make it  easier to debug the  file manager and
+programs that call it incorrectly.
+
+20.19.2 PERFORMANCE
+
+No impact.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+20.19.3 EFFORT
+
+20.19.4 PRIORITY
+
+Low.
+
+20.20 fix sma patch to delete
+
+The delete operation was defective  because it failed in the case
+where the user  had enough access to the  containing directory to
+delete  the  file, but  did  not have  enough  access to  the msf
+components  to delete  them.  This  defect was  corrected for the
+delete operation, but not for the delete_close operation.
+
+20.20.1 REASON
+
+This  would   make  the  operation  of   delete  consistent  with
+delete_close.
+
+20.20.2 PERFORMANCE
+
+Insignificant effect.
+
+20.20.3 EFFORT
+
+20.20.4 PRIORITY
+
+Low.
+
+20.21 make protected the default
+
+Make  fm_$create default  to "protected"  when create_info_ptr is
+null ().
+
+20.21.1 REASON
+
+The user will more often want protected files.
+
+20.21.2 PERFORMANCE
+
+No effect.
+
+
+MTB-554, Revision 1                    Multics Technical Bulletin
+                                         DM: file_manager_ design
+
+20.21.3 EFFORT
+
+One day.
+
+20.21.4 PRIORITY
+
+Low.
+
+20.22 ability to change attributes
+
+None of  the file protection  attributes can not  be changed.  It
+would be nice to be able to have this capability.
+
+20.22.1 REASON
+
+A user might want to load out a file and then turn protection on.
+
+20.22.2 PERFORMANCE
+
+20.22.3 EFFORT
+
+20.22.4 PRIORITY
+
+Low.
+
+20.23 keep opening count per ring
+
+The opening count is to a  data-management file what the count of
+the  number  of  times  initiated is  to  a  reference  name.  In
+Multics, each ring has a  separate reference name table and hence
+a separate count.  Currently, data-management files have just one
+opening count for all rings.
+
+20.23.1 REASON
+
+Providing  a separate  opening count  for each  ring will prevent
+outer rings from closing a file that an inner ring has open.
+
+
+Multics Technical Bulletin                    MTB-554, Revision 1
+DM: file_manager_ design
+
+20.23.2 PERFORMANCE
+
+20.23.3 EFFORT
+
+20.23.4 PRIORITY
+
+High.
+
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

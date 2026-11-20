@@ -1,0 +1,2123 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB 632</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB 632: Pascal Symbol Tables.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB 632
+
+To:       MTB Distribution
+
+From:     Melanie Weaver and Jean-Michel Athane
+
+Date:     09/16/83
+
+Subject:  Pascal Symbol Tables
+
+ABSTRACT
+
+This MTB describes the new standard data types for Pascal and the
+Pascal  symbol  node format.   These  are necessary  in  order to
+implement full probe support for Pascal.
+
+Although the  overall symbol tree  structure is the  same as that
+currently in use, the Pascal  node format is quite different.  It
+is anticipated that other new  languages will also have different
+symbol node  formats.  Until now, probe  and stu_ have referenced
+symbol   nodes   directly.   However,   they  are   already  very
+complicated  and   continuing  this  practice   could  make  them
+unmanageable.   Thus the  knowledge of  the node  format has been
+removed from them and put into a new intermediary procedure.
+
+Comments may be sent
+
+by Multics mail to
+          Weaver.Multics
+
+or by U.S. mail to
+          Melanie Weaver
+          Honeywell Information Systems, Inc.
+          575 Technology Sq.
+          Cambridge, MA  02139
+          (617) 492-9312
+          HVN 261-9312
+
+______________________________________________________________
+Multics Project internal working documentation.  Not to be
+reproduced or distributed outside the Multics Project.
+
+MTB 632                                Multics Technical Bulletin
+
+NEW DATA TYPES FOR PASCAL
+
+Introducing Extended Data Types
+
+Seventeen new data types are required for Pascal.  Even some that
+seem  similar to  PL/I types  are represented  differently enough
+that  they  need their  own type  codes.  Unfortunately  the type
+fields in descriptors and symbol nodes  are only 6 bits and there
+are no  longer 17 unused types  codes in that range.   Thus it is
+time to go  to extended data types, which will  be fixed bin (17)
+numbers.  Extending the  type field by one bit  would be adequate
+but would  be almost as incompatible.   The changes necessary for
+any  extension  remove  the  need  to  conserve  bits.   The  new
+conventions for descriptors and symbol nodes are described below.
+Elsewhere, types are already fixed bin (17) numbers.
+
+DESCRIPTOR CHANGES
+
+Descriptors  for  the new  types  have 58  (decimal) in  the type
+field.   This indicates  that the  second word  of the descriptor
+contains the real  type in the first half  and an optional symbol
+node offset in the second half.
+
+The symbol node offset is relative to the beginning of the symbol
+tree  (i.e.   pl1_symbol_block).   It  is  intended  to  be  used
+eventually  for runtime  parameter checking.  In  cases where the
+descriptor type is enumerated type  instance or user defined type
+instance, the  symbol node offset  points to the  node describing
+the type itself.
+
+Descriptors  for arrays  contain the  array dimension information
+(three words for each  dimension) immediately following the first
+word,  followed by  the type  / symbol  offset information.  This
+enables Pascal programs to call  programs in other languages with
+conformant arrays.
+
+NEW SYMBOL NODE VERSION
+
+New symbol node structures have  been defined with the type field
+as fixed  bin (17).  There  is currently not a  version number in
+the symbol node structure, which makes defining a new format more
+difficult.  Instead, the first bit  indicates whether the node is
+in PL/I version 1 or PL/I version 2 format.  Since version 1 PL/I
+support can now  be eliminated, the first bit  in the symbol node
+can  be  used to  indicate  a new  style.   According to  the new
+definition,  if the  first bit  is "0"b,  the second  half of the
+first  word in  the symbol  node contains  a version  number.  At
+first,  only Pascal  will produce these.   There are  no plans to
+change PL/I in the near future.
+
+
+Multics Technical Bulletin                                MTB 632
+
+Pascal Data Types
+
+NEW TYPE VALUES
+
+The  new  Pascal data  types  are listed  below.  Some  will only
+appear in symbol table  nodes.  The representations are described
+in Appendix A.
+
+          64        Pascal typed pointer type
+
+          65        Pascal char
+
+          66        Pascal boolean
+
+          67        Pascal record file type
+
+          68        Pascal record type
+
+          69        Pascal set type
+
+          70        Pascal enumerated type
+
+          71        Pascal enumerated type element
+
+          72        Pascal enumerated type instance
+
+          73        Pascal user-defined type
+
+          74        Pascal user-defined type instance
+
+          75        Pascal text file
+
+          76        Pascal procedure type
+
+          77        Pascal variable formal parameter
+
+          78        Pascal value formal parameter
+
+          79        Pascal procedure formal parameter
+
+          80        Pascal procedure parameter
+
+OTHER TYPES USED BY PASCAL
+
+The other data types used by Pascal are listed below.
+
+          1         integer
+
+          4         real
+
+          24        label
+
+
+MTB 632                                Multics Technical Bulletin
+
+          25        internal procedure
+
+          26        exportable procedure
+
+          27        imported procedure
+
+Passing Arguments To Procedures In Other Languages
+
+Adding new  data types may  eventually make it  more difficult to
+pass  arguments between  programs in Pascal  and other languages,
+since  the  the  descriptors   won't  match.   (Currently  Pascal
+arguemtn lists do not contain  descriptors.)  Many data types, of
+course, are  not translatable.  However  several types, including
+some user-defined types, are compatible.
+
+This  is part  of the more  general problem  of passing arguments
+during inter-language  calls.  So far, most  languages have stuck
+to using  PL/I standard types when  passing arguments to external
+programs.  Languages that had  non-standard types, such as BASIC,
+was responsible for creating  the proper descriptors and possibly
+converting arguments  during a call  to a program  in a different
+language.  In  the relatively near  future we are  expecting more
+languages with their own data  types and more use of user_defined
+types.  There should be a  recommended method for these languages
+to talk to each other.  First, there should be a standard way for
+a  caller  to know  that the  callee  is in  a language  that has
+different data types.  Second, there should be a well defined way
+to  translate   argument  lists,  giving  errors   if  types  are
+incompatible.
+
+Alternatively  we could  restrict languages  with their  own data
+types to calling only programs  of the same language.  This would
+be hard for  the dynamic linker to enforce  and would probably be
+unacceptable to many Multics users.  This MTB is only introducing
+the  problem  as  a  side-effect  of  choosing  the  direction of
+extended data types.  It should be discussed in greater detail in
+another MTB.
+
+NEW PASCAL SYMBOL NODE FORMAT
+
+Object Oriented Approach
+
+There is a  new runtime symbol node format  for Pascal.  It might
+be  possible  to use  the existing  format with  extensions.  For
+example,  if type  = 58,  the word  before the  symbol node could
+contain the extended type code.  However, there are several other
+items to be added, so the  end result would be quite complicated.
+We have  chosen to use  a format that contains  all the necessary
+information in a straightforward way.
+
+
+Multics Technical Bulletin                                MTB 632
+
+The symbol node is referenced primarily by probe and stu_.  These
+are already quite complicated and  would be harder to maintain if
+they  had  to  know  about  different  formats.   Instead, direct
+knowledge  of symbol  node formats  has been  mostly removed from
+them   and   put  into   the  new   program  runtime_symbol_info_
+(documented in Appendix C).
+
+In addition to containing different items, the Pascal symbol node
+will be organized  in a new way.  Adding the  Pascal items to the
+symbol  node  almost  doubles  its  size.   In  addition,  Pascal
+programs will probably have more nodes than PL/I programs because
+of the enumerated  and user-defined types.  In order  to keep the
+size  under control,  each Pascal  symbol node  will contain only
+relevant  items.   Flags at  the beginning  of the  node indicate
+which items are included.  This is  likely to cut the size of the
+symbol table  (excluding the statement  map) by at  least 1/2 and
+possibly by 2/3.
+
+This condensed  format has some disadvantages.   It is not easily
+referenced via PL/I and it  takes longer to reference most items.
+These should not be major problems.  Symbol nodes are now usually
+referenced  via  runtime_symbol_info_ and  not directly  in PL/I.
+Most references  occur during debugging, when  performance is not
+critical.  In this case, it is felt that the time-space trade-off
+should favor space.
+
+Declaration
+
+The declaration of  the Pascal runtime symbol node  is given as a
+series  of  separate  item  declarations.   No  single  node will
+contain all the  items.  The header will always  be present.  The
+other items to be included must  be present in the order in which
+they are documented.
+
+dcl  1 pascal_symbol_node_header aligned based,
+       2 flags             unaligned,
+         3 version_flag      bit (1) unaligned,            /* "0"b */
+         3 aligned           bit (1) unaligned,
+         3 packed            bit (1) unaligned,
+         3 in_with_block     bit (1) unaligned,
+         3 name_next         bit (1) unaligned,
+         3 base_type_info    bit (1) unaligned,
+         3 address           bit (1) unaligned,
+         3 father_brother    bit (1) unaligned,
+         3 son_level         bit (1) unaligned,
+         3 father_type_successor
+                             bit (1) unaligned,
+         3 size              bit (1) unaligned,
+         3 offset            bit (1) unaligned,
+         3 subrange_limits   bit (1) unaligned,
+         3 array_info        bit (1) unaligned,
+
+
+MTB 632                                Multics Technical Bulletin
+
+         3 variant_info      bit (1) unaligned,
+         3 pad               bit (3) unaligned,
+       2 version             fixed bin (17) unaligned,
+       2 type                fixed bin (17) unaligned,
+       2 type_offset         fixed bin (18) unsigned unaligned;
+
+dcl  1 pascal_name_next      aligned based,
+       2 name                fixed bin (18) unsigned unaligned,
+       2 next_token          fixed bin (18) unsigned unaligned;
+
+dcl  1 pascal_base_type_info aligned based,
+       2 base_type           fixed bin (17) unaligned,
+       2 base_type_offset    fixed bin (18) unsigned unaligned;
+
+dcl  1 pascal_address        aligned based,
+       2 location            fixed bin (18) unsigned unaligned,
+       2 class               fixed bin (6) unsigned unaligned,
+       2 use_digit           bit (1) unaligned,
+       2 units               bit (2) unaligned,
+       2 offset_is_encoded   bit (1) unaligned,
+       2 pad                 bit (8) unaligned;
+
+dcl  1 pascal_father_brother  aligned based,
+       2 father              fixed bin (18) unsigned unaligned,
+       2 brother             fixed bin (18) unsigned unaligned;
+
+dcl  1 pascal_son_level      aligned based,
+       2 son                 fixed bin (18) unsigned unaligned,
+       2 level               fixed bin (6) unsigned unaligned,
+       2 pad                 bit (12) unaligned;
+
+dcl  1 pascal_father_type_successor aligned based,
+       2 father_type         fixed bin (17) unaligned,
+       2 successor           fixed bin (18) unsigned unaligned;
+
+dcl  pascal_size             fixed bin (35) based;
+
+dcl  pascal_offset           fixed bin (35) based;
+
+dcl  1 pascal_subrange_limits aligned based,
+       2 flags               aligned,
+         3 lower_bound_is_encoded
+                             bit (1) unaligned,
+         3 upper_bound_is_encoded
+                             bit (1) unaligned,
+         3 pad               bit (34) unaligned,
+       2 subrange_lower_bound
+                             fixed bin (35),
+       2 subrange_upper_bound
+                             fixed bin (35);
+
+
+Multics Technical Bulletin                                MTB 632
+
+dcl  1 pascal_array_info     aligned based,
+       2 access_info         aligned,
+         3 ndims             fixed bin (6) unsigned unaligned,
+         3 use_digit         fixed bin (1) unsigned unaligned,
+         3 array_units       fixed bin (2) unsigned unaligned,
+         3 virtual_origin_is_encoded
+                             bit (1) unaligned,
+         3 pad               bit (26) unaligned,
+       2 virtual_origin      fixed bin (35),
+       2 bounds (nd refer (pascal_array_info.access_info.ndims))
+                             aligned,
+         3 lower             fixed bin (35),
+         3 upper             fixed bin (35),
+         3 multiplier        fixed bin (35),
+         3 subscript_type    fixed bin (17) unaligned,
+         3 subscript_type_offset
+                             fixed bin (18) unsigned unaligned,
+         3 flags aligned,
+           4 lower_is_encoded
+                             bit (1) unaligned,
+           4 upper_is_encoded
+                             bit (1) unaligned,
+           4 multipler_is_encoded
+                             bit (1) unaligned,
+           4 pad             bit (33) unaligned;
+
+dcl  1 pascal_variant_info   aligned based,
+       2 number_of_variants
+                             fixed bin (17) unaligned,
+       2 pad                 bit (18) unaligned,
+       2 first_value_in_set fixed bin (35) unaligned,
+       2 case (nvariants refer
+                    (pascal_variant_info.number_of_variants)),
+         3 set_offset        fixed bin (18) unsigned unaligned,
+         3 brother           fixed bin (18) unsigned unaligned;
+
+dcl  1 pascal_encoded_value  aligned based,
+       2 code                bit (6) unaligned,
+       2 (n1, n2)            bit (6) unaligned,
+       2 n3                  fixed bin (18) unsigned unaligned;
+
+dcl  nvariants fixed bin (17);
+dcl  nd        fixed bin (6) unsigned;
+
+New Storage Class
+
+A new storage  class has been defined.  Storage  class 11 is used
+for  constants  whose  value  is  not  generated  anywhere.   The
+location field  contains the relative  offset of the  place where
+the value is generated in the symbol section.  This class is used
+for some constants and enumerated type elements.
+
+
+MTB 632                                Multics Technical Bulletin
+
+New Encoded Value Code
+
+A new encoded  value code has been defined.  If  code = 16, value
+is the contents  of the location described by  the symbol node at
+self-relative offset n3.  n1 = "01"b3  if the value is signed; n1
+= "00"b3 if  the value is unsigned.  n2 is  the precision in bits
+of the value.
+
+This  is used  for subrange  bounds which  are previously defined
+constants or enumerated type elements.
+
+Relationship of Type Codes
+
+With Pascal, it becomes necessary to describe types themselves in
+the  symbol  table.   The  following  table  helps  to  show  the
+relationship between  the type codes used  by variables and those
+used by types.
+
+
+Multics Technical Bulletin                                MTB 632
+
+type codes used for variables,     corresponding type_offset and
+record fields, constants,          type codes used for types
+subscript types and base types
+
+(1) integer                        predefined (no type_offset)
+(4) real                                "
+(65) pascal char                        "
+(66) pascal boolean                     "
+(75) pascal text file                   "
+(72) pascal enumerated type        type_offset is the relative
+          instance                 offset of a symbol node with
+                                   type code enumerated type (70)
+
+(74) pascal user defined type      type_offset is the relative
+          instance                 offset of a symbol node with
+                                   one of the following type codes:
+                                   (73) pascal user_defined type
+                                    (used for arrays and subranges)
+                                   (67) pascal record file type
+                                   (64) pascal typed pointer type
+                                   (68) pascal record type
+                                   (69) pascal set type
+
+Appendix B describes the contents of the symbol nodes for most of
+the data types.
+
+Variables Used Inside With Blocks
+
+     "With"  statements create  a new  scope for  record variable
+identifiers.  This, as in  procedure scoping, should be reflected
+in  the  symbol tree's  block  structure.  Each  "with" statement
+should  have its  own runtime_block  node, where  "with a,b,c" is
+treated as "with a do with b  do with c do".  Symbol names inside
+the "with" block  will all be relative to the  name in the "with"
+statement.   Records  used  in  "with"  blocks  cannot  be  fully
+represented,  in  part  because  names in  "with"  statements can
+contain variable subscripts.  In order  to have the complete name
+to  print  out,  a  "with"  statement's  runtime_block  node will
+contain  the  identifier string  given  in the  "with" statement.
+This can be done compatibly as shown below.
+
+     The runtime_block  will be changed  in the following  way to
+indicate a "with" statement.  The type field, which PL/I does not
+set to  meaningful values, will  be redefined with  the following
+values:
+          "01"b3              external entry
+          "02"b3              non quick internal procedure
+          "03"b3              quick internal procedure
+          "04"b3              begin block
+          "05"b3              pascal with block
+When type = "05"b3, two new fields are appended to the structure:
+
+
+MTB 632                                Multics Technical Bulletin
+
+     2 with_string           fixed bin (18) unsigned unaligned,
+     2 real_level_1          fixed bin (18) unsigned unaligned
+where
+
+with_string
+            is  a self-relative  pointer to  the ACC  string that
+            duplicates the string in  the source program's "with"
+            statement  or the  equivalent.  This string  is to be
+            used  only by  the probe  symbol request.   It is not
+            used  when  obtaining  the location  or  printing the
+            value of a variable.
+
+real_level_1
+            is a self-relative pointer to the level 1 node of the
+            original     (complete)     record     type    symbol
+            representation.
+
+     Variables   used   inside   "with"   blocks   are  addressed
+differently  from  variables used  elsewhere.  The  assumption is
+that the  compiler generates a  temporary pointer to  the base of
+the sub-record.   This pointer is  then used to  access variables
+inside the scope of the "with" block.  Therefore, these variables
+are treated as  based, with an encoded value  giving the location
+of the pointer.
+
+     Since  probe may  have to  treat variables  in "with" blocks
+somewhat  differently,  the  runtime_symbol  nodes  for  all such
+"level 1" variables should have the in_with_block flag set.
+
+
+Multics Technical Bulletin                                MTB 632
+
+                            APPENDIX A
+
+                  New Data Type Representations
+
+Pascal Typed Pointer Type (descriptor type 64)
+
+     A Pascal  typed pointer type describes  a packed or unpacked
+     pointer which  can only be  used with data  described by the
+     type  associated  with  the  pointer.  This  is  enforced by
+     software.   A Pascal  typed pointer  datum actually  has the
+     type user-defined type instance.
+
+Pascal Char (descriptor type 65)
+
+     A  Pascal  char datum  is  a single  character with  a real,
+     fixed-point,  binary, unsigned  integer value  between 0 and
+     127 inclusive.
+
+     A packed  Pascal char datum  occupies one 9-bit  byte and is
+     aligned on a byte boundary.
+
+     An unpacked  Pascal char datum occupies  the rightmost 9-bit
+     byte  of a  word that  is aligned  on a  word boundary.  The
+     leftmost three bytes of the word are filled with zeroes.
+
+Pascal Boolean (descriptor type 66)
+
+     A Pascal boolean  datum has an integer value  of 0 for FALSE
+     and 1 for TRUE.
+
+     A  packed  Pascal boolean  datum  occupies one  byte  and is
+     aligned on a byte boundary.
+
+     An unpacked  Pascal boolean datum  occupies one word  and is
+     aligned on a word boundary.
+
+Pascal Record File Type (descriptor type 67)
+
+
+MTB 632                                Multics Technical Bulletin
+
+     The Pascal record  file type describes a type  of file which
+     is  an array  of records.   This type  code is  used only in
+     runtime symbol tables.
+
+     A  Pascal  record file  datum actually  has the  type Pascal
+     user-defined  type  instance.   It   is  represented  by  an
+     unpacked  pointer to  the Pascal  record file  status block.
+     The format of a record file status block is not defined as a
+     Multics standard.
+
+Pascal Record Type (descriptor type 68)
+
+     The Pascal record type describes a datum which is similar to
+     a structure (descriptor type 17).
+
+     A  packed  member of  a record  is aligned  on a  9-bit byte
+     boundary.  This  is not always  the first unused  byte.  For
+     example,  a 1-byte  member between two  1-word members often
+     occupies  the  rightmost byte  of  the intervening  word for
+     efficiency.
+
+     A  Pascal   record  datum  actually  has   the  type  Pascal
+     user-defined type instance.
+
+Pascal Set Type (descriptor type 69)
+
+     The Pascal set type describes  a datum which is a nonvarying
+     bit string whose  length is equal to the  number of elements
+     in the set.   The maximum length is 288  bits (8 words).  In
+     the following descriptions, L refers to the length in bits.
+
+     If 72  &lt; L &lt;  289, the datum  is aligned on  a double (even)
+     word boundary and occupies 8 words.
+
+     If 36 &lt; L &lt; 73, the datum is aligned on a double (even) word
+     boundary and occupies 2 words.
+
+     If  the set  is packed and  18 &lt;  L &lt; 37,  or if  the set is
+     unpacked  and 0  &lt; L &lt;  37, the  datum is aligned  on a word
+     boundary and occupies 1 word.
+
+
+Multics Technical Bulletin                                MTB 632
+
+     If the set is packed and 9 &lt; L &lt; 19, the datum is aligned on
+     a half-word boundary and occupies 2 9-bit bytes.
+
+     If the set is packed and 0 &lt; L &lt; 10, the datum is aligned on
+     a 9-bit byte boundary and occupies one byte.
+
+     A Pascal set datum actually has the type Pascal user-defined
+     type instance.
+
+Pascal Enumerated Type (descriptor type 70)
+
+     The Pascal enumerated type  describes a datum which contains
+     one  element  of a  set  of symbolic  values.   The symbolic
+     values  are   represented  by  real,   fixed-point,  binary,
+     unsigned integers with values from 0 through n-1, where n is
+     the number of elements in the type.
+
+     An unpacked datum is aligned on a word boundary and occupies
+     1 word.
+
+     A packed datum is aligned on a half-word boundary, occupying
+     2 9-bit bytes, when n &gt; 512.  A packed datum is aligned on a
+     9-bit byte boundary, occupying 1 byte, when n &lt;= 512.
+
+     This type  code is used primarily  in runtime symbol tables.
+     Data  of  Pascal enumerated  types  declared by  the program
+     actually have the type Pascal enumerated type instance.
+
+Pascal Enumerated Type Element (descriptor type 71)
+
+     A  Pascal  enumerated type  element is  one of  the symbolic
+     values for a Pascal enumerated type.  It is represented by a
+     real, fixed-point, binary, short, unsigned integer.
+
+     This type code is used only in runtime symbol tables.
+
+Pascal Enumerated Type Instance (descriptor type 72)
+
+     A  Pascal enumerated  type instance is  a datum  of a Pascal
+     enumerated type.  It is  represented by a real, fixed-point,
+     binary,  unsigned integer.   The alignment  and size  of the
+
+
+MTB 632                                Multics Technical Bulletin
+
+     datum  depend on  the description  of the  Pascal enumerated
+     type and on the environment where it is declared (a field in
+     a packed record or element of a packed array is packed).
+
+Pascal User Defined Type (descriptor type 73)
+
+     A  Pascal user-defined  type is a  type defined  by the user
+     either implicitly or explicitly as an array or subrange.
+
+     The  description of  such a type  is contained  in a runtime
+     symbol table node.
+
+Pascal User Defined Type Instance (descriptor type 74)
+
+     A Pascal user-defined  type instance is a datum  of a Pascal
+     user-defined type.
+
+Pascal Text File (descriptor type 75)
+
+     A Pascal text file is  represented by an unpacked pointer to
+     a  Pascal text  file status block.   The format  of the text
+     file status block is not defined as a Multics standard.
+
+Pascal Procedure Type (descriptor type 76)
+
+     The Pascal procedure  type type code us used  in the runtime
+     symbol table in conjunction  with symbol nodes for internal,
+     exported and imported procedures (types 25, 26, 27).  Symbol
+     nodes of  this generic type are  used to anchor descriptions
+     of  the  parameter  lists.   They are  separated  from their
+     associated  procedure  symbol nodes  in order  to facilitate
+     comparison of parameter lists.
+
+Pascal Variable Formal Paramater (descriptor type 77)
+
+     The Pascal  formal variable parameter  type code is  used in
+     the runtime  symbol table to describe  a procedure parameter
+     that is passed by reference.
+
+Pascal Value Formal Parameter (descriptor type 78)
+
+
+Multics Technical Bulletin                                MTB 632
+
+     The Pascal formal  value parameter type code is  used in the
+     runtime symbol table to  describe a procedure parameter that
+     is passed by value.
+
+Pascal Procedure Formal Parameter (descriptor type 79)
+
+     The Pascal formal parameter procedure parameter type code is
+     used  in the  runtime symbol  table to  describe a procedure
+     parameter that is itself a procedure or function.
+
+Pascal Procedure Parameter (descriptor type 80)
+
+     A  Pascal  procedure  parameter  datum  (always  unpacked is
+     represented  by a  pair of  unpacked pointers  followed by a
+     real,  fixed-point,  binary, short,  unpacked  integer.  The
+     pointers have the  same meaning as for an  entry datum (type
+     16).   The integer  is the  offset in  the pascal_operators_
+     transfer vector of the transfer  to the entry operator to be
+     used for the procedure parameter.
+
+
+MTB 632                                Multics Technical Bulletin
+
+                              APPENDIX B
+
+                       Contents of Symbol Nodes
+
+                              TYPE NODES
+
+1  Integer or Char Subrange
+
+                  pascal_symbol_node_header
+          flags set :
+            name_next         if type has name
+            base_type_info
+            father_brother    if type has name
+            subrange_limits
+          type                = pascal user defined type
+          type_offset         = 0
+
+                  pascal_name_next      (if type has name)
+          name                (standard)
+          next_token          (standard)
+
+                  pascal_base_type_info
+          base_type           = integer or pascal char
+          base_type_offset    = 0
+
+                  pascal_father_brother  if type has name
+          father              (standard)
+          brother             (standard)
+
+                  pascal_subrange_limits
+          flags
+            lower_bound_is_encoded
+            upper_bound_is_encoded
+          subrange_lower_bound
+          subrange_upper_bound
+
+     Note:
+
+     If a bound is not encoded, it contains an integer
+     or Pascal char value.
+
+     An encoded value may be used if a previously declared
+     constant has been used to declare the type.
+     Example:  T1 - 1..maxsize;
+               code = 16
+               n3 = relative offset to "maxsize" symbol node
+
+
+Multics Technical Bulletin                                MTB 632
+
+                              TYPE NODES
+
+2  Array
+
+                  pascal_symbol_node_header
+          flags set :
+            packed            if array is packed
+            name_next         if type has name
+            base_type_info
+            father_brother    if type has name
+            array_info
+          type                = pascal user defined type
+          type_offset         = 0
+
+                  pascal_name_next      (if type has name)
+          name                (standard)
+          next_token          (standard)
+
+                  pascal_base_type_info
+          base_type           = type code for elements of array
+          base_type_offset    = relative offset of base-type node
+
+                  pascal_father_brother  (if type has name)
+          father              (standard)
+          brother             (standard)
+
+                  pascal_size = size of elements of array
+
+                  pascal_array_info
+          access_info
+            ndims
+            use_digit
+            array_units
+            virtual_origin_is_encoded
+          virtual_origin
+          bounds              (nd refer
+                               (pascal_array_info.access_info.ndims))
+            lower
+            upper
+            multiplier
+            subscript_type    = type code  for subscript
+            subscript_type_offset  = relative offset of
+                                     subscript type node
+            flags
+              lower_is_encoded
+              upper_is_encoded
+              multiplier_is_encoded
+
+     Note:
+
+
+MTB 632                                Multics Technical Bulletin
+
+     Subscript type is zero if subscript is numeric and
+     not previously declared.
+     Example:  array [1..10] of real ;
+               (Symbol node for 1..10 type is not created)
+
+     The virtual_origin field is not used when the array is
+     conformant, i.e. when bounds(1).flags.lower_is_encoded = "1"b.
+     In this case, the virtual origin is computed as
+     bounds (1) * multiplier (1).
+
+
+Multics Technical Bulletin                                MTB 632
+
+                              TYPE NODES
+
+3  Enumerated Type Subrange
+
+                  pascal_symbol_node_header
+          flags set :
+            name_next         if type has name
+            base_type_info
+            father_brother    if type has name
+            subrange_limits
+          type                = pascal user defined type
+          type_offset         = 0
+
+                  pascal_name_next      (if type has name)
+          name                (standard)
+          next_token          (standard)
+
+                  pascal_base_type_info
+          base_type           = pascal enumerated type instance
+          base_type_offset    = relative offset of node for
+                                   enumerated type
+
+                  pascal_father_brother  (if type has name)
+          father              (standard)
+          brother             (standard)
+
+                  pascal_subrange_limits
+          flags
+            lower_bound_is_encoded  = "1"b
+            upper_bound_is_encoded  = "1"b
+          subrange_lower_bound
+          subrange_upper_bound
+
+     Note:
+     Bounds are encoded with code = 16 and
+     n3 = relative offset of the symbol node for an enumerated
+     type element.
+
+
+MTB 632                                Multics Technical Bulletin
+
+                              TYPE NODES
+
+4  Enumerated Type
+
+                  pascal_symbol_node_header
+          flags set :
+            name_next         if type has name
+            father_brother    if type has name
+            son_level
+          type                = pascal enumerated type
+          type_offset         = 0
+
+                  pascal_name_next      (if type has name)
+          name                (standard)
+          next_token          (standard)
+
+                  pascal_father_brother  if type has name
+          father              (standard)
+          brother             (standard)
+
+                  pascal_son_level
+          son                 = relative offset of symbol node
+                                for first constant of type
+          level               = 0
+
+
+Multics Technical Bulletin                                MTB 632
+
+                              TYPE NODES
+
+5  Typed Pointer Type
+
+                  pascal_symbol_node_header
+          flags set :
+            name_next         if type has name
+            base_type_info
+            father_brother    if type has name
+          type                = pascal typed pointer type
+          type_offset         = 0
+
+                  pascal_name_next      (if type has name)
+          name                (standard)
+          next_token          (standard)
+
+                  pascal_base_type_info
+          base_type           = type code for the referenced variable
+                                 (any type code allowed for a
+                                  Pascal variable)
+          base_type_offset    = relative offset of base-type node
+
+                  pascal_father_brother  (if type has name)
+          father              (standard)
+          brother             (standard)
+
+                 pascal_size  = size corresponding to the type
+                                of the referenced variable
+
+
+MTB 632                                Multics Technical Bulletin
+
+                              TYPE NODES
+
+6  Pascal Set Type
+
+                  pascal_symbol_node_header
+          flags set :
+            name_next         if type has name
+            base_type_info
+            father_brother    if type has name
+          type                = pascal set type
+          type_offset         = 0
+
+                  pascal_name_next      (if type has name)
+          name                (standard)
+          next_token          (standard)
+
+                  pascal_base_type_info
+          base_type           = type code for elements of set
+          base_type_offset    = relative offset of base-type node
+
+                  pascal_father_brother  if type has name)
+          father              (standard)
+          brother             (standard)
+
+
+Multics Technical Bulletin                                MTB 632
+
+                              TYPE NODES
+
+Pascal Record Type
+
+                  pascal_symbol_node_header
+          flags set :
+            packed            if record is packed
+            name_next         if type has name
+            father_brother    if type has name
+            son_level
+          type                = pascal record type
+          type_offset         = 0
+
+                  pascal_name_next      (if type has name)
+          name                (standard)
+          next_token          (standard)
+
+                  pascal_father_brother  if type has name)
+          father              (standard)
+          brother             (standard)
+
+                  pascal_son_level
+          son                 = relative offset of symbol node
+                                for the first field
+          level               = 1
+
+
+MTB 632                                Multics Technical Bulletin
+
+                              TYPE NODES
+
+8  Pascal Record File Type
+
+                  pascal_symbol_node_header
+          flags set :
+            name_next         if type has name
+            base_type_info
+            father_brother    if type has name
+          type                = pascal record file type
+          type_offset         = 0
+
+                  pascal_name_next      (if type has name)
+          name                (standard)
+          next_token          (standard)
+
+                  pascal_base_type_info
+          base_type           = type of the elements of array
+          base_type_offset    = relative offset of base-type node
+
+                  pascal_father_brother  if type has name)
+          father              (standard)
+          brother             (standard)
+
+
+Multics Technical Bulletin                                MTB 632
+
+                              TYPE NODES
+
+9  Procedure Type
+
+                  pascal_symbol_node_header
+          flags set :
+            base_type_info    if it is a function
+            son_level
+            size              if it is a function
+          type                = pascal procedure type
+          type_offset         = 0
+
+                  pascal_base_type_info    (if it is a function)
+          base_type           = type of the returned value
+          base_type_offset    = relative offset of base-type node
+
+                  pascal_son_level
+          son                 = relative offset of symbol node
+                                for the first formal parameter
+                                if any; 0 if none
+          level               = 0
+
+                  pascal_size   (if it is a function)
+                              = size corresponding to the type of
+                                the returned value
+
+
+MTB 632                                Multics Technical Bulletin
+
+                            VARIABLE NODES
+
+Variables
+
+                  pascal_symbol_node_header
+          flags set :
+            name_next
+            address
+            father_brother
+            size
+          type                = type code for the variable
+          type_offset         = relative offset of type node
+
+                  pascal_name_next
+          name                (standard)
+          next_token          (standard)
+
+                  pascal_address
+          location            (standard)
+          class               (standard)
+          units               (standard)
+
+                  pascal_father_brother
+          father              (standard)
+          brother             (standard)
+
+                  pascal_size  = size of the variable
+                                 corresponding to the type
+
+
+Multics Technical Bulletin                                MTB 632
+
+                              FIELD NODES
+
+1  Field In a Record (Simple)
+
+                  pascal_symbol_node_header
+          flags set :
+            name_next
+            address
+            father_brother
+            son_level
+            size
+            offset
+          type                = type of the field
+          type_offset         = relative offset of type node
+
+                  pascal_name_next
+          name                (standard)
+          next_token          (standard)
+
+                  pascal_address
+          location            = 0
+          class               = 0
+          units               (standard) (used for offset)
+
+                  pascal_father_brother
+          father              = relative offset of symbol node
+                                for father record type
+          brother             = relative offset of symbol node
+                                for next field (0 if none)
+
+                  pascal_son_level
+          son                 = 0
+          level               = 2
+
+                  pascal_size = size of the field corresponding to
+                                the type code
+
+                  pascal_offset = offset (in pascal_address.units)
+                                  of the field in the record
+
+
+MTB 632                                Multics Technical Bulletin
+
+                              FIELD NODES
+
+2  Field In a Record (Selector)
+
+                  pascal_symbol_node_header
+          flags set :
+            name_next         if field has name
+            address           if field has name
+            father_brother
+            son_level
+            size
+            offset            if field has name
+            variant_info
+          type                = type of the field
+          type_offset         = relative offset of type node
+
+                  pascal_name_next
+          name                (standard)
+          next_token          (standard)
+
+                  pascal_address
+          location            = 0
+          class               = 0
+          units               (standard - used for offset)
+
+                  pascal_father_brother
+          father              = relative offset of symbol node
+                                for containing record
+          brother             = 0
+
+                  pascal_son_level
+          son                 = 0
+          level               = 2
+
+                  pascal_size       (if field has name)
+
+                  pascal_offset     (if field has name
+
+                  pascal_variant_info
+          number_of_variants
+          first_value_in_set
+          case        (nvariants refer
+                       (pascal_variant_info.number_of_variants)),
+            set_offset
+            brother
+
+
+Multics Technical Bulletin                                MTB 632
+
+     Example:  bignum = 1000..1003 ;
+               rec = record
+                       case bignum of
+                         1000 : ...
+                         10002, 1003 : ...
+                         1001 : ...
+                       end ;
+               number_of_variants = 3 ;
+               first_value_in_set = 1000 ;
+               set string length = 4 bits
+
+     The selector field is logical and has no name and no place.
+
+
+MTB 632                                Multics Technical Bulletin
+
+                              FIELD NODES
+
+3  Field Accessed In a WITH Block
+
+                  pascal_symbol_node_header
+          flags set :
+            in_with_block
+            name_next
+            address
+            father_brother
+            son_level
+            size
+            offset
+          type                = type of the field
+          type_offset         = 0
+
+                  pascal_name_next
+          name
+          next_token
+
+                  pascal_address
+          location            (standard)
+          class               (standard)
+          units               (standard)
+
+                  pascal_father_brother
+          father              = relative offset to with block node
+          brother             = relative offset to brother field node
+                                in with block
+
+                  pascal_size
+
+                  pascal_offset           (standard)
+
+
+Multics Technical Bulletin                                MTB 632
+
+                            CONSTANT NODES
+
+1  Integer, Real and Char Constants
+
+                  pascal_symbol_node_header
+          flags set :
+            name_next
+            address
+            father_brother
+            size
+          type                = integer, real or pascal char
+          type_offset         = 0
+
+                  pascal_name_next
+          name                (standard)
+          next_token          (standard)
+
+                  pascal_address
+          location            (standard)
+          class               (standard)
+                  pascal_father_brother
+          father              (standard)
+          brother             (standard)
+
+                  pascal_size = size in bits (for char)
+                                or precision (for integer and real)
+                                of generated constant
+
+
+MTB 632                                Multics Technical Bulletin
+
+                            CONSTANT NODES
+
+2  Enumerated Type Element
+
+                  pascal_symbol_node_header
+          flags set :
+            name_next
+            address
+            father_brother
+            father_type_successor
+            size
+          type                = pascal enumerated type element
+          type_offset         = 0
+
+                  pascal_name_next
+          name                (standard)
+          next_token          (standard)
+
+                  pascal_address
+          location            (standard)
+          class               (standard) (= 11)
+
+                  pascal_father_brother
+          father              (standard)
+          brother             (standard)
+
+                  pascal_father_type_successor
+          father_type         = relative offset of node for
+                                containing enumerated type
+          successor           = relative offset of symbol node for
+                                next constant in containing type
+
+                  pascal_size = size in bits of internal code
+
+
+Multics Technical Bulletin                                MTB 632
+
+                            CONSTANT NODES
+
+3  String Constant
+
+                  pascal_symbol_node_header
+          flags set :
+            name_next
+            address
+            father_brother
+            size
+          type                = pascal user defined type instance
+          type_offset         = relative offset of symbol node for type
+                                "packed array [1..nbr_of_chars] of char"
+
+                  pascal_name_next
+          name                (standard)
+          next_token          (standard)
+
+                  pascal_address
+          location            (standard)
+          class               (standard)
+
+                  pascal_father_brother
+          father              (standard)
+          brother             (standard)
+
+                  pascal_size = length in bits (9 * nbr_of_chars)
+
+
+MTB 632                                Multics Technical Bulletin
+
+                              LABEL NODES
+
+Label
+
+                  pascal_symbol_node_header
+          flags set :
+            name_next
+            address
+            father_brother
+          type                = label
+          type_offset         = 0
+
+                  pascal_name_next
+          name                (standard) (like FORTRAN labels)
+          next_token          (standard)
+
+                  pascal_address
+          location            (standard)
+          class               (standard)
+
+                  pascal_father_brother
+          father              (standard)
+          brother             (standard)
+
+
+Multics Technical Bulletin                                MTB 632
+
+                            PROCEDURE NODES
+
+Procedure
+
+                  pascal_symbol_node_header
+          flags set :
+            name_next
+            address
+            father_brother
+          type                = pascal internal procedure
+                                or pascal imported procedure
+                                or pascal exportable procedure
+                                or pascal procedure parameter
+          type_offset         = relative offset of a procedure
+                                type symbol node
+
+                  pascal_name_next
+          name                (standard)
+          next_token          (standard)
+
+                  pascal_address
+          location            (standard)
+          class               (standard)
+
+                  pascal_father_brother
+          father              (standard)
+          brother             (standard)
+
+                 pascal_size  (only for pascal procedure parameter)
+
+
+MTB 632                                Multics Technical Bulletin
+
+                         FORMAL PARAMETER NODES
+
+1  Variables
+
+                  pascal_symbol_node_header
+         flags set :
+            name_next
+            base_type_info
+            father_brother
+          type                = pascal variable formal parameter
+                                or pascal value formal parameter
+          type_offset         = 0
+
+                  pascal_name_next
+          name                = relative offset of acc string
+          next_token          = 0
+
+                  pascal_base_type_info
+          base_type           = type code for the parameter
+          base_type_offset    = relative offset of base-type node
+
+                  pascal_father_brother
+          father              relative offset of procedure type
+                              symbol node
+          brother             relative offset of node for the
+                              next formal parameter; 0 if last
+
+
+Multics Technical Bulletin                                MTB 632
+
+                        FORMAL PARAMETER NODES
+
+2  Entries
+
+                  pascal_symbol_node_header
+         flags set :
+            name_next
+            father_brother
+          type                = pascal procedure formal parameter
+          type_offset         = relative offset of a procedure
+                                type symbol node
+
+                  pascal_name_next
+          name                relative offset of acc string
+          next_token          = 0
+
+                  pascal_father_brother
+          father              relative offset of a procedure
+                              type symbol node
+          brother             relative offset of node for the
+                              next formal parameter; 0 if last
+
+
+MTB 632                                Multics Technical Bulletin
+
+                              APPENDIX C
+
+                         runtime_symbol_info_
+
+     Attached is the documentation for runtime_symbol_info_.
+
+____________________                         ____________________
+
+runtime_symbol_info_                         runtime_symbol_info_
+____________________                         ____________________
+
+NAME: RUNTIME_SYMBOL_INFO_
+
+This subroutine's various entry points return runtime information
+about  program  variables  (address,  type,  etc.)   for programs
+compiled with symbol tables (-table).  Declarations for the entry
+points and the structures they return can be found in the include
+file  runtime_symbol_info_.incl.pl1.   Most entry  points  take a
+pointer (symbol_ptr) to  a symbol node, which can  be obtained by
+calling  stu_$find_runtime_symbol.   Rather   than  return  error
+codes, these entry points return  null pointers or zero fields in
+their  structures  if  the  symbol  node  does  not  contain  the
+requested  information.  Also  see the various  stu_ entry points
+for additional information about program variables and text.
+
+WARNING:
+Use  of these  subroutines requires  a good  understanding of the
+symbol table  structures generated by  translators.  For example,
+given  a  Pascal symbol  "foo" declared  variable of  type packed
+array [1..10]  of char, runtime_symbol_info_ does  not return any
+useful information because this information resides in the symbol
+node for the TYPE of "foo".
+
+ENTRY:  RUNTIME_SYMBOL_INFO_$ADDRESS
+
+This  entry  point returns  information about  the location  of a
+symbol at runtime.
+
+USAGE
+
+declare runtime_symbol_info_$address entry (pointer, pointer);
+
+call runtime_symbol_info_$address (symbol_ptr, info_ptr);
+
+ARGUMENTS
+
+symbol_ptr
+   is a pointer to a symbol node.  (Input)
+
+info_ptr
+   is a pointer to a user-allocated  structure to be filled in by
+   the  call.   This structure,  called  runtime_address_info, is
+   described under "Notes" below.
+
+____________________                         ____________________
+
+runtime_symbol_info_                         runtime_symbol_info_
+____________________                         ____________________
+
+NOTES
+
+Information is  returned in the following  structure, declared in
+the include file runtime_symbol_info_.incl.pl1:
+
+dcl 1 runtime_address_info    aligned based,
+      2 location              fixed bin (18) unsigned unaligned,
+      2 class                 fixed bin (6) unsigned unaligned,
+      2 use_digit             fixed bin (1) unsigned unaligned,
+      2 units                 fixed bin (2) unsigned unaligned,
+      2 offset_is_encoded     bit (1) unaligned,
+      2 pad                   bit (8) unaligned,
+      2 offset                fixed bin (35);
+
+STRUCTURE ELEMENTS
+
+location
+   is the offset  of the data within the  storage class specified
+   by the next field.
+
+class
+   is the storage class:
+   0        No address information is available for this symbol.
+   1 - 15   See the symbol table documentation in the Multics Reference Manual.
+
+use_digit
+   is "1"b to indicate that units are digits if units = 3.
+
+units
+   gives the unit of storage:
+   0         word            36 bits
+   1         bit              1 bit
+   2         byte             9 bits
+   3         half-word/digit    18 / 4.5 bits
+
+offset_is_encoded
+   is "1"b if the address is  represented as an encoded offset in
+   the next field.  Encoded values, described in the symbol table
+   documentation  in  the  Reference Manual,  are  interpreted by
+   stu_$decode_runtime_value_extended.
+
+offset
+   is the offset  of the start of the  identifier with respect to
+   the address specified by location and class.  It is encoded if
+   offset_is_encoded="1"b.
+
+____________________                         ____________________
+
+runtime_symbol_info_                         runtime_symbol_info_
+____________________                         ____________________
+
+ENTRY:  RUNTIME_SYMBOL_INFO_$ARRAY
+
+This  entry   point  returns  information   about  array  storage
+allocation.
+
+USAGE
+
+declare runtime_symbol_info_$array entry (pointer, pointer);
+
+call runtime_symbol_info_$array (symbol_ptr, info_ptr);
+
+ARGUMENTS
+
+symbol_ptr
+   is a pointer to a symbol node.  (Input)
+
+info_ptr
+   is a pointer to a user-allocated  structure to be filled in by
+   the  call.   This  structure,  called  runtime_array_info,  is
+   described under "Notes" below.
+
+NOTES
+
+Information is  returned in the following  structure, declared in
+the include file runtime_symbol_info_.incl.pl1:
+
+dcl 1 runtime_array_info           aligned based,
+      2 access_info                aligned,
+        3 ndims                    fixed bin (6) unsigned unaligned,
+        3 use_digit                fixed bin (1) unsigned unaligned,
+        3 array_units              fixed bin (2) unsigned unaligned,
+        3 virtual_origin_is_encoded
+                                   bit (1) unaligned,
+        3 pad                      bit (26) unaligned,
+      2 virtual_origin             fixed bin (35),
+      2 bounds                     (16) aligned,
+        3 flags                    aligned,
+          4 lower_is_encoded       bit (1) unaligned,
+          4 upper_is_encoded       bit (1) unaligned,
+          4 multiplier_is_encoded  bit (1) unaligned,
+          4 pad                    bit (33) unaligned,
+        3 lower                    fixed bin (35),
+        3 upper                    fixed bin (35),
+        3 multiplier               fixed bin (35),
+        3 subscript_type           fixed bin (35),
+        3 subscript_type_addr      ptr;
+
+STRUCTURE ELEMENTS
+
+____________________                         ____________________
+
+runtime_symbol_info_                         runtime_symbol_info_
+____________________                         ____________________
+
+ndims
+   is  the number  of dimensions in  the array  (eg., 2 =&gt;  N x M
+   array).   If  this value  is  zero, the  symbol node  does not
+   contain array  information and the rest  of the information in
+   the structure is meaningless.
+
+use_digit
+   is "1"b to indicate that units are digits if array_units = 3.
+
+array_units
+   gives the unit of storage:
+   0         word            36 bits
+   1         bit              1 bit
+   2         byte             9 bits
+   3         half-word/digit    18 / 4.5 bits
+
+virtual_origin_is_encoded
+   is "1"b  if the origin  is represented as an  encoded value in
+   the   next   field.    Encoded  values   are   interpreted  by
+   stu_$decode_runtime_value_extended.
+
+virtual_origin
+   is  the  virtual  origin  of  the  array,  in  units  given by
+   array_units.   Its value  should be  subtracted from  the base
+   address  specified by  the address  location and  class.  This
+   value is  meaningless for Pascal conformant  arrays, for which
+   the origin is equal to low(1) * multiplier(1).
+
+bounds
+   gives, for  each dimension, information  describing the bounds
+   and subscript.
+
+lower_is_encoded
+   is "1"b if lower is an encoded value.
+
+upper_is_encoded
+   is "1"b if upper is an encoded value.
+
+multiplier_is_encoded
+   is "1"b if multiplier is an encoded value.
+
+lower
+   is the lower bound of this dimension.
+
+upper
+   is the upper bound of this dimension.
+
+multiplier
+   is the size of an element in units given by array_units.
+
+____________________                         ____________________
+
+runtime_symbol_info_                         runtime_symbol_info_
+____________________                         ____________________
+
+subscript_type
+   for a Pascal array, this is  the type of subscript allowed for
+   this dimension.
+
+subscript_type_addr
+   for a  Pascal array, this is  a pointer to a  Pascal type node
+   describing the  type of subscript allowed  for this dimension.
+   It is null if there is no type node.
+
+ENTRY:  RUNTIME_SYMBOL_INFO_$ARRAY_DIMS
+
+This entry  point returns the  number of dimensions  of an array.
+It returns null if the symbol has no dimensions.
+
+USAGE
+
+declare runtime_symbol_info_$array_dims entry (pointer) returns
+     (fixed bin);
+
+n_dims = runtime_symbol_info_$array_dims (symbol_ptr);
+
+ARGUMENTS
+
+symbol_ptr
+   is a pointer to a symbol node.  (Input)
+
+ENTRY:  RUNTIME_SYMBOL_INFO_$BROTHER
+
+This  entry  point,  given a  pointer  to  a symbol  node  for an
+aggregate component,  returns a pointer to  the next component at
+the  same level  or null  if this is  the last  component at this
+level of the  aggregate.  Given a pointer to  a formal parameter,
+it returns a pointer to the  node for the next parameter, or null
+if  there is  no next  parameter.  Given  a pointer  to any other
+symbol  node  whose level  is  &lt;= 1  (non_aggregate  or top-level
+structure) and  which has a  name, returns a pointer  to the next
+element  on the  list of  symbol nodes  ordered alphabetically by
+size.  It returns null if there is no next symbol.
+
+USAGE
+
+declare runtime_symbol_info_$brother entry (pointer) returns
+     (pointer);
+
+brother_ptr = runtime_symbol_info_$brother (symbol_ptr);
+
+ARGUMENTS
+
+symbol_ptr
+   is a pointer to a symbol node.  (Input)
+
+____________________                         ____________________
+
+runtime_symbol_info_                         runtime_symbol_info_
+____________________                         ____________________
+
+ENTRY:  RUNTIME_SYMBOL_INFO_$FATHER
+
+This  entry  point,  given a  pointer  to  a symbol  node  for an
+aggregate component, returns a pointer to the symbol node for its
+parent aggregate.  Given  a pointer to a symbol  node whose level
+is &lt;=  1 and which has  a name, returns a  pointer to the runtime
+block node that  represents the block in which  the identifier is
+declared.  It returns null if father = 0 or if there is no father
+field.
+
+USAGE
+
+declare runtime_symbol_info_$father entry (pointer) returns
+     (pointer);
+
+father_ptr = runtime_symbol_info_$father (symbol_ptr);
+
+ARGUMENTS
+
+symbol_ptr
+   is a pointer to to a symbol node.  (Input)
+
+ENTRY:  RUNTIME_SYMBOL_INFO_$FATHER_TYPE
+
+This entry point,  given a pointer to a symbol  node for a Pascal
+enumerated type element, returns a pointer to the symbol node for
+the parent type.  Otherwise, it returns null.
+
+USAGE
+
+declare runtime_symbol_info_$father_type entry (pointer) returns
+     (pointer);
+
+father_type_ptr = runtime_symbol_info_$father_type (symbol_ptr);
+
+ARGUMENTS
+
+symbol_ptr
+   is a pointer to a symbol node.  (Input)
+
+ENTRY:  RUNTIME_SYMBOL_INFO_$LEVEL
+
+This  entry  point,  given a  pointer  to  a symbol  node  for an
+aggregate component, returns the level number of the component in
+the  aggregate  or  zero  if  the  symbol  is  not  an  aggregate
+component.  Fields in a Pascal "with" block are at level 0.
+
+____________________                         ____________________
+
+runtime_symbol_info_                         runtime_symbol_info_
+____________________                         ____________________
+
+USAGE
+
+declare runtime_symbol_info_$level entry (pointer) returns (fixed
+     bin);
+
+level_number = runtime_symbol_info_$level (symbol_ptr);
+
+ARGUMENTS
+
+symbol_ptr
+   is a pointer to a symbol node.  (Input)
+
+ENTRY:  RUNTIME_SYMBOL_INFO_$N_VARIANTS
+
+This  entry point,  given a  pointer to a  symbol node  for a tag
+field in a Pascal record, returns the number of case variants for
+the field.  It returns 0 if the symbol is not a tag field.
+
+USAGE
+
+declare runtime_symbol_info_$n_variants entry (pointer) returns
+     (fixed bin);
+
+n_variants = runtime_symbol_info_$n_variants (symbol_ptr);
+
+ARGUMENTS
+
+symbol_ptr
+   is a pointer to a symbol node.  (Input)
+
+ENTRY:  RUNTIME_SYMBOL_INFO_$NAME
+
+This  entry point,  given a pointer  to a symbol  node, returns a
+pointer to the symbol's name  in packed form (see "Notes" below).
+It returns null if there is no name.
+
+USAGE
+
+declare runtime_symbol_info_$name entry (pointer) returns
+     (pointer);
+
+name_string = runtime_symbol_info_$name (symbol_ptr) -&gt;
+     acc.string;
+
+ARGUMENTS
+
+symbol_ptr
+   is a pointer to a symbol node.  (Input)
+
+____________________                         ____________________
+
+runtime_symbol_info_                         runtime_symbol_info_
+____________________                         ____________________
+
+NOTES
+
+The  variable   acc.string  is  declared  in   the  include  file
+acc.incl.pl1:
+
+dcl 1 acc based aligned,
+      2 num_chars fixed bin (9) unsigned unaligned,
+      2 string char (0 refer (acc.num_chars)) unaligned;
+
+ENTRY:  RUNTIME_SYMBOL_INFO_$NEXT
+
+This  entry point,  given a pointer  to a symbol  node, returns a
+pointer  to the  symbol node for  the next  identifier having the
+same name as the current identifier.  It returns null if there is
+no name or if there are no more identifiers with the same name.
+
+USAGE
+
+declare runtime_symbol_info_$next entry (pointer) returns
+     (pointer);
+
+next_symbol_ptr = runtime_symbol_info_$next (symbol_ptr);
+
+ARGUMENTS
+
+symbol_ptr
+   is a pointer to a symbol node.  (Input)
+
+ENTRY:  RUNTIME_SYMBOL_INFO_$SON
+
+This  entry  point,  given a  pointer  to  a symbol  node  for an
+aggregate,  returns  a  pointer  to   the  symbol  node  for  the
+aggregate's first  component.  Given a  pointer to a  symbol node
+for a procedure, it returns a  pointer to the symbol node for the
+first formal parameter.  Given a pointer  to a symbol node for an
+enumerated type, it returns a pointer  to the symbol node for the
+first element of the type.  Otherwise, it returns null.
+
+USAGE
+
+declare runtime_symbol_info_$son entry (pointer) returns
+     (pointer);
+
+son_ptr = runtime_symbol_info_$son (symbol_ptr);
+
+ARGUMENTS
+
+symbol_ptr
+   is a pointer to a symbol node.  (Input)
+
+____________________                         ____________________
+
+runtime_symbol_info_                         runtime_symbol_info_
+____________________                         ____________________
+
+ENTRY:  RUNTIME_SYMBOL_INFO_$SUCCESSOR
+
+This entry point,  given a pointer to a symbol  node for a Pascal
+enumerated type element, returns a pointer to the symbol node for
+the next element in the set of enumerated values for the type, or
+null if there is no next element or no successor field.
+
+USAGE
+
+declare runtime_symbol_info_$successor entry (pointer) returns
+     (pointer);
+
+successor_ptr = runtime_symbol_info_$successor (symbol_ptr);
+
+ARGUMENTS
+
+symbol_ptr
+   is a pointer to a symbol node.  (Input)
+
+ENTRY:  RUNTIME_SYMBOL_INFO_$TYPE
+
+This  entry point  returns information about  the data  type of a
+symbol.
+
+USAGE
+
+declare runtime_symbol_info_$type entry (pointer, pointer);
+
+call runtime_symbol_info_$type (symbol_ptr, info_ptr);
+
+ARGUMENTS
+
+symbol_ptr
+   is a pointer to a symbol node.  (Input)
+
+info_ptr
+   is a pointer to a user-allocated  structure to be filled in by
+   the  call.   This   structure,  called  runtime_type_info,  is
+   described under "Notes" below.
+
+____________________                         ____________________
+
+runtime_symbol_info_                         runtime_symbol_info_
+____________________                         ____________________
+
+NOTES
+
+Information is  returned in the following  structure, declared in
+the include file runtime_symbol_info_.incl.pl1:
+
+dcl 1 runtime_type_info       aligned based,
+      2 flags,
+        3 aligned             bit (1) unaligned,
+        3 packed              bit (1) unaligned,
+        3 size_is_encoded     bit (1) unaligned,
+        3 pad                 bit (25) unaligned,
+      2 scale                 fixed bin (7) unaligned,
+      2 (type, base_type)     fixed bin (18) unsigned unaligned,
+      2 (type_addr, base_type_addr)
+                              ptr,
+      2 size                  fixed bin (35);
+
+STRUCTURE ELEMENTS
+
+aligned
+   is  "1"b if  the value is  aligned.  The  meaning of alignment
+   depends on the type.  Refer  to the Reference Manual's section
+   on the runtime symbol table.
+
+packed
+   is  "1"b  if  the value  is  packed.  Refer  to  the Reference
+   Manual.
+
+size_is_encoded
+   is "1"b if  size is represented as an  encoded value.  Encoded
+   values are interpreted by stu_$decode_runtime_value_extended.
+
+scale
+   is  the  scale factor  for  arithmetic values.   Refer  to the
+   Reference Manual.
+
+type
+   is the type of the symbol.   The defined types are declared in
+   the include file std_descriptor_types.incl.pl1.
+
+base_type
+   when not equal to 0, is  used in Pascal type description nodes
+   in the following cases:  For  subranges, it is either integer,
+   Pascal char, or Pascal  enumerated type instance.  For arrays,
+   sets, and record  files, it is the type  of the elements.  For
+   typed  pointers, it  is the  type of  the referenced variable.
+   For  function procedure  types, it is  the type  of the return
+   value.  For other procedure types, it is null.
+
+____________________                         ____________________
+
+runtime_symbol_info_                         runtime_symbol_info_
+____________________                         ____________________
+
+type_addr
+   for  Pascal   user-defined  and  enumerated   type  variables,
+   constants, record fields, procedure types, subscript types and
+   base types,  this is a pointer  to a symbol node  for the type
+   that the symbol belongs to.  Otherwise, it is null.
+
+base_type_addr
+   is  a  pointer to  a  symbol node  describing  base_type, when
+   base_type itself  is neither 0 nor  a simple type.  Otherwise,
+   it is null.
+
+size
+   is the arithmetic precision, string  size, or area size of the
+   value.  Refer to the Reference Manual.
+
+ENTRY:  RUNTIME_SYMBOL_INFO_$VARIANT
+
+This entry point,  given a pointer to a symbol  node for a Pascal
+record field  with case variants,  returns information describing
+the   variants.   If   the  symbol   is  not   a  Pascal  symbol,
+number_of_variants  is  returned  as  0   and  the  rest  of  the
+information is invalid.
+
+USAGE
+
+declare runtime_symbol_info_$variant entry (pointer, pointer);
+
+call runtime_symbol_info_$variant (symbol_ptr, info_ptr);
+
+ARGUMENTS
+
+symbol_ptr
+   is a pointer to a symbol node.  (Input)
+
+info_ptr
+   is a pointer to a user-allocated  structure to be fille din by
+   the  call.   This structure,  called  runtime_variant_info, is
+   described under "Notes" below.
+
+NOTES
+
+Information is  returned in the following  structure, declared in
+the include file runtime_symbol_info_.incl.pl1:
+
+dcl 1 runtime_variant_info    aligned based,
+      2 number_of_variants    fixed bin,
+      2 first_value_in_set    fixed bin (35),
+      2 case                  (n_variants),
+        3 set_addr            ptr,
+        3 brother_addr        ptr;
+
+____________________                         ____________________
+
+runtime_symbol_info_                         runtime_symbol_info_
+____________________                         ____________________
+
+STRUCTURE ELEMENTS
+
+number_of_variants
+   is the number  of variants if the symbol node  is for a Pascal
+   record tag field.  Otherwise, it is null.
+
+first_value_in_set
+   is the lowest value used to select a variant.
+
+case
+   contains information for a particular variant.
+
+set_addr
+   is a pointer  to a bit string that specifies  the cases of the
+   variant.   The bit  string represents a  set (one  bit per set
+   element)  whose  base  type is  the  type of  the  symbol node
+   pointed  to  by  symbol_ptr.   The  first  bit  corresponds to
+   first_value_in_set.
+
+brother_addr
+   is a pointer to the first field of the variant part.
+
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

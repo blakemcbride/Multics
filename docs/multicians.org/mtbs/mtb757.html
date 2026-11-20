@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : ALM Symbol Table Support.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+MULTICS TECHNICAL BULLETIN                             MTB-757-01
+
+To:       MTB Distribution
+
+From:     Rick Gray
+
+Date:     October 20, 1986
+
+Subject:  ALM Symbol Table Support
+
+               -----------------------------------
+
+1.  Abstract
+
+     This MTB describes features to be added to the ALM assembler
+that will  be of interest  to ALM programmers  and those compiler
+writers who are using ALM  as an intermediary.  The features will
+include the ability to:
+
+ - position text entry sequences,
+ - specify more information in text entry sequences,
+ - create a full or partial symbol table for debugging.
+
+     These  features  will  provide  the  assembler with symbolic
+debugging information that will be  organized into a format known
+to  probe and  debug.  The  information will  be supplied  to the
+assembler using two new pseudo operators.  These pseudo operators
+are  described  in  this  MTB  and  will  allow the programmer or
+compiler writer to provide the assembler with information for the
+symbolic debugging of ALM programs.  Note that this document does
+not  describe any  mechanism  for  the explicit  specification of
+statement map information.
+
+     Thanks  to Ward Anderson  who has done  most of the  work on
+symbol table support for ALM.
+
+               -----------------------------------
+
+Comments on this MTB should be sent to the author -
+     via Multics mail to:
+        JRGray.Multics on System M
+
+     via telephone to:
+        (403) 284-6400 (403) 284-6410
+
+     via forum on System-M to:
+        &gt;udd&gt;m&gt;DGHowe&gt;mtgs_dir&gt;c&gt;c_imp (c)
+
+
+ALM Symbol Tables                                      MTB-757-01
+
+2.  Preface
+
+     The  two ALM  pseudo operators  described in  this MTB  will
+provide ALM programmers and compiler writers with the opportunity
+to symbolically  debug ALM programs using probe  and debug.  This
+MTB  will limit itself  to describing the  use of the  two pseudo
+operators.  The first section  describes the pseudo operator that
+will  create entry sequences.   The second section  describes the
+pseudo  operator that  will create  runtime symbols.   The pseudo
+operator that will be used  by compilers to specify statement map
+information for  high level source  code will not  be included in
+this MTB.
+
+
+MTB-757-01                                      ALM Symbol Tables
+
+                        TABLE OF CONTENTS
+
+Section    Page  Subject
+=======    ====  =======
+
+1          i     Abstract
+2          1     Preface
+3          1     Introduction
+4          2     New Control Arguments
+5          3     The 'ext_entry' Pseudo Operator
+5.1        3     . . Function
+5.2        3     . . Syntax and Arguments
+5.3        4     . . Sections Of The Entry_block
+5.3.1      4     . . . . Entry_sequence
+5.3.2      4     . . . . Call_sequence
+5.3.3      5     . . . . Offset_sequence
+5.3.4      5     . . . . Transfer_sequence
+5.4        6     . . Environment
+5.4.1      6     . . . . Position of the entry_block
+5.4.2      7     . . . . The Statement Map
+5.4.3      7     . . . . Positioning the entry_block
+5.4.4      7     . . . . Runtime Symbol Blocks
+5.4.5      7     . . . . Scope Rules
+6          8     The 'rt_symbol' Pseudo Operator
+6.1        8     . . Function
+6.2        8     . . Syntax and Arguments
+7          10    Changes to the ALM Info Segment
+7.1        10    . . New Control Arguments
+7.2        10    . . New Pseudo Operators
+
+
+ALM Symbol Tables                                      MTB-757-01
+
+3.  Introduction
+
+     The  creation of a  C compiler on  Multics has prompted  the
+changes to ALM described in this MTB.  The Multics C compiler has
+been written in  such a way that it generates  ALM source code as
+an intermediate  step in the  compilation process.  As  a result,
+the  ALM assembler will  be responsible for  the creation of  the
+object segment.
+
+     Presently,  the  ALM  assembler  does  not  create an object
+segment  containing   symbolic  debugging  information.    The  C
+compiler  specifications require  symbolic debugging  support for
+programs written in C.   The responsibility of providing symbolic
+debugging  support is  passed to  the ALM  assembler.  As  a step
+towards  this design goal,  all programs written  in ALM will  be
+able  to generate symbolic  debugging information.  This  will be
+accomplished  through the  use  of  the appropriate  command line
+arguments and the pseudo operators described in this MTB.
+
+     An   alternate  solution   was  tested   but  found   to  be
+ineffective.    It  involved   joining  information   created  by
+operators  such as vfd,zero,oct,etc  to the symbol  section.  The
+complexity  of creating  the necessary  links from  one block  of
+information to  the next became very involved  and time consuming
+so this approach was not implemented.
+
+
+MTB-757-01                                      ALM Symbol Tables
+
+4.  New Control Arguments
+
+     The addition of  two new control argument to  ALM will allow
+for the  control and use of  the new symbol table  features.  The
+new  control arguments  will be  called -table  and -brief_table.
+Note  that the  'ext_entry' pseudo-op  will produce  no debugging
+information  unless  -table  or  -brief_table  is specified.  The
+'rt_symbol' pseudo-op  is ignored unless -table  is specified.  A
+brief description of the two new control arguments follow:
+
+-brief_table, -bftb
+   generate statement map information.  This argument will cause
+   ALM to produce the minimal symbol table information necessary
+   for mapping ALM source lines to text locations.
+
+-table, -tb
+   generate full symbol table information.  This argument will
+   cause ALM to produce symbol table information on statement
+   locations and on runtime values and locations.
+
+
+ALM Symbol Tables                                      MTB-757-01
+
+5.  The 'ext_entry' Pseudo Operator
+
+5.1.  Function
+
+     The ext_entry pseudo operator will create:
+
+     1.   an entry_sequence (as described in AG91-04, G-3).
+     2.   a call_sequence comprised of instructions that will  establish a
+          stack frame and call the PL/1 operator ext_entry.
+     3.   an offset_sequence with offsets to debugging information located in the
+          linkage section and symbol block.
+     4.   a transfer_section that will transfer control to the entrypoint.
+
+     The above sections will be created to establish a C-like
+environment suitable for symbolic debugging.  These sections will
+be collectively referred to as the entry_block in the rest of this
+MTB and are described in detail in Section 4.3.
+Note that the use of the ext_entry pseudo-operation will not leave|
+pr0 pointing to the argument list.  The argument list pointer can |
+be accessed from its location in the stack frame (location 26 ie. |
+pr6|26).                                                          |
+
+5.2.  Syntax and Arguments
+
+Syntax:
+
+                ext_entry     elabel/clabel,stack_size,dlabel     |
+                   .                      .
+                   .                      .
+     elabel:       .                      .
+
+Arguments:
+
+elabel (required)
+     is the name of the  label that identifies the entrypoint for
+     the entry_block.
+
+clabel (optional)                                                 |
+     is specified by following the elabel with a slash and then a |
+     name.  Give  'clabel' the value  of the address  of the code |
+     sequence associated with the entrypoint.                     |
+
+stack_size (optional)
+     if specified
+          is  a decimal  number that  specifies the  size of  the |
+          stack frame.                                            |
+
+
+MTB-757-01                                      ALM Symbol Tables
+
+     if not specified
+          is decimal 64 plus the  number of words required by the
+          temp,tempd   and  temp8   pseudo  operators.    If  the
+          stack_size  is  not  an  even  multiple  of  16,  it is
+          increased to the nearest multiple of 16.
+
+dlabel (optional)
+     is  the name  of the  label that  identifies the  descriptor
+     information.  There is no default value.
+
+5.3.  Sections Of The Entry_block
+
+5.3.1.  Entry_sequence
+
+     The entry_sequence will be as described in AG91-04 G-3.
+   The descr_relp_offset and reserved  fields will be included in
+   the entry_sequence  if the dlabel argument  is provided.  They
+   will be omitted  if the dlabel argument is  not provided.  The
+   address of the word identified  by dlabel will be converted to
+   an 18 bit offset relative to the base of the text section, and
+   stored in the upper half of the word.
+
+   The def_relp field will be set  to the offset, relative to the
+   base of  the definition section, of  the definition associated
+   with this external entry.
+
+   The flags fields will be determined as follows:
+
+    1.  The basic_indicator field will always be set to "0"b.
+
+    2.  The revision_1 field will always be set to "1"b.
+
+    3.  If the  dlabel argument is provided,  the has_descriptors
+        will be set to "1"b; otherwise it will be set to "0"b.
+
+    4.  If  the dlabel  argument is  provided,the variable  field
+        will be set to "0"b; otherwise it will be set to "1"b.
+
+    5.  The function field will always be set to "0"b.
+
+
+ALM Symbol Tables                                      MTB-757-01
+
+5.3.2.  Call_sequence
+
+     The following  instructions will establish a  stack frame by
+calling the PL/1 ext_entry operator.
+
+     eax7 stack_size          " create stack frame
+     epp2 pr7|28,*            " set pr2 to base of PL/1 operators
+     tsp2 pr2|549             " transfer to ext_entry and set pr2
+
+5.3.3.  Offset_sequence
+
+     There will be  two words in this section.  They  will be set
+to  zero initially and  remain zero unless  the -table option  is
+given  as a command  line argument.  The  first word will  remain |
+zero but was once used to contain 2 times the number of arguments |
+expected by  the entrypoint.  This field is  currently ignored by |
+operators and debugging tools.  When an entry_block is created by |
+the ext_entry  pseudo, a runtime_block will also  be created, but |
+in  the symbol  block.  The   runtime_block will  be present  for
+debugging  purposes  only.   The  offset  of  the  runtime_block,
+relative  to the  base of  the symbol  block, will  be set by the
+assembler and stored in the lower  half of the second word in the
+offset_sequence.  The upper  half of the second word  will be set
+to the  offset of the symbol_table  link relative to the  base of
+the linkage section.
+
+5.3.4.  Transfer_sequence
+
+     The  transfer  section  will  be  an  unconditional transfer
+instruction  that  transfers  control  to  the  entrypoint of the
+external entry.   This instruction will allow  the entry_block to
+be  separated from  the first  instruction in  the program.  This
+feature will prove useful when  the programmer wishes to create a
+declaration section  or include parameter information  within the
+scope of  the entry_block.  The  entrypoint of an  external entry
+will  be  identified  by  the  label  whose  name  is that of the
+external entry.
+
+     For example:
+
+          ext_entry elabel
+                     .
+                     .
+                     .
+          tra       elabel
+          oct       000000000001   " fill
+          oct       000000000030   " fill
+          elabel:   lda       10,dl
+
+
+MTB-757-01                                      ALM Symbol Tables
+
+     Note that  the label used to identify  the entrypoint should
+never identify the entry_block.
+
+     For example:
+
+          elabel:   ext_entry elabel,100,dlabel
+                    lda       10,dl
+
+     The result(s)  of incorrectly specifying the  entrypoint, as
+shown  in  the  previous  example,  cannot  be  determined  until
+runtime.  The first word (if parameters are not specified) or two
+words (if parameters are specified) of the entry_sequence will be
+interpreted  as  instructions  following  the  execution  of  the
+transfer  instruction  in  the  transfer_sequence.   Assuming the
+first word(s)  in the entry_sequence is(are)  valid instructions,
+the  most   probable  event  will  be  stack   overflow,  as  the
+call_sequence will be executed  many times.  The eax7 instruction
+will increase the value of pr7 to exceed its limit.
+
+     There are currently  no hooks in ALM to  identify or prevent
+this  situation  from  occuring.   To  avoid  this situation, the
+example shown above should read:
+
+                    ext_entry elabel,100,dlabel
+      elabel:       lda       10,dl
+
+5.4.  Environment
+
+5.4.1.  Position of the entry_block
+
+     The ALM  ext_entry pseudo operator will  create entry_blocks
+whose  structure and function  will be very  similar to those  of
+external  entrypoints in  a PL/1  program.  If  used in  the same
+context, they will perform an identical function.
+
+     An important  characteristic of an object  segment generated
+by  the PL/1  compiler is  the position  of the  entry_block with
+respect  to the  code associated  with that  external entry.  The
+entry_block   always  precedes   the  code,   so  control   flows
+sequentially  from entry_block  to the  first instruction  in the
+body  of   the  program.   This  configuration   facilitates  the
+sequential  order  of  the  statement_map,  which  is  a  list of
+structures in the symbol section, used by symbolic debuggers.
+
+
+ALM Symbol Tables                                      MTB-757-01
+
+5.4.2.  The Statement Map
+
+     A statement_map  will be generated  for ALM source  when the
+-table or -brief_table command line arguments are specified.  The
+assembler will produce a  statement_map based on ALM instructions
+found  in  the  "alm_probe_table_$optable".   The  table  will be
+created by  omitting from defops.incl.alm those  pseudo operators
+and instructions found in alm_probe_list.incl.pl1.  There will be
+a  separate statement_map   associated with  every runtime_block.
+The  statement_maps  will  be  contiguous,  but  separated  by an
+invalid statement_map  entry.  The invalid  statement_map entries
+will be intended as markers only and can be bypassed by advancing
+the  position counter  in probe.    If the  statement_map is  not
+ordered   sequentially,  it   is  malformed   and  the  debugging
+facilities do not function properly.  It will be the programmer's
+responsibility to ensure the entry_block precedes the body of the
+program in ALM.
+
+5.4.3.  Positioning the entry_block
+
+     ALM allows  the programmer to position  and relocate regions
+of  the text  section using  the use  and join  pseudo operators.
+This  ALM feature  will not  adversely affect  the statement_map.
+The assembler  will compensate for the  reordering and relocation
+caused by the use and join pseudo operators.  An ext_entry pseudo
+operator located after the body of the program in the source file
+may be positioned  before the body in the  object segment without
+compromising  the integrity of  the statement_map.  This  will be
+useful  when the  stack_size is  not known  until the  end of the
+program, and code has already been emitted.
+
+5.4.4.  Runtime Symbol Blocks
+
+     The  assembler will  create runtime  symbol blocks  when the
+-table  argument is  specified.  A  runtime symbol  block will be
+created for  every label symbol  and every symbol  defined by the
+temp , tempd and the temp8 pseudo operators.
+
+5.4.5.  Scope Rules
+
+     The  C  language  allows  symbols  to  be  known  locally or
+globally.   Local symbols  are known  in the  function where  the
+declaration  occurs.  Global  symbols are  not declared  within a
+function and are  known to all functions sharing  the same source
+file.  The ext_entry pseudo has  been designed to facilitate such
+a feature.
+
+     Symbols in  the ALM environment are  those established using
+the temp ,  tempd , temp8 and rt_symbol pseudo  operators as well
+
+
+MTB-757-01                                      ALM Symbol Tables
+
+as labels.  The  following rules are used to  determine the scope
+of a symbol:
+
+1.   All  symbols  appearing  before  the  first  occurence of an
+     ext_entry  pseudo  operator  in  the  source  file  will  be
+     regarded as global.
+
+2.   After  the occurence  of the  first ext_entry  pseudo in the
+     source   file,   symbols   will   be   local   to  a  single
+     runtime_block.   Each ext_entry  pseudo will  have an active
+     and  inactive state.  An  ext_entry will become  active when
+     first encountered in the source file.  Any previously active
+     ext_entry will becomes inactive, and  be replaced by the new
+     occurence.   An ext_entry  will remain  in the  active state
+     until the  next ext_entry is  encountered or the  end of the
+     source file is reached.  All symbols occuring while there is
+     an   active  ext_entry   will  be   known  locally   to  the
+     runtime_block associated with that ext_entry.
+
+6.  The 'rt_symbol' Pseudo Operator
+
+6.1.  Function
+
+     The rt_symbol  pseudo operator will create  a runtime symbol
+block  within  the  symbol  table  when  certain requirements are
+fulfilled.  The requirements are as follows:
+
+1.   The program must be assembled with the -table option.
+
+2.   The  ext_entry  pseudo  operator  must  be  used  to  create
+     entrypoints.
+
+     This  pseudo operator  will  not  reserve stack  space.  The
+symbols that  will be created  with this pseudo  operator will be
+windows to previously established memory locations.
+
+6.2.  Syntax and Arguments
+
+Syntax:
+
+          rt_symbol    location,level,atrtributes,type,name[a1:a2:a3]
+Arguments:
+
+location (required)
+     is an  expression that results in an  arithmetic value.  The
+     result  of  the  expression  is  the  offset  of  the symbol
+     relative to the base of the stack frame.  Locations start at
+     offset 64 (decimal).
+
+
+ALM Symbol Tables                                      MTB-757-01
+
+level          (optional)
+     is the structure level of the symbol.  Level 0 indicates the
+     symbol is  not part of a  structure.  If the level  field is
+     ommitted, the level is assumed to be 0.
+
+     attributes (optional)
+     are  a  list  of  one   or  more  of  the  following  symbol
+     attributes:
+
+     a.   aligned  b.   unaligned  c.   external  d.  internal e.
+     static f.  unsigned g.  signed h.  based
+
+type           (required)
+     is one of the the following symbol types:
+
+          Name         PL/1 equivalent
+          ============================
+     a.   char         char(1) aligned
+     b.   integer      fixed bin(35) signed aligned
+     c.   short        fixed bin(17) signed aligned
+     d.   long         fixed bin(71) signed aligned
+     e.   double       float bin(63) signed aligned
+     f.   float        float bin(27) signed aligned
+     g.   pointer      pointer aligned
+     h.   struct             ---
+     i.   string       char(?)
+
+name           (required)
+     is the name of the runtime symbol.  The name may be up to 32
+     characters in length and may include underscores.
+
+[a1:a2:a3] (optional)
+     are  array indices  for all  types except  for the  'string'
+     type.  When used in conjunction  with the 'string' type, the
+     first indice is interpreted as the length of the string.
+
+
+MTB-757-01                                      ALM Symbol Tables
+
+7.  Changes to the ALM Info Segment
+
+     The  following changes  should be  made to  the info segment
+alm.info:
+
+7.1.  New Control Arguments
+
+Insert  descriptions  for  three  new  control  arguments -table,
+-brief_table, and -no_table.
+
+-brief_table, -bftb
+   generates partial symbol table giving correspondence between
+   ALM source line numbers and object locations.
+
+-table, -tb
+   generates full symbol table.  This will generate debugging
+   information used to find the location of ALM source lines and
+   information about runtime symbols and variables.
+
+-no_table, -ntb
+   do not generate debugging information.  (Default)
+
+7.2.  New Pseudo Operators
+
+Insert descriptions for the two new pseudo-ops:
+
+ext_entry label{/code_label}{,size}{,name} -- make a probe-able   |
+                    entry sequence for 'label' with stackframe    |
+                    size of 'size' and with descriptors at label  |
+                    'name'. If 'code_label' is specified then it  |
+                    is assigned the value of the address of the   |
+                    code associated with the entry sequence.      |
+
+rt_symbol loc,{,level}{,attributes},type,name{[a1:a2:a3]}
+                              -- Define runtime symbol at stack
+                              offset 'loc', structure level
+                              'level', type 'type', name 'name',
+                              attributes as specified and indexes
+                              (a1 etc) as specified.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

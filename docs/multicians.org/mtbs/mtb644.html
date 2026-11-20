@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB 644</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB 644: The View Manager Facility:  SQL Parser.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                               MTB 644
+
+To:        MTB Distribution
+
+From:      Ron Barstad
+
+Date:      12/20/83
+
+Subject:   The View Manager Facility:  SQL Parser
+
+ABSTRACT
+
+The Sequential Query Language (SQL) for the View Manager Facility
+is described.  The use of a LALR parser to convert the SQL info a
+canonical form is described.
+
+This MTB is only one of a  group of related documents in the View
+Manager series.  These documents are
+
+    MTB-641  The View Manager Facility
+    MTB-642  The View Manager Facility:  Subroutine Interfaces
+    MTB-643  The View Manager Facility:  The View Master Subsystem
+    MTB-644  The View Manager Facility:  SQL Parser
+    MTB-645  The View Manager Facility:  Data Dictionary Interface
+
+Notes for printing:
+
+This document  contains lines longer than  the standard pagewidth
+of 65.   The control argument  "-forms elite" should  be used for
+hardcopies from the  x9700 and "-rqt pmdc_12c" should  be used on
+the PMDC diablo.
+
+Comments may be made
+
+     via forum:
+               &gt;udd&gt;Multics&gt;meetings&gt;End_User_Data_Access (euda)
+
+     via electronic mail:
+               RBarstad.Multics  at  System M
+
+     via telephone:
+               (HVN) 357-6617 or (602) 862-6617
+
+_________________________________________________________________
+
+Multics  Project  internal  working  documentation.   Not  to  be
+reproduced outside the Multics Project.
+
+
+MTB 644                                Multics Technical Bulletin
+
+1. INTRODUCTION
+
+The  Structured Query  Language (SQL) defined  by IBM  in the mid
+70's for their  System R project has become  the defacto industry
+standard.   Many vendors,  including GCOS,  are converting  to or
+adding  a  SQL like  interface  to their  data base  products.  A
+Multics  dialect  of  SQL  will  be  used  for  the  View Manager
+Facility.  This  dialect will be  familiar to users  of other SQL
+systems.
+
+Earlier  proposals by  Jim Gray and  others to  provide a unified
+query  language which  was a combination  of SQL,  MRDS and LINUS
+were  found to  be wanting.   It was  felt that  these approaches
+provided a  lowest-common-denominator language that  combined the
+worst features of all the  others.  The syntax for Gray's unified
+language  also  proved  to  be ambiguous  and  incapable  of LALR
+analysis without major change.
+
+
+Multics Technical Bulletin                               MTB 644
+
+2. FUNCTIONAL DESCRIPTION
+
+2.1 Overview
+
+The parser translates SQL into  a Canonical Query Language (CQL).
+The SQL  is the user entered  text such as "select  foo from bar"
+and the CQL  is an internal representation passed  on down to the
+routines that do  the user's bidding.  (The CQL  is not described
+here.)
+
+The parser can be considered a kind of compiler that converts the
+SQL  source statements  into the CQL  object.  This  is true even
+though the  parser deals with  only a single statement  at a time
+and appears to the user to  be a pre-processor.  Errors in syntax
+or  semantics will  be detected  and passed  back to  the caller.
+Some  checking of  column names  and expressions  may be  done to
+verify their appropriateness for  the requested table.  Any error
+would prevent the creation of the CQL.
+
+The  core of  the parser  is a LALR  translator built  from a BNF
+definition of  the SQL.  Semantic processing  code will build the
+CQL as each production is scanned and verified.
+
+2.2 About LALR
+
+LALR means  "Look Ahead, Left  to right, Right  most derivation".
+The Multics LALR system translates a BNF description of a grammar
+into  a  parser  for  that  language.   The  parser  is efficient
+compared to traditional "hand coding" and provides an expeditious
+way to build and test grammars  like SQL.  After the decision was
+made to  use the LALR parser  for the View Manager  SQL, we found
+that IBM  made the same  decision when building  their parser for
+the  original  SEQUEL for  System  R.  It  too  was a  PL/1 based
+interpreter that created a "canonical" form of the SEQUEL.
+
+Based  on an  original design by  Dave Ward and  Jim Falksen, the
+Multics  LALR  system is  now  maintained by  Pat Prange  at BCO.
+Development there  is continuing with  LALR as part  of the SLANG
+project to  support Ada/SIL.  Expectations are  that LALR will be
+included in MR11.
+
+2.3 Interfaces, hooks, handles
+
+SQL  statements are  built at  the terminal  in a  variety of the
+tradition  ways:  request  loop, editor,  ec, and  so forth.  The
+parser expects  a complete statement for  parsing and cannot make
+much  sense of  fragments.  However, it  may be  possible to take
+advantage of the error recovery  mechanisms to provide some fancy
+user interfaces.  For example, if the parser were warned that the
+statement passed to it was  incomplete, it could (after verifying
+correctness so far)  return a list of possibilities  for the next
+token.
+
+
+MTB 644                                Multics Technical Bulletin
+
+As in any language, there are  three classes of error possible in
+SQL.  First  are simple syntax  errors.  The parser  will give up
+processing a statement  on the first one and  indicate the errant
+token and most probable error.  Semantic errors will be delt with
+similarily.  The parser  will be able to find  some, but not all,
+execution  errors.   It  may  be able  to  verify  from  the data
+dictionary that the requested columns are in the referenced table
+or that the tables even exist  but it can't know if the selection
+condition (where clause) is valid.
+
+2.4 Subroutine Interface
+
+To  allow for  growth, the parser  is a  free-standing module not
+bound  with the  rest of  the view  manager.  This  design allows
+other parsers,  as long as  they produce CQL, to  be substited or
+added.
+
+
+Multics Technical Bulletin                               MTB 644
+
+entry:  convert_sql_to_cql_
+
+     This entry point is used to parse a sql statement string and
+generate the associated cql description.
+
+USAGE
+
+      dcl convert_sql_to_cql_ entry options (variable);
+
+      call convert_sql_to_cql_        (dd_path,       sql_string,
+            return_area_ptr,        replacement_arg_1,        ...
+            replacement_arg_N, cql_ptr);
+
+ARGUMENTS
+
+dd_path
+      is a  character string char (*)  that contains the pathname
+      of the  data dictionary to  be used while  parsing the sql.
+      (input)
+
+sql_string
+      is  a  character  string  char (*)  that  contains  the sql
+      statement to be parsed.  (input)
+
+return_area_ptr
+      is a  pointer to an  area where this  routine will allocate
+      the returned cql structure.  (input)
+
+replacement_arg_I
+      are  a variable  number of arguments  (possibly none), each
+      char (*),  that will be used  as substitution arguments for
+      &amp;N  in  the sql_str.   The  &amp;N is  associated with  the Nth
+      replacement_arg.  (input)
+
+cql_ptr
+      is  a  pointer  to  the  generated  cql_structure  that  is
+      allocated  in  the  area  pointed  to  by  return_area_ptr.
+      (output)
+
+
+MTB 644                                Multics Technical Bulletin
+
+3. DESCRIPTION OF SQL
+
+The following BNF  defines the SQL syntax.  This  is the same BNF
+that is passed as input to the lalr command.
+
+It  has been  shown to  be a  unambiguous grammar  and capable of
+correctly parsing SQL statements.
+
+3.1 Reserved words
+
+These reserved  words are defined  for the SQL.  They  may not be
+used in any other context, such as for table or column names.
+
+access            create_tablespace immediate         register_table
+add               create_view       in                remove
+admin             current           index             restore
+all               dec               insert            revoke
+alter             decimal           insertion         rollback
+alter_tablespace  delete            intersect         save
+and               deletion          into              select
+any               deregister        is                set
+as                deregister_link   like              share
+asc               deregister_table  link              special
+ascending         desc              lock              sum
+assertion         descending        max               synonym
+avg               does              min               table
+between           drop              minus             tablespace
+bin               drop_synonym      mode              then
+binary            drop_table        new               to
+bit               drop_tablespace   nonvar            trigger
+but               drop_view         nonvarying        uc
+by                exclusive         not               union
+char              exists            null              unique
+character         fix               of                update
+check             fixed             old               using
+column            float             on                values
+comment           for               option            var
+commit            from              or                varying
+contain           grant             order             view
+contains          group             read              where
+count             having            records           with
+create            if                register          work
+create_table      image             register_link
+
+
+Multics Technical Bulletin                               MTB 644
+
+3.2 SQL BNF
+
+(* Begin Multics View Manager SQL *)
+
+&lt;statement&gt; ::=                                             (* 83-12-20.01 *)
+          &lt;query&gt;  |
+          &lt;dml_statement&gt;  |
+          &lt;ddl_statement&gt;  |
+          &lt;control_statement&gt;  !
+
+&lt;dml_statement&gt; ::=
+          &lt;insertion&gt;  |
+          &lt;deletion&gt;  |
+          &lt;update&gt;  !
+
+&lt;query&gt; ::=
+          &lt;query_expr&gt; &lt;order_clause&gt;  !
+
+&lt;insertion&gt; ::=
+          insert into &lt;receiver&gt; &lt;insert_spec&gt;  !
+
+&lt;deletion&gt; ::=
+          delete &lt;from_clause&gt; &lt;where_current_clause&gt;  !
+
+&lt;update&gt; ::=
+          update &lt;table_label_name&gt; set &lt;set_clause_list&gt; &lt;where_current_clause&gt;  !
+
+          &lt;order_clause&gt; ::=
+                    order by &lt;ord_spec_list&gt;  |  !
+
+          &lt;receiver&gt; ::=
+                    &lt;table_name&gt;  |
+                    &lt;table_name&gt; ( &lt;column_name_list&gt; )  !
+
+          &lt;column_name_list&gt; ::=
+                    &lt;column_name&gt;  |
+                    &lt;column_name_list&gt; , &lt;column_name&gt;  !
+
+          &lt;insert_spec&gt; ::=
+                    &lt;query_expr&gt;  |
+                    values &lt;literal_row&gt;  !
+
+
+MTB 644                                Multics Technical Bulletin
+
+          &lt;table_label_name&gt; ::=
+                    &lt;table_name&gt; &lt;label_name&gt;  |
+                    &lt;table_name&gt;  !
+
+          &lt;set_clause_list&gt; ::=
+                    &lt;set_clause&gt;  |
+                    &lt;set_clause_list&gt; , &lt;set_clause&gt;  !
+
+                    &lt;set_clause&gt; ::=
+                              &lt;column_name&gt; = &lt;expr&gt;  |
+                              &lt;column_name&gt; = ( &lt;query_block&gt; )  !
+
+          &lt;query_expr&gt; ::=
+                    &lt;query_block&gt;  |
+                    &lt;query_expr&gt; &lt;set_op&gt; &lt;query_block&gt;  |
+                    ( &lt;query_expr&gt; )  !
+
+          &lt;set_op&gt; ::=
+                    intersect  |
+                    union  |
+                    minus  !
+
+          &lt;query_block&gt; ::=
+                    &lt;sub_query_block&gt;  |
+                    &lt;sub_query_block&gt; &lt;group_clause&gt;  !
+
+          &lt;sub_query_block&gt; ::=
+                    &lt;select_clause&gt; &lt;from_clause&gt; &lt;where_clause&gt;  !
+
+          &lt;select_clause&gt; ::=
+                    select &lt;sel_list_spec&gt;  &lt;sel_expr_list&gt;  |
+                    select &lt;sel_list_spec&gt; *  !
+
+          &lt;from_clause&gt; ::=
+                    from &lt;table_list&gt;  !
+
+          &lt;where_current_clause&gt; ::=
+                    &lt;where_clause&gt;  |
+                    where current of &lt;cursor_name&gt;  !
+
+          &lt;where_clause&gt; ::=
+                    where &lt;boolean_expr&gt;  |  !
+
+          &lt;group_clause&gt; ::=
+                    group by &lt;column_spec_list&gt;  |
+                    group by &lt;column_spec_list&gt; &lt;having_clause&gt;  !
+
+          &lt;having_clause&gt; ::=
+                    having &lt;boolean_expr&gt;  !
+
+
+Multics Technical Bulletin                               MTB 644
+
+          &lt;sel_list_spec&gt; ::=
+                    all  |
+                    unique  |  !
+
+          &lt;sel_expr_list&gt; ::=
+                    &lt;sel_expr&gt;  |
+                    &lt;sel_expr_list&gt; , &lt;sel_expr&gt;  !
+
+          &lt;sel_expr&gt; ::=
+                    &lt;expr&gt;  |
+                    &lt;table_name&gt; . *  !
+
+          &lt;table_list&gt; ::=
+                    &lt;table_label_name&gt;  |
+                    &lt;table_list&gt; , &lt;table_label_name&gt;  !
+
+          &lt;column_spec_list&gt; ::=
+                    &lt;column_spec&gt;  |
+                    &lt;column_spec_list&gt; , &lt;column_spec&gt;  !
+
+          &lt;ord_spec_list&gt; ::=
+                    &lt;column_spec&gt; &lt;direction&gt;  |
+                    &lt;ord_spec_list&gt; , &lt;column_spec&gt; &lt;direction&gt;  |
+                    &lt;integer&gt;  !
+
+          &lt;direction&gt; ::=
+                    asc  |
+                    ascending |
+                    desc |
+                    descending !
+
+          &lt;boolean_expr&gt; ::=
+                    &lt;boolean_term&gt;  |
+                    &lt;boolean_expr&gt; &lt;or_op&gt; &lt;boolean_term&gt;  !
+
+          &lt;boolean_term&gt; ::=
+                    &lt;boolean_factor&gt;  |
+                    &lt;boolean_term&gt; &lt;and_op&gt; &lt;boolean_factor&gt;  !
+
+          &lt;boolean_factor&gt; ::=
+                    &lt;boolean_primary&gt;  |
+                    &lt;not_op&gt; &lt;boolean_primary&gt;  !
+
+          &lt;boolean_primary&gt; ::=
+                    &lt;predicate&gt;  |
+                    ( &lt;boolean_expr&gt; )  !
+
+          &lt;predicate&gt; ::=
+                    &lt;expr&gt; &lt;comparison&gt; &lt;expr_or_table_spec&gt;  |
+                    &lt;table_spec&gt; &lt;comparison&gt; &lt;table_spec_lit&gt;  |
+                    exists ( &lt;query_expr&gt; )  |
+                    &lt;expr&gt; &lt;maybe_not&gt; like &lt;regular_expr&gt;  |
+
+
+MTB 644                                Multics Technical Bulletin
+
+                    &lt;expr&gt; is &lt;maybe_not&gt; null  |
+                    &lt;expr&gt; between &lt;expr&gt; &lt;and_op&gt; &lt;expr&gt;  |
+                    if &lt;predicate&gt; then &lt;predicate&gt;         (* assert only *)  !
+
+          &lt;expr_or_table_spec&gt; ::=
+                    &lt;expr&gt;  |
+                    &lt;table_spec&gt;  !
+
+          &lt;regular_expr&gt; ::=
+                    &lt;string&gt;  !
+
+          &lt;table_spec&gt; ::=
+                    ( &lt;query_expr&gt; )  |
+                    '&lt; &lt;literal_row_list&gt; &gt;  |
+                    &lt;literal_row&gt;  !
+
+          &lt;table_spec_lit&gt; ::=
+                    ( &lt;query_expr&gt; )  |
+                    &lt;literal&gt;  !
+
+          &lt;expr&gt; ::=
+                    &lt;arith_term&gt;  |
+                    &lt;expr&gt; &lt;add_op&gt; &lt;arith_term&gt;  !
+
+          &lt;arith_term&gt; ::=
+                    &lt;arith_factor&gt;  |
+                    &lt;arith_term&gt; &lt;mult_op&gt; &lt;arith_factor&gt;  !
+
+          &lt;arith_factor&gt; ::=
+                    &lt;add_op&gt; &lt;primary&gt;  |
+                    &lt;primary&gt;  !
+
+          &lt;primary&gt; ::=
+                    &lt;column_spec&gt;  |
+                    old &lt;column_spec&gt;  |
+                    new &lt;column_spec&gt;  |
+                    &lt;set_function&gt; ( &lt;maybe_unique&gt; &lt;expr&gt; )  |
+                    &lt;builtin&gt; ( &lt;arg_list&gt; )  |
+                    count ( * )  |
+                    &lt;constant&gt;  |
+                    ( &lt;expr&gt; )  !
+
+          &lt;column_spec&gt; ::=
+                    &lt;column_name&gt;  |
+                    &lt;table_name&gt; . &lt;column_name&gt;  !
+
+          &lt;comparison&gt; ::=
+                    &lt;comp_op&gt;  |
+                    &lt;comp_op&gt; any  |
+                    &lt;comp_op&gt; all  |
+                    contains  |
+                    does &lt;not_op&gt; contain  |
+
+
+Multics Technical Bulletin                               MTB 644
+
+                    is &lt;maybe_not&gt; in  |
+                    &lt;maybe_not&gt; in  !
+
+          &lt;maybe_unique&gt; ::=
+                    unique  |  !
+
+          &lt;comp_op&gt; ::=
+                     =   |
+                    ^=   |
+                    &gt;    |
+                    &gt;=   |
+                    '&lt;   |
+                    '&lt;=  |
+                    ^&gt;   |
+                    ^'&lt;  !
+
+          &lt;add_op&gt; ::=
+                    +  |
+                    -  !
+
+          &lt;mult_op&gt; ::=
+                    *  |
+                    /  !
+
+          &lt;or_op&gt; ::=
+                    or  |
+                    '|  !
+
+          &lt;and_op&gt; ::=
+                    and  |
+                    &amp;  !
+
+          &lt;not_op&gt; ::=
+                    not  |
+                    ^  !
+
+          &lt;maybe_not&gt; ::=
+                    &lt;not_op&gt;  |  !
+
+          &lt;set_function&gt; ::=
+                    avg  |
+                    max  |
+                    min  |
+                    sum  |
+                    count  |
+                    &lt;symbol&gt;  !
+
+          &lt;builtin&gt; ::=
+                    &lt;symbol&gt;  !
+
+
+MTB 644                                Multics Technical Bulletin
+
+          &lt;arg_list&gt; ::=
+                    &lt;arg&gt;  |
+                    &lt;arg_list&gt; , &lt;arg&gt;  !
+
+          &lt;literal&gt; ::=
+                    '&lt; &lt;literal_row_list&gt; &gt;  |
+                    &lt;literal_row&gt;  |
+                    ( &lt;entry_list&gt; )  |
+                    &lt;constant&gt;  !
+
+          &lt;literal_row_list&gt; ::=
+                    &lt;literal_row&gt;  |
+                    &lt;literal_row_list&gt; , &lt;literal_row&gt;  !
+
+          &lt;literal_row&gt; ::=
+                    '&lt; &lt;entry_list&gt; &gt;  !
+
+          &lt;entry_list&gt; ::=
+                    &lt;entry&gt;  |
+                    &lt;entry_list&gt; , &lt;entry&gt;  !
+
+          &lt;entry&gt; ::=
+                    &lt;constant&gt;   |  !
+
+          &lt;constant&gt; ::=
+                    &lt;string&gt;  |
+                    &lt;real literal&gt;  |
+                    &lt;integer&gt;  |
+                    null  !
+
+(*
+
+
+Multics Technical Bulletin                               MTB 644
+
+*)
+&lt;ddl_statement&gt; ::=
+          &lt;create_table&gt; |
+          &lt;alter_table&gt; |
+          &lt;create_tablespace&gt; |
+          &lt;alter_tablespace&gt; |
+          &lt;create_index&gt; |
+          &lt;create_view&gt; |
+          &lt;create_synonym&gt; |
+          &lt;comment&gt; |
+          &lt;drop&gt; !
+
+&lt;create_table&gt; ::=
+          create table &lt;table_name&gt; ( &lt;column_defn_list&gt; ) !
+
+          &lt;column_defn_list&gt; ::=
+                    &lt;column_defn_list&gt; , &lt;column_defn&gt; |
+                    &lt;column_defn&gt; !
+
+                    &lt;column_defn&gt; ::=
+                              &lt;column_name&gt; &lt;data_type&gt; &lt;maybe_type_mod&gt;  !
+
+          &lt;data_type&gt; ::=
+                    &lt;arith_data_type&gt;  |
+                    &lt;string_data_type&gt;  !
+
+                    &lt;string_data_type&gt; ::=
+                              &lt;string_type&gt; ( &lt;integer&gt; ) &lt;variability&gt; !
+
+                              &lt;string_type&gt; ::=
+                                        character  |
+                                        char  |
+                                        bit  !
+
+                              &lt;variability&gt; ::=
+                                        varying  |
+                                        var  |
+                                        nonvarying  |
+                                        nonvar  !
+
+                    &lt;arith_data_type&gt; ::=
+                              &lt;scale&gt; &lt;base&gt; &lt;precision&gt; !
+
+
+MTB 644                                Multics Technical Bulletin
+
+                              &lt;scale&gt; ::=
+                                        fixed  |
+                                        fix    |
+                                        float  !
+
+                              &lt;base&gt; ::=
+                                        binary  |
+                                        bin  |
+                                        decimal  |
+                                        dec  !
+
+                              &lt;precision&gt; ::=
+                                        ( &lt;integer&gt; )  |
+                                        ( &lt;integer&gt; , &lt;integer&gt; )  !
+
+          &lt;maybe_type_mod&gt; ::=
+                    , &lt;type_mod&gt; | !
+
+                    &lt;type_mod&gt; ::=
+                              not null |
+                              image &lt;image_mod&gt; |
+                              image !
+
+                              &lt;image_mod&gt; ::=
+                                        unique |
+                                        uc !
+
+&lt;alter_table&gt; ::=
+          alter table &lt;table_name&gt; add &lt;column_defn&gt; !
+
+&lt;create_tablespace&gt; ::=
+          create tablespace &lt;tablespace_name&gt; in &lt;path&gt; &lt;maybe_with_records&gt; !
+
+          &lt;maybe_with_records&gt; ::=
+                    with &lt;integer&gt; records | !
+
+&lt;alter_tablespace&gt; ::=
+          alter tablespace &lt;tablespace_name&gt; &lt;alter_mode&gt; &lt;integer&gt; records !
+
+          &lt;alter_mode&gt; ::=
+                    add |
+                    remove !
+
+
+Multics Technical Bulletin                               MTB 644
+
+&lt;create_index&gt; ::=
+          create &lt;maybe_unique&gt; index &lt;index_name&gt; on &lt;table_name&gt; ( &lt;ord_spec_list&gt; )  !
+
+&lt;create_view&gt; ::=
+     create view &lt;view_name&gt; &lt;maybe_column_name_list&gt; as &lt;query&gt; &lt;maybe_check_option&gt; !
+
+          &lt;maybe_check_option&gt; ::=
+                    with check option | !
+
+&lt;drop&gt; ::=
+          drop &lt;system_entity&gt; &lt;name&gt; !
+
+          &lt;system_entity&gt; ::=
+                    assertion  |
+                    index  |
+                    synonym  |
+                    table  |
+                    tablespace  |
+                    trigger  |
+                    view  !
+
+&lt;create_synonym&gt; ::=
+          create synonym &lt;table_name&gt; for &lt;table_name&gt; !
+
+&lt;comment&gt; ::=
+          comment on table &lt;table_name&gt; is &lt;string&gt; |
+          comment on column &lt;table_name&gt;.&lt;column_name&gt; is &lt;string&gt; !
+
+(*
+
+
+MTB 644                                Multics Technical Bulletin
+
+*)
+&lt;control_statement&gt; ::=
+          &lt;assert&gt; |
+          &lt;trigger&gt; |
+          &lt;grant&gt; |
+          &lt;revoke&gt; |
+          &lt;lock&gt; |
+          &lt;register_table&gt; |
+          &lt;deregister_table&gt; |
+          &lt;register_link&gt; |
+          &lt;deregister_link&gt; |
+          &lt;commit&gt; |
+          &lt;rollback&gt;
+          &lt;save&gt; |
+          &lt;restore&gt; !
+
+&lt;assert&gt; ::=
+     create assertion &lt;assert_name&gt; &lt;maybe_immed&gt; &lt;maybe_assert_cond&gt; is &lt;boolean_expr&gt; !
+
+          &lt;maybe_immed&gt; ::=
+                    immediate | !
+
+          &lt;maybe_assert_cond&gt; ::=
+                    on &lt;assert_condition&gt; | !
+
+          &lt;assert_condition&gt; ::=
+                    &lt;action_list&gt; |
+                    &lt;table_label_name&gt; !
+
+          &lt;action_list&gt; ::=
+                    &lt;action&gt; |
+                    &lt;action_list&gt; , &lt;action&gt; !
+
+          &lt;action&gt; ::=
+                    insertion of &lt;table_label_name&gt; |
+                    deletion of &lt;table_label_name&gt; |
+                    update of &lt;table_label_name&gt; &lt;maybe_column_name_list&gt; !
+
+&lt;trigger&gt; ::=
+          create trigger &lt;trigger_name&gt; on &lt;trigger_condition&gt; is ( &lt;statement_list&gt; ) !
+
+          &lt;trigger_condition&gt; ::=
+                    &lt;action&gt; |
+                    read of &lt;table_label_name&gt; !
+
+
+Multics Technical Bulletin                               MTB 644
+
+          &lt;statement_list&gt; ::=
+                    &lt;conditional_statement&gt; |
+                    &lt;statement_list&gt; ; &lt;conditional_statement&gt; !
+
+                    &lt;conditional_statement&gt; ::=
+                              &lt;statement&gt; |
+                              if &lt;boolean_expr&gt; then &lt;statement&gt; !
+
+&lt;grant&gt; ::=
+          grant &lt;authorization&gt; &lt;maybe_on_table&gt; to &lt;user_list&gt; &lt;maybe_grant_opt&gt; !
+
+&lt;revoke&gt; ::=
+          revoke &lt;authorization&gt; &lt;maybe_on_table&gt; from &lt;user_list&gt; !
+
+          &lt;authorization&gt; ::=
+                    all  |
+                    &lt;privilege_list&gt;  |
+                    all but &lt;privilege_list&gt;  !
+
+          &lt;maybe_on_table&gt; ::=
+                    on &lt;table_name&gt;  | !
+
+          &lt;user_list&gt; ::=
+                    &lt;user_list&gt; , &lt;user_name&gt; |
+                    &lt;user_name&gt; !
+
+          &lt;maybe_grant_opt&gt; ::=                     (*  not to *.*.*  *)
+                    with grant option | !
+
+          &lt;privilege_list&gt; ::=
+                    &lt;privilege_list&gt; , &lt;privilege&gt; |
+                    &lt;privilege&gt; !
+
+          &lt;privilege&gt; ::=
+                    &lt;table_privilege&gt;  |
+                    &lt;dict_privilege&gt;  |
+                    &lt;tablespace_privilege&gt;  |
+                    null  !
+
+                    &lt;table_privilege&gt; ::=
+                              alter  |            (*  not views  *)
+                              delete |
+                              index  |            (*  not views  *)
+                              insert |
+                              link   |
+                              select |
+                              update &lt;maybe_column_name_list&gt;  !
+
+
+MTB 644                                Multics Technical Bulletin
+
+                              &lt;maybe_column_name_list&gt; ::=
+                                        ( &lt;column_name_list&gt; )  |  !
+
+                    &lt;dict_privilege&gt; ::=
+                              access  |
+                              admin  |
+                              create_tablespace  |
+                              create_view  |
+                              deregister_link  |
+                              deregister_table  |
+                              drop_synonym  |
+                              drop_tablespace  |
+                              drop_view  |
+                              register_link  |
+                              register_table  !
+
+                    &lt;tablespace_privilege&gt; ::=
+                              alter_tablespace  |
+                              create_table  |
+                              drop_table  !
+
+&lt;lock&gt; ::=
+          lock table &lt;table_name&gt; in &lt;lock_mode&gt; mode !
+
+          &lt;lock_mode&gt; ::=
+                    exclusive |
+                    share !
+
+&lt;register_table&gt; ::=
+     register table &lt;path&gt; &lt;maybe_as_table&gt; &lt;maybe_col_defn_list&gt; &lt;maybe_using&gt; &lt;special&gt; !
+
+          &lt;path&gt; ::=
+                    &lt;symbol&gt; |
+                    &lt;string&gt; !
+
+          &lt;maybe_as_table&gt; ::=
+                    as &lt;table_name&gt;  | !
+
+          &lt;maybe_col_defn_list&gt; ::=
+                    ( &lt;column_defn_list&gt; ) | !
+
+          &lt;maybe_using&gt; ::=
+                    using &lt;procedure_name&gt; | !
+
+          &lt;special&gt; ::=
+                    special &lt;string&gt; | !
+
+
+Multics Technical Bulletin                               MTB 644
+
+&lt;deregister_table&gt; ::=
+          deregister table &lt;table_name&gt;  !
+
+&lt;register_link&gt; ::=
+          register link &lt;link_name&gt; &lt;maybe_as_link&gt; from &lt;path&gt; !
+
+          &lt;maybe_as_link&gt; ::=
+                    as &lt;link_name&gt; | !
+
+&lt;deregister_link&gt; ::=
+          deregister link &lt;link_name&gt;  !
+
+&lt;commit&gt; ::=
+          commit work !
+
+&lt;rollback&gt; ::=
+          rollback work !
+
+&lt;save&gt; ::=
+          save &lt;save_name&gt; !
+
+&lt;restore&gt; ::=
+          restore |
+          restore &lt;save_name&gt; !
+(*
+
+
+MTB 644                                Multics Technical Bulletin
+
+*)
+          &lt;name&gt; ::=
+                    &lt;symbol&gt;  !
+
+          &lt;assert_name&gt; ::=
+                    &lt;symbol&gt;  !
+
+          &lt;column_name&gt; ::=
+                    &lt;symbol&gt;  !
+
+          &lt;cursor_name&gt; ::=
+                    &lt;symbol&gt;  !
+
+          &lt;index_name&gt; ::=
+                    &lt;symbol&gt;  !
+
+          &lt;label_name&gt; ::=
+                    &lt;symbol&gt;  !
+
+          &lt;link_name&gt; ::=
+                    &lt;symbol&gt;  !
+
+          &lt;procedure_name&gt; ::=
+                    &lt;symbol&gt;  !
+
+          &lt;save_name&gt; ::=
+                    &lt;symbol&gt;  !
+
+          &lt;table_name&gt; ::=
+                    &lt;symbol&gt;  !
+
+          &lt;tablespace_name&gt; ::=
+                    &lt;symbol&gt;  !
+
+          &lt;trigger_name&gt; ::=
+                    &lt;symbol&gt;  !
+
+          &lt;view_name&gt; ::=
+                    &lt;symbol&gt;  !
+
+          &lt;user_name&gt; ::=
+                    &lt;symbol&gt;  |
+                    &lt;symbol&gt; . &lt;symbol&gt; |
+                    * . &lt;symbol&gt; |
+                    &lt;symbol&gt; . * !
+
+(* End Multics View Manager SQL *)
+
+
+Multics Technical Bulletin                               MTB 644
+
+4. BIBLIOGRAPHY
+
+Astrahan, M.M., et  al.  "A History and Evaluation  of System R",
+IBM Research Report RJ2843, June 1980.
+
+Astrahan,  M.M.,  et  al.   "System  R:   Relational  Approach to
+Database  Management" In  Transactions on  Database Systems, Vol.
+1, No.  2, June 1976.
+
+Astrahan,  M.M.   and  Chamberlin,  D.D.,  "Implementation  of  a
+Structured English Query Language", In Communications of the ACM,
+Vol.  18, No.  10, October 1975.
+
+Chamberlin, D.D., et al.  "SEQUEL  2:  A Unified Approach to Data
+Definition,  Manipulation,  and  Control",   In  IBM  Journal  of
+Research and Development, Vol.  20, No.  6, November 1976.
+
+Codd,   E.F.   and   Blasgen,  Michael,   "Relational  Data  Base
+Management", ACM Professional  Development Seminar lecture notes,
+October 1979.
+
+Gray, Jim, "New Translator System for MRDS/LINUS Query Language",
+MDC Proposal, Rev.  4.0, September, 16, 1981.
+
+Kroenke,  David M.,  Database Processing:   Fundamentals, Design,
+Implementation, (2nd ed.)  Science Research Associates, 1983.
+
+IBM, Database 2 SQL Usage Guide, IBM Document GG24-1583-00, 1983.
+
+Prange,  P.,  "LALR,  a  Translator  Construction  System", SLANG
+Project Technical Bulletin, July 26, 1983.
+
+Prange,   P.    and  Margulies,   Benson,  "LALR,   a  Translator
+Construction System", MTB 602, October 4, 1982.
+
+Reisner, Phyllis,  et al.  "Human factors  evaluation of two data
+base query  languages--Square and Sequel", In  Proceedings of the
+National Computer Conference, AFIPS, 1975.
+
+Relational Software Inc., ORACLE User's Guide, Version 2.3, 1981.
+
+Rosensteel,  K.,  Relational  Access  Manager  (RAM)  EPS-1, LCPD
+document number 58075029, Rev.  4, September 21, 1982.
+
+Shneiderman, Ben, "Improving the Human Factors Aspect of Database
+Interactions", In ACM Transactions  on Database Systems, Vol.  3,
+No.  4, December 1978.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Using Unix tools with expandfile</title>
+    <meta name="description" content="Unix/Linux tools for web page creation.">
+    <meta name="keywords" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="xfstyle.css">
+    <style type="text/css">
+     .outer {min-width: 200px; max-width: 800px; width: auto !important; width: 600px; margin: 0px auto;}
+     .mf {display: inline; font-size: 70%;}
+     .mf .mfx {display: none;}
+     .mfaddr {font-size: 9pt; font-family: sans-serif; background-color: #aaaaff; color: #000000;}
+     .mfed {font-size: 9pt; font-family: serif;}
+    </style>
+<style type="text/css">
+<!--
+#leftpanel {background-color: #f0f0f0; margin-right: 1em;  padding: 1em 1em 1em 1em; float: left; width: 175px;}
+#leftpanel a:link {background-color: #f0f0f0; color: #0000ff;}
+#leftpanel a:visited {background-color: #f0f0f0; color: #ff00ff;}
+#leftpanel a:hover {background-color: #ffdddd; color: black;}
+#leftpanel a:active {background-color: #f0f0f0; color: #ff0000;}
+-->
+</style>
+<style>
+  {nobullet: list-style-type: none;}
+</style>
+  </head>
+  <body> 
+    <div class="outer">
+      <div class="headbar">
+	<div class="headbar2">
+	  <span class="headingdate">11 Sep 2025</span>
+          <div class="h1holder"><h1>Using Unix tools with expandfile</h1></div>
+	</div>
+      </div>
+      <div class="main">
+<p>
+  This note describes how to use standard free Unix file tools to maintain web sites
+  built with <a href="expandfile.html"><span class="cmd">expandfile</span></a>.
+</p>
+<div class="rtpic" style="width: 316px;"><img src="expandfile-context.png" width="316" height="274" alt="Unix tools flow" title="" srcset="expandfile-context.png 1x, expandfile-context-2x.png 2x"></div>
+
+<p>
+  My rule of thumb is, "if it's worth doing once, it's worth automating it."
+</p>
+
+<p>
+  Detailed information on the Multics website build process and its <span class="cmd">Makefile</span> is contained in <a href="../../m-website-build.html">Multics Web Site Build Process</a>.
+</p>
+
+<h3>Unix commands</h3>
+<p>
+  Unix provides many commands.
+  Personal computers using the Macintosh, Linux, and Windows operating systems have many Unix-like commands built in, or available for installation.
+  The commands are almost all free.
+  You can invoke these commands by shell scripts or <span class="cmd">BAT</span> files.
+  You can also use these commands by calling them with expandfile's <a href="expandfile.html#shell"><span class="cmd">*shell</span></a> builtin function
+  to extend <span class="cmd">expandfile</span>'s abilities in a simple and portable way.
+</p>
+<p>
+  <br>On a Mac, you type commands in a Terminal window.
+  <br>On a computer running Unix or Linux, you type commands into a "shell window."
+  <br>On a Windows computer, you use Command Prompt, PowerShell, MINGW, MSYS2, or Cygwin.
+</p>
+
+<h3>Source Files and Object files</h3>
+<p>
+  <a href="expandfile.html"><span class="cmd">expandfile</span></a> reads one or more <b>source</b> files and writes corresponding <b>object</b> files.
+  The object files are HTML files that make up an image of the website being created.
+  The source files are "extended HTML (HTMX)" files that <a href="expandfile.html"><span class="cmd">expandfile</span></a> <i>expands</i> to create the object files;
+  source files contain
+</p>
+<ul>
+  <li>Regular HTML</li>
+  <li>Variable expansions, e.g. <span class="cmd">%[npages]%</span></li>
+  <li>Commands to set the values of variables, e.g. <span class="cmd">%[*set,&amp;npages,=32]%</span></li>
+  <li>Commands to include other files, e.g. <span class="cmd">%[*include,=heading.html]%</span></li>
+  <li>Optional commands to generate HTML in convenient ways.</li>
+</ul>
+<p>
+  I keep all the <i>source</i> files for a website in one directory, and all the <i>object</i> files in another.
+  The object files are a locally-viewable copy of a production website.
+  I run a local version of <b>Apache</b> on my computer so that I can preview the files just as a they would appear from a Web server.
+  (Some object files are graphics, PDFs, and Javascript files that have no corresponding source file.)
+</p>
+
+<h3>Local Image of the Site</h3>
+<p>
+  A website viewable from the Internet is made up of files in the file system of (one or more) <i>server</i> computers.
+  If the server copy becomes inconsistent or is lost, the website's content cannot be viewed,
+  so it's a good idea to have a complete spare copy of the files that you can restore to the server quickly.
+  (In general, you should store copies of any file you care about in more than one place.)
+  I keep a complete, consistent set of object files for each site I create on my own computer, and make the server's copies read-only.
+  When I change my sites, I change my local copy and check that it looks right,
+  and then <i>publish</i> the files to the servers.
+</p>
+
+<h4>Using <span class="cmd">rsync</span></h4>
+<p>
+  The Unix command <span class="cmd">rsync</span> securely copies files from a directory on a local computer to a directory on a server computer.
+  <span class="cmd">rsync</span> copies only the files that need to be changed, and when it does copy, it uses secure compressed I/O so the copy is fast.
+  <span class="cmd">rsync</span> has many features: I only use a few.
+</p>
+<p>
+  The <span class="cmd">rsync</span> command line looks complicated, but I never have to type it: the <span class="cmd">Makefile</span> issues the command; see below.
+</p>
+<pre class="code">
+  rsync -avzu --blocking-io -e ssh --exclude source-pages/ object_dir/ myuserid@servername.com:server_directory
+</pre>
+<p>
+  copies all the files in <span class="cmd">/object_dir</span> on my computer to the directory <span class="cmd">/server_directory</span> on the server <span class="cmd">servername.com</span> using the server user ID <span class="cmd">myuserid</span>.
+  Files in the subdirectory <span class="cmd">/source-pages</span> on my computer are not copied.
+  This command assumes that I have properly set up SSH authentication keys (look it up).
+</p>
+<p>
+  The control argument <span class="cmd">-azvu</span> means:
+</p>
+<ul class="nobullet">
+  <li><span class="cmd">a</span> short for <span class="cmd">rlptgoD</span></li>
+  <li><span class="cmd">r</span> .. compressed data transmission</li>
+  <li><span class="cmd">l</span> .. copy symlinks as symlinks</li>
+  <li><span class="cmd">p</span> .. pereserve permissions</li>
+  <li><span class="cmd">t</span> .. preserve modification times</li>
+  <li><span class="cmd">g</span> .. preserve group</li>
+  <li><span class="cmd">o</span> .. preserve owner</li>
+  <li><span class="cmd">D</span> .. preserve device and special files</li>
+  <li><span class="cmd">z</span> scan directories recursively</li>
+  <li><span class="cmd">v</span> verbose output</li>
+  <li><span class="cmd">u</span> skip files that are newer on receiver</li>
+</ul>
+<p>
+  <span class="cmd">rsync</span> sends files between computers using the <span class="cmd">ssh</span> secure shell protocol.
+  It manages permissions sensibly: if I try to update a file that's read-only on the server,
+  <span class="cmd">rsync</span> updates the file and then restores the read-only setting. 
+</p>
+
+<h3>Local MySQL Database</h3>
+<p>
+  Some of my web pages contain lists of similar things.
+  Instead of maintaining big HTML pages, I store the raw data as table rows in SQL databases.
+  <span class="cmd">expandfile</span>'s <a href="expandfile.html#sqlloop"><span class="cmd">*sqlloop</span></a>
+  builtin function iterates a macro expansion over every row returned by a query. 
+  This is especially useful for table data displayed in more than one way.
+</p>
+<p>
+  To do this, I install the <b>MySQL</b> database application on my computer, and load the data into database tables.
+  (MySQL is free and is available for Windows, Macintosh, and Unix.)
+</p>
+
+
+<h3 id="make">Automated Installation</h3>
+<p>
+  I use standard Unix tools to invoke <span class="cmd">expandfile</span> when necessary, and to publish any files that changed.
+  The Unix utility <span class="cmd">make</span> regenerates any static page whose source is newer,
+  and uses <span class="cmd">rsync</span> to publish files that have changed. <span class="cmd">rsync</span> uses secure compressed transmission.
+  Using <span class="cmd">make</span> means that all pages are regenerated if I change the boilerplate (wrapper), 
+  and that I won't forget to generate an object page if I make a little change to some source file.
+  Database-backed pages are supported by loading the database table from SQL input and then translating a template to generate HTMX.
+  <span class="cmd">make</span> invokes other tools, such as <b>HTML Tidy</b>, to check each page for valid HTML and warn me about errors.
+  Using <span class="cmd">rsync</span> to synchronize my whole file tree means that I don't forget to upload updated graphics and other auxiliary files.
+</p>
+<p>
+  The <span class="cmd">make</span> command uses a file called <span class="cmd">Makefile</span> to tell it what to do,
+  but instead of executing a script with a fixed set of steps,
+  <span class="cmd">make</span> figures out which steps need to be done, and in what order, and then performs them.
+</p>
+<p>
+  The <span class="cmd">Makefile</span>s in my source directories cause <span class="cmd">make</span> to execute <span class="cmd">expandfile</span> to compile HTMX to HTML whenever an HTMX file is <i>newer</i> than the corresponding HTML file,
+  so all my HTML files are up to date with whatever edits I made.
+  My <span class="cmd">Makefile</span>s declare that some files <i>depend</i> on others, so if I edit a file that is included by many HTMX files, they will all get expanded.
+  When I am using a local database, <span class="cmd">make</span> loads the <span class="cmd">.sql</span> files for each database before using the data.
+</p>
+<p>
+  I also set things up so that typing <span class="cmd">make install</span> will first do a <span class="cmd">make</span> to ensure all object files are up to date,
+  and then invoke <span class="cmd">rsync</span> to publish files from my local computer to the server if the local file is newer,
+  so all my website files are up to date with whatever local changes I made.
+</p>
+
+<h4>One Line Change</h4>
+<p>
+  To make a one-line change to a web page, I
+</p>
+<ol>
+  <li>Edit the HTMX file on my computer</li>
+  <li>type <span class="cmd">make</span></li>
+  <li>Use one or more web browsers on my computer to make sure it looks right</li>
+  <li>type <span class="cmd">make install</span></li>
+</ol>
+
+<h4>Changing a Few Files</h4>
+<p>
+  Suppose I create a new web page and want to link to if from two existing pages. I do this:
+</p>
+<ol>
+  <li>
+    Create an HTMX file for the new page on my computer.
+    Often, I copy the contents of an existing file and replace old information with new.
+    If I'm adding a graphic, I use a <a href="expandfile-macros.html">macro</a> like <span class="cmd">getimgdiv</span> to avoid mistakes.
+  </li>
+  <li>
+    Edit the HTMX files for the existing pages on my computer, adding HREF links to the new page.
+    (Sometimes I generate the links using macros.)
+  </li>
+  <li>type <span class="cmd">make</span></li>
+  <li>
+    Check the new page in web browsers on my computer to make sure it looks right,
+    and check that the links from the existing pages bring up the new page.
+  </li>
+  <li>type <span class="cmd">make install</span></li>
+</ol>
+
+<h4>Changing Many Files</h4>
+<p>
+  One example of why this setup is useful is the case where I need to re-expand many files.
+</p>
+<p>
+  A few years ago, the HTML language was changed to support "mobile friendly" features.
+  I got mail from Google saying that my site would not work well on tiny screens.
+  One thing I had to do was to insert 
+</p>
+<pre class="code">
+  &lt;meta name="viewport" content="width=device-width, initial-scale=1"&gt;
+</pre>
+<p>
+  into the HEAD section of every file on my websites, probably about 600 files.
+  Because I was using <span class="cmd">expandfile</span> with <a href="expandfile-wrappers.html">wrappers</a>,
+  and <span class="cmd">make</span> with <span class="cmd">rsync</span>,
+  all I had to do was
+</p>
+<ol>
+  <li>Edit the wrapper HTMX file on my computer to add the new line</li>
+  <li>type <span class="cmd">make</span></li>
+  <li>Check on my computer to make sure the files looked right</li>
+  <li>type <span class="cmd">make install</span></li>
+  <li>Check the newly installed files to make sure the files looked OK on mobile devices</li>
+</ol>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+<div id="otherinfo">
+  <span class="toc">
+    <a href="expandfile.html">Expandfile</a> |
+    <a href="expandfile-tutorial.html">Tutorial</a> |
+    <a href="expandfile-multics.html">Multics Args</a> |
+    <a href="expandfile-wrappers.html">Wrappers</a> |
+    <a href="expandfile-macros.html">Macros</a> |
+    <a href="expandfile-unix.html">Using Unix Tools</a> |
+    <a href="expandfile-history.html">History</a> |
+    <a href="expandfile-internal.html">Internals</a>
+    <br>
+    PDFs: 
+    <a href="quad.pdf">Quad chart</a> |
+    <a href="mx-website-features.pdf">Multics Website Features</a> |
+    <a href="swt.pdf">SWT</a>
+  </span> 
+</div>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+	  <span class="copyright">Copyright (c) 2018-2025, Tom Van Vleck</span>
+        </div> <!-- tail -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="vvmft.txt"><input type="hidden" name="name" value="Tom Van Vleck"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail Tom Van Vleck" title="send mail to Tom Van Vleck" class="mfaddr"></address></form>
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

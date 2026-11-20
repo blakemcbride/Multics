@@ -1,0 +1,986 @@
+ Multics Technical Bulletin                                MTB-509
+ DM: External Access Layer
+
+
+
+ To:       Distribution
+
+ From:     Lindsey Leroy Spratt
+
+ Date:     05/14/81
+
+ Subject:  Data Management: External Access Layer -- Overview
+
+
+
+ 1 ABSTRACT
+
+      The  External  Access  Layer  is   the  layer  of  the  data
+ management architecture with which "data management applications"
+ interact.   It  provides  many  different  access  methods.   The
+ internal structure of this layer is presented in this document in
+ some detail.
+
+
+
+
+ Comments should be sent to the author:
+
+ via Multics Mail:
+    Spratt.Multics on either MIT Multics or System M.
+
+ via US Mail:
+    Lindsey Spratt
+    Honeywell Information Systems, inc.
+    4 Cambridge Center
+    Cambridge, Massachusetts 02142
+
+ via telephone:
+    (HVN) 261-9321, or
+    (617) 492-9321
+
+
+
+
+
+
+
+ _________________________________________________________________
+
+
+ Multics  project  internal  working  documentation.   Not  to  be
+ reproduced or distributed outside the Multics project without the
+ consent of the author or the author's management.
+
+
+
+
+                              Page i. 
+
+
+
+
+
+
+
+
+
+
+                           CONTENTS
+
+
+                                                        Page
+
+                1 Abstract . . . . . . . . . . . . . .     i
+                2 Introduction . . . . . . . . . . . .     1
+                3 Services of the Initial
+                 Implementation  . . . . . . . . . . .     1
+                4 Openings . . . . . . . . . . . . . .     1
+                5 Cursors  . . . . . . . . . . . . . .     2
+                6 Index Managers . . . . . . . . . . .     3
+                   6.1 Common Elements between Index
+                    Managers.  . . . . . . . . . . . .     3
+                      6.1.1 Descriptive Information  .     3
+                      6.1.2 Openings and Cursors . . .     3
+                      6.1.3 Keys and Key Fields  . . .     4
+                         6.1.3.1 Duplication of Values
+                          between Keys . . . . . . . .     4
+                         6.1.3.2 Modification  . . . .     4
+                      6.1.4 Data Types of Key Fields .     4
+                      6.1.5 Key Selection  . . . . . .     5
+                      6.1.6 Subset Definition and Use      5
+                      6.1.7 Retrieval  . . . . . . . .     5
+                   6.2 Sharing . . . . . . . . . . . .     5
+                   6.3 Sorting Indexes . . . . . . . .     6
+                      6.3.1 Sort Definition  . . . . .     6
+                      6.3.2 Comparison Operators . . .     6
+                      6.3.3 Single Field Key Tree  . .     7
+                      6.3.4 Multiple Field, Fixed
+                       Format Key, Tree  . . . . . . .     7
+                      6.3.5 Multiple Field, Variable
+                       Format, Tree  . . . . . . . . .     8
+                   6.4 Non-sorting Indexes . . . . . .     8
+                      6.4.1 Hash Definition  . . . . .     9
+                      6.4.2 Single Field Hash  . . . .     9
+                      6.4.3 Multiple Field, Fixed
+                       Format, Hash  . . . . . . . . .    10
+                7 Record Managers  . . . . . . . . . .    10
+                   7.1 Records and Fields  . . . . . .    10
+                   7.2 Data Types in Record Fields . .    10
+                   7.3 Permanent Record Identifiers  .    11
+                8 Composite, High-level, Utilities . .    11
+                   8.1 Tree Indexed Record Management     11
+                   8.2 Hash Indexed Record Management     12
+                   8.3 Multiply Indexed Records  . . .    12
+
+
+                              iii 
+
+
+                        CONTENTS (cont)
+
+
+                                                        Page
+
+                   8.4 Relational Utility  . . . . . .    13
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                              iv  Multics Technical Bulletin                                MTB-509
+ DM: External Access Layer
+
+
+
+ 2 INTRODUCTION
+
+      The External  Access Layer has  several structural elements.
+ The  top  level  are  those  used  by  applications  invoking the
+ External  Access Layer.   These are  quite varied  in appearance,
+ however, as  the needs of applications  using the Data Management
+ Architecture are varied.  These  top level elements are generally
+ referred  to  as  "external  file managers".   Some  of  them are
+ composed  of lower  level structural elements,  others are simple
+ wrappers for the lower level elements.
+
+      The  Multics  Relational  Data  Store is  an  example  of an
+ external  file  manager  which is  built  on top  of  lower level
+ elements,  a relation  manager which is  in turn built  on top of
+ index and  record managers.  The access  method commonly known as
+ "sequential  file"  is a  service provided  directly by  a record
+ manager.  The access method commonly known as "relative file" (in
+ vfile_  called  "blocked file")  is also  provided directly  by a
+ record  manager.  The  access method  commonly known  as "indexed
+ sequential"  is provided  by the composite  utility "tree indexed
+ record manager".  The access method commonly known as "direct" is
+ provided by the composite utility "hash indexed record manager".
+
+      Every module  which is found  in this layer  is here because
+ either:  1) it is directly useful to applications and, therefore,
+ its  services  must be  available  at the  External  Access Layer
+ interface; or, 2) it is a user of the Container Access Layer.
+
+
+ 3 SERVICES OF THE INITIAL IMPLEMENTATION
+
+      The  initial  implementation  of the  External  Access Layer
+ includes  MRDS,  the relational  record manager,  the multi-field
+ tree  index with  fixed format  keys, and  the multi-field record
+ manager with fixed format records.  The index and record managers
+ use  a  "control interval"  style  of storage  management  in the
+ Container Access Layer.
+
+      All  of  the  elements  of  the  External  Access  Layer are
+ discussed in some detail in the following sections.
+
+
+ 4 OPENINGS
+
+      To use any  of the file-like objects in  the External Access
+ Layer, it is  necessary to have an "opening"  of it.  Examples of
+ file-like objects are:  index  containers, record containers, and
+ relations.   There are  two reasons  why openings  are necessary,
+ both applicable to using execution time efficiently:
+
+
+
+                              Page 1. 
+ MTB-509                                Multics Technical Bulletin
+                                         DM: External Access Layer
+
+
+
+ 1)   An opening  saves the result of  address computation done to
+      "find"  the  file-like  object  so  as  to  make  successive
+      accesses of the  object more efficient in both  cpu time and
+      secondary storage  I/Os, since it is  typical to need access
+      to  one  or  more tables  (requiring  one or  more  reads of
+      secondary  storage)  to   discover  the  file-like  object's
+      location.  And,
+
+ 2)   At opening time  one can convey to the  object's manager the
+      intended  use  of  the  object,  for  the  duration  of this
+      opening; having this information allows the object's manager
+      to manage the  accesses of the object in  the most efficient
+      way possible,  both in regard to  the execution path through
+      the manager and to  maximizing concurrent access by multiple
+      processes/transactions to the contents of the object.
+
+
+ 5 CURSORS
+
+      In  addition, openings  can be  useful for  keeping track of
+ what's  been  done to  a  particular file-like  object  (via that
+ opening,  of  course).  The  most  common example  of  using this
+ "historic" capability is keeping track of the current position or
+ positions within the object.  The fact that an opening only knows
+ what's been done with itself can be used to ensure that different
+ users  of an  object will  not inadvertently  interfere with each
+ other's  position-dependent  operations  by  each  user  having a
+ different opening, and, therefore, distinct histories (remembered
+ current positions, in this case).
+
+      The issue of current position  is addressed by "cursors".  A
+ cursor  is  a  position  in an  object.   Cursors  are explicitly
+ defined  by  specifying an  opening  and a  reference name  to be
+ associated with the newly  created cursor.  Multiple openings may
+ be used to keep cursor  names from accidentally coinciding.  This
+ is the avoidance of multiple user interference referred to above.
+
+      Cursors exist  "across" transactions.  Ending  a transaction
+ invalidates all of the cursors that transaction was using, making
+ "relative"  positioning operations  illegal until  the cursor has
+ been reset using an "absolute" positioning operation.
+
+      Only  one transaction  may use  a cursor  at a  time; once a
+ transaction has used a cursor,  no other transaction can use that
+ cursor until the first  transaction has finished (either aborting
+ or committing).
+
+
+
+
+
+
+                              Page 2. 
+ Multics Technical Bulletin                                MTB-509
+ DM: External Access Layer
+
+
+
+ 6 INDEX MANAGERS
+
+      There are  five kinds of  index managers presented  here, as
+ well as  some general issues pertaining  to index management.  An
+ index  manager maintains  and manipulates  only the  structure of
+ data within a single container.
+
+      These  general  issues  are  those  things  which  all index
+ managers address.   The general interface for  the index managers
+ presents the  superset of all  of the services offered  by all of
+ the index  managers.  When using  a particular manager,  only the
+ relevant portion of the "general interface" is available.
+
+
+ 6.1 Common Elements between Index Managers.
+
+      The following discussion of  "common elements" covers:  what
+ descriptive  information  is available,  "opening an  index", how
+ keys  can be  defined, data  types and  keys, interaction  of key
+ selection   and   multiple  fields,   subsets  of   indexes,  and
+ "one-at-a-time"  Input/Output  versus "grouped"  I/O.   These are
+ issues  which are  addressed in  the same  fashion by  all of the
+ index managers.
+
+
+ 6.1.1 DESCRIPTIVE INFORMATION
+
+      Various  kinds of  information is  available about  an index
+ container.   Some of  the information  is dependent  on the index
+ manager which is managing the  container, but some information is
+ available for  all index containers.   In this latter  group are:
+ the name of  the manager of the index; the  number of the keys in
+ the  index; number  of references to  each of  the operations for
+ that index (which is optionally metered).
+
+
+ 6.1.2 OPENINGS AND CURSORS
+
+      An opening of  an index is necessary before  the contents of
+ the index may be accessed in any way.  An opening may be referred
+ to by name or by a  local (to the process) identifier.  A process
+ may have multiple openings of the same index.
+
+      An opening  has at least  one cursor associated  with it for
+ keeping track  of the current position.   Multiple cursors may be
+ associated with an opening of an index.
+
+
+
+
+
+
+                              Page 3. 
+ MTB-509                                Multics Technical Bulletin
+                                         DM: External Access Layer
+
+
+
+ 6.1.3 KEYS AND KEY FIELDS
+
+      The objects managed by index managers are "keys".  A key may
+ have multiple "fields".  The fields  are named and their contents
+ can be manipulated directly.
+
+      There are two kinds of fields in a key.  The fields in a key
+ which are used  to determine the key's position  in the index are
+ the "indexed fields".  The fields in  a key which are not used to
+ determine  the  key's position  in the  index are  the "attendant
+ fields".  This is commonly used for storing the record identifier
+ of the key's associated record.
+
+
+ 6.1.3.1 Duplication of Values between Keys
+
+      Two keys are  duplicates when their value in  the same field
+ is identical,  for all of  their fields.  The two  keys must have
+ the same fields.
+
+      Two keys are partial duplicates when their value in the same
+ field is identical, for all of their indexed fields.
+
+      Two keys are multiples when their value in the same field is
+ identical, for all of their attendant fields.
+
+|      These three attributes are supported on a "per index" basis.
+| They  are enforced  when storing keys.   If an  attribute is off,
+| then a  key which has  that attribute's relationship to  a key in
+| the  index can  not be stored.   At retrieval time,  the user can
+| choose to either  filter duplicates out of the  retrieved keys or
+| not.  That  is, the "retrieval duplication"  attribute can be set
+| at retrieval time.  If a portion  of the fields, not all of them,
+| is being retrieved and retrieval  duplication is off, no two "key
+| portions" retrieved will be duplicates.
+
+
+ 6.1.3.2 Modification
+
+      The modify operation is  supported for all fields.  However,
+ modifying an attendant field  can be more efficiently implemented
+ than modifying  an indexed field,  since no changes  of the key's
+ position with  respect to the  rest of the  keys in the  index is
+ necessary when only attendant fields are modified.
+
+
+ 6.1.4 DATA TYPES OF KEY FIELDS
+
+      Several different  data types are supported  for key fields.
+ Among these are fixed bin  (35), fixed bin(71), varying character
+
+
+                              Page 4. 
+ Multics Technical Bulletin                                MTB-509
+ DM: External Access Layer
+
+
+
+ string,  nonvarying  character string,  float binary  (28), float
+ binary  (63),  varying  bit  string, and  nonvarying  bit string.
+ Different fields in the same key may have different data types.
+
+
+ 6.1.5 KEY SELECTION
+
+      Keys  are  selected  to  do  retrievals,  modifications, and
+ deletions.  They are selected by  specifying a constraint on some
+ of the fields of the key.  More than one field may be constrained
+ in a single selection  specification.  Both attendant and indexed
+ fields can be included in a selection specification.
+
+
+ 6.1.6 SUBSET DEFINITION AND USE
+
+      Subsets of an index are  temporary "snapshots" of the index.
+ They  are  associated with  a specific  opening/cursor.  Multiple
+ selection  specifications may  be used  to define  a subset, each
+ specification defining a set of  keys and the resulting subset of |
+ the  index  being  the  union  of  these  sets.   There  are  two
+ subsetting  operations  "include"  and  "exclude".   A  subset is
+ invalidated by any modification to the source index.
+
+      Multiple   cursors   may   be  defined   against   the  same
+ pre-existing subset, but a subset is defined (and hence initially
+ exists) against  only one cursor.   When a subset  is deleted the
+ associated cursors  revert to the  entire index.  Subsets  can be
+ recursively  defined.   A subset  may  be extracted  from another
+ subset.
+
+
+ 6.1.7 RETRIEVAL
+
+      There  are three  modes of retrieval,  piped, non-piped, and
+ semi-piped.  Piped retrieval is retrieving a set of keys one at a
+ time, using the current position to  find the "next" key and then
+ return  it.  Non-piped  retrieval is retrieving  all of  a set of
+ keys  at once.   Mixed strategies, semi-piped,  are also possible
+ for  retrieving the  next N  at a  time, where  N is  some number
+ potentially less than the number of keys in the set.
+
+
+ 6.2 Sharing
+
+      Index  containers  can  be  shared  between  multiple  users
+ conveniently   by   invoking  the   transaction   management  and
+ concurrent   access    control   mechanisms.    This    is   done
+ automatically, unless explicitly defeated by the user.
+
+
+
+                              Page 5. 
+ MTB-509                                Multics Technical Bulletin
+                                         DM: External Access Layer
+
+
+
+ 6.3 Sorting Indexes
+
+      Sorting  indexes  are  those  that  support  order-dependent
+ retrievals efficiently.  They achieve this by storing the keys in
+ some  sort order.   The stored  sort order  is used  to order the
+ retrieved keys.
+
+
+ 6.3.1 SORT DEFINITION
+
+      The sort orders which indexes  can be defined with are:  the
+ simple ordering associated with each  of the relevant data types;
+ a   "library"   sort  for   character  strings   (insensitive  to
+ capitalization,  initial  articles  such  as  "the"  and  "a" are
+ ignored); a "date" sort treating character strings as dates; and,
+ for indexes supporting multiple  fields, one or more hierarchical
+ orderings  of fields  (in the "or  more" case, the  keys would be
+ sorted for several orderings of fields simultaneously).
+
+
+ 6.3.2 COMPARISON OPERATORS
+
+      The comparison  operators which are  supported for selection
+ specifications  for sorting  indexes are:  =,  <, >,  <=, >=, ^=,
+ containment  (valid  only  for  bit  and  character  fields), and
+ regular  expression  (also  valid  only  for  bit  and  character
+ fields).   Both case  sensitive and case  insensitive versions of
+ these comparisons are supported.
+      The   containment   operator  provides   several  functions,
+ depending on how it is used:  such as,
+    "string X contains substring Y",
+    "string X begins with substring Y",
+    "string X ends with substring Y",
+    "string X contains substring Y  beginning at the Nth character
+    of string X",
+    "string X contains substring Y  ending at the Nth character of
+    string X".
+ For all of  the containment comparisons except the  first one, it
+ would be necessary  for the index manager to  compare against all
+ of the keys in the index, in the relevant field.  The containment
+ operator takes one  or two arguments.  The first  argument is the
+ string  value,  the second  argument  is a  number.  If  only the
+ string is  given then containment  is satisfied if  the string is
+ present  anywhere in  the field.  If  the second  argument (N) is
+ present and positive, then containment is satisfied if the string
+ starts at the Nth position in the field.  If it is negative, then
+| containment is satisfied if the string ends at the Nth position.
+
+
+
+
+
+                              Page 6. 
+ Multics Technical Bulletin                                MTB-509
+ DM: External Access Layer
+
+
+
+ 6.3.3 SINGLE FIELD KEY TREE
+
+      This kind of index is primarily useful for sorting a list of
+ items, each "item" being stored as  a key.  Its purpose is not to
+ associate keys with other things, such as record identifiers.
+
+      The basic  services provided for the  tree with single field
+ keys are:
+
+ 1)   create index - define an  index with a particular name.  The
+      data type for the key is set at this time.
+
+ 2)   destroy index  - destroy the index.   All associated storage
+      is freed.
+
+ 3)   position  cursor -  position the cursor,  the "current" key.
+      Various sorts of position  operations are supported, such as
+      "next",   "previous",  "first",   "last",  absolute  numeric
+      position,   relative   numeric    position,   and   "direct"
+      positioning.
+
+ 4)   put key - put a key into the index.  A key value is input.
+
+ 5)   get key  - get a  key or keys  from the index.   A selection
+      specification is input.
+
+ 6)   modify key - modify a key or keys in the index.  A selection
+      specification and the new value are input.
+
+ 7)   delete  key  -  delete a  key  or  keys from  the  index.  A
+      selection specification is input.
+
+ 8)   define subset -  define a subset of the  index.  A selection
+      specification  and either  the include  or exclude operation
+      are input.
+
+ 9)   open index -  open an index for use.  The  name of the index
+      and usage  mode are given  as input.  The usage  mode may be
+      used to indicate concurrent access locking preferences.      |
+
+ 10)  close index - close an opening of an index.
+
+
+ 6.3.4 MULTIPLE FIELD, FIXED FORMAT KEY, TREE
+
+      The services of a multiple  field, fixed format key tree are
+ largely  similar to  those for  the single  field key  tree.  The
+ three operations where differences are apparent are:
+
+ 1)   create index - define an  index with a particular name.  The
+
+
+                              Page 7. 
+ MTB-509                                Multics Technical Bulletin
+                                         DM: External Access Layer
+
+
+
+      names and data  types of the key fields  are defined at this
+      time.
+
+ 4)   get key - get one or more  fields from a set of keys.  A set
+      of fields is named which is to be returned, in addition to a
+      selection  specification  being  provided  to  identify from
+      which keys the data is to be returned.
+
+ 6)   modify key - change the value of one or more fields in a set
+      of keys.   The names of  the fields to be  modified, the new
+      value(s) and the selection specification are input.
+
+
+ 6.3.5 MULTIPLE FIELD, VARIABLE FORMAT, TREE
+
+      This  type of  index is, again,  similar in  the services it
+ provides, with a few differences  from the basic single field key
+ tree.
+
+ 1)   create index -  create an index with a  particular name.  No
+      field definitions are done at this time.
+
+ 4)   get  key  - get  one  or more  fields  from a  set  of keys.
+      Basically identical  to the fixed format  case, except there
+      is some additional power in the selection specification.
+
+ 5)   put key - put a key  into the index.  The names, data types,
+      and  values of  each field are  given as  input.  Data types
+      between  fields  of the  same  name in  different  keys must
+      agree.
+
+ 6)   modify key - change the value of one or more fields in a set
+      of keys.   The names of  the fields to be  modified, the new
+      value(s) and the selection specification are input.
+
+
+ 6.4 Non-sorting Indexes
+
+|           Non-sorting indexes are implemented by various kinds of
+|      hashing  algorithms.    As  is  true   of  sorting  indexes,
+|      non-sorting indexes contain only keys.  Hence, to hash a set
+|      of records  managed by a  record manager with  a non-sorting
+|      index,  one  must  "indirect"  through  the  index.  Another
+|      interesting use of hashing is to  be able to locate a record
+|      directly via  a calculation on  the contents of  the record.
+|      The  value of  this hash on  the record  returns is directly
+|      correlated with  the record's location.  This  is known as a
+|      "calc" file in GCOS.  This can be thought of as a third kind
+|      of  manager which  mixes the  capabilities of  the index and
+|      record managers in a very specific way.
+
+
+                              Page 8. 
+ Multics Technical Bulletin                                MTB-509
+ DM: External Access Layer
+
+
+
+           What  is discussed  below is  only the  non-sorting, or |
+      hash,  type  of index  management.   Discussion of  the calc |
+      record management will be taken up in another MTB.           |
+
+
+ 6.4.1 HASH DEFINITION
+
+           The hash definition includes just a few attributes.
+      1)   Whether the hash index  is to be automatically extended
+           or not.
+      2)   Whether the items in a bucket are to be sorted/indexed,
+           or simply stored as a list.
+      3)   The number of buckets to be used.
+
+
+ 6.4.2 SINGLE FIELD HASH
+
+           The  services provided  by the  single-field hash index
+      manager are:
+
+ 1)   create index - define an  index with a particular name.  The
+      name and data-type of the key is defined at this time.
+
+ 2)   destroy index  - destroy the index.   All associated storage
+      is freed.
+
+ 3)   position cursor - position the cursor.  The only positioning
+      operations  supported are:   "next", "first",  and "direct".
+      No  relative  or absolute  numeric positioning  is provided.
+      The order of  the keys returned by the  "next" operation may
+      differ between uses of the  index for no apparent reason and
+      should not be depended upon.  However, it is guaranteed that
+      each key will  be seen once and only once  if the user walks
+      through  the index  using the "next"  operation and starting
+      with the position set by "first".
+
+ 4)   put key - put a key into the index.
+
+ 5)   get key  - get a  key or keys  from the index.   A selection
+      specification is input.
+
+ 6)   modify key - change a  key value.  A selection specification
+      is input, and the new value for the selected key or keys.
+
+ 7)   delete  key  -  delete a  key  or  keys from  the  index.  A
+      selection specification is input.
+
+ 8)   define subset -  define a subset of the  index.  A selection
+      specification  and either  the include  or exclude operation
+      are input.
+
+
+                              Page 9. 
+ MTB-509                                Multics Technical Bulletin
+                                         DM: External Access Layer
+
+
+
+ 9)   open index -  open the index for use.  The  name of an index
+      and usage mode are provided as input.  The usage mode may be
+      used to indicate concurrent access locking preferences.
+
+ 10)  close index - close an opening of an index.
+
+
+ 6.4.3 MULTIPLE FIELD, FIXED FORMAT, HASH
+
+      This type of  hash index is very similar  in the services it
+ provides to the single field hash.  The different services are:
+
+ 1)   create index - define an  index with a particular name.  The
+      names  and  data-types of  the fields  are provided  at this
+      time.
+
+ 5)   get key - get one or more fields from a key or keys.  One or
+      more fields are named on input  as those whose values are to
+      be  returned.   Also  provided   as  input  is  a  selection
+      specification.
+
+ 6)   modify key - modify the value of one or more fields in a key
+      or keys.  A seleciton specification, the names of the fields
+      to  be  modified, and  the  new value  for each  field being
+      modified are the input.
+
+
+ 7 RECORD MANAGERS
+
+           The  prime  services provided  by record  managers are:
+      permanently identifying a record,  regardless of rewrites or
+|      even deletion; and maintaining the records in whatever order
+|      is specified by  the user.  The user specifies  the order by
+|      identifying  the record  which is  "previous" to  the record
+|      being "put".
+
+
+ 7.1 Records and Fields
+
+           Records are  defined with one  or more fields.   All of
+      the  records in  a record container  need not  have the same
+      format (set of fields).
+
+
+ 7.2 Data Types in Record Fields
+
+           The same data types as  those supported for indexes are
+      supported  in  record containers.   Different fields  in the
+      same record may have different data types.
+
+
+
+                             Page 10. 
+ Multics Technical Bulletin                                MTB-509
+ DM: External Access Layer
+
+
+
+ 7.3 Permanent Record Identifiers
+
+           Records have associated with  them a unique identifier.
+      This identifier  is unique within the  record container, but
+      is  not  necessarily unique  across record  containers.  The
+      mode in which a record manager is used determines whether or
+      not  record identifiers  are unique  beyond deletion  of the
+      associated record.
+
+
+ 8 COMPOSITE, HIGH-LEVEL, UTILITIES
+
+           Many  uses  of  data  management  require  more complex
+      services than  those provided by any  single index or record
+      manager.   A  common  example  of  this  is  the traditional
+      indexed  file,  which  has  an   index  of  keys  which  are
+      associated with a set  of records.  This traditional indexed
+      file is provided  in two versions, one with  a sorting index
+      and the other with a non-sorting index; "tree indexed record
+      management"    and    "hash   index    record   management",
+      respectively.
+
+           An extension of the concept  of the simple indexed file
+      is to have  several indexes associated with the  same set of
+      records, a "primary" and some number of "secondary" indexes.
+      A general  purpose version of  this approach is  provided by
+      the  "multiply  indexed  record  management".   A particular
+      version  of  this  multiple  indexing  approach  is  used to
+      implement  "relations"  in a  relational database.   This is
+      provided by the "relational utility manager".
+
+           The possible combinations of  index and record managers
+      are  endlessly  various.   Only  the  four  named  above are
+      discussed at all  in this document, and those  mostly by way
+      of conveying  an understanding of  how "composite utilities"
+      can  be  constructed  (in  terms of  the  services  they can
+      provide).
+
+
+ 8.1 Tree Indexed Record Management
+
+           The  tree  indexed record  manager associates  an index
+      container  with a  record container.   It uses  the multiple
+      field,  fixed  format key  tree index  manager.  The  key is
+      composed of  two fields, the  record name field  which is an
+      indexed field  and the record  identifier field which  is an
+      attendant  field.  The  permanent record manager  is used to
+      manage  the  records.   The  record  identifier  the  record
+      manager produces are stored in the record identifier field.
+
+
+
+                             Page 11. 
+ MTB-509                                Multics Technical Bulletin
+                                         DM: External Access Layer
+
+
+
+           The supported operations are:
+
+ 1)   seek key - position to a particular key.
+
+ 2)   write  record -  write a  record and  associate it  with the
+      "current  key  for  insertion",  the  "current  key"  may be
+      provided as input or set by doing a seek key (whether or not
+      the seek was successful).
+
+ 3)   read  record -  read a  record or  records and  position the
+      "current  record  for  read"  to  the  next  record.   If  a
+      selection  specification  is  provided  as  input,  then the
+      records  associated   with  the  selected   keys  are  read.
+      Otherwise the record identified with the "current record for
+      read" is read.
+
+ 4)   delete  record  - delete  a  record or  records and  set the
+      "current  record  for deletion"  to the  next record.   If a
+      selection   specification   is  input,   then   the  records
+      associated  with the  keys selected  are deleted  (and their
+      associated  keys  are  deleted).   Otherwise,  the  "current
+      record for deletion" and its associated keys are deleted.
+
+
+ 8.2 Hash Indexed Record Management
+
+           Nearly  identical to  the previous  manager except that
+      records are  not guaranteed to  be in any  particular order.
+      If  you  start at  the  beginning of  the file  and position
+      forward, you are guaranteed to  visit all of the records one
+      or more times.
+
+
+ 8.3 Multiply Indexed Records
+
+           This utility allows for  accessing records through more
+      than  one  index.   For   purposes  of  positioning,  it  is
+      necessary to define a "default ordering" index.  This is the
+      index which is  used to determine what the  "next" record is
+      for operations  where it is  necessary to position  the next
+      record (e.g.   "read" and "delete").   The different indexes
+      may be of any type, hash indexes or trees.
+
+           The  multiply  indexed record  manager  will coordinate
+      multiple keys (in different  indexes) for both insertion and
+      deletion.
+
+           The services are:
+
+      o create file
+
+
+                             Page 12. 
+ Multics Technical Bulletin                                MTB-509
+ DM: External Access Layer
+
+
+
+
+      o destroy file
+
+      o open
+
+      o close
+
+      o read record
+
+      o write record
+
+      o rewrite record
+
+      o delete record
+
+      o define subset
+
+      o create index
+
+      o destroy index
+
+
+ 8.4 Relational Utility
+
+      Supports  the  organization  of   a  relation  and  multiple
+ indices.   Guarantees  that the  tuples  and the  indices  do not
+ become inconsistent.
+
+      Services are:
+
+      o create relation
+
+      o destroy relation
+
+      o create index
+
+      o destroy index
+
+      o get tuple
+
+      o put tuple
+
+      o delete tuple
+
+      o get tuple count
+
+      o modify tuple
+
+      o define subset
+
+
+
+                             Page 13. 
+ MTB-509                                Multics Technical Bulletin
+                                         DM: External Access Layer
+
+
+
+      o open relation
+
+      o close relation
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                             Page 14. 

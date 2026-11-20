@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-592, Rev. 1</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-592, Rev. 1: Data Management:  System Structure and Initialization.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                        MTB-592, Rev. 1
+DM:  Structure &amp; Initialization
+
+To:       Distribution
+
+From:     John J. Bongiovanni, Lee A. Newcomb
+
+Date:     08/04/83
+
+Subject:  Data Management:  System Structure and Initialization
+
+1 ABSTRACT
+
+     This document describes the  objectives and structure of the
+per-system  and per-process  data used  by Data  Management.  The
+term structure means the location and relationship of the various
+tables which  comprise the per-system and  per-process data.  The
+mechanisms for initializing per-system and per-process tables are
+discussed  separately.  Subroutine  interfaces required  by other
+parts of the Data Management system are described.
+
+Comments should be sent to the author:
+
+via Multics forum:
+   &gt;udd&gt;Multics&gt;Spratt&gt;meetings&gt;DMS_Development
+
+via Multics Mail:
+   Newcomb.Multics  on  System  M   or  LNewcomb.Multics  on  MIT
+   Multics.
+
+via US Mail:
+   Lee A. Newcomb
+   Honeywell Information Systems, Inc.
+   575 Tech Square
+   Cambridge, Massachusetts 02139
+
+via telephone:
+   (HVN) 261-9332, or (617) 492-9332
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+
+                            CONTENTS
+
+                                                         Page
+
+                 1 Abstract . . . . . . . . . . . . . .     i
+                 2 Introduction . . . . . . . . . . . .     1
+                 3 Objectives . . . . . . . . . . . . .     2
+                 4 Per-System Tables  . . . . . . . . .     2
+                    4.1 Data Management System
+                     Directory  . . . . . . . . . . . .     2
+                    4.2 Per-AIM Authorization Directory     2
+                    4.3 Per-Bootload Tables . . . . . .     3
+                    4.4 System Structure Summary  . . .     3
+                 5 Terminology  . . . . . . . . . . . .     4
+                 6 Per-Process Tables - Inner Ring  . .     4
+                 7 Per-Process Tables - User Ring . . .     4
+                 8 Calling method of inner ring
+                  subsystems  . . . . . . . . . . . . .     4
+                 9 Per-Bootload Initialization  . . . .     5
+                    9.1 Overview  . . . . . . . . . . .     5
+                    9.2 Initialization Programs . . . .     7
+                    9.3 Recovery Programs . . . . . . .     7
+                    9.4 Taking over a running DM system     7
+                 10 Per-Process Initialization  . . . .     8
+                    10.1 Overview . . . . . . . . . . .     8
+                    10.2 Per-Process Initialization
+                     Routines . . . . . . . . . . . . .     9
+                 11 Data Management Shutdown  . . . . .    10
+                 12 Independent Data Management Systems    10
+                 13 System Initialization Routines  . .    10
+                    dm_dir_ . . . . . . . . . . . . . .    11
+                       $get_aim_dir . . . . . . . . . .    12
+                       $get_bootload_dir  . . . . . . .    13
+                       $get_bootload_dir_name . . . . .    14
+                       $get_enabled_bootload_dir  . . .    15
+                       $get_enabled_bootload_dir_name .    16
+                       $get_init_bootload_dir_name  . .    17
+                       $get_last_bootload_dir . . . . .    18
+                       $get_system_dir  . . . . . . . .    19
+                       $set_aim_dir . . . . . . . . . .    20
+                       $set_system_dir  . . . . . . . .    21
+                    dm_per_system_  . . . . . . . . . .    22
+                       $alloc . . . . . . . . . . . . .    23
+                       $cleanup . . . . . . . . . . . .    24
+                       $create  . . . . . . . . . . . .    25
+
+
+
+                         CONTENTS (cont)
+
+                                                         Page
+
+                       $enable  . . . . . . . . . . . .    26
+                       $init  . . . . . . . . . . . . .    27
+                       $initiate  . . . . . . . . . . .    28
+
+
+Multics Technical Bulletin                        MTB-592, Rev. 1
+DM:  Structure &amp; Initialization
+
+2 INTRODUCTION
+
+     The  Multics  Access   Isolation  Mechanism  (AIM)  presents
+several   problems   to   Data   Management.    In   the  initial
+implementation,  Data Management  will not support  AIM, since it
+will not support multi-authorization  data bases.  Instead, users
+of  data bases  at one  AIM authorization  will be  isolated from
+users  of data  bases at any  other AIM  authorization.  In this,
+Data  Management  will operate  like  most other  subsystems with
+respect to AIM.
+
+     Various   Data  Management   subsystems  require  per-system
+tables,  writable  from any  process.  Examples  of this  are the
+Before Image  Journal buffer and  the table of  active locks.  To
+protect  these tables  from accidental or  malicious damage, they
+will live  in an inner  ring (currently, ring-2).   However, they
+remain  subject  to  AIM,  and hence  are  writable  at  only one
+authorization.  As a result,  these Data Management tables cannot
+be  per-system at  a site which  uses AIM; instead,  they must be
+per-AIM authorization.
+
+     In  effect,  Data Management  at  an AIM  site  is a  set of
+mutually isolated Data Management systems, each with its own data
+bases and what it views as  per-system tables.  A given user data
+base  belongs to  one and  only one  of these  isolated systems -
+namely, the system corresponding  to its AIM authorization.  Note
+that  this  precludes  the  use  of   a  data  base  of  one  AIM
+authorization  as   a  read-only  data  base   at  a  higher  AIM
+authorization.   Although  read-only  access   by  a  higher  AIM
+authorization is allowed  by AIM, it could not  be implemented in
+Data Management without some  form of multi-authorization support
+(minimally, for the shared writable system tables).
+
+     Aside from  AIM, there is some  utility in mutually isolated
+Data  Management  systems.   It  is  useful  to  Data  Management
+developers,  for example,  to have  a production  version of Data
+Management on  the same machine as  several different development
+versions.   Each  version would  operate on  its own  data bases,
+using its own per-system tables.
+
+3 OBJECTIVES
+
+     The structure presented in this document is designed to meet
+the following objectives:
+
+    o  Allow  the  Data Management  system to  operate at  a site
+       which uses AIM.  At such  a site, Data Management operates
+       as a set of mutually isolated Data Management systems, one
+       for each active AIM authorization.
+
+
+MTB-592, Rev. 1                        Multics Technical Bulletin
+                                  DM:  Structure &amp; Initialization
+
+    o  Allow the operation of independent Data Management systems
+       on  the  same Multics  system, with  some or  all software
+       shared among the different  systems.  This is intended for
+       development, and it will not be visible to sites.
+
+    o  Package  the  various  tables   used  by  Data  Management
+       efficiently  (avoiding  the  proverbial  "Tax  on  Segment
+       Numbers" where reasonable to do so).
+
+4 PER-SYSTEM TABLES
+
+4.1 Data Management System Directory
+
+     The  location   of  all  per-AIM   Authorization  tables  is
+determined,  ultimately, from  a control segment  in a per-system
+directory  which is  named canonically  (&gt;site&gt;dm).  However, the
+control segment is accessed only via a subroutine, and the naming
+convention  (i.e., the  exact location of  the segment, currently
+&gt;site&gt;dm&gt;dm_aim_control)  is known  only to  the subroutine.  The
+control segment contains an entry  for each AIM authorization for
+which Data Management has been enabled by the Site Administrator.
+This  entry  defines the  location  of the  per-AIM authorization
+directory.
+
+4.2 Per-AIM Authorization Directory
+
+     There is  a directory for  each AIM authorization  for which
+Data Management has been enabled.  This directory is created (and
+assigned quota)  at the time the  corresponding AIM authorization
+is enabled  by a system  administrator.  It contains  all per-AIM
+Authorization  Data  Management  tables   that  exist  across  DM
+bootloads, such as the per-AIM configuration table.  The location
+of  this  directory  is  determined from  the  per-system control
+segment.
+
+4.3 Per-Bootload Tables
+
+     All per-bootload tables for an invocation of Data Management
+are really  per-AIM authorization tables.  That  is, these tables
+are  initialized  for  each  bootload  when  Data  Management  is
+started.  Tables  from the previous  bootload are used  for crash
+recovery (e.g.,  to back out transactions  which were in progress
+at   the  time   of  the   crash).   Following   crash  recovery,
+per-bootload tables from a previous bootload are no longer of any
+use and are either deleted or held for later inspection.
+
+
+Multics Technical Bulletin                        MTB-592, Rev. 1
+DM:  Structure &amp; Initialization
+
+     The  per-bootload tables  for an  single invocation  of a DM
+system  are  contained in  a per-bootload  directory, immediately
+subordinate to the per-AIM Authorization directory, with the name
+
+     dm_dir.[substr [request_id |[system date_time_last_up]] 1 10]
+
+These directories will  be abbreviated in the rest  of the MTB as
+dm_dir.{system_boot_time}.   The  existence   of  this  directory
+implies  that  all  tables  located in  the  directory  have been
+initialized and  are available to users  of data management.  The
+Multics system  time up is  used for convenience  in locating the
+current  bootload  directory  at  any time  for  all  users.  The
+mechanism to effect this is:  the directory is first created with
+the  above name  with an  added ".init"  suffix; all per-bootload
+tables for  the current AIM authorization  are created within the
+directory and initialized; and  finally, the directory is renamed
+to the above by removing the ".init" suffix.
+
+     The  segment dm_system_data_  is immediately  subordinate to
+the per-bootload directory.  It contains a small amount of static
+per-bootload data  of general use to  Data Management subsystems.
+Static  data  is  accessible  externally  in  the  inner-ring (as
+dm_system_data_$symbol_name).   Dm_system_data_  also  contains a
+non-extendable  area   for  those  Data   Management  tables  not
+sufficiently  large  to  warrant  separate  segments.   Any other
+tables  implemented as  independent segments  reside as immediate
+subordinates  to  the  per-bootload  directory.   Subroutines are
+provided  to  support  both  methods of  packaging  system tables
+(allocation  within  the  non-extendable  area  and  creation  of
+separate segments).
+
+4.4 System Structure Summary
+
+     The structure of per-system and per-AIM Authorization tables
+is depicted in Attachment 1.
+
+5 TERMINOLOGY
+
+     For  the remainder  of this MTB,  the term  "DM system" will
+refer  to  an  invocation  (bootload)  of  Data  Management  at a
+particular  AIM  authorization   unless  noted  otherwise.   This
+implies  an initializing/caretaker  process (a  DM Daemon  in the
+normal   case),   and  per-system,   per-AIM,   and  per-bootload
+directories  (with  the per-bootload  tables in  the per-bootload
+directory).  It is the per-bootload  direcotry that the user sees
+as the DM system in use.
+
+
+MTB-592, Rev. 1                        Multics Technical Bulletin
+                                  DM:  Structure &amp; Initialization
+
+6 PER-PROCESS TABLES - INNER RING
+
+     There are no special segments or files created for a process
+running  Data Management  in the  inner ring  (currently ring-2).
+The  linkage section  of the  inner ring  program dm_data_ stores
+data of use to the  various Data Management inner ring subsystems
+(e.g.,  dm_data_$inner_ring_areap  and  dm_data_$current_txn_id).
+The  other   inner  ring  DM  subsystems   also  have  their  own
+per-process  data   segments,  constructed  like   dm_data_,  for
+per-process   data   specific   to  them   (e.g.    fm_data_  for
+file_manager_ and  lm_data_ for lock_manager_).   All per-process
+tables are allocated in the inner-ring system free area.
+
+     Externally   available   pointers  and   the  initialization
+mechanism to be discussed eliminate  the need for Data Management
+subsystems  to  understand the  DM directory  structure discussed
+earlier.   All of  the various  tables are  accessed via pointers
+accessible externally in dm_data_, fm_data_, and lm_data_.
+
+7 PER-PROCESS TABLES - USER RING
+
+     Any   per-process   tables  required   by   Data  Management
+subsystems in the user ring are allocated in the system free area
+for the user ring.
+
+8 CALLING METHOD OF INNER RING SUBSYSTEMS
+
+     Some of the initialization will be understood better knowing
+the method of calling inner ring subsystem programs (currently in
+ring-2).   All programs  outside of a  subsystem are  to call the
+subsystem's main transfer vector.
+
+     There are  subsystem programs meant  to be called  only from
+within the inner  ring.  An example of this  is the file_manager_
+calling  before_journal_manager_  to  write a  before  image.  To
+satisfy the  requirement that a subsystem  call the main transfer
+vector of another subsystem, file_manager_  must call an entry in
+before_journal_manager_.  However, only  the file_manager_ should
+be  able  to  do this,  not  any  program in  any  ring.  Entries
+callable only in  the inner ring are NOT put  in the gate segment
+for the  subsystem; the main  transfer vector directly  calls the
+inner ring transfer vector.
+
+
+Multics Technical Bulletin                        MTB-592, Rev. 1
+DM:  Structure &amp; Initialization
+
+     Any operation allowed for normal  use must go through a gate
+for the subsystem  to get to the inner ring.   The gate calls the
+inner ring  transfer vector which  actually calls the  inner ring
+target  program.   Thus,  a  program in  the  inner  ring  is not
+hindered from calling  an entry available to the  outer ring, but
+there is  extra cost in  sometimes going through  an extra object
+segment to get to the target program.
+
+     Note the  inner ring transfer  vectors amd gates  contain no
+per-system initialization references that must be called before a
+running  Data   Management  system  is   operational.   The  main
+subsystem transfer vector calls straight into the required target
+subsystem program (it  is assumed the caller is  in the DM ring).
+The reason for this will be more evident when the first reference
+trap on the inner ring transfer  vector is discussed fully in the
+section on per-process initialization.
+
+     The following  is a diagram of  the different paths possible
+when a program calls an entry in an inner ring subsystem:
+
+            {caller outside of a DM subystem}
+                           v|
+            {subsystem main transfer vector}
+                           v|
+ -----------------------------------------------
+v|(sys. init.)           v|(R2 only)              v|(normal)
+|                       |                       |
+|                       v|          (normal)     v|
+| {ring-2 subsys. transfer vector} &lt;------- {ring-2 subsys. gate}
+v|                       v|
+|                       |
+|(sys. init.)           |(R2 only or normal)
+v|                       v|
+ ----------&gt; {ring-2 subsys. program}
+
+9 PER-BOOTLOAD INITIALIZATION
+
+9.1 Overview
+
+     Data  Management  is initialized  for  each bootload  in the
+following  manner.   A  Daemon   process  is  logged  in  (either
+automatically  by  system_start_up.ec  or  by  explicit  operator
+command).    The   Daemon   calls    an   inner   ring   program,
+dm_initializer_, through a privileged Data Management gate.
+
+
+MTB-592, Rev. 1                        Multics Technical Bulletin
+                                  DM:  Structure &amp; Initialization
+
+     The  program  dm_initializer_  is  similar  to  the  program
+initializer in  Multics ring-0 initialization.   Specifically, it
+is a set of ordered calls to other Data Management initialization
+and  recovery   programs.   Conceptually,  the   processing  flow
+implemented by dm_initializer_ is the following:
+
+    o  Find  the  per-AIM  configuration   file  in  the  per-AIM
+       directory and lock it against administrative modification.
+       This lock also guarantees only  one process can be running
+       a DM system at a time for the current AIM authorization.
+
+    o  Check if a DM system is running for current Multics system
+       (i.e.   the  directory  dm_dir.{system_boot_time} exists).
+       If so, try to take over the DM Daemon responsibilities and
+       ignore the remaining steps.
+
+    o  Create  a dm_dir.{system_boot_time}.init  directory, which
+       will  become   the  per-bootload  directory   for  per-AIM
+       Authorization tables.
+
+    o  Create   and  initialize   dm_system_data_  in   this  new
+       directory,   and  make   it  known   with  reference  name
+       "dm_system_data_".
+
+    o  Call a  set of initialization programs,  one for each Data
+       Management   subsystem  requiring   per-AIM  Authorization
+       tables.   These  programs assume  a valid  Data Management
+       system is not  yet running.  This step is  called part one
+       initialization.
+
+    o  Find  all  instances of  dm_dir.{system_boot_time}  in the
+       per-AIM  directory.   If  there  are any,  call  a  set of
+       recovery programs.
+
+    o  Call a  set of initialization programs,  one for each Data
+       Management subsystem requiring some initialization AFTER a
+       valid  Data Management  system is  running.  This  step is
+       called part two initialization.
+
+    o  Delete or rename all dm_dir.{system_boot_time} directories
+       remaining in the per-AIM directory.
+
+    o  Rename     the     current    bootload     directory    to
+       dm_dir.{system_boot_time} by removing the ".init" suffix.
+
+
+Multics Technical Bulletin                        MTB-592, Rev. 1
+DM:  Structure &amp; Initialization
+
+9.2 Initialization Programs
+
+     All part one and two  system initialization programs for the
+various  DM subsystems  are called  by dm_initializer_  using the
+following sequence:
+
+     call initialization_program ();
+
+If the  program returns, the initialization  was successful.  The
+sub_err_  program is  called to  report errors  by signalling the
+sub_error  condition.  In  order to  create segments  or allocate
+space for per-bootload tables, initialization_program should call
+the appropriate entry in dm_per_system_, documented later in this
+MTB.
+
+     When invoked,  a part one initialization  program can assume
+only  that the  reference name "dm_system_data_"  is available to
+it.  Part two initialization programs can assume they are running
+on a valid system to which  users have not yet been given access;
+these programs fill in information  that was not available before
+all of  the part one  initialization was finished.   The contract
+between  an  initialization  program  and other  programs  in its
+subsystem  is as  follows:  it  returns a  zero code  only if all
+per-bootload  tables  and  dm_system_data_  values  used  by  the
+subsystem have been initialized.
+
+9.3 Recovery Programs
+
+     The  interface  between  dm_initializer_  and  the  recovery
+programs is defined in MTB 603, Data Management:  Crash Recovery.
+
+9.4 Taking over a running DM system
+
+     Occasionally the DM Daemon process  dies, leaving a valid DM
+system, but no process to periodically cleanup the DM tables.  It
+is possible  for a different  process of sufficient  privilege to
+take over this running DM system.
+
+     Takeover of  a running DM system  has several benefits.  The
+system tables  are valid, so no  time need be used  in creating a
+completely  new DM  system (a  per-bootload directory  and tables
+under the per-AIM directory).  Users  of the current DM system do
+not lose their  current work.  Recovery does not  have to be run.
+Some transactions  may be left unfinished  by dead user processes
+until  a  new Daemon  can be  logged in  to perform  the cartaker
+functions, but this  is a minor cost compared  with shutting down
+and re-initializing; and the tables will  be tidied when a new DM
+Daemon takes over control.
+
+
+MTB-592, Rev. 1                        Multics Technical Bulletin
+                                  DM:  Structure &amp; Initialization
+
+     Before  the  new  DM   Daemon  tries  creating  the  ".init"
+directory, it must find and  lock the per-AIM configuration file.
+Once this is done, the Daemon tries to find a bootload directory.
+If one is found, the DM  Daemon process ID in the dm_system_data_
+segment  is checked  for validity.  If  the ID is  valid, the new
+Daemon's  initialization fails;  the current  DM system  has a DM
+Daemon  overseeing it.   If the ID  is not valid,  the new Daemon
+writes  its  process  ID  in  dm_system_data_,  does  per-process
+initialization, and  takes charge of the  current DM system.  The
+new  Daemon  will  then  do  any  cleanup  in  the  system tables
+necessary.
+
+10 PER-PROCESS INITIALIZATION
+
+10.1 Overview
+
+     Data Management is initialized for  a process the first time
+that  process invokes  a ring-2 Data  Management subsystem.  Each
+inner  ring  subsystem has  an  inner ring  transfer  vector (see
+above).  This  vector has a first  reference trap associated with
+it.  The trap  causes the values for the  subsystem being invoked
+to be initialized in the user's  process in the static section of
+the  object  segment  dm_data_.   This  data  is  only  valid  if
+referenced from the inner ring.
+
+     Each inner ring subsystem conceptually does the following:
+
+    o  Find dm_system_data_ for the current bootload for this AIM
+       authorization.  Make this segment known with the reference
+       name "dm_system_data_", if not already done.
+
+    o  Initialize  any  static variables  in dm_data_  of general
+       usage to Data Management, if not already done.
+
+    o  Call  the  per-process   initialization  program  for  the
+       subsystem being called.
+
+    o  Return  to the  inner ring  transfer vector  to resume its
+       processing.
+
+
+Multics Technical Bulletin                        MTB-592, Rev. 1
+DM:  Structure &amp; Initialization
+
+10.2 Per-Process Initialization Routines
+
+     Each  inner  ring  subsystem  transfer  vector  has  a first
+reference trap associated  with it.  This is the  main reason the
+part one per-system initialization programs have to be referenced
+straight from the subystem gate.   The first reference trap calls
+the initialization program for the subsystem referenced using the
+following call sequence:
+
+     call per_process_init_routine ();
+
+An  error  is  indicated  by the  initialization  program calling
+sub_err_ to signal the sub_error condition.
+
+     Each initialization program must  locate the per-system data
+for  its  Data  Management  subsystem and  fill  in  the relevant
+pointers,  etc.,  in dm_data_.   It  may be  necessary for  it to
+initiate  per-system segments.   When invoked,  an initialization
+program can assume only the following:
+
+    o  The  reference name  "dm_system_data_" is  available to it
+       and the data in this segment have been initialized.
+
+    o  The reference  name "dm_data_" is available  to it and all
+       global   data  elements   have  been   initialized  (e.g.,
+       dm_data_$area_ptr).
+
+     The  contract between  a per-process  initialization program
+and  its  subsystem is  the  following.  It  returns only  if all
+per-process tables needed by  the subsystem have been initialized
+and  all  data  items in  dm_data_  external static  used  by the
+subsystem have been established  (and fm_data_ in file_manager_'s
+case and lm_data_ for lock_manager_'s).
+
+     Each  initialization  routine  must allocate  space  for its
+per-process tables using the standard area package.  A pointer to
+the  area is  located in dm_data_$area_ptr.   After a per-process
+table has been initialized,  the initialization routine must fill
+in     the     relevant     pointer     in     dm_data_    (e.g.,
+dm_data_$lock_table_ptr).
+
+11 DATA MANAGEMENT SHUTDOWN
+
+     The  shutdown of  a running  Data Management  system will be
+covered in a separate MTB.
+
+
+MTB-592, Rev. 1                        Multics Technical Bulletin
+                                  DM:  Structure &amp; Initialization
+
+12 INDEPENDENT DATA MANAGEMENT SYSTEMS
+
+     Independent  Data  Management  systems  are  implemented  by
+allowing a suitably privileged process  to change the location of
+the per-system  Data Management directory to  any directory name.
+As   a  result,   the  per-AIM  directory   will  be  immediately
+subordinate  to  the  specified directory,  and  the per-bootload
+directory  immediately  subordinate  to  that.   Again,  this  is
+intended   to   facilitate   Data   Management   development  and
+maintenance.  It will not be documented for customer use.
+
+13 SYSTEM INITIALIZATION ROUTINES
+
+     The  following  routines  are  used  by  the  per-system and
+per-process initialization mechanisms.
+
+_______                                                   _______
+
+dm_dir_                                                   dm_dir_
+_______                                                   _______
+
+Name:  dm_dir_
+
+     The dm_dir_ subroutine manages  all handling of DM directory
+pathnames   and  some   entrynames.   Its  main   use  is  during
+per-process initialization when a process must find the directory
+containing the  current DM system's  tables.  It is  also used in
+per-system  initialization  by  the   DM  Daemon  and  some  test
+entrypoints exist for privileged processes.
+
+     All  of  the entries  to get  the  path or  entry name  of a
+directory  are called  as functions  for ease  of use  (i.e.  the
+dm_dir_$get* entries).   All error reporting for  dm_dir_ is done
+by  calling  the  sub_err_  subroutine  to  signal  the sub_error
+condition.
+
+_______                                                   _______
+
+dm_dir_                                                   dm_dir_
+_______                                                   _______
+
+Entry:  dm_dir_$get_aim_dir
+
+          This  entry is  used to  determine the  pathname of the
+current per-AIM authorization directory for the AIM authorization
+of  the calling  process.  This program  signals an  error if the
+current  AIM  authorization has  not been  registered in  the AIM
+control file in the per-system directory.
+
+Usage
+
+     dcl dm_dir_$get_aim_dir entry () returns (char (*));
+
+     dm_aim_dir = dm_dir_$get_aim_dir ();
+
+where:
+
+       dm_aim_dir                   (Output)
+            is   the  pathname   of  the   per-AIM  authorization
+            directory.
+
+_______                                                   _______
+
+dm_dir_                                                   dm_dir_
+_______                                                   _______
+
+Entry:  dm_dir_$get_bootload_dir
+
+          This entry is  used to obtain the full  pathname of the
+per-bootload directory for the  AIM authorization of the invoking
+process.   If  it  is  called  before  Data  Management  has been
+initialized (that is, before a call to dm_per_system_$enable), it
+signals an  error.  An exception  is made for  the Daemon process
+initializing   Data   Management.     This   process   may   call
+dm_dir_$get_bootload during per-system  initialization opened for
+users (dm_per_system_$enable).  In this  case, it is returned the
+full pathname  of the per-bootload  directory at that  time (that
+is, its temporary name, dm_dir.{system_boot_time}.init).
+
+Usage
+
+     dcl dm_dir_$get_bootload_dir entry () returns (char (*));
+
+     dm_bootload_dir = dm_dir_$get_bootload_dir ();
+
+where:
+
+       dm_bootload_dir              (Output)
+            is the current name of the bootload directory.
+
+_______                                                   _______
+
+dm_dir_                                                   dm_dir_
+_______                                                   _______
+
+Entry:  dm_dir_$get_bootload_dir_name
+
+          This  entry  returns  the   entryname  of  the  current
+bootload  directory  for  the  AIM authorization  of  the calling
+process.   If  it  is  called  before  Data  Management  has been
+initialized, it signals  an error.  An exception is  made for the
+Daemon  process  initializing  a  Data  Management  system;  this
+process  may  use  this  entry  during  per-system initialization
+before dm_per_system_$enable  has been called to  get the current
+name  of  the  bootload  directory  (i.e.,  the  temporary  name,
+dm_dir.{system_boot_time}.init).
+
+Usage
+
+     dcl dm_dir_$get_bootload_dir_name entry () returns (char
+          (*));
+
+     dm_bootload_dir_ename = dm_dir_$get_bootload_dir_name ();
+
+where:
+
+       dm_bootload_dir_ename        (Output)
+            is   the  entryname   of  the   current  per-bootload
+            directory.
+
+_______                                                   _______
+
+dm_dir_                                                   dm_dir_
+_______                                                   _______
+
+Entry:  dm_dir_$get_enabled_bootload_dir
+
+          This  entry returns  the full, enabled  pathname of the
+Data Management  per-bootload directory for  the calling process'
+AIM  authorization.  It  does not  matter if  the Data Management
+system for the AIM authorization is actually enabled; but failure
+will occur  if the AIM  authorization is not recorded  in the AIM
+control segment in the per-system directory.
+
+Usage
+
+     dcl dm_dir_$get_enabled_bootload_dir entry () returns (char
+          (*));
+
+     dm_enabled_bootload_dir = dm_dir_$get_enabled_bootload_dir
+          ();
+
+where:
+
+       dm_enabled_bootload_dir      (Output)
+            is  the  absolute  pathname  of  the  Data Management
+            per-bootload  directory when  the system  is enabled,
+            regardless if it is enabled or not.
+
+_______                                                   _______
+
+dm_dir_                                                   dm_dir_
+_______                                                   _______
+
+Entry:  dm_dir_$get_enabled_bootload_dir_name
+
+          This  entry returns  the enabled entryname  of the Data
+Management  per-bootload directory  for the  calling process' AIM
+authorization.  It does not matter  if the Data Management system
+for the  AIM authorization is actually  enabled; but failure will
+occur if the AIM authorization is not recorded in the AIM control
+segment in the per-system directory.
+
+Usage
+
+     dcl dm_dir_$get_enabled_bootload_dir_name entry () returns
+          (char (*));
+
+     dm_enabled_bootload_dir_ename =
+          dm_dir_$get_enabled_bootload_dir_name ();
+
+where:
+
+       dm_enabled_bootload_dir_ename (Output)
+            is the entryname of  the Data Management per-bootload
+            directory when  the system is  enabled, regardless if
+            it is enabled or not.
+
+_______                                                   _______
+
+dm_dir_                                                   dm_dir_
+_______                                                   _______
+
+Entry:  dm_dir_$get_init_bootload_dir_name
+
+          Returns the entryname of  the per-bootload directory as
+it should appear during per-system initialization.  This entry is
+designed for use by the DM  Daemon and is only available trough a
+privileged gate.
+
+Usage
+
+     dcl dm_dir_$get_init_bootload_dir_name entry () returns
+          (char (*));
+
+     dm_init_bootload_dir_ename =
+          dm_dir_$get_init_bootload_dir_name ();
+
+where:
+
+       dm_init_bootload_dir_ename   (Output)
+            is  the  entryname  of  the  initialization  bootload
+            directory.
+
+_______                                                   _______
+
+dm_dir_                                                   dm_dir_
+_______                                                   _______
+
+Entry:  dm_dir_$get_last_bootload_dir
+
+          Returns pathname of the  per-bootload directory for the
+last active  Data Management system.  This  entry is designed for
+crash recovery and is only available through a privileged gate.
+
+Usage
+
+     dcl dm_dir_$get_last_bootload_dir entry () returns (char
+          (*));
+
+     dm_last_bootload_dir = dm_dir_$get_last_bootload_dir ();
+
+where:
+
+       dm_last_bootload_dir         (Output)
+            is  the  pathname  of  the  last  active per-bootload
+            directory.
+
+_______                                                   _______
+
+dm_dir_                                                   dm_dir_
+_______                                                   _______
+
+Entry:  dm_dir_$get_system_dir
+
+          Returns  the pathname  of the  per-system directory for
+Data Management.  This is usually  &gt;site&gt;dm unless changed in the
+program or a privileged process is doing testing and has used the
+dm_dir_$set_system_dir entry.
+
+Usage
+
+     dcl dm_dir_$get_system_dir entry () returns (char (*));
+
+     dm_system_dir = dm_dir_$get_system_dir ();
+
+where:
+
+       dm_system_dir                (Output)
+            is the absolute pathname  of the per-system directory
+            for Data Management.
+
+_______                                                   _______
+
+dm_dir_                                                   dm_dir_
+_______                                                   _______
+
+Entry:  dm_dir_$set_aim_dir
+
+          This  entry is  used to  set the  per-AIM authorization
+directory in the control segment  of the per-system directory for
+the AIM authorization specified.  If the AIM authorization has no
+entry  in the  control segment,  one is  created.  Otherwise, the
+directory name in  the entry is replaced by  the one specified in
+the call to this entry.  This  entry is only available through an
+administrative or privileged gate.
+
+Usage
+
+     dcl dm_dir_$set_aim_dir entry (fixed bin (71), char (*));
+
+     call dm_dir_$set_aim_dir (authorization, dm_aim_dir_ename);
+
+where:
+
+       authorization                (Input)
+            is the binary form of the AIM authorization.
+
+       dm_aim_dir_ename             (Input)
+            is  the  entryname  of  the  directory  for  the  AIM
+            authorization  specified.   The directory  must exist
+            before using this entry.
+
+_______                                                   _______
+
+dm_dir_                                                   dm_dir_
+_______                                                   _______
+
+Entry:  dm_dir_$set_system_dir
+
+          This  entry   is  used  to  set   the  per-system  Data
+Management directory for the invoking process.  A control segment
+in  this  directory is  used  to find  all  per-AIM authorization
+directories.   This entry  is only callable  through a privileged
+gate for testing and debugging.
+
+Usage
+
+     dcl dm_dir_$set_system_dir entry (char (*));
+
+     call dm_dir_$set_system_dir (dm_system_dir);
+
+where:
+
+       dm_system_dir                (Input)
+            is the name of the per-system directory to be used by
+            Data Management for the privileged process taking the
+            place of the normal DM Daemon.
+
+______________                                     ______________
+
+dm_per_system_                                     dm_per_system_
+______________                                     ______________
+
+Name:  dm_per_system_
+
+     The  dm_per_system_  subroutine  manages all  handling  of a
+per-bootload  directory  and  its  contents.   This  includes the
+creation  of  the  dm_system_data_ segment,  calling  the various
+per-system initalization  programs of the DM  subsystems, and the
+creation and  allocation of tables  for a DM  system.  Errors are
+indicated by  the sub_error condition being  signalled (by a call
+to sub_err_), not by a status code argument.
+
+______________                                     ______________
+
+dm_per_system_                                     dm_per_system_
+______________                                     ______________
+
+Entry:  dm_per_system_$alloc
+
+          Allocates storage in the non-entendable area within the
+dm_system_data_  segment   in  the  per-bootload   directory  for
+per-system  initializaton programs.   A pointer  to the allocated
+storage block is returned.
+
+Usage
+
+     dcl dm_per_system_$alloc entry (fixed bin (18), ptr);
+
+     call dm_per_system_$alloc (n_words, block_ptr);
+
+where:
+
+       n_words                      (Input)
+            is the number of words to be allocated.
+
+       block_ptr                    (Output)
+            is the  location of the  allocated block, or  null if
+            the block could not be allocated.
+
+______________                                     ______________
+
+dm_per_system_                                     dm_per_system_
+______________                                     ______________
+
+Entry:  dm_per_system_$cleanup
+
+          Cleans up after dm_per_system_$init  if that entry does
+not   complete.   This   is  the   normal  cleanup   handler  for
+dm_initializer_.
+
+Usage
+
+     dcl dm_per_system_$cleanup entry ();
+
+     call dm_per_system_$cleanup ();
+
+______________                                     ______________
+
+dm_per_system_                                     dm_per_system_
+______________                                     ______________
+
+Entry:  dm_per_system_$create
+
+          Creates a named segment in the per-bootload directory,
+initiating it, and returning a pointer to the base of the
+segment.
+
+Usage
+
+     dcl dm_per_system_$create entry (char (*), ptr, fixed
+          bin(35));
+
+     call dm_per_system_$create (seg_name, seg_ptr);
+
+where:
+
+       seg_name                     (Input)
+            is  the  name  of  the  segment  to  be  created  and
+            initiated.
+
+       seg_ptr                      (Output)
+            is a pointer to the newly created segment, or null if
+            the segment could not be created.
+
+______________                                     ______________
+
+dm_per_system_                                     dm_per_system_
+______________                                     ______________
+
+Entry:  dm_per_system_$enable
+
+          Enables  the use  of a  Data Management  system for the
+curr  AIM  authorization by  general  use.  All  other per-system
+initialization should be done by  the DM Daemon before this entry
+is used.  The initialization per-bootload directory is renamed so
+other DM subsystems can find  it.  Normally, this entry is called
+only by dm_initializer_.
+
+Usage
+
+     dcl dm_per_system_$enable entry (fixed bin (71));
+
+     call dm_per_system_$enable (initializer_event_channel);
+
+where:
+
+       initializer_event_channel    (Input)
+            is the event channel used  to communicate with the DM
+            Daemon process initializing the current DM system.
+
+______________                                     ______________
+
+dm_per_system_                                     dm_per_system_
+______________                                     ______________
+
+Entry:  dm_per_system_$init
+
+          Creates   the  per-bootload   directory  for   the  AIM
+authorization   of   the  invoking   process   with  a   name  of
+dm_dir.[substr   [request_id   |[system   date_time_last_up]]   1
+10].init   so   it  is   only   accessible  to   Data  Management
+initialization programs.  This entry also creates and initializes
+dm_system_data_.   If  a   valid  per-bootload  directory  exists
+without  an owning  DM Daemon,  the current  Daemon process takes
+over the running DM system.   Normally, this entry is called only
+by dm_initializer_ from a DM Daemon process.
+
+Usage
+
+     dcl dm_per_system_$init entry (fixed bin (71)) returns (char
+          (4) aligned);
+
+     current_dm_status = dm_per_system_$init
+          (initializer_event_channel);
+
+where:
+
+       initializer_event_channel    (Input)
+            is  the ipc_  event channel used  to communicate with
+            the DM Daemon.  This is only used if the initializing
+            process takes  over a running,  valid Data Management
+            system.
+
+       current_dm_status            (Output)
+            is  the  status of  the  Data Management  system upon
+            return  of  the  call.    It  may  be  the  following
+            constants    (defined    in    dm_statuses.incl.pl1):
+            DM_STATUS_RUNNING,  indicating  that  a  running Data
+            Management     system    was     taken    over;    or
+            DM_STATUS_INITIALIZING,  indicating that  the rest of
+            per-system initialization must be done.
+
+______________                                     ______________
+
+dm_per_system_                                     dm_per_system_
+______________                                     ______________
+
+Entry:  dm_per_system_$initiate
+
+          Initiates  a segment  in the  per-bootload directory of
+the current DM system.  Normally, such  a segment is created by a
+call to dm_per_system_$create.
+
+Usage
+
+     dcl dm_per_system_$initiate entry (char (*), char (*), ptr);
+
+     call dm_per_system_$initiate (seg_name, ref_name, seg_ptr);
+
+where:
+
+       seg_name                     (Input)
+            is the name of the segment to be initiated.
+
+       ref_name                     (Input)
+            is the reference name desired.  It may be null.
+
+       seg_ptr                      (Output)
+            is a pointer to the initiated segment, or is the null
+            pointer if the segment could not be initiated.
+
+
+
+                          ATTACHMENT 1
+
+           PER-SYSTEM AND PER-AIM AUTHORIZATION TABLES
+
+                  (in per-system DM Directory)
+
+                 +-----------------------------+
+System           |          . . . . .          |
+                 +-----------------------------+
+Control          | AIM Auth  |  Directory Name | ------&gt;-----
+                 +-----------------------------+            |
+Segment          |          . . . . .          |            |
+                 +-----------------------------+            |
+                                                            |v
+                                                            |
+                                                            |
+                 +-----------------------------+            |
+                 | Per-Authorization Directory | &lt;----------
+                 +-----------------------------+
+                  |v      |      |      |      |v
++--------------------+   |      |      |   +--------------------+
+| Configuration file |   |      |      |   | System &amp; Lock Logs |
++--------------------+   |      |      |   +--------------------+
+                         |v      |      |v
+     +----------------------+   |   +----------------------+
+     | Command Msg. Segment |   |   | Def. Before Journal* |
+     +----------------------+   |   +----------------------+
+                                |v
+                 +-----------------------------+
+        ----&lt;---- |  dm_dir.{system_boot_time}  | --&gt;--
+       |         +-----------------------------+     |
+       |              |             |                |
+       |v              |v             |v                |v
+ +-----------+   +---------+   +--------+   +------------------+
+ | Protected |   | Before  |   |  Lock  |   | dm_system_data_  |
+ |   File    |   | Journal |   | Tables |   |    (with non-    |
+ |  Tables   |   | Tables  |   |        |   | extensible area) |
+ +-----------+   +---------+   +--------+   +------------------+
+
+*    Note the Default Before Journal may be placed anywhere on the system
+as long as it does not violate the rules of AIM.  The location shown is
+the default location.
+
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

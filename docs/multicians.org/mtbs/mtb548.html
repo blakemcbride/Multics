@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-548</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-548: Data Managment: Record Manager Design.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-548
+DM: Record Manager Design
+
+To:       Distribution
+
+From:     Lindsey Leroy Spratt and Matthew Clement Pierret
+
+Date:     04/27/82
+
+Subject:  Data Managment: Record Manager Design
+
+1 ABSTRACT
+
+     This document describes various facets of the implementation
+of the  record manager.  The record  manager uses three utilities
+to  do  its  work,  data_mgmt_util_  and  rm_search_,  which  are
+described  here,  and  collection_manager_.   The data_mgmt_util_
+utility understands the format of records; the rm_search_ utility
+positions in a record collection; collection_manager_ handles all
+of the storage for a collection of records.
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Spratt.Multics on either MIT Multics or System M.
+
+via US Mail:
+   Lindsey Spratt
+   Honeywell Information Systems, inc.
+   4 Cambridge Center
+   Cambridge, Massachusetts 02142
+
+via telephone:
+   (HVN) 261-9321, or
+   (617) 492-9321
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+
+                            CONTENTS
+
+                                                         Page
+
+                 1 Abstract . . . . . . . . . . . . . .     i
+                 2 Record Manager Utilities . . . . . .     1
+                 3 Record Storage . . . . . . . . . . .     1
+                 4 Record Layout  . . . . . . . . . . .     2
+                    4.1 The field_table structure . . .     2
+                 5 Allocation of Records  . . . . . . .     4
+                    5.1 Allocation of Records to
+                     Control Intervals  . . . . . . . .     4
+                       5.1.1 Overlength Records . . . .     4
+                    5.2 Allocation of a Record within a
+                     Control Interval . . . . . . . . .     5
+                 6 Rewriting Records  . . . . . . . . .     5
+
+Appendix      1 Search Algorithm  . . . . . . . . . . .     1
+
+Multics Technical Bulletin                                MTB-548
+DM: Record Manager Design
+
+2 RECORD MANAGER UTILITIES
+
+     The     record     manager     uses     three     utilities,
+collection_manager_,  data_mgmt_util_,   and  vector_util_.   The
+storage  management utility,  collection_manager_, deals directly
+with  the file  manager and talks  in terms of  "elements" of the
+record  collection.   These  elements  are  undifferentiated  bit
+strings;  they are  allocated in "control  intervals".  A control
+interval is 1024 words long, one  Multics page.  At some point in
+the  future this  size will  become settable  on a  per-page file
+basis,  approximately in  the range  of 512  to 4096  words.  The
+collection_manager_ is documented in  MTBs 551, "Data Management:
+Collection  Manager  Functional Specification.",  and  552, "Data
+Management:  Collection Manager Design.".
+
+     The  record   data  is  presented  to   the  caller  of  the
+record_manager_ as a typed_vector  structure (see MTB-541 "Toward
+a  unification  of data  manipulation on  Multics."  for  a brief
+discussion  of data  vectors).  The  vector_util_ module provides
+tools for creating and manipulating vectors of data.
+
+     The internal  representation of records is  as a continuous,
+peculiarly  formatted,   bit  string.   This   representation  is
+sometimes referred to as the "string" representation, in contrast
+to  the  "vector"  representation  used to  communicate  with the
+caller of  the record_manager_.  Converting  between the "vector"
+representation and the  "string" representation, and manipulating
+and interpreting the contents  of the "string" representation are
+all  functions performed  by data_mgmt_util_ (which  is also used
+for this purpose by the index_manager_).
+
+3 RECORD STORAGE
+
+     Records  are   stored  as  elements   in  collecitons  using
+collection_manager_.   The  elements  are  a  storage abstraction
+managed as  undifferentiated bit strings.   The control intervals
+in a record collection all  contain nothing but the elements used
+to store the records, i.e.,  there is no control information kept
+inside of a record collection.
+
+     When  a record  is stored  in the  record collection,  it is
+broken up into  as many datums as necessary,  where each datum is
+contained within a control interval.   All of the datums together
+make  a  single "element"  of  the record  collection.  A  set of
+collection_manager_  primitives  exists  for  allocating records,
+freeing them,  rewriting and retrieving.  The  record is known to
+these  primitives as  only a string  of bits,  an "element".  The
+structure of the  record as a set of fields  is known and used by
+the data_mgmt_util_ utility.
+
+
+MTB-548                                Multics Technical Bulletin
+                                        DM: Record Manager Design
+
+4 RECORD LAYOUT
+
+     The record is  layed out within the element.   The layout of
+the  contents  is  described   in  the  "field_table"  structure,
+described below.   The layout of  the record is  divided into the
+fixed portion of the record  and the variable portion.  The fixed
+portion is  composed of all  of the fixed-length  fields, and the
+length data for the variable  fields.  This minimizes the expense
+of accessing the fixed  fields, as intermingling fixed-length and
+varying-length  data requires  calculating each  field's position
+for each record  and separating the fixed and  varying field data
+eliminates  the need  for calculating  the location  of the fixed
+fields.
+
+     The  variable  portion of  the record  consists only  of the
+contents  of  the  variable   length  fields.   The  field  table
+describes the beginning location for  the fixed length fields and
+the location of the length  value for the variable length fields.
+It also describes the type of  each field, and the location where
+the first variable field's contents start.
+
+4.1 The field_table structure
+
+     The field_table structure is stored in the record_manager_'s
+per-record-collection  header  information.   The  field_table is
+declared in dm_field_table.incl.pl1.
+
+
+Multics Technical Bulletin                                MTB-548
+DM: Record Manager Design
+
+dcl 1 field_table             aligned based (field_table_ptr),
+      2 version               fixed bin (17) unal,
+      2 number_of_fields      fixed bin (17) unal,
+      2 maximum_field_name_length
+                              fixed bin (17) unal,
+      2 location_of_first_varying_field
+                              fixed bin (17) unal,
+      2 field                 (ft_number_of_fields refer
+                              (field_table.number_of_fields)),
+        3 name                char (ft_maximum_field_name_length
+                              refer (field_table
+                              .maximum_field_name_length)) var,
+        3 flags               unal,
+          4 descriptor_is_varying
+                              bit (1) unal,
+          4 length_is_in_characters
+                              bit (1),
+          4 must_be_zero      bit (7) unal,
+        3 location            fixed bin (35),
+        3 descriptor          bit (36) aligned,
+        3 length_in_bits      fixed bin (35),
+      2 varying_field_map     (ft_number_of_fields refer (field_table
+                              .number_of_fields)),
+        3 field_id            fixed bin (17) unal,
+        3 varying_field_index fixed bin (17) unal;
+
+     The field_table.field array has one  entry for each field in
+the record, varying and non-varying.  The varying and non-varying
+fields may be intermingled in this array.
+
+     The  field_table.field.location variable,  for a non-varying
+field, identifies the starting offset in the record_string of the
+data  for the  field.  field_table.field.type  identifes the data
+type of  the field which  is sufficient to  know the size  of the
+value  for most  types.  For  some types,  e.g.  char_nonvar, the
+field_table.field.size value  is used to determine  the length of
+the value.
+
+     For  a varying  field, field_table.field.location identifies
+the  location  of  the  length   value  for  the  field  (in  the
+record_string).  The actual value of  the field is found (for the
+first               varying               field)               at
+field_table.location_of_first_varying_field in the record_string.
+The      second      varying      field      is      found     at
+field_table.location_of_first_varying_field  +  (length  of first
+varying field).
+
+     The length and contents of  varying fields are separated out
+in  this  fashion to  help speed  references to  specific varying
+fields,  by  allowing quicker  references to  the lengths  of the
+
+
+MTB-548                                Multics Technical Bulletin
+                                        DM: Record Manager Design
+
+preceding  varying  fields  than  that  allowed  by  the  obvious
+alternative of storing:
+
+length1 + contents1 + length2 + contents2 + length3 + contents3 + ...
+
+where:  to pick up contents3  one positions to length1, reads it,
+adds  it  in  and  positions to  length2,  reads  it,  skips over
+contents2, reads length3, reads contents3.  Also, this allocation
+technique allows  storing the fields  in the same  order as their
+definition by the caller at index-creation time.
+
+     The varying_field_map array speeds the location of any given
+field, which is of a varying type.
+
+     The varying_field_map (ordinality_of_varying_field).field_id
+is used  to determine the index  into field_table.field array for
+the Nth varying field.
+
+     The                                        varying_field_map
+(field_array_index).varying_field_index is used  to determine the
+ordinality  among  varying fields  of a  varying field  given its
+field_id, its position in the field_table.field array.
+
+5 ALLOCATION OF RECORDS
+
+     The technique for allocating  records has two parts; finding
+an  appropriate  control interval  and allocating  records within
+control intervals.
+
+5.1 Allocation of Records to Control Intervals
+
+     The basic  scheme for determining which  control interval in
+which  to allocate  a record  follows:  The  tree is  searched to
+determine the correct position for  the new record.  This results
+in a  control interval id and  a slot being selected  for the new
+record.  If  there is sufficient  room for the new  record in the
+control interval selected, a single element containing the record
+is allocated in this control interval at the selected slot.
+
+5.1.1 OVERLENGTH RECORDS
+
+     The   above   scenario  is   somewhat  complicated   by  the
+possibility that a record will be  too long to fit in one control
+interval.  To store an overlength record it is necessary to break
+it into  multiple elements.  The  number of elements  required to
+store  a  record is  equal to  the least  greater integer  of the
+length of the record divided by the maximum allowed element size.
+
+
+Multics Technical Bulletin                                MTB-548
+DM: Record Manager Design
+
+(i.e.,    number_of_elements    =     ceil    (record_length    /
+maximum_allowed_element_size)  If  record_length  is  not  evenly
+divisible  by the  maximum_allowed_element_size, then  one of the
+elements of the record  is less than maximum_allowed_element_size
+in length.  Otherwise, all of the elements are maximum sized.  If
+there  is  a  less-than-maximum  sized element,  it  is allocated
+first, and in the same fashion  as an element which is the entire
+record as discussed above.  For the maximum-sized elements, which
+necessarily  occupy  entire  control  intervals, a  set  of empty
+control intervals is used.
+
+5.2 Allocation of a Record within a Control Interval
+
+     Once  the control  interval has  been selected  in which the
+record  is  to be  inserted,  it may  be  necessary to  alter the
+construction of the control interval  to make room for the record
+contents.  The need to make room for the record's contents arises
+when  there is  insufficient room  in the  "unused" space  of the
+control  interval  for  its  contents,  but  enough  room  if the
+"unused" space  and the scatterred free  space are combined.  The
+scattered  free space  comes from deleting  (or rewriting larger)
+records  and  simply leaving  the  storage their  contents occupy
+behind to be recovered later.  This is solved by "compacting" the
+control interval.
+
+     Scatterred free space compaction is accomplished by making a
+"logical" copy of  the control interval by inserting  each of the
+records in the control interval  in a temp control interval, then
+physically  copying  this  "compacted"  version  of  the  control
+interval back into the original control interval.  This increases
+the  unused  space  of  the control  interval  because  there was
+scattered free space in the original copy.
+
+6 REWRITING RECORDS
+
+     When  a  record  has  been  allocated,  it  is  assigned  an
+identifier  corresponding   to  its  location.    The  identifier
+contains  the  control interval  number  in which  the  record is
+stored and  an index in  an array of offsets  within that control
+interval.   The  physical location  of the  record inside  of the
+control interval may change  as storage requirements dictate, but
+once allocated, a record holds  on to the array slot.  Fulfilling
+this  requirement  entails some  non-obvious behavior  in certain
+cases of rewriting records.
+
+     In the normal case, the record is stored in a single control
+interval.  Rewriting a record with  a value not greater in length
+than the old entails overwriting the old record.  Excess space is
+
+
+MTB-548                                Multics Technical Bulletin
+                                        DM: Record Manager Design
+
+left  to be  reclaimed later.   Rewriting a  record with  a value
+greater in length  than the old may require  allocating new space
+in  the control  interval and freeing  the old.  If  there is not
+enough room in  the free pool to allocate the  new value, but the
+amount of free space plus the amount of scatterred space plus the
+length of  the old value is  enough to allocate the  new value, a
+scatterred free space compaction is  performed, and the new value
+is stored in  the new free pool.  If even  a compaction would not
+yield enough free  space in which to allocate  the new value, the
+value is allocated in another control interval in the same manner
+as  allocating  a  new  record.   There  is  one  exception:  the
+identifier  of the  record does  not change  to indicate  the new
+location of the record.  Instead, a "pointer" to the new value is
+stored in the old control interval.  The indirection now required
+to get to the record is sacrificed in order to gain permanency of
+record identifiers.
+
+     This  scheme is  curther complicated  by records  which span
+control intervals.  If a record  value is larger than the maximum
+size  for  an element,  the trailing  maximum sized  portions are
+allocted  in  control intervals,  just as  when allocating  a new
+record.   If  the  record  already spans  control  intervals, the
+control  intervals  already  in  use  are  reused,  with unneeded
+control  intervals  freed (if  the  record has  shrunk)  or extra
+control intervals allocated (if the record has grown).
+
+
+
+                       1  SEARCH ALGORITHM
+
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

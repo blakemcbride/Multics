@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Virtual Memory, Processes, and Sharing in Multics</title>
+    <meta name="description" content="Classic 1968 technical paper describing the organization of the Multics operating system's virtual memory and interprocedure linking.">
+    <meta name="keywords" content="Multics, operating system, timesharing, time sharing, computer utility, MIT, Project MAC, GE, Honeywell, Bell Laboratories, computer, software, mainframe, subroutine call, linkage, dynamic linking, shared information, segmentation, virtual memory">
+    <!-- not setting viewport, does not use redmenubar -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ body {margin: 0px 0px; padding: 0px; text-align: center;} 
+ .outer {min-width: 200px; max-width: 800px; width: auto !important; width: 600px; margin: 0px auto; text-align: left; padding: 5px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <div class="h1holder"><h1>Virtual Memory, Processes, and Sharing in Multics</h1></div>
+      <p class="author"><a href="multicians.html#Daley" title="Multician: Designer (MIT): File system, qedx.">Robert C. Daley</a>, <a href="multicians.html#Dennis" title="Multician: Designer (MIT): parallel computation and architectures, segmentation and paging.">Jack B. Dennis</a>, Project MAC, MIT, Cambridge, Massachusetts</p>
+
+  <h2>Summary</h2>
+
+  <p>The value of a computer system to its users is greatly enhanced if a user can, in a simple and general way, build his work upon procedures developed by others. The attainment of this essential generality requires that a computer system possess the features of equipment-independent addressing, an effectively infinite virtual memory, and provision for the dynamic linking of shared procedure and data objects. The paper explains how these features are realized in the Multics system.</p>
+
+  <h2>Introduction</h2>
+
+  <p>In Multics (Multiplexed Information and Computing Service), fundamental design decisions were made so the system would effectively serve the computing needs of a large community of users with diverse interests,operating principally from remote terminals. Among the objectives were these three:</p>
+
+  <ol>
+    <li>To give the system responsibility for managing the distribution of information among the levels of the physical storage hierarchy.
+
+      <p>The efficient multiprogramming of many computations makes this essential, but of greater importance is the fact that users are relieved of the burden of pre-planning the transfer of information between storage levels, and programs become independent of the nature of the auxiliary storage devices in the system.</p>
+    </li>
+
+    <li>To permit a degree of programming generality not previously practical.
+
+      <p>This includes the ability of one procedure to use another procedure knowing only its name, and without knowledge of its requirements for storage, or the additional procedures upon which it may in turn call.</p>
+    </li>
+
+    <li>To permit sharing of procedures and data among users subject only to proper authorization.
+
+      <p>Sharing of procedures in core memory is extremely valuable in a multiplexed system so that the cluttering of auxiliary storage with myriad copies of routines is avoided, and so unnecessary information transfers are eliminated. The sharing of data objects in core memory is necessary to permit efficient and close interaction between processes.</p>
+    </li>
+  </ol>
+
+  <p>These objectives led to the design of a computer system [6] (the General Electric Model 645) embodying the concepts of paging [8] and segmentation [3] on which the initial implementation of Multics will run.</p>
+
+  <p>This paper explains some of the more fundamental aspects of the Multics design. The concepts of "process" and "address space" as implemented in Multics are defined, some details of the addressing mechanism are given, and the mechanism by which "dynamic linking" is accomplished is explained.</p>
+
+  <h2>The Multics Concepts of Process and Address Space</h2>
+
+  <p>Several interpretations of the term "process" have come into recent use. The most common usage applies the term to the activity of a processor in carrying out the computation specified by a program.[4,5] In Multics, the concept of process is intimately connected with the concept of address space. Multics processes stand in one-to-one correspondence with virtual memories. Each process runs in its own address space which is established independently of other address spaces. Processes are run on a processor of the Multics system at the discretion of the <b>traffic controller</b> module of the Multics supervisor.</p>
+
+  <p>The virtual memory (or address space) of a Multics process is an ordered set of as many as 2<sup>14</sup> <b>segments</b> each consisting of as many as 2<sup>18</sup> 36-bit <b>words</b>. The arguments for providing a generous address space having this structure have been given by Dennis.[3] Briefly, the motivation is to avoid the necessity of procedure overlays, or the movement of data within the address space, which generally lead to naming conflicts and severe difficulties in sharing information among many processes.</p>
+
+  <p>Each segment is a logically distinct unit of information having attributes of length and access privilege. For present purposes, we consider two segment types:</p>
+
+  <ol>
+  <li><p> data</p></li>
+
+  <li><p> procedure</p></li>
+  </ol>
+
+  <p>A segment is treated as procedure if it is intended to be accessed for instruction fetch by a processor. Other segments (including e.g. a source program file) are considered to be data. Instruction fetch references to procedure segments are allowed, as are internal data reads. Writing into a procedure segment is normally considered invalid and is prohibited by the system. (In certain cases, reading of a procedure segment by another procedure may also be prohibited while execution is allowed.) Thus procedure segments are non-self-modifying or <b>pure</b> procedures. Instruction fetches from data segments are invalid, and any data segment may be write protected. The overall design of Multics protection mechanisms is discussed by Graham.[7]</p>
+
+  <p>The size of address space provided to Multics processes makes it feasible to dispense with files as a separate mechanism for addressing information hell in the computer system. No distinction need be drawn between files and segments!</p>
+
+  <p><b>The Multics directory structure</b> [2] is a hierarchical arrangement of directories that associates at least one symbolic name (but perhaps many) with each segment. These names have meaning that is invariant over all processes in existence. Figure 1 portrays the Multics concept of a process as a virtual memory made up of segments selected from the directory structure.</p>
+
+<div style="width: 317px;"><img src="mulimg/daley-dennis-fig1.gif" width="317" height="377" alt="" title=""><p class="caption">Fig. 1. Virtual memory of a Multics process.</p></div>
+
+  <h2>Addressing in Multics</h2>
+
+  <p><b>The generalized address</b>. Each word in the address space of a process is identified by a <b>generalized address</b>. As shown in Figure 2, a generalized address consists of two parts: a <b>segment number</b> and a <b>word number</b>. The addressing mechanisms of the processor are designed so that</p>
+
+<div style="width: 234px;"><img src="mulimg/daley-dennis-fig2.gif" width="234" height="61" alt="" title=""><p class="caption">Fig. 2. The generalized address.</p></div>
+
+  <p>A process may make effective reference to a word by means of its generalized address when the word has an assigned location in main memory. Together with supervisor software, these mechanisms make reference by generalized address effective regard less of where the word might reside in the storage hierarchy by placing it in main memory when needed. Thus the generalized address is a <b>location-independent</b> means of identifying information. In the following paragraphs we explain how generalized addresses are formed in the processor and give a brief discussion of how they are made effective.</p>
+
+  <p><b>Address formation</b>. Each processor of the computer system (Figure 3) has an accumulator A, a multiplier/quotient Q, eight index registers X0, X1, ... X7, and a program counter PC which serve conventional functions. For the implementation of generalized addressing and intersegment linking, a <b>descriptor base register</b>, a <b>procedure base register</b> and four <b>base pair registers</b> are included in each processor. The function of the descriptor base register will be discussed in a later paragraph since it does not participate in generalized address formation. The procedure base register always contains the segment number of the procedure being executed. Each of the four base pair registers (called simply base registers in the sequel) holds a complete generalized address (segment number/word number pair) and is named according to its specific function in Multics:</p>
+
+  <table>
+    <tr>
+      <th>base pair</th>
+      <th>designation</th>
+      <th>function</th>
+    </tr>
+    <tr>
+      <td>0</td>
+      <td>ap</td>
+      <td>argument pointer</td>
+    </tr>
+    <tr>
+      <td>1</td>
+      <td>bp</td>
+      <td>base pointer</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>lp</td>
+      <td>linkage pointer</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>sp</td>
+      <td>stack pointer</td>
+    </tr>
+  </table>
+
+  <p>The functions of these pointers will become clear when the linkage mechanism is explained.</p>
+
+<div style="width: 308px;"><img src="mulimg/daley-dennis-fig3.gif" width="308" height="173" alt="" title=""><p class="caption">Fig. 3. Processor registers for address formation.</p></div>
+
+  <p>The instruction format of the processor is given in Figure 4. Instructions are executed sequentially except where a transfer of control occurs. Hence, the program counter is normally advanced by one during the execution of each instruction.</p>
+
+<div style="width: 334px;"><img src="mulimg/daley-dennis-fig4.gif" width="334" height="89" alt="" title=""><p class="caption">Fig. 4. Instruction format.</p></div>
+
+  <p>When the processor requires an instruction word from memory, the corresponding generalized address is the segment number in the procedure base register coupled with the word number in the program counter (Figure 5). For data references, a field in the instruction format called the <b>segment tag</b> selects one of the base registers if the <b>external flag</b> is on. The effective address computed from the address field of the instruction by the usual indexing procedure is added to the word number portion of the selected base to obtain the desired generalized address. This operation is illustrated by Figure 6 and is used to reference all information outside the current procedure segment. If the <b>external flag</b> is off, then the generalized address is the segment number taken from the procedure base register coupled with an effective word number computed as before. This mechanism is used for internal reference by a procedure to fetch constants or for transfer of control.</p>
+
+<div style="width: 291px;"><img src="mulimg/daley-dennis-fig5.gif" width="291" height="132" alt="" title=""><p class="caption">Fig. 5. Address formation for instruction fetch.</p></div>
+
+<div style="width: 310px;"><img src="mulimg/daley-dennis-fig6.gif" width="310" height="294" alt="" title=""><p class="caption">Fig. 6. Address formation for data access.</p></div>
+
+  <p><b>Indirect addressing</b>. As will be seen when the linkage mechanism is discussed, a method of indirect addressing in terms of generalized addresses is very valuable. In the processor the addressing mode field of instructions may indicate that <b>indirect addressing</b> is to be used. In this case, the generalized address, formed as explained above for data references, is used to fetch a pair of 36-bit words which is interpreted as shown in Figure 7. If the address mode field of the first word contains the code <b>its</b> (Indirect To Segment), the segment number and word number fields are combined to produce a new generalized address. This address is augmented by indexing according to the mode field of the second word of the pair. Further indirect addressing may also be specified.</p>
+
+<div style="width: 236px;"><img src="mulimg/daley-dennis-fig7.gif" width="236" height="133" alt="" title=""><p class="caption">Fig. 7. Interpretation of word pair as indirect address.</p></div>
+
+  <p><b>The descriptor segment</b>. Implementation of a memory access specified by a generalized address calls for an associative mechanism that will yield the main memory location of any word within main memory when a segment number/word number combination is supplied. A direct use of associative hardware was impossible to justify in view of the other possibilities available.</p>
+
+  <p>The means chosen to implement the generalized address for a process is essentially a two-step hardware table look-up procedure as illustrated by Figure 8. The segment number portion of the generalized address is used as an index to perform a table look-up in an array called the <b>descriptor segment</b> of the associated process. This descriptor segment contains a descriptor for each segment that the process may reference by generalized address. Each descriptor contains information that enables the addressing mechanism to locate the segment, and information that establishes the appropriate mode of protection of the segment for this process.</p>
+
+<div style="width: 339px;"><img src="mulimg/daley-dennis-fig8.gif" width="339" height="268" alt="" title=""><p class="caption">Fig. 8. Addressing by generalized address.</p></div>
+
+  <p>The descriptor base register is used by the processor to locate the descriptor segment of the process in execution. Note that since segment numbers and word numbers are non-location dependent data, the only location dependent information contained in the processor registers shown in Figure 3 is in the descriptor base register. This fact greatly simplifies the bookkeeping required by the system in carrying out reallocation activity. In fact, switching a processor from one process to another involves little more than swapping processor register status and substituting a new descriptor base.</p>
+
+  <p>In practice this implementation requires that segment numbers be assigned starting from zero and continuing successively for the segments of procedure and data required by each process. An immediate consequence is that the same segment will, in general, be identified by <b>different</b> segment numbers in different processes.</p>
+
+  <p><b>Paging</b>. Both information segments and descriptor segments may be sufficiently large that paging is desirable to simplify storage allocation problems in main memory. Paging is implemented by means of page tables in main memory which provide for trapping in case B page is not present in main memory. The page tables also contain control bits that record access and modification of pages for use by storage allocation procedures. A small associative memory is built into each processor so that most references to page tables or descriptor segments may be bypassed.</p>
+
+  <h2>Intersegment Linking and Addressing</h2>
+
+  <p>The ability of many users to share access to procedure and data information, and the power of being able to construct complex procedures by building on the work of others are two prime desiderata of multiprocess computer systems. The potential value of these features to the advancement of computer applications should not be underestimated. The design of a system around the notion of a generalized, location-independent address is an essential ingredient in meeting these objectives. It remains to show how the sharing of data and procedure segments, and the building of programs out of component procedure segments can be implemented within the framework of the Multics addressing mechanisms just described. In particular we must show how references to external data (and procedure) segments occurring within a shared procedure segment can be correctly interpreted for each of possibly many processes running concurrently.</p>
+
+  <p><b>Requirements</b>. Necessary properties of a satisfactory intersegment addressing arrangement include the following:</p>
+
+  <ol>
+    <li><p>Procedure segments must be pure, that is, their execution must not cause a single word of their content to be modified.</p>
+
+      <p>Pure procedure is a recognized requirement for general sharing of procedure information.</p>
+    </li>
+
+    <li><p>It must be possible for a process to call a routine by its symbolic name without having made prior arrangements for its use.</p>
+
+      <p>This means that the subroutine (which could invoke in turn an arbitrarily large collection of other procedures) must be able to provide space for its data, must be able to reference any needed data object, and must be able to call on further routines that may be unknown to its caller.</p>
+    </li>
+
+    <li><p>Segments of a procedure must be invariant to the recompilation of other segments.</p>
+      <p>This requirement has the following implication: The values of identifiers that denote addresses within a segment which may change with recompilation must not appear in the content of any other segment.</p></li>
+  </ol>
+
+  <p><b>Making a segment known</b>. Meeting condition (1) requires that a segment be callable by a process even if no position in the descriptor segment of the process has been reserved for the segment. Hence a mechanism is provided in the system for assigning a position in the descriptor segment (a segment number) when the process first makes reference to the segment by means of its symbolic name. We call this operation making the segment <b>known</b> to the process. Once a segment is known, the process may reference it by its segment number.</p>
+
+  <p>The pattern of descriptor segment assignment will be different for each process. Therefore it is not possible, in general, for the system to assign a unique segment number to a shared routine or data object. This fact is a major consideration in the design of the linking mechanism. In the following paragraphs we describe a scheme for implementing the linkage of segments that meets the requirements stated above.</p>
+
+  <p>It is worth emphasizing that this discussion has nothing to do with the memory management problem that the supervisor faces in deciding where in the storage hierarchy information should reside. All information involved in the linkage mechanism is, as will be seen, referenced by generalized addresses which are made effective by the mechanisms described earlier. The fact that pages of the segments referred to in the following discussion may be in or out of main memory at the time a process requires access to them, is irrelevant.</p>
+
+  <p><b>Linkage data</b>. Before a segment becomes known to a process the segment may only be referenced by means of a symbolic <b>path name</b> [2] which permanently identifies the segment within the directory structure. Since the segment number used to reference a particular segment is process dependent, segment numbers may not appear internally in pure procedure code. For this reason, a segment is identified within a procedure segment by a symbolic <b>segment reference name</b>. Before a procedure can complete an external segment reference, the reference name must be translated into a path name by means of a directory searching algorithm and the desired segment made known to the process. Once the segment has become known to the process, we wish to substitute the efficient addressing mechanism based on the generalized address for the time-consuming operation of searching the directory structure.</p>
+
+  <p>Consider a procedure segment <span class="code">P</span> that makes reference to a word at location <span class="code">x</span> within data segment <span class="code">D</span>, as illustrated in Figure 9. In assembly language this would be written as</p>
+
+  <p><span class="code">OPR &lt;D&gt;|[x]</span></p>
+
+  <p>The angle brackets indicate that the enclosed character string is the reference name of some segment. This name will be used to search the directory structure the first time segment <span class="code">P</span> is referenced by a process. The square brackets indicate that the enclosed character string is a symbolic address within an external segment.</p>
+
+<div style="width: 269px;"><img src="mulimg/daley-dennis-fig9.gif" width="269" height="318" alt="" title=""><p class="caption">Fig. 9. An intersegment reference by procedure <span class=code>P</span>.</p></div>
+
+  <p>Since by requirement (3) we wish segment <span class="code">P</span> to be invariant to recompilation of <span class="code">D</span>, only the symbolic address <span class="code">[x]</span> may appear in <span class="code">P</span>. Furthermore, we wish to delay the evaluation of <span class="code">[x]</span> until a reference to it is actually made in the running of a process.</p>
+
+  <p>The following problem arises: Initially process &alpha; in executing procedure <span class="code">P</span> may reference <span class="code">&lt;D&gt;|[x]</span> only by symbolic segment name and symbolic external address. After segment <span class="code">D</span> has been made known to process &alpha;, and a first reference has been effected, we wish to make further references by the generalized address <span class="code">d<sub>#&alpha;</sub>|x</span>. The question is: How can we make the transition from symbolic reference to generalized addressing without altering the content of segment <span class="code">P</span>?</p>
+
+  <p>It should be clear that a change must be made <b>some</b> place that can effect the change in addressing mechanism. Further, the data that is changed must participate in <b>every</b> reference to the information. We will call the information that is altered in value to make this transition the <b>link data</b> for linking segment <span class="code">P</span> to symbolic addresses <span class="code">&lt;D&gt;|[x]</span> in process &alpha;. The collection of link data for all external references originating in segment <span class="code">P</span> is called the <b>linkage section</b> of procedure <span class="code">P</span>.</p>
+
+  <p>Link data is private data of its process because whether <span class="code">P</span> is linked to <span class="code">D|x</span> for process &alpha; is entirely independent of whether the same is true for any other process. Therefore, whenever a procedure segment is made known to a process a copy of the procedure's linkage section is made as a segment within that process. In certain cases the linkage sections of several procedures are combined into a single linkage segment private to the process.</p>
+
+  <p><b>Linking</b>. Figure 10 shows segments <span class="code">P</span>, <span class="code">D</span> and the linkage section <span class="code">L<sub>&alpha;</sub></span> for <span class="code">P</span> in process &alpha;. To implement reference to <span class="code">D|x</span> from within segment <span class="code">P</span> will require two references by generalized address one to access the pertinent link data in <span class="code">L<sub>&alpha;</sub></span>, and one to fetch the word addressed in segment <span class="code">D</span>. Realization of this minimum number of references implies use of the indirect addressing feature of the processor. Thus the link data for an established link will be an indirect word pair containing the generalized address <span class="code">D<sub>#&alpha;</sub>|x</span> (Figure 11a). Before the link is established, an attempt by a process of computation &alpha; to reference <span class="code">D|x</span> through the link must lead to a trap of the process and transfer of control to the system routines that will establish the link and continue operation of the process. For this purpose a special form of indirect word pair is used which causes the desired trap. In Figure 11b this is indicated by the code <b><span class="code">ft</span></b> in the addressing mode field of the pair.The segment number and word number fields of the indirect word can then be used to inform supervisory routines of the place to look to find the symbolic address <span class="code">&lt;D&gt;|[x]</span> associated with the link. This address must be translated into a generalized address to establish the link. The operation of changing the link data to establish a link is called <b>linking</b>.</p>
+
+<div style="width: 356px;"><img src="mulimg/daley-dennis-fig10.gif" width="356" height="221" alt="" title=""><p class="caption">Fig. 10. Linkage of <span class=code>P</span> to <span class=code>D|x</span> for process &alpha;.</p></div>
+
+<div style="width: 271px;"><img src="mulimg/daley-dennis-fig11.gif" width="271" height="197" alt="" title=""><p class="caption">Fig. 11. States of the link data.</p></div>
+
+  <p>It is desirable to keep the procedure segment <span class="code">P</span> self-contained if at all possible. Consequently the symbolic address <span class="code">&lt;D&gt;|[x]</span> pointed to by the un-established link should be part of the procedure segment <span class="code">P</span>. Two look-up operations are required on the part of supervisory routines to establish the link. The symbolic reference name <span class="code">D</span> must be associated with a specific segment through a search in the directory structure, and this segment must be made known to the process if a segment number has not already been assigned.</p>
+
+  <p>The word number corresponding to the symbolic word name <span class="code">x</span> must also be determined. The set of associations between symbolic word names and word numbers for a segment is its <b>symbol table</b> and is part of the segment. Thus, in our example, a list of word numbers corresponding to symbolic word names that may appear in references to segment <span class="code">D</span> from other segments is included as part of segment <span class="code">D</span> at a standard position known to the system. This list is searched by a system routine to find the word number required to establish a link.</p>
+
+  <p><b>The link pointer</b>. A remaining question is: How does a process produce the generalized address <span class="code">L<sub>#&alpha;</sub>|w</span> required to access the link data? One might suppose that word address <span class="code">w</span> could be fixed permanently at the time procedure segment <span class="code">P</span> was created. This is not possible because the set of segments required by each process that might share use of procedure <span class="code">P</span> will in general be unre1ated: If the linkage sections of several procedures were placed in a single segment, assigning a fixed position to a link for all processes would produce intolerable conflicts. On the other hand, the code by which a inter segment reference is represented in segment <span class="code">P</span> must be fixed and identical for all computations to meet the pure procedure constraint. Any data that allows different addresses to be formed from fixed code must reside in processor registers. By this argument we see the necessity of associating a linkage pointer with each process. The <b>linkage pointer</b> is a generalized address that resides in a dedicated base register (designated <b>lp</b>). As shown in Figure l2, it is the origin <span class="code">L<sub>#&alpha;</sub>|s</span> of the portion of a linkage segment that contains the links for intersegment references made from the segment being executed.</p>
+
+  <p>References to external segments are coded relative to the link pointer and have the form shown in Figure 12. The displacement <span class="code">k</span> is determined by the coding of <span class="code">P</span> and is invariant with respect to the process using <span class="code">P</span>.</p>
+
+<div style="width: 315px;"><img src="mulimg/daley-dennis-fig12.gif" width="315" height="317" alt="" title=""><p class="caption">Fig. 12. Addressing the link data.</p></div>
+
+  <p><b>Procedure Call and Return</b>. The coding used to transfer control to a sub-procedure and the subsequent return of control must meet the requirements of programming generality. In particular, no assumptions may be made regarding the detailed coding of either the calling or called procedure other than those aspects uniformly established by convention. Conventions for four aspects of subroutine calling are relatively familiar:</p>
+
+  <ol>
+    <li>Transmission of arguments</li>
+
+    <li>Arranging for return of control</li>
+
+    <li>Saving and restoring processor state</li>
+
+    <li>Allocating private storage for the called procedure.</li>
+  </ol>
+
+  <p>Item (4) is necessary in Multics because of the pure procedure requirement, and the generality requirement which forbids prior arrangement of a called procedure's storage needs. This private storage is supplied by associating the <b>stack segment</b> with each process in which a <b>frame</b> of private storage is reserved at each procedure call. The frame is released upon return of control. This mechanism is implemented by the stack pointer (designated <b>sp</b>) which is the generalized address of the stack frame origin for the procedure in operation. The use of the stack segment makes every procedure in Multics automatically recursive by associating separate stack frames with successive entries into the same procedure. Due to the pure procedure requirement, only fixed arguments that do not depend on segment numbers may appear in procedure segments. Pointers and variable arguments must be placed in the stack segment, the linkage segment, or elsewhere. So that the language designer may have his choice of implementation, the argument pointer (designated <b>ap</b>) is at procedure entry the generalized address of the list of arguments for the called procedure.</p>
+
+  <p>In addition to these conventional requirements, the method of dynamic linking just described introduces one new problem: When process &alpha;, in executing procedure <span class="code">P</span>, transfers control to procedure <span class="code">Q</span>, the value of linkage pointer must be changed to the generalized address of the linkage section for procedure <span class="code">Q</span>. Since the new value of the linkage pointer contains a segment number, it is private data of process &alpha; and cannot be placed in segment <span class="code">P</span> or <span class="code">Q</span>.</p>
+
+  <p>This problem requires a somewhat modified form of intersegment linkage from that used for data references. Since it is desirable that the machine code necessary to load the linkage pointer for a procedure segment be associated with that segment, the following solution was adopted. For each external entry point within a procedure segment two additional instructions are placed in the procedure's linkage section at compilation time. The first instruction loads the linkage pointer with the appropriate value at procedure entry, and the second instruction transfers control to the entry point in the called procedure segment. Thus in establishing the link for an external procedure call, the generalized indirect address placed in the calling procedure's link data points to the corresponding instruction pair in the linkage section of the procedure being called. When control passes to the linkage segment during an external procedure call, the segment number portion of the desired linkage pointer is easily obtained from the procedure base register, since the process is now executing in the desired linkage segment.</p>
+
+  <p>Figure 13 depicts the linkage mechanism required for an external procedure call from procedure <span class="code">P</span> to segment <span class="code">Q</span> at entry point <span class="code">e</span>. The solid lines indicate the individual steps taken through indirect addresses while the dashed lines indicate resulting flow of control.</p>
+
+<div style="width: 649px;"><img src="mulimg/daley-dennis-fig13.gif" width="649" height="221" alt="" title=""><p class="caption">Fig. 13. Linkage mechanism for procedure entry.</p></div>
+
+  <p>In executing a call to an external procedure, the caller's machine conditions, including the procedure base register and program counter, are saved in the stack segment by the caller. Return from the called procedure can thus be effected by simply restoring the caller's machine conditions from the stack segment.</p>
+
+  <h2>Acknowledgment</h2>
+
+  <p>The evolution of the concepts presented in this paper represents the efforts of many members of the Multics programming staff. However, the authors wish to express particular appreciation of the work of F.J. Corbat&oacute; and R.M. Graham in developing the basic design of the Multics Linkage mechanism.</p>
+
+  <h2>References</h2>
+
+  <ol>
+  <li>  Corbat&oacute;, F.J., and Vyssotsky, V.A., <a href="fjcc1.html" title="Classic 1965 paper introducing Multics">Introduction and overview of the Multics system</a>, AFIPS Conference Proceedings Vol. 28, Spartan Books, Baltimore, 1965, p. 185-197.</li>
+
+  <li>  Daley, R.C., and Neumann, P.G., <a href="fjcc4.html" title="Classic 1965 paper introducing Multics file system">A general-purpose file system for secondary storage</a>, AFIPS Conference Proceedings, Vol. 28, Spartan Books, Baltimore, 1965, p. 213-229.</li>
+
+  <li>  Dennis, J.B., Segmentation and the design of multiprogrammed computer systems, <cite>Journal of the ACM</cite>, Vol. 12, No.4, (October 1965), p. 589-602.</li>
+
+  <li>  Dennis, J.B., and Van Horn, E.C., Programming semantics for multiprogrammed computations, <cite>Communications of the ACM</cite>, Vol. 9, No.3, (October 1966),p.143-l55.</li>
+
+  <li> Dijkstra, E.W., Cooperating sequential processes, Technological University, Eindhoven, The Netherlands.</li>
+
+  <li>  Glaser, E.L., Cou1eur, J.F., and Oliver, G.A., <a href="fjcc2.html" title="Classic 1965 paper introducing Multics">System design of a computer for time-sharing applications</a>. AFIPS Conference Proceedings, Vol. 28, Spartan Books, Baltimore, 1965, p. 197-202.</li>
+
+  <li>  Graham, R.M., Protection in an information processing utility. To be presented at the ACM Symposium on Operating System Principles, Gatlinburg, Tenn., October 1-4.</li>
+
+  <li>  Kilburn, T., Edwards, D., Lanigan, M., and Summer, F., One level storage system, <cite>IRE Transactions EC-11</cite>, 2,(April 1962),p. 223-235</li>
+
+  <li> Saltzer, J.H., Traffic control in a multiplexed computer system. Technical Report No. MAC-TR-30 (Ph.D. thesis), Project MAC, MIT, Cambridge, MaSs., 1964.</li>
+  </ol>
+
+  <hr>
+  <p><cite>Communications of the ACM</cite> <b>11</b>, 306-312, May 1968</p>
+
+  <p>*Work reported herein was supported in part by Project MAC, an M.I.T. research project sponsored by the Advanced Research Projects Agency, Department of Defense, under Office of Naval Research Contract Nonr-4102(Ol). Reproduction of this report, in whole or in part, is permitted for any purpose of the United States Government.</p>
+
+  <p>This paper is based on notes prepared by J. Dennis for the University of Michigan Summer Conference on Computer and Program Organization, June, 1966.</p>
+
+  <p>
+"This material is presented to ensure dissemination of scholarly and technical work. Copyright and all rights therein are retained by authors or by other copyright holders. All persons copying this information are expected to adhere to the terms and constraints invoked by each author's copyright. In most cases, these works may not be reposted without the explicit permission of the copyright holder."
+  </p>
+        <div class="tail">
+          <div class="textnav">
+<div id="l2nav" class="textnav">Library links: <a href="papers.html" title="Classic papers about Multics available on the Web">Papers</a> | <a href="articles.html" title="Technical articles">Articles</a> | <a href="devdoc.html" title="Development document series">Dev Docs</a> | <a href="multics-source.html" title="Index to source code modules on this site">Source</a> | <a href="simulator.html" title="Multics Simulator">Simulator</a>
+
+</div>       <a href="multics.html">Home</a> | 
+       <a href="history.html">History</a> | 
+       <a href="multicians.html">People</a> | 
+       <a href="biblio.html">Library</a> | 
+       <a href="sites.html">Sites</a> |
+       <a href="about-multics.html">About</a>  | 
+         <a href="sitemap.html">Site Map</a> | 
+         <a href="changes.html">Changes</a>
+
+            </div> <!-- textnav -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-708</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-708: Local Echo Negotiation.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+Multics Technical Bulletin                                MTB-708
+Local Echo Negotiation
+
+To:       Distribution
+
+From:     Barry Margolin
+
+Date:     05/23/85
+
+Subject:  Local Echo Negotiation
+
+1 ABSTRACT
+
+This document describes the design and implementation plans for a
+local  echo negotiation  protocol  on  a personal  computer.  The
+initial  goal is  to modify  PC7800, a  VIP7801 emulator  for the
+IBM-PC and some  PC-clones, and the Multics Video  System to make
+use of this protocol.
+
+Discussion should take place in the System-M Forum meeting:
+
+   &gt;udd&gt;Multics&gt;meetings&gt;Multics_Workstations
+
+or comments should be sent to the author:
+
+via Multics Mail:
+   Margolin on MIT, CISL, System-M or Billerica
+
+via US Mail:
+   Barry Margolin
+   Honeywell Information Systems, inc.
+   4 Cambridge Center
+   Cambridge, Massachusetts 02142
+
+via telephone:
+   (HVN) 492-9340, or
+   (617) 492-9340
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+Multics Technical Bulletin                                MTB-708
+Local Echo Negotiation
+
+2 INTRODUCTION
+
+Echo  negotiation is  a process  whereby some  process or  device
+closer to the terminal than the user-level software is instructed
+to  echo input  until the  user types  one of  a specified set of
+characters or the user types a specified number of characters, at
+which time  all the input  is sent to  the host.  The  purpose of
+this is to allow programs like  Emacs and the Video System to run
+in  breakall  mode  without  requiring  the  user  process  to be
+scheduled  in order  to do  simple input  processing.  The  major
+difference  between  this  and   the  simple  forms-mode  editing
+provided  in many  terminals is  that the  characters that  cause
+transmission  are specified  dynamically by  the computer, rather
+than being pre-specified by  the terminal manufacturer.  In addi-
+tion, the  addition of the ability  of the software to  specify a
+limit on the  number of characters allows the  software to handle
+limiting  cases such  as end-of-line  processing in  its own  way
+(some terminals  automatically wrap, while others  discard output
+past the end of the line).
+
+Currently,  echo negotiation  is  implemented  on Multics  in the
+ring-0  terminal software  (the TTY   DIM) and  in the  front-end
+processor  (the   FNP),  the  latter  only   for  non-multiplexed
+channels.  In the past, the  ring-0 echo negotiation was not used
+much,  once the  FNP echo  negotiation was  implemented, as  most
+terminals   were  connected   to  the   FNP  via   simple  RS-232
+connections.  Nowadays,  however, an increasing number  of people
+are  connecting to  Multics via  X.25 networks,  and ring-0  echo
+negotiation must  be employed for these users.   This has several
+problems:
+  1) Many small (often one-character) packets must be transmitted
+     over the networks, which creates a large overhead.
+  2) The X.29 terminal-management protocol, which is used by X.25
+     PADs,  does not  provide a  way to  specify that  characters
+     should  be  transmitted  as  soon  as  they  are  typed.  It
+     provides  a settable  timeout,  which  is what  is currently
+     used; this has the effect that the user's typein is not sent
+     to Multics, where it is  echoed, until the user stops typing
+     quickly.
+  3) Multics must process and echo many users' input at interrupt
+     time, since the FNP does not implement echo negotiation over
+     X.25  subchannels.    This  can  significantly   affect  the
+     response of the system.
+
+One solution  to these problems is to  implement echo negotiation
+at the other  end of the network.  This is  already being done in
+the Multics-DSA project; the DSA Terminal Management protocol has
+been enhanced to support echo negotiation, and the local DNS will
+implement  this  protocol.   However,  we  do  not  have the same
+freedom to enhance  the X.29 protocol, and even if  we did, there
+are already many existing X.29 PADs which would not implement it.
+
+MTB-708                                Multics Technical Bulletin
+                                           Local Echo Negotiation
+
+My  solution  is  to  implement  echo  negotiation  in a terminal
+emulator  running in a  personal computer, using  in-band control
+sequences to control the behavior.
+
+In the  rest of this paper,  a personal computer running  such an
+enhanced   terminal   emulator   will   be   referred   to  as  a
+"workstation,"  and  the  remote  mainframe  will  be  termed the
+"host".
+
+3 THE PROTOCOL
+
+This  is primarily a  synchronous protocol, with  the workstation
+responding to explicit requests for input from the host; however,
+it allows for asynchronous transmissions.  It is based in part on
+the echo negotiation protocol between  the ring-0 TTY DIM and the
+FNP and  the echo negotiation extensions to  DSA Terminal Manage-
+ment,  but is  designed to  work well  over asynchronous terminal
+lines  (even  if  the  connection  to  the  host  is a high-speed
+network, the  terminal is likely  to be connected  to the network
+via a 1200-baud dialup modem).  Some of the details of the actual
+control sequences  are designed to squeeze bandwidth  out of this
+connection.  Other  details of the protocol are  intended to make
+the protocol compatible with ANSI and ISO control code standards.
+However, the  first prototype may not use  these exact sequences,
+in order to simplify its incorporation into the terminal emulator
+that is being modified (the  VIP7801 does not use ANSI-compatible
+control sequences, and the organization  of the emulator does not
+make it easy to extend it in this manner).
+
+The host  makes use of the  protocol as follows:  first,  it uses
+the Set Synchronized  Mode command to begin use  of the protocol;
+when it wishes the workstation to begin echoing input it uses the
+Set Break  Table command to specify the  echoable characters, and
+then  the  Read  Chars  (ECHO,  n)  to  read  up  to  n  echoable
+characters; when  the host wishes to read  unechoed characters it
+should use Read Chars (NO_ECHO, n, BLOCK).  If the host wishes to
+send  output to the  terminal after it  has performed one  of the
+above Read  Chars commands it  should precede it  with Read Chars
+(NO_ECHO,  n,  NO_BLOCK),  in  order  to  clear the workstation's
+buffer   and  resynchronize.    Finally,  to   return  to  normal
+asynchronous terminal  operation, the host should  send the Reset
+Synchronized Mode command.
+
+The next  section will describe the protocol  commands in detail,
+but abstractly.  The following sections will describe the control
+sequences   that  are   proposed  for   both  standard-conforming
+workstations and the initial prototype.
+
+Multics Technical Bulletin                                MTB-708
+Local Echo Negotiation
+
+3.1 Protocol Commands:  Abstract
+
+There are two  sets of commands defined by  this protocol:  those
+sent  by the  host to  the  workstation,  and those  sent by  the
+workstation to the host (the latter are actually responses to the
+commands from the host).
+
+The relationships between commands  defined for this protocol and
+other  terminal  operations  is  not  defined  here.  In general,
+commands to the workstation should not be affected by whether the
+workstation  is implementing  this protocol.   However, there are
+cases  where this  is not  possible;  for  it may  be invalid  to
+combine Synchronized Mode with other terminal modes.  The results
+of such attempts will be  specified in the section describing the
+implementation of the prototype.
+
+3.1.1 COMMANDS TO THE WORKSTATION
+
+3.1.1.1 Set Synchronized Mode
+
+Specifies that the workstation should  begin using the Local Echo
+Negotiation  protocol   as  described  below.    The  workstation
+responds  to this  command  with  the Entering  Synchronized Mode
+command (see below).  The break table is set to the defaults (see
+the  Set Break Table  command below for  the default value).   In
+Synchronized  Mode the  workstation buffers  characters and sends
+them to  the host in  response to a  Read Chars command  (see the
+description of Read Chars for exceptions).
+
+3.1.1.2 Reset Synchronized Mode
+
+Specifies   that  the   workstation  should   return  to   normal
+asynchronous operation.  If the workstation has multiple modes of
+communication (e.g.  block mode  versus character mode) then this
+should  restore the  modes that  were in  effect at  the time Set
+Synchronized Mode was received.  After  this command is sent, the
+only command described  in this protocol that may be  sent to the
+workstation  is Set  Synchronized  Mode.   After this  command is
+received by the  workstation it may not send any  of the commands
+described below.  The host should  not send this command while it
+is  waiting for  the response  to a  blocking Read  Chars.  If it
+wishes to exit  Synchronized Mode at such a time  it should first
+send a non-blocking Read Chars command, and wait for the response
+to both  the original Read  Chars and the  non-blocking one; this
+will insure  that the workstation will not  send echo negotiation
+commands  to the host  when the host  is not prepared  to process
+them.
+
+MTB-708                                Multics Technical Bulletin
+                                           Local Echo Negotiation
+
+3.1.1.3 Set Break Table
+
+This command  is used to  specify the characters  which should be
+echoed locally by the workstation  in response to an echoing Read
+Chars command.  There is one parameter, the Break_Table.  Charac-
+ters which are not echoed  are referred to as "break characters",
+as  they cause the  workstation to stop  echoing and forward  the
+echoed characters to the host.   By default, only the ASCII 7-bit
+graphic characters  (decimal 32 through  95) are echoed,  and all
+other  characters  are  break  characters.   The  format  of  the
+Break_Table parameter is dependent on  the encoding of the proto-
+col  (see below).   Since the  potential number  of characters is
+large, it should be carefully  designed to minimize the number of
+characters in  the encodings; for  instance, it should  allow the
+specification  of  ranges  and  the  use  of  defaults  (see  the
+ANSI-compatible encoding for a good example).
+
+3.1.1.4 Read Chars
+
+This command is used by the host in order to read characters from
+the workstation.  There are  three parameters:  Echo_Mode, Limit,
+and Block_Mode.   The Echo_Mode parameter  may be either  ECHO or
+NO_ECHO;  the default is  ECHO.  Limit is  the maximum number  of
+input  characters  that  should  be  forwarded  to  the host (not
+including any  additional characters specified by  the protocol),
+or 0 to use the default; the default is
+     (Screen_Width - Cursor_Column)
+if  Echo_Mode is  ECHO, and   unlimited if  Echo_Mode is  NO_ECHO
+(there is no  way to specify unlimited if Echo_Mode  is ECHO, but
+that probably  wouldn't be useful anyway).   Block_Mode is either
+BLOCK  or NO_BLOCK, and  it is only  significant if Echo_Mode  is
+NO_ECHO; the default is BLOCK.
+
+If  Echo_Mode is  ECHO then  the workstation  should echo  to the
+screen  up  to  Limit  input  characters.   These  characters may
+already have been buffered, or the  terminal may have to wait for
+the  user to type  more characters.  Echoing  must stop when  the
+first  break character  is detected,  when Limit  characters have
+been echoed, or when output is  received from the host (see below
+for a discussion of the last  case); it may also stop earlier for
+any reason  (e.g., the workstation's buffer  of echoed characters
+is full,  the workstation has  been idle for  several seconds (so
+that input is  not lost if the communications line  dies), as the
+Limit is only  a maximum (the most benefit  to the communications
+line will be  achieved when the maximum number  of characters are
+buffered).   When echoing stops  for any reason,  the workstation
+sends  the echoed  characters followed   by an  End Echoed  Chars
+command; if echoing stopped due to a break characters being typed
+then this character  is left in the input buffer  to be processed
+by a future Read Chars command.
+
+Multics Technical Bulletin                                MTB-708
+Local Echo Negotiation
+
+If Echo_Mode is NO_ECHO, then up to Limit buffered characters are
+sent to  the host, followed  by an End  Non-Echoed Chars command.
+If there  are no buffered characters  at the time the  Read Chars
+command is  processed then the  action depends on  the Block_Mode
+parameter.   If Block_Mode  is BLOCK  then the  workstation waits
+until a character  is typed and then sends it  (and up to Limit-1
+other characters  that may have been  typed at the same  time) to
+the host followed by the End Non-Echoed Chars; this is the normal
+use (hence  the default), as  it does not  use the communications
+line when no characters are available.  If Block_Mode is NO_BLOCK
+then the  workstation should immediately send  the End Non-Echoed
+Chars command  to the host;  this is used  by the host  either to
+test whether the user has  typed anything without waiting for him
+to do so, and is also  used to terminate echoing or blocking Read
+Chars early  (see below).  Note  that if the  workstation's input
+buffer is  not empty when  the non-echoing Read  Chars command is
+processed it  MUST NOT block; it  must send up to  Limit buffered
+characters immediately.
+
+If  the workstation  receives output  from the  host while  it is
+blocked, either because it is processing an echoing Read Chars or
+because it is processing a blocking, non-echoing Read Chars, then
+it should immediately unblock,  forward any echoed characters and
+either End  Echoed Chars or End Non-Echoed  Chars as appropriate,
+and then process the new output normally.  Often this output will
+be a non-echoing, non-blocking Read Chars,  as this is a safe way
+to resynchronize:  the host merely  waits for the appropriate End
+Echoed Chars or  End Non-Echoed Chars and then  an End Non-Echoed
+Chars,  and there is  no problem if  the workstation had  already
+unblocked  while  the  asynchronous  Read  Chars  command  was in
+transit.
+
+One  other special  case must  be handled.   If the  user signals
+BREAK (as in hitting the BREAK  key on most ASCII terminals) then
+the workstation must forward any  buffered characters to the host
+before  signalling BREAK  on the   line.  If  the workstation  is
+blocked processing a Read Chars  command then the appropriate End
+Echoed Chars or End Non-Echoed Chars should follow the characters
+but  precede the  BREAK signal.    If not,  then the  workstation
+should  send any buffered  characters followed by  End Non-Echoed
+Chars, then signal the BREAK.   If there were no buffered charac-
+ters then the workstation may merely signal BREAK, although it is
+acceptable to  precede this with  End Non-Echoed Chars  (since no
+characters were actually sent, the host will ignore this).
+
+MTB-708                                Multics Technical Bulletin
+                                           Local Echo Negotiation
+
+3.1.2 COMMANDS FROM THE WORKSTATION
+
+3.1.2.1 Entering Synchronized Mode
+
+This is sent to the host in response to the Set Synchronized Mode
+command, to  allow the host  application to determine  the end of
+any input that was sent  before the workstation processed the Set
+Synchronized Mode command.  The host can expect that any input it
+receives after this conforms to this protocol.
+
+3.1.2.2 End Echoed Chars
+
+This  is sent  after sending   characters that  have been  echoed
+locally by the  workstation in response to an  echoing Read Chars
+command.
+
+3.1.2.3 End Non-Echoed Chars
+
+This is sent  after sending characters that have  not been echoed
+locally by  the workstation, either in response  to a non-echoing
+Read Chars command or due to the user signalling BREAK.
+
+3.1.2.4 Literal Character
+
+Because this protocol is intended to be used in an environment in
+which control  characters are used  as data (Emacs  and the Video
+System),  some means  must be  provided to  allow all  characters
+through  the protocol   transparently, including  any introducers
+used in  these commands.  The  exact mechanism is  defined in the
+specific protocol control sequences  sections (a common mechanism
+is to repeat the introducer, although this is not conformant with
+standards).
+
+3.2 Standard-conforming Control Sequences
+
+This  section defines  the bindings   of the  above functions  to
+control sequences  which are in  conformance with ANSI  X3.64 and
+ISO  6429  [I  hope  I  got  the  numbers  right].  Currently the
+commands from the  host to the workstation are  all defined using
+sequences that are reserved for private use in the standards, but
+this could change  some day if this protocol is  ever proposed as
+an industry  standard (I tend to  doubt that the protocol  in its
+current form would  be, but instead something like  this might be
+incorporated  into some  future virtual  terminal protocol).  The
+commands from the  workstation to the host are  all defined using
+the DLE (Data Link Escape) code extension character.
+
+Multics Technical Bulletin                                MTB-708
+Local Echo Negotiation
+
+3.2.1 SET/RESET SYNCHRONIZED MODE
+
+These sequences are implemented as  an option to the standard Set
+Mode (SM)  and Reset Mode (RM) control  sequences.  The parameter
+string will be  the private-use string "&lt;1" (chosen so  as not to
+conflict with DEC VT100 private modes, which all begin with "?").
+
+3.2.2 SET BREAK TABLE
+
+The format of this control sequence is
+     CSI "&lt;" &lt;range1&gt; ";" ... ";" &lt;rangeN&gt; "s"
+where &lt;rangeI&gt; is  either a sequence of decimal digits  or a pair
+of  such sequences  separated by   ":".  In  the first  case, the
+character  whose code  is the  sequence interpreted  as a decimal
+number is set as a break  character.  In the second case, the two
+sequences are interpreted as decimal numbers, and all the charac-
+ters whose  codes are in the  range between the first  and second
+number (inclusive) are break characters.   It is an error for the
+first  number of  a pair  to be  greater than  the second (N:N is
+valid and is  equivalent to N).  Either sequence of  the pair may
+also be empty;  if the first sequence is empty  it is interpreted
+as "0",  and if the second  is empty it is  interpreted as "255".
+Thus, the default break table may be specified with
+     CSI &lt;:31;127:s
+and a  break table with  no echoable characters  may be specified
+with
+     CSI &lt;:s
+(therefore,  both sequences of  a pair may  be empty); these  are
+probably the  two most common  break tables.  If  no &lt;rangeI&gt; are
+specified then the  default break table is set.   [Note:  this is
+completely  different   from  my  original  proposed   syntax  in
+local_echnego.text.]
+
+3.2.3 READ CHARS
+
+This command takes three  parameters, in standard format (decimal
+digits  separated  by  semicolons).   The  first  parameter  is a
+selective  parameter, specifying  the Echo_Mode;  ECHO is  0 (the
+default), and  NO_ECHO is 1.   The second parameter  is a numeric
+parameter, specifying Limit.  The  third parameter is a selective
+parameter,  specifying Block_Mode; BLOCK  is 0 (the  default) and
+NO_BLOCK is  1.  The final  character of the  control sequence is
+"r".  Thus, the full syntax for Read Chars is
+     CSI Echo_Mode ";" Limit ";" Block_Mode "r"
+
+MTB-708                                Multics Technical Bulletin
+                                           Local Echo Negotiation
+
+3.2.4 ENTERING SYNCHRONIZED MODE
+
+This command is coded as
+     DLE ACK.
+
+3.2.5 END ECHOED CHARS
+
+This command is coded as
+     DLE E.
+
+3.2.6 END NON-ECHOED CHARS
+
+This command is coded as
+     DLE N.
+
+3.2.7 LITERAL DLE
+
+If a DLE is included in the characters that are being sent to the
+host in  Synchronized Mode it  must be replaced  with the Literal
+DLE command.  This command is coded as
+     DLE DLE.
+
+3.3 PC7800 Control Sequences
+
+This  section describes  the bindings   of the  commands in  this
+protocol  to control  sequences for  use in  the PC7800 prototype
+implementation.   They are  designed  to  be consistent  with the
+control  sequences already in  use by the  VIP7801, which is  the
+terminal  that PC7800  emulates.   While  this terminal  has some
+escape  sequences which  appear to  be lexically  similar to  the
+standardized escape sequences, they are in fact quite restricted,
+and PC7800 is not organized in  a way that would make it feasible
+to  add the  above control  sequences.  For  example, the VIP7801
+currently implements one command of the form
+     ESC "[" parameters char
+This is the Cursor Position  Decimal (CPD) command.  However, the
+format  of the  parameter is   quite rigid  (exactly six  decimal
+digits, the  first three representing  the row, the  second three
+representing  the column,  the first  and fourth  digits MUST  be
+"0"), which  allows the escape sequence parser  to recognize this
+sequence on  the third character  (the required leading  "0"), at
+which point it reads exactly  six following characters and trans-
+fers  to  the  CPD  routine.   Changing  the  parser  to  support
+arbitrary-length parameters is probably not worthwhile; since the
+emulator  is  already  not   standard-conforming,  adding  a  few
+standard-conforming commands  does not help  in any way.   If and
+when this protocol is implemented  in the standard Multics system
+
+Multics Technical Bulletin                                MTB-708
+Local Echo Negotiation
+
+the control sequences will be defined  in the TTF, so there is no
+benefit to be gained by forcing  the VIP to use control sequences
+that are not VIP-like.
+
+Although  PC7800 only  emulates the  VIP7801, I  have chosen  the
+escape  sequences  so  that  they  do  not  conflict  with escape
+sequences used  by later VIP7800-series terminals.   My reference
+for this  process was CH52-03, the VIP7800  Family Display Termi-
+nals User's Reference Manual.
+
+This section will also describe any interaction this protocol has
+with existing VIP functionality.
+
+3.3.1 SET SYNCHRONIZED MODE
+
+This command will be coded as
+     ESC [ s
+This  command  is  only  valid  if  the  terminal  is  already in
+Character mode  and Echoplex mode, otherwise it  will generate an
+INVALID  COMMAND error.   If Text  or Non-echoplex  modes are set
+while  in Synchronized  mode,  Synchronized  mode will  be reset.
+These restrictions  are consistent with the  behavior of Echoplex
+mode with respect to Character  mode.  When in Synchronized mode,
+the "CHAR" indicator on the status line is replaced with "SYNC".
+
+3.3.2 RESET SYNCHRONIZED MODE
+
+The control sequence for this command is
+     ESC [ n
+This  command  will  return  the  workstation  to  Character  and
+Echoplex modes.
+
+3.3.3 SET BREAK TABLE
+
+The syntax for this command is
+     ESC "(" &lt;range1&gt; ";" ... ";" &lt;rangeN&gt; ")"
+The syntax and  interpretation of the &lt;rangeI&gt; is the  same as in
+section 3.2.2.
+
+3.3.4 READ CHARS
+
+The syntax for this command is
+     ESC "[" "r" {"E" | "N"} &lt;Limit&gt; {"B" | "N"}
+The first parameter is the Echo_Mode,  either "E" or "N" for ECHO
+or NO_ECHO, respectively.  The  second parameter is Limit encoded
+as  a  single  character  whose  code  is  Limit+32(decimal); the
+maximum Limit that may be specified  is 95 (127-32), and if Limit
+
+MTB-708                                Multics Technical Bulletin
+                                           Local Echo Negotiation
+
+is 0 the default (which depends on Echo_Mode) is used.  The third
+parameter  is the  Block_Mode, either   "B" or  "N" for  BLOCK or
+NO_BLOCK,  respectively.  In  response to  an echoing  Read Chars
+command, the string  "ECHO" will appear in the  status line (note
+that its interpretation is the  reverse of the normal meaning, as
+it normally indicates  that the terminal is in  Echoplex mode and
+that  the  host  is  echoing);   it  will  be  removed  when  the
+workstation stops  echoing and forwards the  echoed characters to
+the host (for whatever reason).
+
+3.3.5 COMMANDS FROM THE WORKSTATION
+
+These  are the same  as in the  corresponding standard-conformant
+commands, sections 3.2.4 thru 3.2.7.
+
+4 MULTICS IMPLEMENTATION
+
+Currently there are two programs on Multics that make use of echo
+negotiation directly by  calling hcs_$tty_read_echoed.  These are
+Emacs (specifically, the internal routine e_pl1_$echo_negotiate_-
+get_chars)  and the  tc_io_ I/O  module (in  the internal routine
+tc_input)  used, by the  Video System.  For  this project I  will
+only be  concerning myself with  modifying tc_io_ to  make use of
+local echo negotiation.  Emacs can be run using the Video System,
+in  which case  it will   make use  of tc_io_'s  echo negotiation
+implementation, and, therefore, local echo negotiation; the Emacs
+echo negotiation  code is quite convoluted,  and adding something
+as complex as this would be more work than it is worth.
+
+The module  tc_input.pl1 does all the  low-level input processing
+for the Video System.   This module calls hcs_$tty_read_echoed to
+perform    echo-negotiated   input,    and   hcs_$tty_read    and
+hcs_$tty_read_with_mark for unechoed input.  It also performs the
+set_break_table  control order.   This is  quite convenient  (but
+hardly  coincidental) for  this project,  as these  are the  same
+operations that are performed in this protocol.
+
+In the initial prototype implementation  I expect to hardcode the
+control sequences into tc_input.  This way, the implementation of
+the changes to the TTF can be delayed until the protocol has been
+demonstrated  and determined  effective.  In  addition, this will
+give us time to figure out  how to describe the control sequences
+in TTF language.   The terminal will be recognized  at this stage
+by using a  special terminal type name, "PC7800LE";  in the final
+product this would  be done by checking for the  existence of one
+of  the  control  sequences  needed  by  the  protocol  (just  as
+delete-characters  capability is  determined by  checking for the
+delete_characters operation).
+
+Multics Technical Bulletin                                MTB-708
+Local Echo Negotiation
+
+The entrypoints  tc_$init and tc_$shut,  which are called  when a
+tc_io_ I/O switch is attached and detached, respectively, will be
+changed to send the  Set/Reset Synchronized Mode commands.  Even-
+tually  we  should  probably  implement  video_initial_string and
+video_exit_string sequences  in the TTF, which would  be used for
+setting and  resetting any terminal options that  are needed only
+by the  Video System.  The  Reset Synchronized Mode  command also
+could  be  placed  in  the  regular  initial  string,  as long as
+tc_$init  sends the Set  Synchronized Mode command  AFTER sending
+the initial string.
+
+The major  changes, however, will be in  tc_input.  These changes
+will  be made after  the Multics DSA  group modifies tc_input  to
+support DSA Terminal Management.  They  plan on replacing all the
+calls to hcs_$tty_* with calls to equivalent internal procedures.
+These internal procedures will  implement the operation by either
+calling  the hcs_  routine or  calling the  corresponding DSA  TM
+routine.   I will  add code  to simulate  the operation  by using
+local  echo negotiation (calling  hcs_$tty_* to do  the low-level
+communication).  The major complexity of this change will be that
+my substitute code  will have to simulate the  sending of wakeups
+to  tc_input,  so  it  will  need  to  use  an event-call channel
+internally in  order to service input  interrupts.  For instance,
+the  replacement  for  hcs_$tty_read_echoed  would  send the Read
+Chars  command  to  the  workstation  with hcs_$tty_write_whole_-
+string,  call hcs_$tty_read  to post  a wakeup  on the  tty event
+channel (there  shouldn't be anything  buffered in ring-0  if the
+protocol is  operating properly), and return to  the caller; when
+the event-call  handler is invoked it  will send a wakeup  on the
+caller's event channel, and when the caller calls back in it will
+call hcs_$tty_read  until the End Echoed Chars  sequence is read.
+These  routines  may  also  go  blocked  internally  in  order to
+maintain synchronization  with the workstation or  to read entire
+"packets"  (everything  up  to   the  End  Echoed/Unechoed  Chars
+sequence) from the workstation.
+
+5 WORKSTATION IMPLEMENTATION
+
+The  workstation side  of this  software will  be implemented  as
+enhancements to  the PC7800 VIP7801 emulator.  I  will be working
+from a version  of this software delivered to me  in April, 1984.
+I have been informed that  no significant changes to the terminal
+emulation  code have  been made  since then  (significant changes
+have been made to the file transfer portion of the program, which
+does not concern me).
+
+MTB-708                                Multics Technical Bulletin
+                                           Local Echo Negotiation
+
+5.1 PC7800 Organization
+
+PC7800  is implemented as  a collection of  C programs and  a few
+8086 assembler  programs.  Most of  the program resides  in the C
+programs; the assembler routines exist to interface directly with
+the  hardware  devices  (the  comm  port,  keyboard,  and screen)
+efficiently.   The following  subsections describe  in detail the
+various modules in PC7800 (all the module names are "et*.*", with
+"et" probably  standing for "Emulate Terminal").   I am including
+this  excruciating  detail  here,  rather  than  putting  it in a
+private  file,  because  it  forces  me  to  explain this program
+coherently  (I hope!),  which helps  me to  understand it  myself
+(since I  didn't write it, nor  do I have the  developers in easy
+reach).
+
+5.1.1 ET.H
+
+This is  a C #include file  (aka "header file", hence  the ".h"),
+which  defines  a  number  of  symbolic  constants  (using  the C
+preprocessor "#define" construct) and some structure types (using
+"typedef").
+
+5.1.2 ET.C
+
+This  module is not  really a C  program, it is  more like a  CDS
+module.   It  defines  and  initializes  number  of global static
+variables and tables.  These include  the jump tables used by the
+control code dispatching routines, and some global variables used
+for  referring to  the row#/column#  display on  the status line.
+These globals are not declared in  any header files, so any other
+modules that want to reference them must declare them explicitly.
+It also #includes  et1.c with the macro "EXTERN"  set to nothing;
+see below for an explanation of this.
+
+5.1.3 ET1.C
+
+This module  is really a header  file, as it is  #included by all
+the other C modules; I don't  know why it is named "et1.c".  This
+module defines  a number of global variables  and data structures
+that are used by all the other modules.  All the declarations are
+prefixed  with "EXTERN",  which the  #includer should  #define to
+either nothing or "extern".  This is because C requires that only
+one  object file  in a  collection of  object files  being linked
+together actually  define a global variable, while  the rest must
+just reference it as an external.   In this case, the symbols are
+defined  in et.o  (the object  file created  by compiling  et.c),
+since  it #includes et1.c  with EXTERN set  to nothing.  All  the
+other modules #include et1.c with EXTERN set to "extern", so that
+
+Multics Technical Bulletin                                MTB-708
+Local Echo Negotiation
+
+only  external references are  generated in these  modules.  This
+EXTERN hack is  used to guarantee that both the  definer and user
+of a  global variable declare it  as the same type  (note that we
+have  the same  problem on  Multics, and  don't solve  it at all:
+there  is  nothing  guaranteeing  that  a  program  referencing a
+variable in  a CDS segment will  use the same declaration  as the
+CDS program).
+
+The  variables and  data structures  in this  module include  the
+state of the  emulator, the storage for the internal  copy of the
+screen, the  virtual "rear panel" switches,  and some translation
+tables.
+
+5.1.4 ET2.C
+
+This module  contains the function "main", which  is the function
+that  is  invoked  when  a  C  program  starts  up.  This routine
+initializes  some  variables  and  processor  state, displays the
+initial herald of  the program, and invokes the  main loop, which
+is  the function "parse".   The "parse" subroutine  loops reading
+characters from the keyboard and  serial port (using the function
+"get_one"),  parses escape  sequences, and  dispatches on control
+codes and escape sequences.  This  is where the special casing of
+the Cursor  Position Decimal escape sequence  is implemented (see
+section  3.3).  Another  significant function  in this  module is
+"get_one", which  gets the first character  available from either
+the  serial port  or the   keyboard.  Depending  on the  terminal
+modes,  this routine  may  transmit  keyboard characters  out the
+serial port (in Character mode) and/or return keyboard characters
+to its caller (in non-Echo mode).   It also processes some of the
+"Alt"  keys that can  be typed, specifically  the ones that  send
+BREAK and  toggle "display-all" mode.   It loops until  it gets a
+character that  it can return  to its caller  (either a character
+from  the serial  port or   a keyboard  character that  should be
+processed locally).  The rest of this module is mostly made up of
+utility  routines used by  the rest of  the program to  do common
+operations.
+
+5.1.5 ET3.C THRU ET5.C
+
+These modules primarily contain  the functions that implement the
+normal terminal operations that are invoked by control sequences,
+escape  sequences, and  local alt-sequences.   They appear  to be
+divided  into the  three modules  alphabetically.  et3.c contains
+the  routines  for  ALF  (Auto  Line  Feed)  through  DAT (Delete
+ATtribute),  and   some  internal  functions  used   by  the  ATR
+(ATtRibute)  operation;  et4.c  contains  DCH  (Delete CHaracter)
+through RIS (Reset Initial State);  and et5.c contains RJF (Right
+Justify Fill) through VBP (Verify Before Process), as well as the
+
+MTB-708                                Multics Technical Bulletin
+                                           Local Echo Negotiation
+
+local Set Configuration command and  all its routines to interact
+with the user with simple menus.
+
+5.1.6 ETX.C
+
+This  module   contains  all  the  routines   for  uploading  and
+downloading files,  and the routine  which dumps the  screen to a
+file on  the PC.  This is  probably the only module  that has had
+significant changes  since I received  my copy, as  it now imple-
+ments Kermit file transfer.
+
+5.1.7 SWTCH.ASM
+
+This assembler module is a  transfer vector.  It contains generic
+entrypoints for  all the system-specific subroutines,  and trans-
+fers  to the  appropriate  system-dependent  routine by  using an
+external variable  "machndx" (machine index) as the  index into a
+jump array.  The machndx variable  is defined in etmsdos.c.  This
+allows the same object code to  be used on either the Level 6/10,
+the NEC APC, or an IBM-PC.   Personally, I think this was a silly
+way  to  implement  this;  it  could  have  been  done by linking
+different  sets of  system-dependent modules,  and requiring pur-
+chasers to  buy the version  appropriate for their  systems.  The
+NEC APC code does not seem to  be complete in my version; some of
+the  entrypoints do  not have  table entries  for it,  there is a
+reference to a function that does  not exist in any of my sources
+("keybap", which  reads a character  from the APC  keyboard), and
+nothing ever sets machndx to the NECAPC value.
+
+5.1.8 ETMSDOS.C
+
+This  module  contains  functions  that  are  specific to generic
+MS-DOS  (which all the  supported machines run).   This currently
+consists of  "chkdat", which checks the current  date against the
+expiration date  of the program  (presumably this only  exists in
+pre-release versions, and it's a  pretty futile effort, since the
+user can  always reset the machine's clock),  "ctlbrk", a handler
+for  the Control-Break  interrupt which  does nothing, "tglprnt",
+which toggles the  printer echo mode flag "precho"  (which is not
+referenced  anywhere  else!),  and  "save_os",  which  saves  and
+restores  the  operating  system  state,  determines  whether the
+machine is a Level 6/10 or an IBM-PC, and sets machndx according-
+ly.  If  PC7800 were ever  ported to an  8086 system that  is not
+MS-DOS (e.g.  CP/M-86),  this is the only module  that would have
+to  be replaced; swtch.asm  would merely have  to be extended  to
+support another class of machines.
+
+Multics Technical Bulletin                                MTB-708
+Local Echo Negotiation
+
+5.1.9 ETPCC.C AND ETPCA.ASM
+
+These modules  contain routines that  are specific to  the IBM-PC
+and look-alikes.  These routines are invoked through swtch.asm.
+
+5.1.10 ET6C.C AND ET6A.ASM
+
+These modules contain routines that are specific to the Honeywell
+Level 6/10 PC.  They are invoked through swtch.asm.
+
+5.1.11 ETAPA.ASM
+
+This module contains  routines that are specific to  the NEC APC.
+They are invoked through swtch.asm.
+
+5.1.12 ETPCKEYB.C
+
+This module contains keyboard functions that are specific to both
+the  Level 6/10  and IBM-PC.   Specifically, these  are "keybpc",
+which is  called via the  swtch.asm entrypoint "keyb",  and which
+reads a character from the keyboard, and "help", which displays a
+help screen  (it is called  directly from "keybpc"  when the user
+types  Alt-H).  The  "keybpc" routine  also invokes  most of  the
+local Alt functions that are implemented in et3.c thru et5.c.
+
+5.2 PC7800 Changes
+
+The following sections describe the  changes that will be made to
+individual modules.
+
+5.2.1 ET.H
+
+A constant  "SYNC" will be  defined for the  state.modecode value
+that indicates that the program is in Synchronized mode.
+
+5.2.2 ET.C
+
+The dispatch tables  will be modified to contain  entries for the
+new escape sequences defined for this protocol.
+
+5.2.3 ET2.C
+
+I believe that the only routine  that needs to be changed in this
+module  is "get_one", since  it is the  only routine in  the main
+
+MTB-708                                Multics Technical Bulletin
+                                           Local Echo Negotiation
+
+loop that differentiates between  keyboard and serial port input.
+When  the  terminal  is  in  Synchronized  mode  it will call the
+"lekeyb"  function  in  etlecho.c  whenever  it receives keyboard
+input.
+
+5.2.4 ETLECHO.C
+
+This is  a new module  that will contain  all the added  code for
+echo negotiation.  There will be  a function "lekeyb", which will
+be called by "get_one" in et2.c,  and will take care of buffering
+input,   echoing  input  during   an  echoing  Read   Chars,  and
+recognizing break  characters.  Also in  this module will  be the
+functions implementing the new  escape sequences.  The buffer for
+unechoed input  will be a  local static variable;  the buffer for
+echoed characters will  be the screen array itself,  along with a
+local static  pointer to the  beginning of the  echoed characters
+and  its length.   Also in   local static  variables will  be the
+current echoing state, the number  of characters to echo, and the
+break table.
+
+6 OTHER ISSUES
+
+6.1 When to Transmit
+
+There  is one  issue in  the specification  of the  blocking Read
+Chars  operations which is  not currently decided.   The protocol
+does  not currently  specify that  the workstation  may not begin
+transmitting characters before the  user has typed the characters
+that  end the  operation.  For  instance, it  is not  against the
+protocol for the workstation to transmit echoed characters as the
+user is typing them (like a VIP terminal in text and non-echoplex
+modes) after  receiving the echoing Read Chars  command.  This is
+because the host treats all the characters between successive End
+Echoed/Non-echoed Chars commands as a unit.
+
+Whether  or  not  this  behavior  is  desired  depends on several
+factors:
+  1) If the  connection between the  workstation and the  host is
+     low-speed then response time  may be improved by overlapping
+     echoing and transmitting; otherwise,  when the user types an
+     unechoable character he will have to wait for all the echoed
+     characters to  be transmitted before the host  will read the
+     unechoed character and process it.
+  2) In  a packet-switched  network environment  it is  better to
+     transmit in  bursts, in order  to minimize the  packet over-
+     head.
+  3) Transmitting in  bursts also minimizes the  overhead of con-
+     text switching on  the host, as there is less  chance of the
+
+Multics Technical Bulletin                                MTB-708
+Local Echo Negotiation
+
+     user's  process  being  paged  out  when  characters must be
+     processed.
+Factors 1  and 2 are in  direct conflict when the  workstation is
+connected to  a packet-switched network by a  low-speed line (for
+instance, when using a dialup X.25 PAD).
+
+This issue  will be left unspecified  initially.  Experimentation
+with  the  prototype  may  determine  the  optimal  behavior.  As
+mentioned  above, the transmission  behavior does not  affect the
+dialogue,  it  merely  has  an  impact  on  the efficiency of the
+protocol.  Because  no one choice  may be correct  for all situa-
+tions, it  may be necessary  to implement a  command which allows
+the host to provide advice to the workstation.  There may also be
+other choices besides immediate transmission and holding all data
+until the blocking condition is  met; for instance, a timer might
+be used to transmit  buffered characters periodically, or perhaps
+the  workstation could transmit  after every N  typed characters,
+for some suitable N.
+
+6.2 Noisy Lines
+
+As  currently  specified,  this  protocol  does  not  contain any
+checksums or error correction  capabilities, and I currently have
+no plans to  complicate it with such features.   The protocol was
+designed to minimize  the impact of line noise  on the operation.
+For instance,  the "packets" transmitted from  the workstation to
+the host are defined merely by  the appearance of a short control
+sequence, rather  than being specified by a  header that contains
+the length of  the packet; therefore, line noise  within a packet
+will  not cause  the workstation  and the  host to  become out of
+sync.  However,  if line noise were  to hit the End  Echoed Chars
+sequence,  for  instance  between   the  two  characters  of  the
+sequence,  the host  would still  be waiting  for the  end of the
+packet  while  the  workstation  would  be  waiting  for the next
+command.   The control sequences  are deliberately very  short in
+order to  minimize the likelihood  of such hits.   A BREAK signal
+should succeed in resynchronizing the connection, though.
+
+The appropriate way to solve this  problem completely is to use a
+more  reliable medium  than raw  phone lines.   This protocol  is
+intended   for   use   on   programmable   computers   acting  as
+workstations, and  these systems can be enhanced  to use reliable
+protocols, (X.25,  for example) to communicate with  the host.  I
+feel no need to duplicate the work  that has gone on for years by
+defining yet  another reliability mechanism just  for this proto-
+col.  This  protocol will suffer  no less than  similar protocols
+already  in  widespread  use,  such  as  those  for forms-filling
+terminals  (a deadlock  similar to  the one  described above  can
+develop if the sequence used to indicate the end of a transmitted
+screen is garbled).
+
+MTB-708                                Multics Technical Bulletin
+                                           Local Echo Negotiation
+
+There  are  some  simple  provisions  that  can  be  provided  in
+implementations in  order to deal with some  errors, though.  For
+instance, another  troublesome error hit would be  in the parame-
+ters to the Set Break Table  command.  If the workstation is able
+to recognize the command but not  able to parse the parameters it
+can  set  a  useful  default  which  defines  all  characters  as
+unechoable,  because  the  protocol  permits  the  workstation to
+choose to stop echoing at any  time.  Thus, the efficiency of the
+protocol  would  be  degraded  by  a  line  hit,  but the overall
+behavior would not.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

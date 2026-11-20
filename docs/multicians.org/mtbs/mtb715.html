@@ -1,0 +1,1429 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-715</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-715: MRDS Restructuring Subsystem Changes.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-715
+MRDS Restructuring Subsystem
+
+To:      Distribution
+
+From:    Charles Spitzer
+         Thanh Nguyen
+
+Date:    05/28/85
+
+Subject: MRDS Restructuring Subsystem Changes
+
+1 Abstract
+
+This document  describes the design and  implementation plans for
+changes  to the  MRDS  database  restructuring subsystem.   To be
+added to  the subsystem are operations for  manipulating lists of
+domains, attributes and relations within a single MRDS database.
+
+Discussion should take place in the System-M Forum meeting:
+
+   &gt;udd&gt;Demo&gt;dbmt&gt;con&gt;MRDS_Development.forum
+
+or comments should be sent to the authors:
+
+via Multics Mail:
+   Spitzer@System-M
+   THNguyen@System-M
+
+via US Mail:
+   Charles Spitzer or Thanh Nguyen
+   Honeywell Information Systems, Inc.
+   PO Box 8000, MS T70
+   Phoenix, Arizona 85066
+
+via telephone:
+   Charles Spitzer (602) 249-6677
+   Thanh Nguyen    (602) 249-6678
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+Multics Technical Bulletin                                MTB-715
+MRDS Restructuring Subsystem
+
+2 Introduction
+
+Restructuring  is the ability  to manipulate the  underlying data
+model of  MRDS databases.  The subsystem  restructure_mrds_db has
+the  ability to  modify a  few parts  of this  data model, but is
+lacking in what  is commonly known in the database  industry as a
+restructuring capability.  Currently, rmdb is capable of creating
+or deleting  either secondary indices or  relations.  However, it
+is limited  to manipulating the  data model as  it already exists
+and  is not capable  of adding to  or removing elements  from the
+data model.
+
+This document is  intended for use by the  MRDS development staff
+as   a    guide   for   implementation   of    changes   to   the
+restructure_mrds_db subsystem,  and for use by  Multics technical
+writers to update the user documentation (Multics Relational Data
+Store Reference Manual, AW53-04B).  The  rest of this paper shall
+describe  the  enhancements   to  the  restructure_mrds_db.   The
+appendix documents the changes  necessary to AW53, detailing both
+the  requests to  be added  to the  subsystem and  any changes to
+existing requests.
+
+3 Functional Objectives
+
+3.1 Domains
+
+A domain is the underlying data  type of a field in some relation
+of a  MRDS database.  The current  rmdb subsystem is not  able to
+manipulate the  list of domains in  a MRDS database; it  shall be
+enhanced to be  able to create new and delete  or modify existing
+domains.
+
+A newly created domain is defined to be unreferenced.  This means
+that the specific  domain is not used as an  underlying data type
+of  some existing  attribute.  Either  referenced or unreferenced
+domains may be deleted or modified.  However, ripple effects take
+place if  domains are referenced  in MRDS relations,  whether the
+referenced   relations  are   populated  or   not.   Deletion  of
+referenced  domains imply  that all  attributes based  upon those
+domains  are  deleted  from  all  relations,  and modification of
+domains  implies  that  the  contents  of  attributes  within the
+relations  may also  be modified.    A query  is issued  for each
+referenced  domain  that  is  to  be  deleted  to  ensure against
+catastrophic data loss.  The query is of the form:
+
+     Domain "frogs" is referenced in attributes "swamps", "lakes"
+     and  "things_with_legs" which   are referenced  in relations
+
+
+MTB-715                                Multics Technical Bulletin
+                                     MRDS Restructuring Subsystem
+
+     "bodies_of_water" and "fried_foods".  Do  you wish to delete
+     it?
+
+In certain cases it will not be possible to delete or modify some
+domains; these cases shall be diagnosed as errors.(1)
+
+3.2 Attributes
+
+An attribute is  the container of a single piece  of data in some
+relation of a  MRDS database.  The current rmdb  subsystem is not
+able to manipulate the list of attributes within a MRDS database;
+it  shall be  enhanced to  be able  to create  new attributes and
+delete or modifiy existing attributes.
+
+A newly  created attribute is  defined to be  unreferenced.  This
+means that  the specific attribute  is not used  in any relation.
+Either  referenced or unreferenced  attributes may be  deleted or
+modified.  However, the same ripple effects as in the domain case
+take place.  If  an attribute is part of a  secondary index, that
+index  is also deleted.   A query is  issued for each  referenced
+attribute that  is to be  deleted to ensure  against catastrophic
+data loss.  The query is of the form:
+
+     Attribute    "swamps"    is    referenced    in    relations
+     "bodies_of_water" and "slimy_things".  Do you wish to delete
+     it?
+
+In certain cases it will not be possible to delete or modify some
+attributes; these cases shall be diagnosed as errors.(2)
+
+3.3 Relations
+
+_________________________________________________________________
+
+(1) For example, deletion of a domain may require the deletion of
+    an  attribute  that  is  included  in  the  primary  key of a
+    populated  relation.  An  error will  occur if  this deletion
+    causes  non-unique primary  keys to  be created.   In another
+    case, the modification of a domain data type may require that
+    data conversion take place, but the contents of the attribute
+    are unable to be converted to the new data type.
+
+(2) For example, it is an error  to delete an attribute from some
+    populated relation  if it is  referenced in the  primary key,
+    and the deletion of the attribute will result in the creation
+    of non-unique primary keys.
+
+
+Multics Technical Bulletin                                MTB-715
+MRDS Restructuring Subsystem
+
+A relation  is the set  of data records  (tuples) that make  up a
+table of data in a MRDS  database.  The current rmdb subsystem is
+unable to modify already existing relations; it shall be enhanced
+to  be able   to add  or delete  one or   more attributes  from a
+specific relation.
+
+In  order to add  attributes to a  relation, an initial  value is
+required from the user.  This is necessary as there is no concept
+of  a null value  in MRDS as  it stands today.   If or when  null
+values  are implemented,  this initial  value may  be an optional
+field.
+
+In the current  MRDS database model, each relation  in a specific
+database  must  be  of  the  same  type  (either  all  vfile-type
+relations or all Data  Management relations).  The rmdb subsystem
+shall  be enhanced  to be  able to  change the  type of  a single
+relation within a MRDS database from  a vfile-type file to a Data
+Management type file or vice versa.
+
+3.4 Databases
+
+The rmdb subsystem shall be enhanced to create links to relations
+in MRDS databases other than the database being restructured.
+
+Relation links are used to implement one scheme of cross-database
+retrievals,  in that the  links make it  appear that the  foreign
+relation is really part of  the current database.  Certain tables
+will be  created in the database  model which will allow  MRDS to
+use  these foreign  relations.  In  order to  fully support  this
+concept, changes are required to the cmdb language.
+
+3.5 Submodels
+
+MRDS  uses submodels  in order  to provide  security through data
+hiding  techniques.  Relations,  attributes, and  access to  each
+relation or  attribute are described  in the submodel  source for
+compilation into a .dsm segment.
+
+Restructuring  a MRDS  database by  a  DBA  may make  parts of  a
+submodel invalid.  The rmdb subsystem shall be enhanced to update
+selected  submodels  according  to   modifications  made  to  the
+database  model.   However,  because  submodels  may be scattered
+across the Multics  file system, there is no way  to detect where
+all submodels  reside in order  to automatically convert  them to
+correspond  to the  current model.   Thus, a  means of  detecting
+incorrect  submodels will be  implemented; an error  message will
+
+
+MTB-715                                Multics Technical Bulletin
+                                     MRDS Restructuring Subsystem
+
+result  when  a  user  attempts  to  open  an  incorrect submodel
+relation.
+
+
+Multics Technical Bulletin                                MTB-715
+MRDS Restructuring Subsystem
+
+                            Appendix A
+
+This appendix describes the new restructure_mrds_db requests, and
+changes to any existing requests that are necessary.
+
+The following  paragraph must appear in the  documentation on the
+rmdb  subsystem, somewhere  near  the  beginning where  a general
+description of the subsystem may be found.
+
+There  are  certain  ripple  effects  that  occur  when items are
+removed  from the  MRDS database   model.  When  an attribute  is
+deleted from  one or more relations, each  referenced relation is
+examined.   An attribute may  not be deleted  from a relation  if
+that attribute is contained within  the primary key, the relation
+is  populated, and  deletion of  the key  would cause  non-unique
+primary keys  to be created.   This is because  MRDS depends upon
+the  fact  that  primary  keys  are  unique  within  a  relation.
+Deletion  of domains  also causes   the same  type of  ripples to
+occur,  because   deletion  of  referenced  domains   causes  all
+attributes based upon  those domains to also be  deleted from the
+database  model.  However,  deletion  of  an attribute  or domain
+which  is only referenced  in secondary indices  (or unreferenced
+attributes  or domains)  is allowed,  as this  would only  impact
+certain retrieval operations.  Another type of ripple occurs when
+domain data  types are modified and the  referenced relations are
+populated.   In  this  case,  the  rmdb  subsystem  creates a new
+relation, copies  the contents of  the old relation  into the new
+relation while  doing the data  conversion, the old  relations is
+deleted and the new relation is renamed.  If the contents of some
+attribute  fails  this  conversion,  the  domain  modification is
+rejected.
+
+
+MTB-715                                Multics Technical Bulletin
+                                     MRDS Restructuring Subsystem
+
+Request:     create_domain, crd
+
+     This request  creates the necessary structures  for a domain
+in   the  MRDS  database.    The  created  domain   is  initially
+unreferenced.
+
+Usage
+
+     crd domain_name data_type {-control_args}
+
+where:
+1.   domain_name
+     is the name of the domain to be created.
+
+2.   data_type
+     is the data  type of the field.  See the  list of valid data
+     types  in the  documentation for  the cmdb  command.  If the
+     data_type  field  contains  characters  used  by the command
+     processor  (spaces and  parantheses), this  argument must be
+     quoted.
+
+3.   control_args
+     can be chosen from the following:
+
+     -check_procedure path, -check_proc path
+          specifies a  procedure that performs  data verification
+          upon storage into the  database (such as ensuring valid
+          dates).  Path may be  an absolute or relative pathname,
+          or a pathname$entry.
+
+     -decode_declare data_type, -decode_dcl data_type
+          specifies the data_type to be  used for the user's view
+          and  for the  decode  procedure,  if present.   If this
+          option is not given then the decode procedure data type
+          is that given as the second argument to this request.
+
+     -decode_procedure path, -decode_proc path
+          specifies  a  procedure  that  performs  decoding  upon
+          retrieved data from the  database, normally the inverse
+          of the  encode procedure.  Path  may be an  absolute or
+          relative pathname, or a pathname$entry.
+
+     -encode_procedure path, -encode_proc path
+          specifies a  procedure that performs encoding  (such as
+          the names  of the states  of the USA  to integers 1-50)
+          before storing  data into an internal  database format.
+          Path  may be  an absolute  or relative  pathname, or  a
+          pathname$entry.
+
+
+Multics Technical Bulletin                                MTB-715
+MRDS Restructuring Subsystem
+
+Request:     delete_domain, dld
+
+     This  requests deletes  the  specified  domains from  a MRDS
+database.  The domains may be referenced or unreferenced.
+
+Usage
+
+     dld domain_name1 {...domain_nameN} {-control_args}
+
+where:
+1.   domain_name
+     is a list of domains to be deleted.
+
+2.   control_args
+     can be chosen from the following:
+
+     -all, -a
+          specifies that all domains defined in the MRDS database
+          are to be deleted.
+
+     -brief, -bf
+          specifies that the -check  display is suppressed.  This
+          is  the default.   The  last  occurrence of  -brief and
+          -long on the command line takes effect.
+
+     -check, -ck
+          specifies  that the  delete_domain operation  is not to
+          actually  delete  the  domain,   but  a  trace  of  all
+          operations upon the database is  to be displayed on the
+          user's  terminal.    This  trace  will  consist   of  a
+          statement for each relation that is referenced, listing
+          each attribute that will be removed from that relation,
+          and  a list of  all attributes that  are to be  deleted
+          from the database model.
+
+     -force, -fc
+          specifies  that  the  query  is  not  to  be issued for
+          domains which are referenced in the MRDS database.  The
+          default  is   to  issue  a  separate   query  for  each
+          referenced domain.
+
+     -inhibit_error, -ihe
+          specifies that  no error messages  are to be  issued to
+          the terminal.  The default is to issue error messages.
+
+     -long, -lg
+          specifies  that the  same output  from -check  is to be
+          displayed, however  the specified domains  are deleted.
+
+
+MTB-715                                Multics Technical Bulletin
+                                     MRDS Restructuring Subsystem
+
+          The last occurrence of -brief  and -long on the command
+          line takes effect.
+
+     -no_force, -nfc
+          overrides  the  -force   control  argument.   The  last
+          occurrence of -force and  -no_force on the command line
+          takes effect.  This is the default.
+
+     -no_inhibit_error, -nihe
+          overrides  the action  of -inhibit_error.   This is the
+          default.
+
+     -unreferenced, -unref
+          specifies  that  only  unreferenced  domains  are to be
+          deleted.
+
+Notes
+
+     See  the  documentation  on  ripple  effects  in the general
+description of the rmdb subsystem.
+
+     If more than one of  -all or -unreferenced control arguments
+or if a  list of domain names are given on  the request line, the
+last item takes affect.
+
+     When a  domain is created,  an attribute with  the identical
+name  is also created.   Thus, it is  possible to create  a valid
+MRDS database without explicitly creating any attributes.
+
+     A query is  issued for each referenced domain that  is to be
+deleted to  ensure against catastrophic data loss.   The query is
+of the form:
+
+     Domain "frogs" is referenced in attributes "swamps", "lakes"
+     and  "things_with_legs" which   are referenced  in relations
+     "bodies_of_water" and "fried_foods".  Do  you wish to delete
+     it?
+
+
+Multics Technical Bulletin                                MTB-715
+MRDS Restructuring Subsystem
+
+Request:     modify_domain, mdd
+
+     This  request  modifies  the  specified  domain  in  a  MRDS
+database.  The domain may be referenced or unreferenced.
+
+Usage
+
+     mdd domain_name {data_type} {-control_args}
+
+where:
+1.   domain_name
+     is the name of the domain to be modified.
+
+2.   data_type
+     describes the new data type of the domain.  If this argument
+     is not  given, the underlying  data type of  the domain will
+     not be changed.
+
+3.   control_args
+     can be chosen from the following:
+
+     -brief, -bf
+          specifies that the -check  display is suppressed.  This
+          is  the default.   The  last  occurrence of  -brief and
+          -long on the command line takes effect.
+
+     -check, -ck
+          specifies  that the  modify_domain operation  is not to
+          actually  modify  the  domain,   but  a  trace  of  all
+          operations upon the database is  to be displayed on the
+          user's  terminal.    This  trace  will  consist   of  a
+          statement for each relation  that is referenced listing
+          each attribute that will be modified in that relation.
+
+     -check_procedure path, -check_proc path
+          specifies a  procedure that performs  data verification
+          upon storage into the  database (such as ensuring valid
+          dates).  Path may be  an absolute or relative pathname,
+          or  a  pathname$entry.   If  this  option  is given, it
+          replaces the check procedure stored in the database for
+          this domain.
+
+     -decode_declare data_type, -decode_dcl data_type
+          specifies the data_type to be  used for the user's view
+          and  for the  decode  procedure,  if present.   If this
+          option is not given then the decode procedure data type
+          is that  given as the second argument  to this request.
+
+
+MTB-715                                Multics Technical Bulletin
+                                     MRDS Restructuring Subsystem
+
+          If this option is given, it replaces the decode declare
+          stored in the database for this domain.
+
+     -decode_procedure path, -decode_proc path
+          specifies a procedure that  performs decoding upon data
+          retrieved  from the  database, normally  the inverse of
+          the  encode  procedure.   Path  may  be  an absolute or
+          relative pathname, or a pathname$entry.  If this option
+          is  given, it replaces  the decode procedure  stored in
+          the database for this domain.
+
+     -encode_procedure path, -encode_proc path
+          specifies a  procedure that performs encoding  (such as
+          the names  of the states  of the USA  to integers 1-50)
+          before storaging data into an internal database format.
+          Path  may be  an absolute  or relative  pathname, or  a
+          pathname$entry.  If  this option is given,  it replaces
+          the  encode procedure stored  in the database  for this
+          domain.
+
+     -long, -lg
+          specifies  that the  same output  from -check  is to be
+          displayed, however  the specified domains  are deleted.
+          The last occurrence of -brief  and -long on the command
+          line takes effect.
+
+     -new_name domain_name, -nn domain_name
+          specifies a new name for the specified domain.
+
+Notes
+
+     See  the  documentation  on  ripple  affects  in the general
+description of the rmdb subsystem.
+
+     If  the  argument  to  the  encode/decode/check procedure or
+decode  declare control  arguments is  the null  string (""), the
+appropriate element  is deleted if  present in the  database.  If
+the  argument is  given and  the element  does not  exist in  the
+database,  the element  is added  to the  database.  However, the
+contents of the attributes based upon this domain are not checked
+to ensure they meet the given criteria.
+
+
+Multics Technical Bulletin                                MTB-715
+MRDS Restructuring Subsystem
+
+Request:     create_attribute, cra
+
+     This request allows the  creation of unreferenced attributes
+in a MRDS database.
+
+Usage
+
+     cra    attribute_name1   domain_name1    {...attribute_nameN
+domain_nameN}
+
+where:
+1.   attribute_name
+     is the name of the attribute to be created.
+
+2.   domain_name
+     is the name of the underlying domain.
+
+
+MTB-715                                Multics Technical Bulletin
+                                     MRDS Restructuring Subsystem
+
+Request:     delete_attribute, dla
+
+     This request  deletes referenced or  unreferenced attributes
+from a MRDS database.
+
+Usage
+
+     dla attribute_name1 {...attribute_nameN} {-control_args}
+
+where:
+1.   attribute_name
+     is the name of the attribute(s)  to be deleted from the MRDS
+     database.
+
+2.   control_args
+     can be chosen from the following:
+
+     -all, -a
+          specifies  that  all  attributes  defined  in  the MRDS
+          database are to be deleted.
+
+     -brief, -bf
+          specifies that the -check  display is suppressed.  This
+          is  the default.   The  last  occurrence of  -brief and
+          -long on the command line takes effect.
+
+     -check, -ck
+          specifies that the delete_attribute operation is not to
+          actually  delete  the  attribute,  but  a  trace of all
+          implied operations upon the database is to be displayed
+          on the  users' terminal.  This trace will  consist of a
+          statement for each relation  that is referenced listing
+          the attributes that will be removed from that relation.
+
+     -force, -fc
+          specifies that the query is not  to be issued if any of
+          the  attributes are  referenced in  the MRDS  database.
+          The  default is  to issue   a separate  query for  each
+          referenced attribute.
+
+     -inhibit_error, -ihe
+          specifies that  no error messages  are to be  issued to
+          the terminal.  The default is to issue error messages.
+
+     -long, -lg
+          specifies  that the  same output  from -check  is to be
+          displayed, however  the specified domains  are deleted.
+
+
+Multics Technical Bulletin                                MTB-715
+MRDS Restructuring Subsystem
+
+          The last occurrence of -brief  and -long on the command
+          line takes effect.
+
+     -no_force, -nfc
+          overrides  the  -force   control  argument.   The  last
+          occurrence of -force and  -no_force on the command line
+          takes effect.  This is the default.
+
+     -no_inhibit_error, -nihe
+          overrides the action of -brief.  This is the default.
+
+     -unreferenced, -unref
+          specified that  only unreferenced attributes are  to be
+          deleted.   This control  argument is  inconsistent with
+          -all.
+
+Notes
+
+     See  the  documentation  on  ripple  effects  in the general
+description of the rmdb subsystem.
+
+A  query is issued  for each referenced  attribute that is  to be
+deleted to  ensure against catastrophic data loss.   The query is
+of the form:
+
+     Attribute    "swamps"    is    referenced    in    relations
+     "bodies_of_water" and "slimy_things".  Do you wish to delete
+     it?
+
+     If more than one of  -all or -unreferenced control arguments
+or a list of domain names are given on the request line, the last
+item takes affect.
+
+
+MTB-715                                Multics Technical Bulletin
+                                     MRDS Restructuring Subsystem
+
+Request:     modify_attribute, mda
+
+     This request  enables modification of a  specified attribute
+in  a  MRDS  database.   The   attribute  may  be  referenced  or
+unreferenced.
+
+Usage
+
+     mda attribute_name {domain_name} {-control_args}
+
+where:
+1.   attribute_name
+     is the name of the attribute to be modified.
+
+2.   domain_name
+     is the name of the domain  that is to be the underlying data
+     type.
+
+3.   control_args
+     can be chosen from the following:
+
+     -brief, -bf
+          specifies that the -check  display is suppressed.  This
+          is  the default.   The  last  occurrence of  -brief and
+          -long on the command line takes effect.
+
+     -check, -ck
+          specifies that the modify_attribute operation is not to
+          actually  modify  the  attribute,  but  a  trace of all
+          implied operations upon the database is to be displayed
+          on the  users' terminal.  This trace will  consist of a
+          statement for each relation  that is referenced listing
+          each attribute that will be modified in that relation.
+
+     -long, -lg
+          specifies  that the  same output  from -check  is to be
+          displayed, however  the specified domains  are deleted.
+          The last occurrence of -brief  and -long on the command
+          line takes effect.
+
+     -new_name attribute_name, -nn attribute_name
+          specifies a new name for the specified attribute.
+
+Notes
+
+     See  the  documentation  on  ripple  effects  in the general
+description of the rmdb subsystem.
+
+
+Multics Technical Bulletin                                MTB-715
+MRDS Restructuring Subsystem
+
+Request:     modify_relation, mdr
+
+     This request  is able to  add and/or delete  attributes from
+the indicated relation.
+
+Usage
+
+     mdr relation_name {-control_args}
+
+where:
+1.   relation_name
+     is  the name of  the relation to  perform the additions  and
+     deletions upon.
+
+2.   control_args
+     can be chosen from the following:
+
+     -add attribute_name     {-initial_value     value},     -add
+          attribute_name {-iv value}
+          specifies  that the  attribute is  to be  added to  the
+          indicated relation, and it is to be given the specified
+          initial value.   If the initial value  is not specified
+          on the request line, defaults shall be used (spaces for
+          strings, zero for numerics and bit fields, null strings
+          for  varying bit  or character  fields).  (NOTE  TO MTB
+          READERS:  Since we do not have null values, the initial
+          value must  be a mandatory field.   If/when null values
+          are  implemented in  MRDS,  it  may become  an optional
+          field.)
+
+     -delete     attribute_name1    {...attribute_nameN},     -dl
+          attribute_name1 {...attribute_nameN}
+          specifies that the list of attributes are to be deleted
+          from the indicated relation.
+
+     -new_name relation_name, -nn relation_name
+          specifies a new name for the specified relation.
+
+     -relation_type type, -rt type
+          specifies the type of  relation to convert the relation
+          to.  The supported relation types are:
+
+          data_management_file {mode_string}, dmf {mode_string}
+               specifies  that if  the relation  is a vfile_-type
+               relation, it is to be converted to Data Management
+               file.  The  mode_string may be any  combination of
+               "protection,concurrency,rollback".
+
+
+MTB-715                                Multics Technical Bulletin
+                                     MRDS Restructuring Subsystem
+
+          vfile
+               specifies   that  if   the  relation   is  a  Data
+               Management  file,  it  is  to  be  converted  to a
+               vfile-type file.
+
+Notes
+
+     See  the  documentation  on  ripple  affects  in the general
+description of the rmdb subsystem.
+
+     Certain attributes  may not be deleted  from some relations.
+An attribute may not be deleted in the case where the relation is
+populated,  the attribute  is referenced  in the  primary key and
+deletion of the attribute produces non-unique primary keys.  This
+is  because  MRDS  requires  that  primary  keys  be  unique, and
+attempts to  create non-unique primary keys will  cause an error.
+The case where the attribute to be deleted is part of a secondary
+index is allowed, as this  would only slow down certain retrieval
+operations.
+
+     Because the addition and deletion of attributes in relations
+involves copying the data in a  relation, it is most efficient if
+all of the addition and deletion  operations are done on a single
+relation with a single request command.
+
+
+Multics Technical Bulletin                                MTB-715
+MRDS Restructuring Subsystem
+
+Request:     create_relation_link, crrlk
+
+     This  request creates a  link in the  directory of the  MRDS
+database  being  restructured  to  a  relation  in  another  MRDS
+database, and creates the proper structures necessary for MRDS to
+use this relation  in operations upon the database  that is being
+restructured.
+
+Usage
+
+     crrlk relation_name database_path {-control_arg}
+
+where
+1.   relation_name
+     is the name of the foreign  relation.  This will also be the
+     name  of the  relation in   this database  unless the  -name
+     control argument is given.
+
+2.   database_path
+     is  the pathname of  the foreign MRDS  database.  It may  be
+     either an  absolute or relative pathname.  The  db suffix is
+     assumed if not supplied.
+
+3.   control_args
+     can be chosen from the following:
+
+     -name new_relation_name
+          specifies the name of the relation in the MRDS database
+          being currently  operated upon.  This  control argument
+          is used to resolve relation name conflicts.
+
+Notes
+
+     A warning is issued if  either the foreign relation does not
+exist  or the  DBA lacks   access to  the relation,  however, the
+relation link is  still created.  In order for a  user to use the
+relation  link, they  must have  access to  the database  that is
+being  opened and  access to  the relation  (and associated  data
+model and control structures) in the foreign database.
+
+     The  restructuring  subsystem  is  not  able  to restructure
+foreign relations, thus there is  no need to quiesce the database
+that contains the foreign relation.
+
+
+MTB-715                                Multics Technical Bulletin
+                                     MRDS Restructuring Subsystem
+
+Request:     delete_relation, dlr
+
+     This request  deletes a relation  or relation link  from the
+database.
+
+Usage
+
+     dlr relation_name {-control_args}
+
+where:
+1.   relation_name
+     is the name of the relation or relation link to be deleted.
+
+2.   control_args
+     can be chosen from the following
+
+     -inhibit_error, -ihe
+          specifies that no errors are reported.
+
+     -no_inhibit_error, -nihe
+          specifies that errors are reported.  (Default)
+
+
+Multics Technical Bulletin                                MTB-715
+MRDS Restructuring Subsystem
+
+Request:     ready_db, rdb
+
+     This request readies a MRDS database for restructuring.
+
+Usage
+
+     rdb {db_path} {-control_args}
+
+where:
+1.   db_path
+     is  the relative  or absolute  path for  the database  to be
+     restructured.  The db suffix is assumed if not supplied.  If
+     the specified database does not  exist, a query is issued as
+     to  whether  or  not  the  user  wishes  to  create an empty
+     database.
+
+2.   control_args
+     can be chosen from the following:
+
+     -force, -fc
+          specifies that if the database does not exist, it is to
+          be created with no user query.
+
+     -no_force, -nfc
+          overrides  the  -force   control  argument.   The  last
+          occurrence of -force and  -no_force on the command line
+          takes effect.  This is the default.
+
+     -no_quiesce, -nq
+          specifies that the MRDS database  is not to be quiesced
+          before making it ready for restructuring.  This control
+          argument  should be  used when  only create  operations
+          (create_domain, create_attribute  and create_relations)
+          are to  be done upon the database,  as these operations
+          do  not require  the database  to be  quiesced and will
+          result  in less  user disruption.   All other  requests
+          require the MRDS database to be quiesced beforehand.
+
+     -pathname db_path, -pn db_path
+          specifies the path for the database to be restructured.
+          The   last  path   supplied  is   made  available   for
+          restructuring.
+
+     -quiesce, -q
+          overrides  the -no_quiesce  control argument.   This is
+          the default.
+
+
+MTB-715                                Multics Technical Bulletin
+                                     MRDS Restructuring Subsystem
+
+     -quiesce_wait_time N, -qwt N
+          specifies the number of seconds "N" that are waited for
+          all open users to close  the database.  The default for
+          N is 0.
+
+     -relation_type type, -rt type
+          specifies the  type of relations  to be created  if the
+          database does not exist.   The supported relation types
+          are:
+
+          data_management_file {mode_string}, dmf {mode_string}
+               specifies that if the  database does not exist, it
+               shall be created as a  DM based MRDS database.  If
+               the database does exist,  this control argument is
+               ignored when present.  The  mode_string may be any
+               combination of "protection,concurrency,rollback".
+
+          vfile
+               specifies that  if the database does  not exist,it
+               shall  be created as  a vfile type  MRDS database.
+               If the database does  exist, this control argument
+               is ignored if present.
+
+
+Multics Technical Bulletin                                MTB-715
+MRDS Restructuring Subsystem
+
+Request:     display_data_model, dmdm
+
+     This  request  displays  the  model  definition  of  a  MRDS
+database, including  domain, attribute and  relation information.
+(NOTE  TO MTB  READERS:  Only   the changes  to this  request are
+documented here, see AW53 for complete documentation.)
+
+Usage
+
+     dmdm {-control_args}
+
+where
+1.   control_args
+     can be chosen from the following:
+
+     -attribute    {names}    {-unreferenced},    -attr   {names}
+          {-unreferenced}
+          displays information about each  of the attribute names
+          supplied.   If no  names are  supplied, the information
+          about  all  attributes  is  displayed.   If the control
+          argument -unreferenced is given, information about only
+          the     unreferenced    attributes     is    displayed.
+          -unreferenced is incompatible with  a list of attribute
+          names.    See  the   example  below   which  shows  the
+          information displayed.
+
+     -crossref {type}, -xref {type}
+          displays an information cross  reference.  The type may
+          be either "domain", "attribute", or "all".  If the type
+          is  "domain", each  domain is   listed with  a list  of
+          attributes  that the domain  is referenced in.   If the
+          type  is "attribute", each  attribute is listed  with a
+          list of relations that  the attribute is referenced in.
+          If the  type is "all", both domain  and attribute cross
+          references  are  displayed.   The  default  for type is
+          "all".    See  the   examples  below   which  show  the
+          information displayed.
+
+     -domain     {names}     {-unreferenced},     -dom    {names}
+          {-unreferenced}
+          displays  domain  information   for  the  domain  names
+          supplied.   If  no  names   are  supplied,  the  domain
+          information  aout  all  domains  is  displayed.  If the
+          control  argument -unreferenced  is given,  information
+          about  only  the  unreferenced  domains  is  displayed.
+          -unreferenced  is incompatible  with a  list of  domain
+          names.
+
+
+MTB-715                                Multics Technical Bulletin
+                                     MRDS Restructuring Subsystem
+
+Examples
+
+     !    dmdm employee -domain
+
+     DOMAINS:
+
+               age                  fixed dec (2) unal
+               char_1               char (1)
+               city                 char (13)
+               dept                 char (4)
+               name                 char (10)
+               job                  fixed dec (2) unal
+               salary               fixed dec (7,2) unal
+               state                char (2)
+
+     !    dmdm employee -attribute
+
+     ATTRIBUTES:
+
+               NAME:                DOMAIN:
+
+               age                  age
+               city                 city
+               dept                 dept
+               family               char_1
+               job                  job
+               name                 name
+               salary               salary
+               sex                  char_1
+               state                state
+
+     !    dmdm employee -relation
+
+     RELATION:      employee
+
+        ATTRIBUTES:
+           name                              Key
+               char (10)
+           job                               Key  Index
+               fixed dec (2) unal
+           salary                            Data  Index
+               fixed dec (7,2) unal
+           age                               Data  Index
+               fixed dec (2) unal
+           sex                               Key  Index
+               char (1)
+           family                            Data
+
+
+Multics Technical Bulletin                                MTB-715
+MRDS Restructuring Subsystem
+
+               char (1)
+           state                             Data  Index
+               char (2)
+           city                              Data  Index
+               char (13)
+
+     RELATION:      department
+
+        ATTRIBUTES:
+           name                              Key
+               char (10)
+           dept                              Data
+               char (4)
+
+     !    dmdm employee -crossref domain
+
+     DOMAIN              ATTRIBUTE
+
+     age                 age
+     city                city
+     char_1              family
+                         sex
+     dept                dept
+     job                 job
+     name                name
+     salary              salary
+     state               state
+
+     !    dmdm employee -crossref attribute
+
+     ATTRIBUTE           RELATION
+
+     age                 employee
+     city                employee
+     dept                department
+     family              employee
+     job                 employee
+     name                employee
+                         department
+     salary              employee
+     sex                 employee
+     state               employee
+
+     !    dmdm employee -crossref all
+
+     DOMAIN              ATTRIBUTE           RELATION
+
+
+MTB-715                                Multics Technical Bulletin
+                                     MRDS Restructuring Subsystem
+
+     age                 age                 employee
+     city                city                employee
+     char_1              family              employee
+                         sex                 employee
+     dept                dept                department
+     job                 job                 employee
+     name                name                employee
+                                             department
+     salary              salary              employee
+     state               state               employee
+
+
+Multics Technical Bulletin                                MTB-715
+MRDS Restructuring Subsystem
+
+Request:     modify_primary_key, mpk
+
+     This request  modifies the order  of attributes, or  adds or
+deletes  attributes  from  the   primary  key  of  the  specified
+relation.
+
+Usage
+
+     mpk relation_name {-control_args}
+
+where
+1.   control_args
+     can be chosen from the following:
+
+     -insert attribute_name1 {[-before | -after] attribute_name2}
+          specifies  that attribute_name1 is  to be added  to the
+          primary key.  Optionally, the inserted attribute may be
+          placed in a specific place in the key by modifying this
+          control  argument with  -before (-be)  or -after (-af).
+          Both  attribute_name1  and  attribute_name2  must exist
+          within  the specified  relation.  If  -before or -after
+          are not  specified, attribute_name1 is appended  to the
+          end of the primary key.
+
+     -remove attribute_name
+          specifies  that  the  referenced  attribute  is  to  be
+          removed  from  the  primary   key  (but  not  from  the
+          relation).
+
+Notes
+
+     Because  the  shuffling  around  of  attributes  within  the
+primary key involves  copying the data in a relation,  it is much
+more  efficient if all  of the insert  and remove operations  are
+done with a single request line.
+
+
+MTB-715                                Multics Technical Bulletin
+                                     MRDS Restructuring Subsystem
+
+Request:     attribute_names, atnm
+
+     This request displays the names  of the attributes of a MRDS
+database.
+
+Usage
+
+     atnm {-control_args}, [atnm {-control_args}]
+
+where
+1.   control_args
+     can be chosen from the following:
+
+     -referenced, -ref
+          specifies  that only  referenced attributes  are to  be
+          displayed or returned.
+
+     -unreferenced, -unref
+          specifies that  only unreferenced attributes are  to be
+          displayed or returned.
+
+Notes
+
+     When used as a command, the  default is to display a list of
+all  attributes in  the MRDS   database; when  used as  an active
+function,  the  attributes  are  returned  as  a  list  with each
+attribute seperated by a space.
+
+     If  -referenced  and  -unreferenced  are  both  used  on the
+command  line, the  last occurrence  of either  of these  control
+arguments takes precedence.
+
+
+Multics Technical Bulletin                                MTB-715
+MRDS Restructuring Subsystem
+
+Request:     domain_names, dmnm
+
+     This  request displays the  names of the  domains of a  MRDS
+database.
+
+Usage
+
+     dmnm {-control_args}, [dmnm {-control_args}]
+
+where
+1.   control_args
+     can be chosen from the following:
+
+     -referenced, -ref
+          specifies  that  only  referenced  domains  are  to  be
+          displayed or returned.
+
+     -unreferenced, -unref
+          specifies  that  only  unreferenced  domains  are to be
+          displayed or returned.
+
+Notes
+
+     When used as a command, the  default is to display a list of
+all  domains  in  the  MRDS  database;  when  used  as  an active
+function,  the domains are  returned as a  list with each  domain
+seperated by a space.
+
+     If  -referenced  and  -unreferenced  are  both  used  on the
+command  line, the  last occurrence  of either  of these  control
+arguments takes precedence.
+
+
+MTB-715                                Multics Technical Bulletin
+                                     MRDS Restructuring Subsystem
+
+Request:     relation_names, rlnm
+
+     This request displays  the names of the relations  of a MRDS
+database.
+
+Usage
+
+     rlnm, [rlnm]
+
+Notes
+
+     When used as a command, the  default is to display a list of
+all  relations  in  the  MRDS  database;  when  used as an active
+function, the relations are returned as a list with each relation
+seperated by a space.
+
+
+Multics Technical Bulletin                                MTB-715
+MRDS Restructuring Subsystem
+
+Request:     update_submodel, usm
+
+     This request updates specified  MRDS submodels to correspond
+to the MRDS database currently being restructured.
+
+Usage
+
+     usm {submodel_path} {-control_args}
+
+where:
+1.   submodel_path
+     specifies  an  absolute  or  relative  pathname  to the .dsm
+     submodel  segment.   If  this  argument  is  not  given, all
+     submodels in the secure.submodels directory are updated.  If
+     the submodels being updated are  not of the current version,
+     they will  be converted to the current  version before being
+     updated and a warning will  be issued to the user indicating
+     this fact.
+
+2.   control_args
+     can be chosed from the following
+
+     -brief, -bf
+          specifies that the -check  display is suppressed.  This
+          is  the default.   The  last  occurrence of  -brief and
+          -long on the command line takes effect.
+
+     -check, -ck
+          specifies that the update  operation is not to actually
+          take place, but a trace  of all implied operations upon
+          the submodel is to be displayed on the users' terminal.
+          This  trace  will  consist  of  a  statement  for  each
+          relation  that   has  been  modified  and   a  list  of
+          attributes that have been deleted from that relation.
+
+     -long, -lg
+          specifies  that the  same output  from -check  is to be
+          displayed, however  the specified domains  are deleted.
+          The last occurrence of -brief  and -long on the command
+          line takes effect.
+
+
+MTB-715                                Multics Technical Bulletin
+                                     MRDS Restructuring Subsystem
+
+Changes to the CMDB language:
+
+In order to fully support  the cross-relation link concept, a new
+keyword will be  added to the cmdb language.  The  syntax of this
+keyword  is  shown  below,  and  should  be  added in the section
+describing  the Data Model  Source in the  create_mrds_db command
+documentation.   Also,  the   display_mrds_dm  command  shall  be
+enhanced to emit  this keyword upon finding a  link relation when
+creating a cmdb source segment.
+
+Because the targets  of the link relations are  not checked until
+runtime (when the  specific MRDS database is opened  for use), it
+is not necessary that the DBA doing the restructuring have access
+to  the  relation  or  database,  or  even  that the foreign MRDS
+database exist.  However,  a warning is issued if  either the DBA
+lacks  access  to  the  target  of  the  link  relations,  or the
+relations or database do not exist.
+
+The syntax of  the relation keyword must also change  in order to
+implement the  concept of MRDS databases  consisting of relations
+of more than  a single relation type.  This  will be accomplished
+by adding  an optional control  argument to the  relation keyword
+syntax, as noted below.
+
+Data Model Source
+
+     The basic  format for a  text segment containing  source for
+the create_mrds_db_command is as follows:
+
+domain :
+         domain_name_1 declaration_1 {options_1},
+                   .
+                   .
+         domain_name_N declaration_N {options_N};
+
+attribute :
+         attribute_name_1 attribute_1_domain_name,
+                   .
+                   .
+         attribute_name_N attribute_N_domain_name;
+
+relation :
+         relation_name_1 (
+              rel_1_key_attr_1* ... rel_1_key_attr_J*
+              rel_1_data_attr_1 ... rel_1_data_attr_K )
+                 {relation_type},
+
+
+Multics Technical Bulletin                                MTB-715
+MRDS Restructuring Subsystem
+
+                   .
+                   .
+         relation_name_N (
+              rel_N_key_attr_1* ... rel_N_key_attr_I*
+              rel_N_data_attr_1 ... rel_N_data_attr_P )
+                 {relation_type} ;
+
+link_relation :
+         relation_name_1 (
+              db_absolute_pathname_1 {foreign_relation_name_1} ),
+                   .
+                   .
+         relation_name_N
+              db_absolute_pathname_N {foreign_relation_name_N} );
+
+index :
+         indexed_relation_name_1 (
+              i_rel_1_i_attr_1 ... i_rel_1_i_attr_L ),
+                   .
+                   .
+         indexed_relation_name_N (
+              i_rel_N_i_attr_1 ... i_rel_N_i_attr_M );
+
+Note  that the  domain, attribute,  relation, link_relation,  and
+index statements  are terminated by semicolons,  while individual
+domain,  attribute, relation,  or link_relation  name definitions
+are separated by commas, with only spaces separating names within
+a relation.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

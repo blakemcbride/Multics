@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Message Coordinator Changes for MR12.1 (DSA).">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  MULTICS TECHNICAL BULLETIN                              MTB750-01
+
+  To:       MTB Distribution
+
+  From:     Maggie Sharpe
+            Stan Cox
+            Doug Parisek
+
+  Date:     April 3, 1987
+
+  Subject:  Message Coordinator Changes for MR12.1 (DSA)
+
+                 -----------------------------------
+
+  This MTB proposes changes to Message Coordinator (MC) software to
+  support DSA channels.  There are  two major sets of changes.  The
+  bulk  of the  change is   the introduction  of virtual  channels.
+  Several MC commands must be  modified to recognize and operate on
+  virtual  channels.   The  smaller  changes  involves  creation of
+  pending entries in the mc_anstbl.
+
+  Virtual channels are accessed through  the use of "-operator" and
+  "-virtual_channel  &lt;virtual channel  name&gt;" control  arguments to
+  the "login" pre-access command.  Only the login_server is made to
+  accept  these control  arguments,  thus  they are  only available
+  through  DSA  connections.   MTB-751,  The  MNA Answering Service
+  Modifications,  and  MTB-752,  Network   Login  Servers,  may  be
+  referenced for more details in this area.
+
+| Revisions to  this MTB detail the  function of the two  new login
+| pre-access    command   control    arguments,   -operator,    and
+| -virtual_channel.  Also, the  new operator command, "accept_vchn"
+| is  defined in  more detail.    This revision  also explains  the
+| circumstances under  which a user will  be automatically accepted
+| although the "vchn_requires_accept" installation parm is on.
+
+                 -----------------------------------
+
+  Comments should be sent to the authors:
+
+  via Forum:
+     &gt;udd&gt;Multics&gt;rjck&gt;meetings&gt;mnet on System-M
+
+  _________________________________________________________________
+
+  Multics project  internal documentation; not to  be reproduced or
+  distributed outside the Multics project without permission of the
+  Director of MDC.
+
+
+  MTB750-01                                      MC Changes for DSA
+
+                               CONTENTS
+
+                                                           Page
+
+     1:  Introduction  . . . . . . . . . . . . . . . . . . . . .   1
+     2:  The Problems  . . . . . . . . . . . . . . . . . . . . .   1
+     2.1:  Support For "dial system" . . . . . . . . . . . . . .   1
+     2.2:  Pre-accepting MC terminals through Network lines  . .   2
+     3:  The Solution  . . . . . . . . . . . . . . . . . . . . .   2
+     3.1:  Some Notes on Security  . . . . . . . . . . . . . . .   3
+     4:  Implementation  . . . . . . . . . . . . . . . . . . . .   4
+|    4.1:  Info files  . . . . . . . . . . . . . . . . . . . . .   6
+     4.2:  Include files . . . . . . . . . . . . . . . . . . . .   7
+     4.2.1:  mc_anstbl.incl.pl1  . . . . . . . . . . . . . . . .   7
+     4.2.2:  dial_event_message.incl.pl1 . . . . . . . . . . . .   9
+     4.2.3:  net_event_message.incl.pl1  . . . . . . . . . . . .  10
+     4.2.4:  installation_parms.incl.pl1 . . . . . . . . . . . .  13
+     4.3:  Summary of other modifications  . . . . . . . . . . .  13
+     4.3.1:  new calling sequences . . . . . . . . . . . . . . .  13
+        mc_commands_ . . . . . . . . . . . . . . . . . . . . . .  14
+           new_tty . . . . . . . . . . . . . . . . . . . . . . .  14
+           remove_tty  . . . . . . . . . . . . . . . . . . . . .  14
+           mc_login  . . . . . . . . . . . . . . . . . . . . . .  15
+           substty . . . . . . . . . . . . . . . . . . . . . . .  16
+           new_vchn  . . . . . . . . . . . . . . . . . . . . . .  17
+     4.3.2:  Changes to other modules  . . . . . . . . . . . . .  18
+     4.4:  Examples of MC commands . . . . . . . . . . . . . . .  20
+
+
+  MC Changes for DSA                                      MTB750-01
+
+  1:  INTRODUCTION
+
+  The message coordinator (MC) is  the body of software that allows
+  operators  to  dial  into  the  Initializer  process  and execute
+  operator commands  from a remote  terminal, i.e., other  than the
+  system console.
+
+  Currently,  there are  two ways  to obtain  an MC  terminal.  The
+  first method is  to designate certain channels as  MC channels in
+  the  CDT by  setting the   cdte.service_type for  the channel  to
+  MC_SERVICE.   The operator  "accept" command  may be  used at any
+  time  to  register  this  channel  in  the  mc_anstbl.   (This is
+  sometimes  done in  the system   start up.)   A terminal  on this
+  channel   can  accept   operator  input   or  display  pre-routed
+  information as soon as it is turned on.
+
+  The second method is to use  the "dial system { -user &lt;user_id&gt;}"
+  pre-access command.  A message such  as "Channel a.h004 dialed to
+  Initializer" will subsequently be  printed on the system console.
+  The system operator  may then use the "accept"  or "drop" command
+  to approve or to reject  the request respectively.  At some sites
+  the  operators are  required to  "sign on"  on MC  terminals upon
+  "acceptance".
+
+  Throughout this document, we will use the term "operator" to mean
+  an authenticated operator, i.e., one who  is signed on or able to
+  use an authenticated MC terminal.   The term "user" will apply to
+  anyone else accessing or seeking to access Multics.
+
+  2:  THE PROBLEMS
+
+  The basic  problem is to  make various MC  commands recognize DSA
+  channel  names.   They  are  of  the  form  DSA.&lt;session  control
+  name&gt;.&lt;session number&gt;,  e.g.  DSA.MUL1.0004.  Only  the commands
+  have   been  taught   to  distinguish   DSA  channels   by  name.
+  Subroutines  that are  called by  the commands,  and the programs
+  that  handle wakeups,  e.g.,  mc_tty_  and mc_wakeups,  use other
+  information in the mc_ate  (MC answer_table entry) to distinguish
+  MCS lines from network  lines.  This scheme isolates DSA-specific
+  code in a small portion of the programs.
+
+  In  addition, there  are two  other problems  to be  addressed to
+  support  MC service  over DSA  lines.  The  simple problem  is to
+  support the "dial system ..."  mechanism.  The more difficult one
+  is to provide a means of pre-accepting MC terminals.
+
+  2.1:  Support For "dial system"
+
+  When the  "dial system ..."   pre-access command is  used from an
+  MCS channel, the cdte.current_service type for the channel is set
+
+
+  MTB750-01                                      MC Changes for DSA
+
+  to  "MC_SERVICE".   The  MC  will  only  comply  with the "accept
+  x.xxxx" command  if the cdte.current_service has  the said value.
+  The  problem facing  us is  that there  is no  CDT entry  for DSA
+  channels, so the dial is recorded  in the mc_anstbl.  An entry is
+  created  in the mc_anstbl  and a new  flag, "pending", is  set to
+  distinguish the channel from "active" ones.
+
+  2.2:  Pre-accepting MC terminals through Network lines
+
+  Unless a channel  is hardwired, it is not  feasible to pre-accept
+  it for MC connections.  In network environments, the channel name
+  assigned  to   a  particular  connection  does   not  necessarily
+  correspond  to the  user or  the exact  physical location  of the
+  terminal.
+
+  Clearly,  the  alternative,  the  "dial   /  accept  /  sign  on"
+  combination  is rather  cumbersome.  It  is also  not a practical
+  solution for  sites that make  extensive use of  virtual consoles
+  and   pre-route  various   output  streams   to  pre-accepted  MC
+  terminals.
+
+  Furthermore, because DSA channel  names are dynamic, the "Channel
+  DSA.MUL1.0004  dialed to  initializer" message,  would not convey
+  enough information to the system  operator who is to approve/deny
+  the  connection.   This  is  why  the  login  server requires the
+  "-user" control  argument on the  "dial system" command.   Use of
+  this control argument causes the user's user_id to be included in
+  the message displayed on the system console.
+
+  3:  THE SOLUTION
+
+  To  resolve the  problem with   channel names,  we introduce  the
+  concept of virtual channels.  Like tty channels, virtual channels
+  can  be   pre-accepted,  using  the  "accept"   command,  and  be
+  designated as a destination of a virtual console using the define
+  operator  command.  This  can be  done before  or after  they are
+  actually connected  to a process.   Virtual channel names  may be
+  any ascii strings that do not contain a period (".").  This is to
+  simplify distinguishing real and virtual channel names.
+
+  The  only problem  then is  accessing the  virtual channel.   One
+  possible  solution would be  to add a  "-virtual_channel" control
+  argument to the dial command.   Of course, this control arg would
+  be used only in conjunction  with the "dial system" special case.
+  This  was  not  deemed  an  elegant  solution  and  was therefore
+  rejected.
+
+  Instead,   we   have   chosen   to   add   the   "-operator"  and
+  "-virtual_channel"  control arguments  to the  "login" pre-access
+  command.  "login &lt;user_id&gt; -operator"  will now be the equivalent
+
+
+  MC Changes for DSA                                      MTB750-01
+
+  of "dial  system -user &lt;user_id&gt;".  The user  is authenticated by
+  the  answering service,  so a  subsequent "sign  on" will  not be
+  required.  The user  must have the operator attribute  in the PNT
+  to use this control argument.
+
+  The "-operator" and "-virtual_channel" control arguments are only
+  available  when logging  in over  a network  channel.  Only login
+  servers  recognize these control  arguments and pass  the correct
+  information to the answering service  (AS).  (Please refer to MTB
+  752 for details  on the interaction between the  Login Server and
+| the  Answering  Service.)   -operator,  -op  specifies  that  the
+| terminal the  operator is logging  in on should  be authenticated
+| for operator  or message coordinator use.  The  operator must use
+| the accept  initializer command (from another  terminal which has
+| already  been authenticated)  to  approve  this request.   If the
+| -vchannel  control argument (described  below) is also  used, and
+| the specified  virtual channel has been  preaccepted, the request
+| is automatically  accepted.  The vchn_requires_accept  keyword in
+| the installation_parms  segment may be  used to require  a manual
+| "accept" by  a validated operator whenever  the "login -operator"
+| command is issued by someone other than the operator signed on at
+| the  bootload  console.   The  -operator  control  argument  also
+| eliminates the need for the  operator to use a subsequent sign_on
+| initializer  command.   The  operator  must  have  the "operator"
+| attribute in the PNT to use the -operator control argument.
+|
+| -vchannel STR, -vchn STR identifies the virtual channel specified
+| by STR as the one to be  used to connect the terminal to Multics.
+| For example,  the command line  below specifies that  the virtual
+| channel vchn1 is to be  associated with the terminal the operator
+| is currently logging in on.
+|
+|         l Smith -op -vchn vchn1
+|
+| The  -operator   control  argument  (described  above)   must  be
+| specified or the -vchannel control argument will not be accepted.
+
+  3.1:  Some Notes on Security
+
+  The use of the "-user" control argument with the dial command for
+  MCS  channels is  regulated by   the Check_acs  parameter in  the
+  CMF.(1)   The  operator  "sign  on"  requirement  depends  on the
+  "vchn_requires_accept"  installation  parameter.   Therefore,  on
+  sites  where security  is an   important issue,  accessing an  MC
+  terminal via  the "dial system"  method requires a  user to enter
+
+  _________________________________________________________________
+
+  (1) The Network  Information Table (NIT) has  a similar parameter
+      to Check_acs which  regulates the use of "-user"  on the dial
+      command when the dial_identifier is not "system".
+
+
+  MTB750-01                                      MC Changes for DSA
+
+  the  user_id and  password twice.   The MC  has been  modified to
+  authenticate  the user  exactly once.   (A sign_on  will still be
+  required  after the  maximum inactive  time for  the operator has
+  elapsed.)
+
+  This allows anyone eligible to sign on as an operator to do so at
+  any  time.  Where  this may  be a  problem, sites  are allowed to
+  further  restrict  the  use  of  virtual  channels  by  using the
+  "vchn_requires_accept" installation  parm.  In this case,  if the
+  user  is  not  already  "signed  on"  on  another MC terminal, an
+| "accept" by  an authenticated operator is required.   If the user
+| is already "signed on" on another  MC terminal and he attempts to
+| sign_on to  another MC terminal via  the -virtual_channel control
+| argument, and the "vchn_requires_accept" installation parm is ON,
+| he will be automatically accepted  as long as the virtual channel
+| was pre-defined for MC use  via the "accept_vchn" command.  If an
+  "accept"  is  required,  a  pending  entry  is  created  for this
+  channel.   On  the  other  hand,   when  a  user  connects  to  a
+  pre-accepted terminal without  operator intervention, the message
+  "Channel  x.xxxx dialed  to Initializer  (&lt;user_id&gt; ACCEPTED)" is
+  displayed on the system console.
+
+  In addition, a new command, "accept_vchn", may be used instead of
+  "accept".  In this case the virtual channel is created and may be
+  specified  in  any  subsequent  "define"  and  "route"  commands.
+  However,  the "vchn_requires_accept" flag  for the entry  will be
+  turned on.   This flag overrides all  other conditions, requiring
+| an operator to "accept" the  channel before it is connected.  The
+| command is similar in syntax and functionality to the initializer
+| "accept"  command.   The  difference  is  that  the "accept_vchn"
+| command is  used to preaccept  terminal device channels  that are
+| virtual channels,  while the "accept"  command is used  to accept
+| terminal  device channels  with "real"  channel identifiers.  The
+| syntax  of the  accept_vchn command  is defined  below.  See also
+| "Preaccepting Terminals Associated With  DSA Channels" in section
+| 8 of the DSA Admin Guide for additional information on the use of
+| the "accept_vchn" command.
+
+  4:  IMPLEMENTATION
+
+  When the -op  control arg is used, the login  server will send an
+  "operator request"  to the AS, requesting validation  of the user
+  as an operator.   If the user can be validated  then the AS calls
+  the new entrypoint mc_commands_$mc_logins, to inform the MC.  The
+  calling sequence is as follows:
+
+  call mc_commands_$mc_login (physical_channel_name, operator_name,
+  vchn_name,  login_server_procid, ls_term_ev_chn,  ls_resp_ev_chn,
+  ls_handle, code)
+
+
+  MC Changes for DSA                                      MTB750-01
+
+  If no virtual  channel is used, a pending entry  is created.  The
+  message "Channel  &lt;chn_id&gt; dialed to initializer  (&lt;user_id&gt;)" is
+  displayed  on the  console.  If  a virtual  channel is specified,
+  then   it  must  already   exist  in  the   mc_anstbl,  otherwise
+  error_table_$vchn_not_found is returned.   If the virtual channel
+  exists  but  is  currently  in  use,  error_table_$vchn_active is
+  returned.  In  these two cases the Answering  Service will inform
+  the Login Server of the unsuccessful validation.
+
+  If  the mc_ate.vchn_requires_accept and  the vchn_requires_accept
+  installation parm are both OFF,  the user is automatically signed
+  on and the message
+     Channel &lt;chn_id&gt; dialed to initializer (&lt;user_id&gt; ACCEPTED)
+  is     displayed      on     the     system      console.      If
+  mc_ate.vchn_requires_accept is ON, the  login must be accepted by
+  the   operator.    Otherwise,    when   the   Installation   Parm
+  vchn_requires_accept is ON, the login must be accepted unless the
+  user is already signed on another authorized MC terminal.
+
+  When a terminal is accepted, or  when a pending entry is dropped,
+  the    approval/rejection    response    is    sent    over   the
+  mc_ate.ls_resp_event_chn  to the  login server  via an  "operator
+  response".  If, on the other hand, a terminal is dropped after it
+  has  been  accepted,  a  termination  response  is  sent over the
+  mc_ate.ls_term_ev_chn.
+
+
+  MTB750-01                                      MC Changes for DSA
+
+| 4.1:  Info files
+|
+| ___________                                           ___________
+|
+| accept_vchn                                           accept_vchn
+| ___________                                           ___________
+| NAME:  ACCEPT_VCHN
+|
+| SYNTAX AS A COMMAND
+|
+| accept_vchn virtual_channel_name {authorization} {target}
+|    {bc_list}
+|
+| FUNCTION
+|
+| accepts a virtual terminal device  channel and connects it to the
+| message coordinator's  device complement.  This command  can only
+| be used in ring 4.
+|
+| ARGUMENTS
+|
+| virtual_channel_name
+|    is the name of a virtual channel.  The name can be up to 32
+|    characters long.  It cannot include periods (.).  This
+|    argument cannot be set to "otw_" because "otw_" is reserved
+|    for the bootload console.
+|
+| ARGUMENTS
+|
+| authorization
+|    specifies the authorization which should be assigned to this
+|    virtual channel.  It must be one of the following:
+|
+|    full
+|       the device is able to issue all intializer commands.  This
+|       is the default.
+|
+|    none
+|       no commands are allowed.
+|
+|    reply
+|       only the reply command is allowed.
+|
+|    query
+|       only the who and hmu commands are allowed.
+|
+|    daemon
+|       only the reply, intercom, and exec commands are allowed.
+|
+|  target
+|     specifies the source name identifying the daemon to which
+|     reply commands will be directed.  This argument is used for
+
+
+  MC Changes for DSA                                      MTB750-01
+
+|     terminals dedicated to the control of a single I/O daemon.
+|     The default name is *.
+|
+|  bc_list
+|     specifies that a broadcast list should be used.  This list
+|     identifies channels to which will be sent copies of input
+|     entered at the terminal associated with virtual_channel_name.
+|     If the bc_list argument is set to a broadcast list, both
+|     virtual channels and DSA channel_ids can be used.  Each
+|     channel name can be up to 32 characters in length.  Up to ten
+|     channel names can be specified, separated by commas.  If the
+|     bc_list argument is set to "none", the current broadcast list
+|     is cleared.  If the bc_list argument is not specified, the
+|     broadcast list previously specified (if any) remains
+|     unchanged.
+|
+| EXAMPLES
+|
+| The example below specifies that  operator commands to the backup
+| daemon  can be  submitted from  the terminal  associated with the
+| virtual channel vchn1.
+|
+|    accept_vchn vchn1 reply bk
+
+  4.2:  Include files
+
+  Three include files must be modified.  The proposed modifications
+  are marked by change bars described below.
+
+  4.2.1:  MC_ANSTBL.INCL.PL1
+
+     dcl    1 mc_anstbl                   based (mc_ansp) aligned,
+              2 max_size                  fixed bin,
+              2 current_size              fixed bin,
+              2 mc_procid                 bit (36),
+              2 sysdir                    char (168),
+              2 mrtp                      ptr,
+              2 vconsp                    ptr,
+              2 cons_cont_proc            entry,
+              2 con_rec,
+                3 mc_ate_ptr              ptr,
+                3 ec_id                   fixed bin (71),
+                3 seq_num                 fixed bin (35),
+                3 offset                  bit (18),
+                3 flags,
+                  4 enabled               bit (1) unaligned,
+                  4 active                bit (1) unaligned,
+              2 n_sources                 fixed bin,
+              2 max_sources               fixed bin,
+              2 current_time              fixed bin (71),
+
+
+  MTB750-01                                      MC Changes for DSA
+
+              2 trace                     bit (1) aligned,
+              2 pad                       (30) bit (36) aligned,
+              2 entry                     (0 refer
+                                          (mc_anstbl.current_size))
+                                          aligned like mc_ate;
+
+     dcl    1 mc_ate                      based (mc_atep) aligned,
+              2 flags                     aligned,
+  |             3 virtual                 bit (1) unaligned,
+  |             3 pending                 bit (1) unaligned,
+                3 active                  bit (1) unaligned,
+                3 the_system_console      bit (1) unaligned,
+                3 a_system_console        bit (1) unaligned,
+                3 pad001                  bit (1) unaligned,
+                3 signed_on               bit (1) unaligned,
+                3 reply_restricted        bit (1) unaligned,
+                3 broadcast               bit (1) unaligned,
+                3 broadcast_all           bit (1) unaligned,
+  |             3 vchn_requires_accept    bit (1) unaligned,
+                3 pad                     bit (25) unaligned,
+  |           2 virtual_tty_name          char (32) unaligned,
+  |           2 real_tty_name             char (32) unaligned,
+              2 cdtep                     pointer,
+              2 iocb                      pointer,
+              2 sci_ptr                   pointer,
+              2 tra_vec                   fixed bin,
+              2 restrict_reply            char (32),
+              2 n_casts                   fixed bin,
+              2 cast                      (10) char (32),
+              2 oper_info,
+                3 personid                char (32),
+                3 last_input_time         fixed bin (71),
+              2 queue_ptr                 ptr,
+              2 queue_event               fixed bin (71),
+              2 event                     fixed binary (71),
+  |           2 ls_procid                 bit (36),
+  |           2 ls_term_ev_chn            fixed bin (71),
+  |           2 ls_resp_ev_chn            fixed bin (71),
+  |           2 ls_handle                 bit (72),
+              2 authority,
+                3 privilege               (36) bit (1) unaligned,
+              2 control,
+                3 inhibit                 bit (1) unal,
+                3 output_wait             bit (1) unal,
+                3 output_pending          bit (1) unal,
+                3 unused                  bit (33) unal;
+
+  declare   (
+            MC_WAIT_DIALUP                init (1),
+            MC_WAIT_ANSWERBACK            init (2),
+            MC_WAIT_READY                 init (3),
+            MC_WAIT_COMMAND               init (4)
+
+
+  MC Changes for DSA                                      MTB750-01
+
+            )                             fixed bin int static
+                                          options (constant);
+
+  where:
+
+  flags.virtual
+            Distinguishes  virtual channels  from "real"  channels.
+            (NEW)
+
+  flags.pending
+            Distinguishes  pending channels  from active  channels.
+            If a login is pending on a virtual channel, both active
+            and pending flags are on.  (NEW)
+
+  flags.vchn_requires_accept
+            Requires  the operator  to accept  or reject  the dial.
+            (NEW)
+
+  virtual_tty_name
+            Is the name of the  virtual channel for this entry.  If
+            no virtual channel is used,  this has the same value as
+            real_tty_name.   Only   this  name  may  be   used  for
+            destinations of virtual consoles.(NEW)
+
+  real_tty_name
+            Is  the name of  the actual communications  channel for
+            this entry.  (Replaces mc_ate.tty_name)
+
+  ls_procid Process_id of the login server who will wake us up with
+            connect  and  disconnect  --   used  only  for  network
+            channels.  (NEW)
+
+  ls_term_ev_chn
+            Event  channel  to  send  terminate  response  to login
+            server.  (NEW)
+
+  ls_resp_ev_chn
+            Event  channel  to  send  operator  response  to  login
+            server.  (NEW)
+
+  ls_handle The login server handle for this connection.  (NEW)
+
+  4.2.2:  DIAL_EVENT_MESSAGE.INCL.PL1
+
+  /*  This  include  file  describes  the  event  message  sent  by
+  dial_ctl_ and login servers */
+
+  dcl dial_event_message_ptr pointer;
+
+
+  MTB750-01                                      MC Changes for DSA
+
+       dcl 1 dial_event_message
+                           aligned based (dial_event_message_ptr),
+             2 description char (6) unaligned,
+             2 flags       unal,
+               3 error_msg bit (1), /* indicates description field
+                           contains standard error code */
+               3 ls_msg    bit (1), /* indicates message from login
+                           server, name in user_message */
+               3 control   bit (15);
+
+  where:
+
+  description
+            is the event message description.
+
+  error_msg indicates  descripion  field  contains  standard  error
+            code.
+
+  ls_msg    indicates message from the login server
+
+  control   can be one of the constants defined below.
+
+  /* overlay  of description, contains unique  part of user_message
+  handle if any */
+
+  dcl    dial_event_message_handle   bit    (54)   aligned    based
+  (dial_event_message_ptr);
+
+  /* possible values for dial_event_message.control */
+
+  dcl (JUST_DIALED bit (15) aligned initial ("77770"b3),
+
+       JUST_HUNGUP bit (15) aligned initial ("77771"b3),
+       DIALS_ALLOWED bit (15) aligned initial ("77772"b3),
+       DIALS_DENIED bit (15) aligned initial ("77773"b3)
+       ) internal static options (constant);
+
+  4.2.3:  NET_EVENT_MESSAGE.INCL.PL1
+
+  dcl net_event_message_arg fixed bin (71); /* For calling IPC */
+
+  dcl NET_EVENT_MESSAGE_VERSION_1  bit (2) internal  static options
+  (constant) init ("10"b);
+
+       dcl 1 net_event_message
+                             aligned based (addr
+                           (net_event_message_arg)),
+             2 version     bit (2) unaligned,
+
+
+  MC Changes for DSA                                      MTB750-01
+
+             2 reason      bit (16) unaligned,
+             2 pad         bit (4) unaligned,
+             2 network_type
+                           fixed bin (4) unsigned unaligned,
+             2 type        fixed bin (8) unsigned unaligned,
+             2 handle      fixed bin (35) aligned;
+
+  where:
+
+  network_type
+            is the type of network.  See below for constants.
+
+  type      is the type of interupt.  See below for constants.
+
+  handle    is the caller's handle (devx for MCS, handle for DSA).
+
+  /* Network type constants */
+
+  dcl  MCS_NETWORK_TYPE           fixed  bin (4)  unsigned internal
+                                static options (constant) init (0);
+  dcl  DSA_NETWORK_TYPE           fixed  bin (4)  unsigned internal
+                                static options (constant) init (1);
+
+  /* MCS event message type constants */
+
+  dcl  MAX_MCS_EVENT_MSG_TYPE     fixed bin internal static options
+                                (constant) init (8);
+  dcl  MCS_UNSPECIFIED_MSG        fixed bin internal static options
+                                (constant)  init (0);  /* used  for
+                                "start" order, etc.  */
+  dcl  MCS_DIALUP_MSG             fixed bin internal static options
+                                (constant) init (1); /* dialup */
+  dcl  MCS_HANGUP_MSG             fixed bin internal static options
+                                (constant) init (2); /* hangup */
+  dcl  MCS_DIALOUT_MSG            fixed bin internal static options
+                                (constant)  init  (3);  /*  dialout
+                                status returned */
+  dcl  MCS_QUIT_MSG               fixed bin internal static options
+                                (constant) init (4); /* quit */
+  dcl  MCS_READ_MSG               fixed bin internal static options
+                                (constant)   init  (5);   /*  input
+                                arrived */
+  dcl  MCS_WRITE_MSG              fixed bin internal static options
+                                (constant)  init   (6);  /*  output
+                                completed */
+  dcl  MCS_LINE_STATUS_MSG        fixed bin internal static options
+                                (constant)  init  (7);  /*  control
+                                tables sent status */
+  dcl  MCS_MASKED_MSG             fixed bin internal static options
+                                (constant) init (8);
+                                 /* 0 */
+                                "dialup", /* 1 */
+
+
+  MTB750-01                                      MC Changes for DSA
+
+                                "hangup", /* 2 */
+                                "dialout status", /* 3 */
+                                "quit", /* 4 */
+                                "read", /* 5 */
+                                "write", /* 6 */
+                                "line status", /* 7 */
+  dcl  DSA_RESUME_MSG             fixed bin (8) uns internal static
+                                options (constant) init (10);
+  dcl  DSA_RESUME_ACK_MSG         fixed bin (8) uns internal static
+                                options (constant) init (11);
+  dcl  DSA_SUSPEND_MSG            fixed bin (8) uns internal static
+                                options (constant) init (12);
+  dcl  DSA_SUSPEND_ACK_MSG        fixed bin (8) uns internal static
+                                options (constant) init (13);
+  dcl  DSA_TERM_ABNORMAL_MSG      fixed bin (8) uns internal static
+                                options (constant) init (14);
+  dcl  DSA_ESTABLISHMENT_MSG      fixed bin (8) uns internal static
+                                options (constant) init (15);
+  dcl  DSA_TERMINATED_MSG         fixed bin (8) uns internal static
+                                options (constant) init (16);
+  dcl  DSA_USER_UNASSIGN_MSG      fixed bin (8) uns internal static
+                                options (constant) init (17);
+  dcl  DSA_DATA_INPUT_MSG         fixed bin (8) uns internal static
+                                options (constant) init (18);
+  dcl  DSA_DATA_OUTPUT_MSG        fixed bin (8) uns internal static
+                                options (constant) init (19);
+
+  dcl  DSA_MSG_TYPE_TO_PNAME      (0:19) char  (20) internal static
+                                options       (constant)       init
+                                ("unspecified"),
+                                /* 0 */
+                                "attention", /* 1 */
+                                "data_attention", /* 2 */
+                                "demand_release_sru", /* 3 */
+                                "demand_turn", /* 4 */
+                                "demand_turn_ack", /* 5 */
+                                "purge", /* 6 */
+                                "recover", /* 7 */
+                                "recover_ack", /* 8 */
+                                "release_sru", /* 9 */
+                                "resume", /* 10 */
+                                "resume_ack", /* 11 */
+                                "suspend", /* 12 */
+                                "suspend_ack", /* 13 */
+                                "terminate_abnormal", /* 14 */
+                                "establishment", /* 15 */
+                                "terminated", /* 16 */
+                                "user_unassign", /* 17 */
+                                "data input", /* 18 */
+                                "data output"); /* 19 */
+
+
+  MC Changes for DSA                                      MTB750-01
+
+  4.2.4:  INSTALLATION_PARMS.INCL.PL1
+
+  Add:
+       installation_parms.vchn_requires_accept bit (1) aligned.
+  If  TRUE, an  operator must   accept/drop all  "login -op  -vchn"
+  attempts.   The  space  for  this  parameter  is  taken  from the
+  installation_parms.end_pad component.
+
+  4.3:  Summary of other modifications
+
+  This section contains the calling  sequences for new and modified
+  subroutines,  and  short  descriptions   of  all  other  modified
+  programs.
+
+  4.3.1:  NEW CALLING SEQUENCES
+
+
+  MTB750-01                                      MC Changes for DSA
+
+  ____________                                         ____________
+
+  mc_commands_                                         mc_commands_
+  ____________                                         ____________
+
+  Name:  mc_commands_
+
+               ________________________________________
+
+  Entry:  mc_commands_$new_tty
+
+  USAGE
+
+       dcl  mc_commands_$new_tty entry (char (*), bit (36), bit (1)
+                 al, ptr, fixed bin (35));
+
+       call mc_commands_$new_tty (channel_id, authority, cdte_flag,
+                 mc_ate_ptr, code);
+
+  ARGUMENTS
+
+  cdte_flag           (New Input Parameter)
+            If "1"b  then channel_id is an  MCS channel; otherwise,
+            it is a network channel.
+
+               ________________________________________
+
+  Entry:  mc_commands_$remove_tty
+
+  USAGE
+
+       dcl  mc_commands_$remove_tty entry (fixed bin (71), bit (1)
+                 al, fixed bin (35));
+
+       call mc_commands_$remove_tty (channel_id, drop_flag, code);
+
+  ARGUMENTS
+
+  drop_flag           (New Input Parameter)
+            If "1"b  then disconnect the terminal.   Currently, the
+            terminal is dropped in  admin_$drop after the mc_ate is
+            deleted.   This will no  longer be possible  as network
+
+
+  MC Changes for DSA                                      MTB750-01
+
+  ____________                                         ____________
+
+  mc_commands_                                         mc_commands_
+  ____________                                         ____________
+
+            channels  require   information  from  the   mc_ate  to
+            disconnect  the terminal.    The drop_flag  is required
+            because  mc_commands_$remove_tty  is   also  called  by
+            mc_tty_  when a  terminal hangs  up.  In  this case the
+            disconnection step  must be omitted.  Updating  the CDT
+            entry is still done in mc_tty_ in this case.
+
+               ________________________________________
+
+  Entry:  mc_commands_$mc_login
+
+       This new entrypoint validates the user as an operator.
+
+  USAGE
+
+       dcl  mc_commands_$mc_login entry (char (*), char (*), char
+                 (*), bit (36), fixed bin (71), fixed bin (71), bit
+                 (72), fixed bin (35));
+
+       call mc_commands_$mc_login (physical_channel_name,
+                 operator_name, vchn_name, login_server_procid,
+                 ls_term_ev_chn, ls_resp_ev_chn, ls_handle, code);
+
+  ARGUMENTS
+
+  physical_channel_name
+            is the actual name of the channel, e.g., dsa.MUL1.0006.
+            This name will be saved in mc_ate.real_tty_name.
+
+  operator_name
+            is the person_id of the user attempting to access an MC
+            terminal.     This    name    will    be    saved    in
+            mc_ate.oper_info.personid.
+
+  vchn_name is the name  of the virtual channel to be  used.  If it
+            is  blank,  a  virtual  channel  is  not requested, and
+            mc_ate.virtual_tty_name   will   be    set   equal   to
+            mc_ate.real_tty_name.
+
+  login_server_procid
+            is  the process_id  of the  login server  who owns this
+            channel.
+
+
+  MTB750-01                                      MC Changes for DSA
+
+  ____________                                         ____________
+
+  mc_commands_                                         mc_commands_
+  ____________                                         ____________
+
+  ls_term_ev_chn
+            is  the event  channel over  which we  send termination
+            responses  to the login  server.  This would  happen if
+            the operator drops a terminal already in MC service.
+
+  ls_resp_ev_chn
+            is  the  event  channel  over  which  we  send operator
+            responses to the login  server.  This would happen when
+            the operator accepts or drops a channel pending accept,
+            or when a terminal is automatically accepted.
+
+  ls_handle The handle for communicating with the login server.
+
+  code      is a standard system error code.
+
+               ________________________________________
+
+  Entry:  mc_commands_$substty
+
+  USAGE
+
+       dcl  mc_commands_$substty entry (char (*), char (*), bit
+                 (1), ptr, bit (1), fixed bin (35));
+
+       call mc_commands_$substty (remove_channel,
+                 replacement_channel, cdte_flag, mc_ate_ptr,
+                 drop_flag, code);
+
+  ARGUMENTS
+
+  cdte_flag           (New Input Parameter)
+            If "1"b  then channel_id is an  MCS channel; otherwise,
+            it  is  a  network  channel.   This  parameter  is also
+            described in the new_tty entrypoint.
+
+  drop_flag           (New Input Parameter)
+            If "1"b  then disconnect the terminal.   This parameter
+            is also described in the remove_tty entrypoint.
+
+
+  MC Changes for DSA                                      MTB750-01
+
+  ____________                                         ____________
+
+  mc_commands_                                         mc_commands_
+  ____________                                         ____________
+
+  Entry:  mc_commands_$new_vchn
+
+       This       new      entrypoint       is      called       by
+  operator_mc_cmds_$accept_vchn  which behaves  exactly as  accept,
+  except that it  accepts only virtual channel names  and calls the
+  mc_commands_$new_vchn   instead  of   mc_commands_$new_tty.   The
+  parameters  are  the  same  as  mc_commands_$new_tty  except that
+  cdte_flag is not needed.
+
+  The  two entries differ  only in that  mc_commands_$new_vchn sets
+  mc_ate.flags.vchn_requires_accept to TRUE.
+
+  USAGE
+
+       dcl  mc_commands_$new_vchn entry (char (*), bit (36), ptr,
+                 fixed bin (35));
+
+       call mc_commands_$new_vchn (channel_id, authority,
+                 cdte_flag, mc_ate_ptr, code);
+
+  ARGUMENTS
+
+
+  MTB750-01                                      MC Changes for DSA
+
+  ____________                                         ____________
+
+  mc_commands_                                         mc_commands_
+  ____________                                         ____________
+
+  4.3.2:  CHANGES TO OTHER MODULES
+
+    o  admin_
+            Because admin_  has become too large to  compile with a
+            complete symbol table, we will be taking the MC related
+            commands    out    and    into    the    new    module,
+            operator_mc_cmds_.   These commands  are accept,  drop,
+            substty,  define, redefine,  undefine, route,  deroute,
+            and  reroute.  (This is  the subject of  MCR7407.)  The
+            new  command, accept_vchn will  also be placed  in this
+            program.
+
+    o  mc_tty_
+            to distinguish  network event messages form  tty_ ones.
+            net_event_message.incl.pl1 was modified to help mc_tty_
+            decode the event types.
+
+            to accept  wakeups from the  login server who  owns the
+            channel and from session_control.
+
+            to create the iocb for network channels after receiving
+            the DIALUP  wakeup from the login  server.  MCS channel
+            support the listen control  order which can be executed
+            before the channel is actually connected.
+
+            to  read the  answerback for  all network  channels; if
+            answerbacks  are supported,  to set  the terminal type,
+            otherwise to set the default terminal type for the line
+            type.   Because  DSA  does   not  support  setting  the
+            terminal  type after  connection, if  the line  type is
+            DSA, the "stty" is skipped.
+
+    o  bound_system_control_::sc_request_table_.alm
+            Modify  to  reflect  the  changes  made  to admin_.pl1.
+            bound_system_control_::sc_requests_.pl1:
+
+    o  sc_requests_$go
+            to   initialize    sc_stat_$vchn_requires_accept   from
+            installation_parms.incl.pl1.
+
+    o  bound_system_control_::sc_requests_$self_identify
+            to identify  the virtual channel name  when an operator
+            types a "."  on an MC terminal.  The full message looks
+            like:
+
+
+  MC Changes for DSA                                      MTB750-01
+
+  ____________                                         ____________
+
+  mc_commands_                                         mc_commands_
+  ____________                                         ____________
+
+            system control:  channel DSA.MUL1.0004 (virtual channel
+            BKC_VCHN) signed on.
+
+            The paranthetical expression will not be displayed if a
+            virtual channel is not in use.
+
+    o  bound_system_control_::sc_stat_.alm:
+            Modify  to  define  sc_stat_$vchn_requires_accept.   It
+            represents  the value of  the installation parm  by the
+            same name.
+
+    o  bound_system_control_::sc_process_command_line_.pl1
+            Modify   to   use   mc_ate.real_tty_name   instead   of
+            mc_ate.tty_name.
+
+    o  bound_as_mc_::mc_con_rec_.pl1
+            Recompile with  new mc_anstbl.incl.pl1.  Change  to not
+            call hpchs_ entries if the test answering service is in
+            use.
+
+    o  bound_as_mc_ mc_quiesce_.pl1:
+            Recompile with new mc_anstbl.incl.pl1.
+
+    o  bound_as_mc_::mc_util_.pl1:
+            Modify    to    use    new    calling    sequence   for
+            mc_commands_$new_tty.
+
+    o  bound_as_mc_::mc_wakeups_.pl1
+            Modify  to use  the mc_ate.virtual_tty_name  instead of
+            mc_ate.tty_name.   Fixed  bug  in  "router"  entrypoint
+            which loses  the source name in messages  when the last
+            destination  for a virtual  console is deleted  and the
+            output reverts to the default virtual console.
+
+    o  bound_as_mc_::restart_mc_ttys_.pl1:
+            Recompiled with new mc_anstbl.incl.pl1.
+
+    o  bound_as_mc_::display_mc_anstbl.pl1
+            Modify to display pending entries by default (Currently
+            only  active entries  are printed  by default).   Also,
+            modify to accept "-pending"  control argument and, when
+            specified, to display any pending entries.
+
+    o  error_table_.alm
+            Add two new error codes:
+
+
+  MTB750-01                                      MC Changes for DSA
+
+  ____________                                         ____________
+
+  mc_commands_                                         mc_commands_
+  ____________                                         ____________
+
+       vchn_active
+                 "Specified    virtual     channel    is    already
+                 active/pending."   Used when   a user  specifies a
+                 virtual channel that is  already in use or pending
+                 an accept on the login command.
+
+       vchn_not_found
+                 "Specified virtual channel  is not defined."  Used
+                 when  a user specifies  a virtual channel  that is
+                 not defined in the mc_anstbl on the login command.
+
+  4.4:  Examples of MC commands
+
+  A  site  wishes  to  use  an  MC  terminal  for  all  output from
+  Backup.SysDaemon.  Channel a.h004 is to be used for this purpose.
+  It is located in a safe  location and the site can pre-accept the
+  terminal with no concern for its security.
+
+  The  site  would  include  the  following  lines  in  the  system
+  start_up:
+
+                                (Comments)
+  accept a.h004                 (register   the    terminal.    The
+                                cdte.service_type  for   a.h004  is
+                                MC_SERVICE.)
+  accept a.h005                 (register   another  MC   terminal.
+                                Same service_type as above.)
+  define BK_VCONS tty a.h004    (define a new  virtual console or a
+                                new  destination  for  an  existing
+                                one.  Up to 32 virtual consoles may
+                                be defined.)
+  route bk stream_i/o BK_VCONS  (route the output from source bk to
+                                this virtual console)
+  Note:  When logging in Backup.SysDaemon, "bk" (from the route example above)
+       is used  for the source_id parameter.  All  output from this
+       instance  of  Backup.SysDaemon  will  be  saved  in  a queue
+       segment  for a.h004.   When a  terminal comes  up on channel
+       a.h004, the  saved output and any subsequent  output will be
+       displayed on it.
+
+       Examples  of the remaining  MC commands follow:   (The other
+       "accept",  "route"  and  "define"  statements  establish the
+       background for examples for "deroute", "reroute", "undefine"
+       and "redefine".)
+  define BK_ERR_VCONS tty a.h004
+  define BK_ERR_VCONS tty a.h005
+
+
+  MC Changes for DSA                                      MTB750-01
+
+  ____________                                         ____________
+
+  mc_commands_                                         mc_commands_
+  ____________                                         ____________
+
+                                (define  another  virtual  console;
+                                establish a.h004 and  a.h005 as its
+                                destinations.  Each  vcons may have
+                                up to 8  destinations.  Each source
+                                may  be  associated  with  up  to 8
+                                virtual consoles.)
+
+  route bk error_output BK_ERR_VCONS
+                                (Up to 16 sources may be defined in
+                                the Message Routing Table.)
+  reroute bk error_output BK_ERR_VCONS BK_VCONS
+                                (error_output from bk  will be sent
+                                to     BK_VCONS      instead     of
+                                BK_ERR_VCONS)
+  route bk error_output BK_ERR_VCONS
+                                (error output from  bk will be sent
+                                to both.)
+  redefine BK_ERR_VCONS a.h005 a.h004
+                                (everything routed  to BK_ERR_VCONS
+                                will   go  to  a.h004   instead  of
+                                a.h005.   This means that  2 copies
+                                of  bk  error_output   will  go  to
+                                a.h004:   one  from  BK_VCONS,  the
+                                other from BK_ERR_VCONS.)
+  deroute bk error_output BK_VCONS
+                                (do  not  send  bk  error_output to
+                                BK_VCONS.)
+  undefine BK_ERR_VCONS a.h004  (remove a.h004 from the destination
+                                list of BK_ERR_VCONS.)
+  drop a.h005                   (remove   a.h005  from   all  vcons
+                                entries;   remove   the   mc_anstbl
+                                entry;  disconnect  the  line.   It
+                                must  be  "accepted"  and "defined"
+                                again before it can be used.)
+
+  The following  examples demonstrating the usage  of "substty" and
+  other uses of  "accept", "drop" would not be placed  in the start
+  up.
+
+  USER: login JSmith -op        (User is  on channel dsa.MUL1.0006.
+                                The  operator  is  informed  of the
+                                dial.)
+  OPER: accept dsa.MUL1.0006    (a.h006  may now  be used  to enter
+                                any system control commands.)
+  OPER: substty a.h004 dsa.MUL1.0006
+                                (If  for  some  reason  a.h004 went
+                                down, this  command may be  used to
+
+
+  MTB750-01                                      MC Changes for DSA
+
+  ____________                                         ____________
+
+  mc_commands_                                         mc_commands_
+  ____________                                         ____________
+
+                                send  all   queued  and  subsequent
+                                messages     for      a.h004     to
+                                dsa.MUL1.0006 instead.)
+  USER: login LHacker -op       (User on dsa.MUL1.0007)
+  OPER: drop dsa.MUL1.0007      (Operator  does not  wish to  allow
+                                this  user to  use an  MC terminal.
+                                This  command  removes  the pending
+                                entry  and  sends  a  rejection  to
+                                login server's  operator validation
+                                request.)
+  OPER: drop dsa.MUL1.0006      (We  are done  with this  terminal.
+                                The  mc_ate is  removed; the  login
+                                server  is requested  to disconnect
+                                the channel.)
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

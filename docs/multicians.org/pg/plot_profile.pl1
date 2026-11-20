@@ -1,0 +1,228 @@
+/* PLOT_PROFILE - Program to read in the output of the profile command and
+   plot it thru the graphics system.
+
+   Written 760422 by PG
+*/
+
+plot_profile: ppf:
+     procedure;
+
+/* builtins */
+
+dcl (addr, allocation, before, binary, dim, float, null, onsource) builtin;
+
+/* conditions */
+
+dcl (cleanup, conversion, endfile, undefinedfile) condition;
+
+/* controlled */
+
+dcl  values (500) float bin controlled;
+dcl  stmts (500) float bin controlled;
+
+/* automatic */
+
+dcl  arg_length fixed bin (21),
+     arg_ptr ptr,
+     code fixed bin (35),
+     dname char (168),
+     ename char (32),
+    (line, stmt, count, cost) fixed bin (24),
+    (argno, from_line, to_line, n_args, arrayx, valuex, n_values) fixed bin,
+     path char (168) varying,
+     by_count bit (1) aligned,
+    (x_values_ptr, y_values_ptr) ptr,
+     in file;
+
+/* based */
+
+dcl  arg_string char (arg_length) based (arg_ptr),
+     x_values dim (n_values) float bin based (x_values_ptr),
+     y_values dim (n_values) float bin based (y_values_ptr);
+
+/* internal static */
+
+dcl  y_title (0:1) char (12) internal static options (constant)
+     initial ("Cost", "Count");
+
+/* entries */
+
+dcl  com_err_ entry options (variable),
+     cu_$arg_count entry (fixed bin),
+     cu_$arg_ptr entry (fixed bin, ptr, fixed bin (21), fixed bin (35)),
+     expand_path_ entry (ptr, fixed bin (21), ptr, ptr, fixed bin (35)),
+     plot_ entry ((*) float bin, (*) float bin, fixed bin, fixed bin, char (1)),
+     plot_$scale entry (float bin, float bin, float bin, float bin),
+     plot_$setup entry (char (*), char (*), char (*), fixed bin, float bin, fixed bin, fixed bin),
+     suffixed_name_$make entry (char (*), char (*), char (32), fixed bin (35));
+
+
+/* program */
+
+          call cu_$arg_count (n_args);
+          if n_args < 1 then do;
+               call com_err_ (0, "plot_profile", "Usage: plot_profile path {control_arg} where control_arg is -cost or 
+count");
+               return;
+          end;
+
+          call cu_$arg_ptr (1, arg_ptr, arg_length, code);
+
+          call expand_path_ (arg_ptr, arg_length, addr (dname), addr (ename), code);
+          if code ^= 0 then do;
+               call com_err_ (code, "plot_profile", "^a", arg_string);
+               return;
+          end;
+
+          if dname = ">"                                    /* the root */
+          then dname = "";
+
+          call suffixed_name_$make (ename, "profile", ename, code);
+          if code ^= 0 then do;
+               call com_err_ (code, "plot_profile", "^a>^a", dname, ename);
+               return;
+          end;
+
+          by_count = "0"b;
+          x_values_ptr = null;
+          y_values_ptr = null;
+          from_line = 0;
+          to_line = 131071;
+
+          on cleanup call clean_up;
+
+          argno = 2;
+          call cu_$arg_ptr (argno, arg_ptr, arg_length, code);
+          do while (code = 0);
+               if arg_string = "-count" | arg_string = "-ct"
+               then by_count = "1"b;
+               else if arg_string = "-cost"
+               then by_count = "0"b;
+               else if arg_string = "-fm" | arg_string = "-from" then do;
+                    argno = argno + 1;
+                    call cu_$arg_ptr (argno, arg_ptr, arg_length, code);
+                    if code ^= 0 then do;
+bad_from_arg:
+                         call com_err_ (code, "plot_profile", "-from must be followed by a decimal number.");
+                         return;
+                    end;
+                    on conversion go to bad_from_arg;
+                    from_line = binary (arg_string);
+                    revert conversion;
+               end;
+               else if arg_string = "-to" then do;
+                    argno = argno + 1;
+                    call cu_$arg_ptr (argno, arg_ptr, arg_length, code);
+                    if code ^= 0 then do;
+bad_to_arg:
+                         call com_err_ (code, "plot_profile", "-to must be followed by a decimal number.");
+                         return;
+                    end;
+                    on conversion go to bad_to_arg;
+                    to_line = binary (arg_string);
+                    revert conversion;
+               end;
+               else do;
+                    call com_err_ (0, "plot_profile", "Unrecognized argument ""^a""", arg_string);
+                    return;
+               end;
+               argno = argno + 1;
+               call cu_$arg_ptr (argno, arg_ptr, arg_length, code);
+          end;
+
+          path = "vfile_ ";
+          path = path || before (dname, " ");
+          path = path || ">";
+          path = path || ename;
+
+          on undefinedfile (in) begin;
+               call com_err_ (0, "plot_profile", "Cannot open input file ^a>^a", dname, ename);
+               go to return;
+          end;
+          open file (in) title (path) stream input;
+          revert undefinedfile (in);
+
+          on endfile (in) go to read_complete;
+          on conversion begin;                              /* yes, I know this is a kludge. */
+               if onsource = "TOTAL     "                             /* that's a TAB in there. */
+               then go to read_complete;                    /* we're done. */
+
+               call com_err_ (0, "plot_profile", "Conversion error on line ^d, onsource = ^a",
+                    allocation (stmts) * dim (stmts, 1) + n_values + 5, onsource ());
+               go to abort;
+          end;
+
+          n_values = 0;                                     /* initialize count & arrays */
+          allocate stmts;
+          allocate values;
+
+          get file (in) skip (4);                           /* first 5 lines are junk */
+                                                            /* 5th line will be skipped below */
+          do while ("1"b);
+               get file (in) edit (line, stmt, count, cost) (skip, f (6), x (1), f (3), x (1), f (5), x (1), f (7));
+               if line >= from_line
+                              then if line <= to_line
+                    then do;
+                              n_values = n_values + 1;
+                              if n_values > dim (stmts, 1) then do;        /* controlled array is full. */
+                                   n_values = 1;                           /* start another */
+                                   allocate stmts;
+                                   allocate values;
+                              end;
+                              stmts (n_values) = line;
+                              if by_count
+                              then values (n_values) = float (count);
+                              else values (n_values) = float (cost);
+                         end;
+                    else go to read_complete;
+          end;
+
+read_complete:
+          arrayx = n_values;                                /* remember index of last element in last array */
+          n_values = n_values + (allocation (stmts) - 1) * dim (stmts, 1); /* compute total count */
+          allocate x_values;
+          allocate y_values;
+
+          do valuex = n_values to 1 by -1;
+               x_values (valuex) = stmts (arrayx);
+               y_values (valuex) = values (arrayx);
+               arrayx = arrayx - 1;
+
+               if arrayx = 0 then do;
+                    free stmts;
+                    free values;
+                    arrayx = dim (stmts, 1);
+               end;
+          end;
+
+          call plot_$setup (ename, "Statement number", y_title (binary (by_count)),
+               1, 0e0, 1, 0);
+
+          call plot_ (x_values, y_values, n_values, 1, "");
+
+abort:
+          call clean_up;
+return:
+          return;
+
+clean_up:
+          procedure;
+
+dcl  tx fixed bin;
+
+          if x_values_ptr ^= null
+          then free x_values;
+
+          if y_values_ptr ^= null
+          then free y_values;
+
+          do tx = allocation (stmts) to 1 by -1;
+               free stmts;
+               free values;
+          end;
+
+          close file (in);
+
+     end clean_up;
+
+     end;

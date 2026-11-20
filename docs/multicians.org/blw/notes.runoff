@@ -1,0 +1,189 @@
+.fo  ''- % -''
+.ds
+.br
+.ce
+NOTES ON PROJECT ROSETTA STONE SOLUTIONS IN MULTICS PL/I
+.br
+	The Multics PL/I language is essentially draft ANSI PL/I with very
+few restrictions or extensions.  There are no major syntax changes.
+There are a few builtin functions which relate specifically to Multics.
+We believe the quality of the generated code to be very good.
+The Multics PL/I complier is written entirely in PL/I.
+.br
+	Some specific comments on the individual programs follow.
+.br
+.sp 1
+1. Bubble Sort.
+.br
+	This is a straight conversion of the sample program.
+The arrays "a" and "b" may oe un-connected.   I did
+not execute the object program.
+.br
+.sp 1
+2. Storage Allocation.
+.br
+	This program illustrates a particular feature of Multics PL/I.  The Multics
+compiler will map references to the external variable "m$" into
+references to an external segment "m" residing in the permanent
+file storage;  the Multics system will create this segment if necessary.
+The program, as it stands, would execute in any PL/I environment
+which allowed arrays of this size.
+.br
+	The array "two" which is never changed is recognized as being
+constant and is stored in the text section.  Lines 67 and 91 are
+needlessly complicated by the fact that PL/I lacks an
+exclusive or operator;   the generated code is quite simple.
+.br
+	This program was extensively tested and is believed to
+be correct.
+.br
+.ne 7
+3. Symbolic Differentiation.
+.br
+	This program is written in "standard" PL/I.  Note that
+the internal procedures share the stack frame of the
+external procedure.  If you looked at the generated code, you
+would find that most of the time is spent preparing argument
+lists, since this (in general) cannot be done at compile time
+in Multics.
+.br
+	I did not test this program because of the size of the
+test environment required, but having programmed problems very
+similar to this before, I am sure that the program will work
+(barring typographical errors, of course).
+.br
+.sp 1
+4. Simple Assembler.
+.br
+	The MIX assembler is written as a Multics command.
+It follows the normal Multics practice of treating the
+input and output as strings which are directly accessed
+by means of PL/I pointers.
+Since fixed format input is not normally used in Multics, MIX
+allows fields in the input line to be separated by tab characters.
+.br
+	The assembler is invoked
+by a command line of the form
+.br
+		mix alpha
+.br
+which is completely equivalent to the PL/I statement
+.br
+		call mix("alpha");
+.br
+The assembler looks in the current working directory for a
+segment "alpha.mixal" and generates as output the segments
+"alpha" and "alpha.list" which are, respectively, the
+object and listing segments.  MIX processes only one
+program per invocation;  multiple assemblies require
+multiple uses of MIX, e.g.
+.br
+		mix (alpha beta)
+.br
+	The assembler operates in one pass.  It reads the input only
+once and writes the listing as it goes.  When it encounters
+a forward reference to an undefined label, it updates a list
+of uses of the label in the object and listing segments.  When the
+label is subsequently defined, the appropriate fields in the
+object or listing segment are corrected.
+.br
+	Because the assembler uses only one pass, Knuth's restrictions
+on allowable forward references are enforced.  When a literal
+is found, the string of characters up to the closing "=" is saved
+for processing at the end of the assembly.  This allows labels
+to be used inside literals, but makes it risky to use local labels
+inside a literal (the assembler allows this, but generates a warning).
+.br
+	A MIX byte holds 64 values.  Five 6 bit MIX bytes and a 6 bit
+sign field are packed into a 36 bit word.  The 6 bit sign field
+was chosen to make each MIX word correspond to a single H6180 word.
+.br
+	The MIX symbol table is maintained as a list of nodes ordered
+alphabetically by the spelling of the label name.  Whenever a
+label name is looked up in the symbol table, a new cross
+reference node is allocated and put at the end of the cross
+reference chain maintained for each symbol.  When a local label
+is defined, any forward references to the "forward" form of the
+label are filled in and the "backward" form is entered in the
+table with the appropriate value.
+.br
+	The assembler makes heavy use of the "quick" internal
+procedure facility of Multics PL/I.   All of the internal
+procedures defined in MIX share the stack frame of MIX.
+The overhead of calling a quick procedure, exclusive of
+the cost of preparing the argument list, is 3 instructions:
+1 each at call, entry, and return.  For example, the
+total length of procedure "data_word" (line 863) is 5 words.
+The decision as to whether or not a block requires its own
+stack frame is based on how it is used in the program.
+The assembler makes use of the following builtin functions
+which are provided by Multics PL/I
+.br
+.in 20
+.un 15
+search(s1,s2) searches string S1 for the first character that
+is in string s2.  search is analogous to verify which searches
+for the first character of S1 that is not in S2.
+When S1 consists of only a single character, the search
+function, in effect, indicates if the given character
+is in the character class given by s2.
+.br
+.un 15
+size(aggregate_or_scalar) returns the number of machine words
+needed to allocate the indicated argument.
+.br
+.in 0
+	The following external procedures are used by MIX.
+With the exception of write_seg (which merely calls a number of
+standard Multics procedures), all are installed Multics
+procedures.
+.br
+.in 20
+.un 15
+bindec converts a fixed binary value to char(12).
+.br
+.un 15
+bindec$vs converts a fixed binary value to char(12) varying.
+.br
+.un 15
+com_err_ reports a command error on the user's console.
+.br
+.un 15
+expand_path_ converts a segment pathname into a directory
+name and an entry name.
+.br
+.un 15
+get_wdir_ returns the name of the current working directory.
+.br
+.un 15
+hcs_$initiate_count returns a pointer to and the number of
+bits in a specified segment given the directory and entry
+names.
+.br
+.un 15
+hcs_$terminate_noname indicates to Multics that the
+specified segment is no longer of interest to the program
+making the call.
+.br
+.un 15
+tssi_$get_segment returns a pointer to the specified
+segment, creating it if it doesn't exist.   Information
+about an existing Access Control List is saved.
+.br
+.un 15
+tssi_$finish_segment sets the bit count and terminates
+the specified segment.   A previous Access Control
+List will be restored if it exists.
+.br
+.un 15
+write_seg writes a string into a segment starting
+at a specified character offset;  the variable holding
+the starting position is updated after the string is written.
+The string may contain control fields which govern the substitution
+in the string of succeeding arguments of write_seg.  This type
+of expansion facility is used by a number of Multics procedures.
+For example, the line
+.br
+	call write_seg(p,n,"x = ^d",5);
+.br
+would write the string "x = 5" into the specified segment.

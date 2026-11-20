@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-734</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-734: The Implementation of Features  to Allow ALM to Support.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  Multics Technical Bulletin                                MTB-734
+  Simple Language Support for ALM
+
+  To:       Distribution
+
+  From:     Richard Gray
+
+  Date:     20 June 1986
+
+  Subject:  The Implementation of Features  to Allow ALM to Support
+            Languages
+
+  1.  Abstract
+
+     This MTB describes features to be  added to ALM to allow it to
+  be used as an intermediary  by various compilers.  These features
+  are:
+
+     - The  addition of  a subroutine  interface to  ALM that  will
+       allow language translators to invoke the assembler directly.
+     - The  ability  to   specify  initialization  information  for
+       external variables.
+     - Support for a new class of type 5 links called *heap links.
+     - The  ability to generate  text section entry  sequences that
+       are usable by probe.
+
+  Comments on this MTB should be sent to the author -
+
+       via Multics mail:
+          JRGray.Multics on System M
+
+       via posted mail:
+          Richard Gray
+          Advanced Computing Technology Center
+          Foothills Professional Building
+          Room #301, 1620 - 29th Street N.W.
+          Calgary, Alberta T2N 4L7
+          CANADA
+
+       via telephone:
+          (403)-284-6400
+          (403)-284-6410
+
+       via forum on System-M to:
+          &gt;udd&gt;m&gt;DGHowe&gt;mtgs_dir&gt;c&gt;c_imp (c)
+
+  _________________________________________________________________
+
+  Multics project  internal documentation; not to  be reproduced or
+  distributed outside the Multics project.
+
+
+  MTB-734                                Multics Technical Bulletin
+                                    Simple Language Support for ALM
+
+                          TABLE OF CONTENTS
+
+  Section    Page  Subject
+  =======    ====  =======
+
+  1          i     Abstract
+  2          1     Preface
+  3          2     Introduction
+  4          3     Addition of a Subroutine Interface
+  4.1        4     . . Include File alm_info
+  4.2        5     . . Description of Include File
+  5          7     Support Initialization of External Variables
+  5.1        7     . . Addition of Link Initialization Data
+  5.2        7     . . Extension of the join Pseudo-Operation
+  5.3        8     . . Example Program
+  6          9     Support for *heap links
+  7          10    An Entry Pseudo-Operation Usable by Probe
+  7.1        11    . . Example Program
+
+
+  Multics Technical Bulletin                                MTB-734
+  Simple Language Support for ALM
+
+  2.  Preface
+
+     The  purpose of this  MTB is to  describe various changes  and
+  enhancements  to   ALM  which  will   expedite  its  use   as  an
+  intermediary in  the generation of object  segments (by compilers
+  like the C  compiler).  This MTB will limit  itself to describing
+  simple  changes that  will allow  the straightforward  support of
+  language features.  There will be another MTB which will describe
+  more features that will allow debugging (symbol table support) as
+  well as other more complex features.
+
+
+  MTB-734                                Multics Technical Bulletin
+                                    Simple Language Support for ALM
+
+  3.  Introduction
+
+     Various language translators and compilers (notably the Unix C
+  compiler)  are written to  generate assembler source  code.  This
+  source  code is  then run   through an  appropriate assembler  to
+  generate  an  object  segment.   We  are  proposing  several  new
+  features to be added to ALM to support such use:
+
+       The  addition of  a subroutine  interface to  ALM that  will
+       allow language translators to invoke the assembler directly.
+
+       The  ability  to   specify  initialization  information  for
+       external variables.
+
+       Support for a new class of type 5 links called *heap links.
+
+       The  ability to generate  text section entry  sequences that
+       conform to probe's conventions.
+
+  The following sections describe these features in more detail.
+
+
+  Multics Technical Bulletin                                MTB-734
+  Simple Language Support for ALM
+
+  4.  Addition of a Subroutine Interface
+
+     The  addition  of  an  interface  to  ALM  will allow language
+  translators  to invoke  the assembler  directly as  a subroutine,
+  rather than indirectly through cu_$cp.
+
+  Function:
+  The alm_  entrypoint will generate a Multics  object segment (and
+  optionally  a listing  file) from  information passed  in an info
+  structure.
+
+  Syntax:
+  dcl alm_ entry(ptr, ptr, fixed bin, fixed bin(35));
+
+  call alm_(alm_info_ptr, alm_args_ptr, severity, code);
+
+  Arguments:
+  alm_info_ptr
+     is  a pointer  to the  alm_info structure.   This structure is
+     described in the include file alm_info.incl.pl1.  (Input)
+
+  alm_args_ptr
+     is  a pointer  to the  alm_args structure.   This structure is
+     used to store  arguments used by the macro &amp;A  facility and is
+     described in the include file alm_info.incl.pl1.  (Input)
+
+  severity
+     is the  severity of the  most serious error  encountered while
+     attempting to assemble the program.  (Output)
+
+  code
+     is a standard system status code.  (Output)
+
+
+  MTB-734                                Multics Technical Bulletin
+                                    Simple Language Support for ALM
+
+  4.1.  Include File alm_info
+
+  The following include file describes  the structures used to pass
+  information to the alm_ subroutine:
+
+  /* BEGIN INCLUDE FILE   alm_info.incl.pl1 */
+  /* Written June 9, 1986 by JRGray */
+
+  /* This include files describes the alm_info and alm_args
+     structures that are used to pass information to the alm_
+     subroutine.  */
+
+  dcl       1 alm_info based,
+              2 version char(8),
+              2 flags,
+                3 (symbols, brief, list, table) bit(1) unaligned,
+                3 pad bit(32) unaligned,
+              2 target char(32),
+              2 generator_info,
+                3 generator char(8),
+                3 gen_number fixed bin,
+                3 gen_version char(160),
+                3 gen_created fixed bin(71),
+              2 option_string char(200) varying,
+              2 source_path char(168),
+              2 source_entryname char(32),
+              2 source_ptr ptr,
+              2 source_bc fixed bin(21),
+              2 object_ptr ptr,
+              2 object_bc fixed bin(21),
+              2 list_fcb_ptr ptr,
+              2 list_component_ptr ptr,
+              2 list_bc fixed bin(21),
+              2 list_component fixed bin;
+
+  dcl       1 alm_args based,
+              2 version char(8),
+              2 arg_count fixed bin,
+              2 arg(0 refer alm_args.arg_count),
+                3 arg_ptr ptr,
+                3 len fixed bin(21);
+
+  dcl ALM_INFO_V1 char(8) static options(constant) init("alm_i_1");
+  dcl ALM_ARGS_V1 char(8) static options(constant) init("alm_a_1");
+
+  /* END INCLUDE FILE   alm_info.incl.pl1 */
+
+
+  Multics Technical Bulletin                                MTB-734
+  Simple Language Support for ALM
+
+  4.2.  Description of Include File
+
+  where:
+
+  version
+     is  the version string  for the alm_info  structure, currently
+     defined by the constant ALM_INFO_V1 (Input)
+  symbols
+     if  set then generate  a cross-reference listing  for symbols.
+     (Input)
+  brief
+     if set then suppress the printing of error messages.  (Input)
+  list
+     if set then generate a program listing.  (Input)
+  table
+     if set then generate a symbol table for the program.  (Input)
+  target
+     specifies the target machine.  (Input)
+  generator_info
+     is  used  to  specify  information  about  the  object segment
+     generator.   See description  of the  std_symbol_header in MPM
+     Ref Manual Appendix G for more details.
+  generator
+     is the name of the generator.  (Input)
+  gen_number
+     is the number of the generator.  (Input)
+  gen_version
+     is the version of the generator.  (Input)
+  gen_created
+     is the time that the generator was created.  (Input)
+  option_string
+     is the  option string that  describes options used  to compile
+     the program.  (Input)
+  source_path
+     is the pathname of the source.  (Input)
+  source_entryname
+     is the entryname of the actual source.  (Input)
+  source_ptr
+     is a pointer the base of the source.  (Input)
+  source_bc
+     is the bitcount of the source.  (Input)
+  object_ptr
+     is a pointer to the base of the object segment.  (Input)
+  object_bc
+     is the bitcount of the object segment.  (Output)
+
+
+  MTB-734                                Multics Technical Bulletin
+                                    Simple Language Support for ALM
+
+  list_fcb_ptr
+     is  a pointer  to the  file control  block that  describes the
+     listing.    For  more  information   on  MSF  FCBs,   see  the
+     description of msf_manager_ in MPM Subroutines.  (Input)
+  list_component_ptr
+     is a pointer to the first component of the listing.  (Input)
+  list_bc
+     is  the bitcount of  the last component  of the listing.   For
+     more information see the description of msf_manager_$adjust in
+     MPM Subroutines.  (Output)
+  list_component
+     is the number of the last  component of the listing.  For more
+     information see the description  of msf_manager_$adjust in MPM
+     Subroutines.  (Output)
+
+  version
+     is  the version string  for the alm_args  structure, currently
+     defined by the constant ALM_ARGS_V1.  (Input)
+  arg_count
+     is the number of arguments.  (Input)
+  arg_ptr
+     is a pointer to a character string argument.  (Input)
+  arg_len
+     is the length of a character string argument.  (Input)
+
+
+  Multics Technical Bulletin                                MTB-734
+  Simple Language Support for ALM
+
+     5.  Support Initialization of External Variables
+
+        There are two features that will be added to ALM to support
+     the initialization  of external variables.  The  first feature
+     is the ability to 'join' information to the definition section
+     of  object segments.   The second  feature is  the ability  to
+     specify  that  such  information  will  be  used to initialize
+     external variables.  The definitions of these two new features
+     is followed by an example program and object segment dump.
+
+     5.1.  Addition of Link Initialization Data
+
+        Some  languages (C   in particular)  require initialization
+     data for  type 5 links (*system and  *heap).  This requirement
+     necessitates  the  use  of  a  new  pseudo-operation that will
+     associate initialization data with a link value.
+
+     EXAMPLE:  init_link initdata,external_reference
+
+     where:
+
+      initdata
+               is  the offset within  the definition region  of the
+               initialization data (usually a label).
+
+      external_reference
+               is a reference to a type 5 link (*system or *heap).
+
+               5.2.  Extension of the join Pseudo-Operation
+
+     The  extension of the  'join' pseudo-operation will  allow the
+  merging  of use-blocks  into the  definition section.   This will
+  give ALM the ability  to specify initialization information using
+  normal ALM pseudo-operations.
+
+       EXAMPLE:  join /definition/name1,name2...
+
+
+  MTB-734                                Multics Technical Bulletin
+                                    Simple Language Support for ALM
+
+  5.3.  Example Program
+
+  "This program returns the value of the external variable
+  " 'integer_x' into its first argument.  This program specifys the
+  " initial value of integer_x as 25.
+            name      init_example
+            entry init_example
+  init_example:
+            lda       &lt;*system&gt;|[integer_x]  "Get integer_x
+            sta       pr0|2,*                "Return in first arg
+            short_return
+
+            init_link init_x,&lt;*system&gt;|[integer_x]
+            use       defn
+  " initialization structure for 'integer_x'
+  init_x:   oct       1                   "size = 1 word
+            oct       3                   "type link_init_copy_info
+            oct       31                  "Initial value 25 decimal
+            join      /definition/defn
+            end
+
+  Dump of relevant parts of object segment:
+
+    0 T  0 la 400010235120   lda     pr4|8,*
+    1 T  1 aa 000002755120   sta     pr0|2,*
+    2 T  2 aa 700044710120   tra     pr7|36,*
+
+   54 D 46 aa 011151156164 1 acc_string 'integer_x'
+   55 D 47 aa 145147145162   "
+   56 D 50 aa 137170000000   "
+
+                           1 type_pair, &lt;*system&gt;|[integer_x]
+   57 D 51 ad 000005000057   2 (type 5, trap_relp 57),
+   60 D 52 ad 000005000046   2 (segname_relp 5, offsetname_relp 46);
+
+   63 D 55 da 000051000000 1 exp_word,(type_relp 51, expression 0);
+
+   65 D 57 aa 000000000001 1 link_init_copy_info,  n_words 1,
+   66 D 60 aa 000000000003   2 type 3,
+   67 D 61 aa 000000000031   2 initial_data;
+
+  100 L 10 ia 777770000046 1 object_link, header_relp -10, tag 46,
+  101 L 11 da 000055000000   2 expression_relp 55;
+
+  In  this example  program you   can see  that the  initialization
+  structure  (at  init_x  D57)  has  been  added  to the definition
+  section.   You can  also see   that the  trap_relp in  the link's
+  type_pair (at D51) points to the initialization structure.
+
+
+  Multics Technical Bulletin                                MTB-734
+  Simple Language Support for ALM
+
+  6.  Support for *heap links
+
+     The  requirements of  external variables  in the  language 'C'
+  have  resulted in  the addition  of a  new kind  of link:   *heap
+  links.  (See MTB732 for more details).  We are adding the ability
+  to reference such  links via ALM.  A *heap link is  of type 5 and
+  class 6 (a  *system link is of type 5 and  class 5).  A reference
+  to a *heap  link will be generated from expressions  of the form:
+  &lt;*heap&gt;|[varname] .
+
+  Multics Links
+
+  Link      Description
+
+  Type
+    1       &lt;*section&gt;|offset
+    2       base|[symbol]                 (obsolete)
+    3       refname|offset
+    4       refname$entryname
+    5       &lt;typename&gt;|[varname]          (typename is *system or *heap;
+                                          *system is class 5, *heap is 6)
+
+
+  MTB-734                                Multics Technical Bulletin
+                                    Simple Language Support for ALM
+
+  7.  An Entry Pseudo-Operation Usable by Probe
+
+     Probe requires the use of entry sequences that (a) are
+  generated inline at the location of the entrypoint, (b) use a
+  different operator call using more information, and (c) push a
+  stackframe.  A forthcoming MTB will describe use of probe with
+  ALM.
+
+     Since entry points require definition section offset values,
+  we are defining a new pseudo-operation called 'ext_entry' to be
+  used for this purpose.  This new pseudo-op differs from the
+  current alm 'entry' psuedo-op in three major ways:
+
+                      |     Current       |      New
+                      |      entry        |    ext_entry
+                      |                   |
+  Pushes stack frame  |       NO          |      YES
+                      |                   |
+  Location of entry   | end of text sect  |  Inline (at label)
+     sequence         |                   |
+                      |                   |
+  Value of pr0        | arg list pointer  | pl1_operators_ pointer
+                      |                   |
+  operator call       |     alm_entry     |     ext_entry
+
+     Note:   that the instruction:   'epp0 pr6|26,*' will  load pr0
+  with the address of the argument list.
+
+  EXAMPLE:  elabel:  ext_entry elabel,stacksize,dlabel
+
+  where:
+      elabel
+          is the name of the label that identifies the entrypoint.
+
+      stacksize
+          is  an octal  number specifying   the size  of the  stack
+          frame.  Note this number is rounded up to the nearest mod
+          16 boundary.
+
+      dlabel
+          is the  name of the label that  identifies the descriptor
+          information.
+
+
+  Multics Technical Bulletin                                MTB-734
+  Simple Language Support for ALM
+
+  7.1.  Example Program
+
+  " This program swaps its first and second arguments
+            name      ee_example
+  ee_example:
+            ext_entry ee_example,120,desc
+            epp0      pr6|26,*      "ext_entry doesn't set pr0
+            temp      temp_var      "stack temp 'temp_var'
+            lda       pr0|2,*       "get first arg
+            sta       pr6|temp_var  "store in temp_var
+            lda       pr0|4,*       "get second arg
+            sta       pr0|2,*       "store in first arg
+            lda       pr6|temp_var  "get first arg from temp_var
+            sta       pr0|4,*       "store in second arg
+            return                  "ext_entry require return
+
+  " parameter descriptor list
+  desc:     zero      2,char4       "2 args, addr of first arg desc
+            zero      char4,0       " addr of second arg desc, 0
+  char4:    oct       526000000004  "char(4)
+            end
+
+
+  MTB-734                                Multics Technical Bulletin
+                                    Simple Language Support for ALM
+
+  Dump of relevant parts of object segment:
+
+                           1 entry_sequence,
+    0 T  0 ta 000017000000   2 (descr_relp_offset 17),
+    1 T  1 da 000011300000   2 def_relp 11, flags [rev_1,has_desc],
+    2 T  2 aa 000120627000   2 code_sequence [eax7    80];
+
+    3 T  3 aa 700034352120   epp2    pr7|28,*
+    4 T  4 aa 201045272100   tsp2    pr2|549
+    5 T  5 aa 000000000000
+    6 T  6 as 000000000134
+    7 T  7 aa 600032350120   epp0    pr6|26,*
+   10 T 10 aa 000002235120   lda     pr0|2,*
+   11 T 11 aa 600100755100   sta     pr6|64
+   12 T 12 aa 000004235120   lda     pr0|4,*
+   13 T 13 aa 000002755120   sta     pr0|2,*
+   14 T 14 aa 600100235100   lda     pr6|64
+   15 T 15 aa 000004755120   sta     pr0|4,*
+   16 T 16 aa 700042710120   tra     pr7|34,*
+                           1 parm_desc_ptr,
+   17 T 17 at 000002000021   2 n_args 2, descriptor_relp(1) 21,
+   20 T 20 ta 000021000000     descriptor_relp(2) 21;
+
+   21 T 21 aa 526000000004 1 arg_desc,(flag 1,type 21,packed,len 4);
+
+                           1 definition [ee_example],
+   33 D 11 dd 000017000003   2 (forward_relp 17, backward_relp 3),
+   34 D 12 ta 000002500000   2 thing_relp 2,
+                             2 (flags [new,entry], class 0),
+   35 D 13 dd 000014000003   2 (name_relp 14, segname_relp 3);
+
+   36 D 14 aa 012145145137 1 acc_string 'ee_example'
+   37 D 15 aa 145170141155   "
+   40 D 16 aa 160154145000   "
+
+                           1 runtime_block, [ee_example]
+  234 S134 aa 440100000016   2 [flag,standard,] type 1,start 16,
+
+     In   this  example   program  you   can  see   that  the  flag
+  has_descriptors is set (T1).  At T0  you can see that the address
+  of  the parameter  descriptor  structure  is correct  (T17).  The
+  stack  frame  size  of  80   (120  octal)  is  specified  in  the
+  instruction at location T2.  The 134  octal at location T6 is the
+  address in the symbol section of the entry's runtime_block.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

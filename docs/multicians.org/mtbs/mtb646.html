@@ -1,0 +1,3118 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Command Argument Processing (CAP):  An Overview.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+MULTICS TECHNICAL BULLETIN                                MTB-646
+
+To:       MTB Distribution
+
+From:     Gary C. Dixon
+
+Date:     December 19, 1983
+
+Subject:  Command Argument Processing (CAP):  An Overview
+
+This  MTB   introduces  Command  Argument   Processing  (CAP),  a
+facility:  for providing command  interfaces which are friendlier
+to  use; for  simplifying the  coding of  command-level interface
+routines  (commands,  active  functions,  subsystem  requests and
+active   requests,   I/O   modules,  and   exec_coms);   and  for
+standardizing argument handling.  The  full implementation of the
+facility  includes:   forms  interfaces  to  commands, exec_coms,
+subsystem  requests, etc;  command line  completion capabilities;
+and prompting for omitted arguments.
+
+This  MTB discusses  the problems with  current interfaces, gives
+requirements for a solution to solve these problems, and presents
+a possible solution.  Implementation details will be described in
+subsequent MTBs, after discussion of  this MTB produces an agreed
+upon set of requirements.
+
+Comments on this MTB should be placed in the ease_of_use forum on
+System M:
+
+    &gt;udd&gt;m&gt;Davids&gt;mtgs&gt;ease_of_use (eou)
+
+or directed by Multics mail to:
+
+    System M:  GDixon.Multics
+    MIT:  GDixon -at pco
+
+or by phone to:
+
+    Gary Dixon
+    HVN:  357-6645
+    DDD:  602-862-6645
+
+_________________________________________________________________
+
+Multics  Project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics Project.
+
+
+MTB-646                                             CAP: Overview
+
+                            CONTENTS
+
+                                                         Page
+
+    0 Preface . . . . . . . . . . . . . . . . . . . . .     1
+    1 Problem:  Multics is Unfriendly . . . . . . . . .     2
+       1.1 Multics, Unfriendly to End-Users . . . . . .     2
+       1.2 Multics, Unfriendly to Programmers . . . . .     3
+       1.3 Is there a Solution? . . . . . . . . . . . .     4
+       1.4 CAP is Only Part of the Solution . . . . . .     5
+    2 CAP Targets . . . . . . . . . . . . . . . . . . .     7
+       2.1 Audience . . . . . . . . . . . . . . . . . .     7
+       2.2 Requirements for CAP . . . . . . . . . . . .     7
+    3 Possible Design for CAP . . . . . . . . . . . . .     9
+       3.1 User Interfaces and Operating Environments .     9
+       3.2 Overview of the Design . . . . . . . . . . .    10
+       3.3 Operational Scenarios and Flow of Control  .    12
+          3.3.1 Command Line- No Options :
+           Interactive- Command Level . . . . . . . . .    12
+          3.3.2 Command Line- With Prompting :
+           Interactive- Command Level . . . . . . . . .    14
+          3.3.3 Command Line- With Completion :
+           Interactive- Command Level . . . . . . . . .    14
+          3.3.4 Form :  Interactive- Command Level  . .    16
+          3.3.5 Command Line- With Options :
+           Interactive- ssu_  . . . . . . . . . . . . .    20
+          3.3.6 Form :  Interactive- ssu_ . . . . . . .    20
+          3.3.7 Form :  Interactive- Xservices  . . . .    20
+          3.3.8 Command Line or Form :  Keyword Syntax-
+           archive, etc . . . . . . . . . . . . . . . .    21
+          3.3.9 Command Line or Form :  Keyword Syntax-
+           exec_com . . . . . . . . . . . . . . . . . .    21
+          3.3.10 Command Line or Form :  Keyword
+           Syntax- io_call  . . . . . . . . . . . . . .    23
+          3.3.11 Command Line :  Subroutines- iox_  . .    25
+          3.3.12 Command Line :  Other Subroutines  . .    26
+          3.3.13 Command Line- No Options :  Absentee
+           Environment  . . . . . . . . . . . . . . . .    26
+       3.4 Common Aspects of the Flow of Control  . . .    26
+       3.5 Online Documentation from the BID
+        Information . . . . . . . . . . . . . . . . . .    27
+       3.6 The CAP Translation Mechanism  . . . . . . .    28
+          3.6.1 Goals for Translation . . . . . . . . .    29
+             3.6.1.1 BID Should Be an Object Segment  .    29
+
+
+CAP: Overview                                             MTB-646
+
+                         CONTENTS (cont)
+
+                                                         Page
+
+             3.6.1.2 Translation Mechanism Should be
+              Simple to Use . . . . . . . . . . . . . .    30
+             3.6.1.3 Programs Using CAP Should Be Easy
+              to Understand . . . . . . . . . . . . . .    30
+             3.6.1.4 The Translation Mechanism Should
+              Be Simple to Code . . . . . . . . . . . .    30
+          3.6.2 Possible Translation Mechanisms . . . .    30
+             3.6.2.1 Design 1:  Separate Source and
+              Object  . . . . . . . . . . . . . . . . .    30
+             3.6.2.2 Design 2:  Integrated Source and
+              Object  . . . . . . . . . . . . . . . . .    31
+             3.6.2.3 Other Designs  . . . . . . . . . .    34
+          3.6.3 How Translation Works for Programs  . .    34
+          3.6.4 How Translation Works for Exec_coms . .    36
+          3.6.5 Detecting a CAP Interface . . . . . . .    36
+       3.7 Support for Existing Programs  . . . . . . .    37
+          3.7.1 How Translation Works for Existing
+           Programs . . . . . . . . . . . . . . . . . .    38
+          3.7.2 Detecting a CAP Interface for Existing
+           Programs . . . . . . . . . . . . . . . . . .    39
+       3.8 A Sample CAP Program . . . . . . . . . . . .    39
+    4 Other Possible Interfaces . . . . . . . . . . . .    45
+       4.1 The Stratus Interface  . . . . . . . . . . .    45
+          4.1.1 Example . . . . . . . . . . . . . . . .    45
+          4.1.2 Critique  . . . . . . . . . . . . . . .    47
+       4.2 The process_arguments_ Interface . . . . . .    48
+          4.2.1 Example . . . . . . . . . . . . . . . .    49
+          4.2.2 Critique  . . . . . . . . . . . . . . .    50
+       4.3 The Ford Clic Interface  . . . . . . . . . .    51
+          4.3.1 Example . . . . . . . . . . . . . . . .    52
+          4.3.2 Critique  . . . . . . . . . . . . . . .    54
+    5 Questions for the Technical Review  . . . . . . .    55
+    6 Other Questions . . . . . . . . . . . . . . . . .    56
+       6.1 Foreign Language Support . . . . . . . . . .    56
+       6.2 Novice vs.  Expert Users . . . . . . . . . .    58
+       6.3 Interacting with New Error Reporting
+        Mechanism . . . . . . . . . . . . . . . . . . .    58
+    7 Future Development Plans  . . . . . . . . . . . .    59
+
+
+CAP: Overview                                             MTB-646
+
+0 PREFACE
+
+This MTB is being written  to introduce various possibilities for
+enhancing the  Multics command interface.   Possible enhancements
+include a  forms interface, as  well as ease-of-use  additions to
+our  current  command  line   interface  (prompting  for  missing
+arguments, and  automatic completion of partially  typed words in
+the command line).  The interface enhancements might be used in a
+variety  of   operating  environments,  including   commands  and
+exec_coms   used  at   command  level,   subsystem  requests  and
+exec_coms,  I/O  module  interfaces, and  the  proposed Xservices
+environment.    Initial   investigation   indicates   that   such
+enhancements  must  be carefully  designed to  properly integrate
+them with existing Multics software.
+
+This  MTB  does  not  attempt  to  present  a  design  for  these
+enhancements.   The overall  objective of  the MTB  is to provide
+information  for  the Multics  MR11/MR12 Technical  Review Board,
+which  will judge  the merits of  command interface enhancements,
+and decide  whether such enhancements should  be pursued further.
+Specific objectives include:
+
+     o    Defining  the  audience   to  which  command  interface
+          enhancements are addressed.  (Section 2)
+
+     o    Defining   the  requirements   for  such  enhancements.
+          (Section 2)
+
+     o    Exploring  how  new command  interfaces  might interact
+          with  the  existing  Multics  environment, highlighting
+          major   unresolved  issues   and  design  alternatives.
+          (Section 3)
+
+     o    Reviewing  other implementations  for command interface
+          enhancements.  (Section 4)
+
+     o    Outlining a set of issues  which should be addressed by
+          the review board.  (Section 5)
+
+     o    Defining   a   plan  for   future  work   and  resource
+          requirements.  (Section 7)
+
+In essence, this MTB pulls  together much of the preliminary work
+on command interface enhancements so  we can judge how to proceed
+from here.
+
+
+MTB-646                                             CAP: Overview
+
+1 PROBLEM:  MULTICS IS UNFRIENDLY
+
+One  of   the  biggest  problems  Multics   faces  today  is  its
+unfriendliness.   I'm  stressing   that  ugly  word  "unfriendly"
+because  we  must convince  ourselves  that Multics  needs  to be
+friendlier before we  can make it so.  Here are  some of the ways
+in which Multics is unfriendly.
+
+1.1 Multics, Unfriendly to End-Users
+
+Multics has a good reputation as an operating system which allows
+programmers to be highly productive; but it is fast gaining a bad
+reputation as a system which is difficult for end users to use.
+
+End  users  are people  who  want to  do  a particular  job  on a
+computer without  becoming computer experts.   To such end-users,
+Multics presents  a bewildering number  of commands; and  many of
+its  most   important  commands  (eg,  print,   list,  dprint  or
+enter_output_request, read_mail and send_mail) are complicated by
+myriads  of  control  arguments  and  options.   There  is little
+organization of  commands (either in the  documentation or in the
+system itself)  to guide the  user to the command  he needs.  The
+Multics  system  of  forcing  novice users  to  construct complex
+command lines from memory seems a cold and unforgiving world when
+compared  with the  command menu  hierarchies, built-in prompting
+and help systems becoming popular on many personal computers
+
+     FACT:   Most  user-friendly systems  have forms  or menu
+     interfaces to the entire system; Multics provides only a
+     menu interface to the xmail subsystem.
+
+     FACT:  The Number One  marketing requirement for MR11 is
+     to enhance  the Ease of  Use of Multics,  including such
+     aspects  as:   prompting techniques  for question/answer
+     sessions; menus;  forms; decision trees;  commands which
+     are  consistent   in  their  interactive   display,  and
+     forgiving in  their response to  incomplete or erroneous
+     input, which are tutorial in  nature when the user is in
+     doubt, instructional when she needs clarification.
+
+     FACT:  Multics has a bewildering array of commands, many
+     of which use differing  conventions for processing their
+     arguments,  many  having overly  complex  or nonstandard
+     syntax.  It is quite difficult for system programmers to
+     keep all of these differences and complexities straight;
+     it is impossible for end users.  Why else would the mail
+
+
+CAP: Overview                                             MTB-646
+
+     command   be   used  so   heavily,  three   years  after
+     read_mail/send_mail was released?(1)
+
+If Multics is  to survive in the competition  for systems serving
+end-users, we  must make our system  more friendly, with standard
+interfaces  that   guide  the  user  in   doing  what  he  wants,
+self-documenting  interfaces  that can  be used  without manuals,
+simple interfaces  that aren't cluttered with  myriads of control
+arguments to confuse the end user.
+
+1.2 Multics, Unfriendly to Programmers
+
+Despite  its record  of high programmer  productivity, Multics is
+also  not  very  friendly   to  programmers,  especially  to  the
+application programmer who is trying to interface to users on the
+Unfriendly System.   Today when programmers on  other systems are
+using  automatic programming  and self-learning  systems to write
+applications, Multics  programmers must still do  things the hard
+way.
+
+     FACT:   The  new MPM  Subroutines  (AG94-04) is  now 697
+     pages  long  (excluding  I/O modules).   It  contains 17
+     subroutines  for  pathname manipulation,  52 subroutines
+     for  access  manipulation,  47  subroutines  for segment
+     manipulation, 26 entries  for directory manipulation, 18
+     subroutines for storage management/area manipulation, 16
+     subroutines  for command  environment manipulation, more
+     than  60 subsystem  management entrypoints,  22 routines
+     dealing  with  I/O  (not  counting  the  23  I/O  module
+     writeups in section 3),  30 error and condition handling
+     subroutines,  37  data conversion  subroutines,  and the
+     list  could go  on.  The average  application program is
+     bewildered  by such  a vast  array of  routines.  System
+     programmers  have  difficulty  knowing the  best  way to
+     handle problems  from one day  to the next,  because the
+     vast array above keeps changing.
+
+_________________________________________________________________
+
+(1) Even on System M, the use of the mail command is high.  Based
+    upon  command_usage_count  data,  the mail  command  was used
+    13.7% of the time:
+
+                     mail invocations
+       ------------------------------------------ = .137
+       rdm + sdm + prm + xmail + mail invocations
+
+    The use of Emacs MAIL/RMAIL could  not be measured, and so it
+    isn't included in the statistics above.
+
+
+MTB-646                                             CAP: Overview
+
+     FACT:   25%   of  the  TRs   submitted  against  Multics
+     software(1) are related to  simple programming errors in
+     commands, active functions,  requests, etc.  I'm talking
+     about  errors like  misspelled control  arguments, error
+     messages  not  identifying  the  program  issuing  them,
+     program  not  agreeing  with  the  documentation, active
+     function  results  not   being  properly  requoted,  old
+     programs  not  following  new  standards  like  implicit
+     archive  pathnames,  etc.   And most  of  these problems
+     never  get fixed  because MDC  has too  few resources to
+     perform  maintenance on  dormant software  (software not
+     under active development).
+
+If Multics  is to meet  its product objectives  with high-quality
+software,  and to  be able  to maintain  the ever  growing set of
+software with our limited resources,  we've got to make it easier
+to   write   user   interfaces   which   perform   according   to
+specification,   are  consistent,   and  reliable.    The  system
+primitives that we  have now are not adequate  for this task.  We
+need a better way.
+
+1.3 Is there a Solution?
+
+The problems  described above may  seem to have  little in common
+with one another other  than "unfriendliness".  However, they are
+all problems  associated with creating or  using user interfaces.
+These problems exist because Multics lacks a centralized facility
+for describing and implementing end-user interfaces.
+
+In MTB-623, A Menu Interface for Multics, Noah Davids describes a
+facility  for organizing  groups of Multics  commands into menus.
+This Executive Services (or  Xservices) facility would provide an
+alternative to the command line environment, in which the user is
+presented with a  menu of commands instead of  having to type the
+name  of  the  desired  command.  It  could  provide environments
+tailored  to  a  particular  type  of  user  (secretary, manager,
+engineer,  mathematician, applications  programmer, statistician,
+etc) who  only needs to use  a few of the  standard commands plus
+several applications packages.
+
+Something  like  Xservices  would  solve  part  of  the  end user
+interface problem.   However, once a user  has selected a command
+from the  Xservices menu, we  need user-friendly methods  for the
+command to obtain  its input from the user.   The "either menu or
+prompting" facility  that Xservices provides is  not adequate for
+many  existing  commands.   Often  neither  prompting  or  a menu
+interface   is  adequate   to  specify   the  needed  information
+
+_________________________________________________________________
+
+(1) 25% is a conservative guess.
+
+
+CAP: Overview                                             MTB-646
+
+(prompting item-by-item quickly becomes tedious, and menus aren't
+flexible enough to provide variable inputs like pathnames).
+
+Instead, we need  a facility which combines the  best features of
+prompting  and  menus  together  into  a  Forms  Interface.   The
+displayed  form would  have fields which  the user  could fill in
+with prompt-type information, and  mini-menus from which the user
+could select options grouped together logically by function.
+
+A forms interface facility  for commands would obtain information
+about  fields  and options  to be  displayed in  the form  from a
+command  Interface Description.   This description  would include
+names  of arguments  accepted by the  command, how each  is to be
+displayed in the form, how prompt fields are to be validated, how
+arguments  are  to  be  converted for  use  by  the  program (eg,
+applying star convention,  equals convention, numeric conversion,
+true/false  switch  conversion,  etc),  how  results  are  to  be
+reconverted for printing/return, etc.
+
+Multics  needs   a  facility  which  can   map  the  programmer's
+description  of a  command or subsystem  request into information
+needed  to  display a  forms interface,  or into  standard format
+documentation for  the interface.  The same  information could be
+used  by a  special version of  the listener/command_processor to
+perform command line completion as  part of standard command line
+invocations  of  the command,  and to  prompt for  required items
+missing in the command line.
+
+Coupled  with  the  interface  description facility  would  be an
+argument  processing facility  to handle arguments  in a standard
+way, rather than  having the hodge podge of  argument handling we
+have now.   The central facility would  define and implement "the
+standard  way"  of handling  arguments, and  programmers wouldn't
+have to worry  about such issues.  In the  same vein, the central
+facility  could implement  a generalized  mechanism for  user and
+site-settable defaults for control arguments.
+
+Multics  needs   a  facility  to   make  it  easier   to  produce
+high-quality user  interfaces which work  correctly and reliably,
+in  a user-friendly  manner.  In  short, Multics  needs a Command
+Argument Processing  facility (CAP), which is  the subject of the
+remainder of this MTB.
+
+1.4 CAP is Only Part of the Solution
+
+Clearly, the problems affecting Multics user friendliness cover a
+broad  area  which  includes   handling  of  error  messages  and
+conditions,  user expertise  levels, processing  of arguments and
+the user command interface, etc.  The CAP proposal below does not
+address all aspects of the general problem.  Instead, it proposes
+a solution for one aspect of  the problem which we understand and
+
+
+MTB-646                                             CAP: Overview
+
+can  solve.  Other  aspects of the  general problem  are not well
+understood and will require  more investigation before a solution
+can be proposed.
+
+This  incremental  attack on  broad  problem is  a useful  way of
+tackling  a  problem which  is too  large to  be understood  as a
+whole.  The  method involves solving  parts of the  problem which
+are understood,  then using information  gained to try  to better
+understand  the  remaining  parts  of the  problem.   Our current
+understanding of the overall problem suggests that all aspects of
+the problem  are interrelated and  that solutions to  the various
+parts of the  problem will have to be  integrated into an overall
+solution at some point.  But trying to design an overall solution
+now is  not feasible, given our  current limited understanding of
+the problem.
+
+
+CAP: Overview                                             MTB-646
+
+2 CAP TARGETS
+
+Before  proposing a  solution to  the problems  above, we  need a
+firmer statement of what the CAP facility must be able to do, and
+who  its  intended  audience  is.   The  requirements  below  are
+probably  not  complete.   I   encourage  you  to  suggest  other
+requirements,  and to  challenge requirements  stated below which
+you feel are inappropriate.
+
+2.1 Audience
+
+The features  provided by the proposed  CAP facility are targeted
+towards a broad spectrum of users.  From the user standpoint, CAP
+should accommodate:
+
+o    end-users via the Xservices and forms interfaces,
+
+o    novice command  line users via  the command line  version of
+     the forms interface,
+
+o    intermediate level users via forms and prompting, and
+
+o    expert command line users via command line completion.
+
+Note that having various types of user interfaces to match user's
+experience   levels   is   often  advocated   in   human  factors
+guidelines.(1)  This allows users to  begin using the system with
+little instruction (via forms), and then to gradually learn about
+faster, more direct usage methods as they gain experience and the
+need arises (via command lines).
+
+From  a  programming  standpoint,  the  CAP  facility  itself  is
+directed toward both applications and system programmers who want
+to provide user-friendly interfaces to their programs, interfaces
+that are easier to program than by current methods, that are less
+error  prone,  provide  more  standard interfaces,  and  that can
+interface  with the  various user levels  suggested above without
+requiring additional programming effort.
+
+2.2 Requirements for CAP
+
+The following are  a minimum set of requirements  for an argument
+processing facility:
+
+_________________________________________________________________
+
+(1) An  excellent  paper  on  this  subject  is:   "Human Factors
+    Guidelines  for  Terminal  Interface  Design"  by  D.   Verne
+    Morland, CACM Volume 26 Number 7, July 1983, p484.
+
+
+MTB-646                                             CAP: Overview
+
+o    End-User interfaces provided by  CAP must provide a friendly
+     interface to users at all experience levels.  CAP interfaces
+     should support:  the current command line interface (for use
+     in  exec_com/absentee/abbrevs,  and   for  intermediate  and
+     expert users),  but with prompting for  omitted arguments; a
+     forms interface  (for end users and  novices); and a command
+     line completion capability (for experts).
+
+o    The CAP  facility must be  simple to program  with, and much
+     less error prone than existing  mechanisms.  It must be easy
+     to describe an interface, and to understand and maintain the
+     description and its associated program.
+
+o    CAP should be useable in application programs written by our
+     customers,  as  well as  in system  programs.  It  should be
+     useable in programs not written in PL/I (eg, Fortran, Cobol,
+     exec_coms).   It   must  be  useable   in  commands,  active
+     functions, subsystem  requests and active  requests, and I/O
+     modules.
+
+o    CAP  interfaces  should be  upwards compatible  with current
+     interfaces.   We   cannot  afford  to   convert  every  user
+     interface  at once.   For conversion purposes,  it should be
+     possible  to provide  features of CAP  (eg, forms interface,
+     command   line  completion,   argument  validation)  without
+     modifying the existing command.   Such standalone support is
+     also  needed  to  interface  with  third  party  application
+     programs whose code cannot be changed.
+
+o    It must be possible to implement the CAP facility in stages,
+     with  some  of  the   benefits  available  after  a  minimal
+     implementation,  and other  benefits achieved  as additional
+     stages are completed.  Implementation of CAP will be a large
+     effort, but we need some parts of the solution soon.
+
+Several  people  have  suggested  that  CAP  provide  a  language
+conversion interface so that command names and arguments could be
+mapped into  other languages (eg, French).   While support at the
+command  line level  is important, it  is only one  aspect of the
+foreign language problem.  Other aspects include foreign language
+output  and error  messages, and  foreign language documentation.
+While  CAP  could  help  in  providing  foreign  language command
+interfaces, it is not clear whether solving just this part of the
+overall problem  would be a  good idea.  I'm sure  users would be
+confused by typing commands in  French and getting output back in
+English.
+
+o    Whatever CAP facility is chosen  should provide for a future
+     capability to map command names, argument names and operands
+     into other languages.
+
+
+CAP: Overview                                             MTB-646
+
+3 POSSIBLE DESIGN FOR CAP
+
+Next,  I'll  describe  a  possible  implementation  for  the  CAP
+facility.  The  purpose of this  description is NOT  to propose a
+design  for  CAP,  although  many  of  the  ideas  below  may  be
+incorporated into a final design.  Instead, the description below
+tries   to  introduce   various  aspects   of  command  interface
+enhancements  to enable  the reader  to become  familiar with the
+topic, and to judge how feasible such enhancements might be, what
+the benefits and drawbacks are, etc.
+
+3.1 User Interfaces and Operating Environments
+
+The targets for CAP mandate that  the design for the CAP facility
+include  several different  user interfaces:   the normal command
+line  interface;  a version  of the  command line  interface with
+optional  command  line  completion(1) or  prompting  for missing
+values;  and  a forms  interface.   Each of  these  interfaces is
+described in more detail in section 3.3 below.
+
+In addition, the design allows the facility to operate in several
+different   environments:    at   command   level;   within  ssu_
+subsystems;  within the  Xservices subsystem;  within I/O modules
+via support in iox_; within exec_coms, and as a subroutine called
+by an application program.
+
+The  table  below shows  which user  interfaces the  design would
+support in each environment.   Each supported combination of user
+interface and environment in marked  by the number of the section
+below which describes that combination.
+
+_________________________________________________________________
+
+(1) A fairly  good description of a  completion command processor
+    is  given  in  MTB-586,  Online  Documentation  for  Multics,
+    written by Jim Siwila on June 29, 1982.
+
+
+MTB-646                                             CAP: Overview
+
+                   ___________________________________________________
+                   |        COMMAND LINE INTERFACE       |   FORMS   |
+                   |            |           |            | INTERFACE |
+                   | no options | prompting | completion |           |
+======================================================================
+|INTERACTIVE       |            |           |            |           |
+| command level    |    3.3.1   |   3.3.2   |   3.3.3    |   3.3.4   |
+| ssu_             |    3.3.5   |   3.3.5   |   3.3.5    |   3.3.6   |
+| Xservices        |            |           |            |   3.3.7   |
+|----------------- |------------|-----------|------------|-----------|
+| KEYWORD SYNTAX   |            |           |            |           |
+|  archive, etc    |    3.3.8   |   3.3.8   |   3.3.8    |   3.3.8   |
+|  exec_com        |    3.3.9   |   3.3.9   |   3.3.9    |   3.3.9   |
+|  io_call         |    3.3.10  |   3.3.10  |   3.3.10   |   3.3.10  |
+|----------------- |------------|-----------|------------|-----------|
+| FROM SUBROUTINES |            |           |            |           |
+|  iox_, etc.      |    3.3.11  |           |            |           |
+|  other subrs     |    3.3.12  |   3.3.12  |   3.3.12   |   3.3.12  |
+|==================|============|===========|============|===========|
+|ABSENTEE          |            |           |            |           |
+| command level    |    3.3.13  |           |            |           |
+| ssu_             |    3.3.13  |           |            |           |
+|----------------- |------------|-----------|------------|-----------|
+| KEYWORD SYNTAX   |            |           |            |           |
+|  archive, etc    |    3.3.13  |           |            |           |
+|  exec_com        |    3.3.13  |           |            |           |
+|  io_call         |    3.3.13  |           |            |           |
+|----------------- |------------|-----------|------------|-----------|
+| FROM SUBROUTINES |            |           |            |           |
+|  iox_, etc.      |    3.3.13  |           |            |           |
+|  other subrs     |    3.3.13  |           |            |           |
+|__________________|____________|___________|____________|___________|
+
+3.2 Overview of the Design
+
+A  CAP  facility is  composed  of two  separate  components:  one
+defines a language with which  programmers can describe a program
+interface; and a second which  uses that description to provide a
+variety of  user interfaces to  the program.  The  facility would
+consist of the following modules:
+
+
+CAP: Overview                                             MTB-646
+
+LANGUAGE COMPONENT:
+
+CAP Language:
+     an  interface  description  source  language.   This  is the
+     language with which the  programmer describes what arguments
+     are accepted by the command/af/request/etc, what conversions
+     are  to  be performed  on the  arguments, what  the argument
+     names  will be  in the  program, what  order they  are to be
+     passed to the command, required and default argument values,
+     etc.
+
+cap: a  translator  for  the Source  Interface  Description (SID)
+     language.   The  translator  converts  the  source  language
+     description  of  the  program  interface  into  binary  data
+     tables.  These tables form  the Binary Interface Description
+     (BID) which drives the argument processing mechanism.
+
+USER INTERFACE COMPONENT:
+
+cap_:
+     a  subroutine interface  which uses  the BID  information to
+     process arguments  given by a  user in a  command or request
+     line, or in a form.  This would consist of several different
+     subroutine  entrypoints   to  support  the   different  user
+     interfaces   (eg,   command   processor   invocation,  forms
+     interface, command line completion, etc).
+
+command line completer:
+     a version  of the video  editor which performs  command line
+     completion  (on request)  of tokens  partially typed  by the
+     user.
+
+Implementation  of  the  facility  also requires  changes  to the
+following programs:
+
+command_processor_:
+     to determine if  the command/af has a CAP  interface, and if
+     so, to invoke cap_.
+
+ssu_:
+     changes  similar  to command_processor_  causing cap_  to be
+     called for a request having a CAP interface.
+
+video system:
+     In addition  to changes needed for  command line completion,
+     some changes  may be needed  to support the  forms interface
+     for commands.   For example, a  way is needed for  a user to
+     reedit  an  existing input  line after  CAP diagnoses  it as
+     incorrect.
+
+
+MTB-646                                             CAP: Overview
+
+3.3 Operational Scenarios and Flow of Control
+
+This section  attempts to give  the reader a better  feel for the
+issues  involved  in  integrating  new user  interfaces  into the
+command environment.   Section 3.1 introduced  four possible user
+interfaces  for  the  CAP  facility,  and  listed  a  variety  of
+environments in which these interfaces should work.  This section
+outlines  how  each  user  interface could  work  in  the various
+environments.  Flow  of control diagrams are  included to clarify
+who is calling whom.
+
+Note that all of these ideas  are sketchy attempts to insure that
+each user interface could be  implemented as part of the proposed
+design.   They do  not represent an  actual proposal to  do it as
+stated below, but instead are  meant stimulate thinking about the
+types of interactions that occur between the various parts of the
+command environment.  I invite your comments on problems with the
+proposals  below,  and on  better ways  of implementing  the user
+interfaces.
+
+Titles for the scenarios in section 3.3 are all of the form:
+
+    Interface Type :  Operating Environment
+
+For  example, "Command  Line- No options  :  Interactive- Command
+Level".  Refer to the table in  section 3.1 for a quick reference
+list of interfaces/environments which are discussed below.
+
+3.3.1 COMMAND LINE- NO OPTIONS :  INTERACTIVE- COMMAND LEVEL
+
+This  mode  of  operation  represents  the  command/request  line
+interface we  have today, modified  to work with  CAP interfaces.
+The flow of control is shown below:
+
+ _____________   _____________         ________   ___________
+ |           |   |  command  |  BID    |      |   |         |
+ | listener_ |--&gt;| processor |--------&gt;| cap_ |--&gt;| command |
+ |___________|   |___________| found   |______|   |_________|
+                       |                          ___________
+                       |                          |         |
+                       |-------------------------&gt;| command |
+                              BID not found       |_________|
+
+The steps involved in calling a command or active function are as
+follows:
+
+
+CAP: Overview                                             MTB-646
+
+1)   The user would type a command line with arguments.
+
+2)   The command  processor would find the  command name, look to
+     see if  it has a  CAP interface(1) and, if  so, would invoke
+     cap_  with  the  command  name typed  by  the  user  and the
+     argument list  it would normally have  passed to the command
+     itself.
+
+3)   cap_ would get the description of the command interface (the
+     BID), and parse the arguments given by the user according to
+     this  description.   Standard  error  diagnostics  would  be
+     issued for illegal arguments or syntax.  In particular, cap_
+     would diagnose required arguments which are missing.
+
+4)   Once cap_ had parsed the arguments, it would construct a new
+     argument  list containing  the arguments  in the  order that
+     their corresponding parameters were defined in the BID.  All
+     parameters described by the BID  would be represented in the
+     new  argument list.   Parameters not  specified by  the user
+     would be  assigned default argument values,  as indicated by
+     the BID, or perhaps as indicated by a user- or site-settable
+     argument  defaulting  mechanism.    Parameters  which  allow
+     varying  numbers  of arguments  (such as  multiple pathnames
+     given  to a  single command) would  be passed  as arrays, or
+     optionally passed  one at a time  to multiple invocations of
+     the command.
+
+5)   cap_ would convert argument values to the data type of their
+     corresponding parameter, as specified  by the BID, with some
+     argument validation operations  producing error diagnostics.
+     Possible  conversions  might include:   expanding pathnames,
+     applying suffixes, applying star convention, applying equals
+     convention,  numeric  conversions,  numeric  range checking,
+     converting mode  strings, converting switch  control args to
+     bit  string  values, converting  one of  a list  of possible
+     keywords  to a  case number,  converting date_time_ strings,
+     access  modes,  etc.   In  addition,  the  programmer  could
+     specify  his  own  validation/conversion  routines,  perhaps
+     including use of active functions.
+
+6)   After cap_  has constructed the new  argument list, it would
+     invoke  the command.   The command  references its arguments
+     via  named parameters  in its procedure  or entry statement.
+     This  works  since  there  are  always  a  fixed  number  of
+     arguments in  a fixed order.   In essence, the  interface to
+     the  actual  command  procedure   has  become  a  subroutine
+     interface.
+
+_________________________________________________________________
+
+(1) How the command processor determines if the command has a CAP
+    interface is outlined in section 3.4.3 below.
+
+
+MTB-646                                             CAP: Overview
+
+7)   The  command can  do further parameter  checking, and either
+     diagnose  errors itself  (via com_err_) or  return the error
+     information  in a  string provided  by cap_  as part  of the
+     calling sequence.  The latter  method is preferable, because
+     in a  forms environment, it  allows the user  to correct the
+     errors by editing the form  rather than having to retype the
+     information.
+
+8)   Assuming  all parameters  are correct,  the command performs
+     whatever processing is requested, and returns to cap_ with a
+     0  error  code (indicating  successful operation).   If this
+     were an active function  invocation, the BID would designate
+     one of  the parameters as  the active function  return value
+     and  the  program  would  assign its  return  value  to this
+     parameter.
+
+9)   Upon  return, cap_  would print any  error diagnostics.  For
+     active function invocations, it  would convert any AF return
+     value from the data  type associated with the BID-identified
+     procedure parameter back to a  character string, and set the
+     AF  return value.   It would free  any storage  used for the
+     conversions (including the new arg_list storage), and return
+     to its caller.
+
+3.3.2 COMMAND LINE- WITH PROMPTING :  INTERACTIVE- COMMAND LEVEL
+
+This is a modified version of the current command processor which
+would prompt for required parameters when the user forgot to give
+them.   Prompting might  be turned  on by  a value  in the user's
+default value segment, or by an installation parameter, etc.
+
+Prompting  would  only occur  for  commands and  active functions
+typed at command level (ie,  only when the listener called cu_$cp
+to parse a command line).  Commands invoked by some other program
+calling cu_$cp should not involve prompting since the user has no
+idea  that  another  command  is being  used.   Implementing this
+restriction will require modifications to the cu_$cp interface.
+
+Steps for processing a command  line with prompting are identical
+to those for the Command  Line environment with no options (3.3.1
+above) except  that in step  3 above, the user  would be prompted
+for information missing from the command line, rather than having
+missing required parameters be diagnosed as errors.
+
+3.3.3 COMMAND LINE- WITH COMPLETION :  INTERACTIVE- COMMAND LEVEL
+
+This is a command line  interface with argument completion added.
+As  the user  was typing  a command line,  he could  ask for help
+about  the  command  by typing  the  command line  and  an escape
+sequence  (eg, ESCx?).   Similarly he  could ask  for information
+
+
+CAP: Overview                                             MTB-646
+
+about  a  particular  parameter.  Or  he  could type  part  of an
+argument  value followed  by an  escape sequence  (eg, ESCspace),
+thereby  asking that  the remainder  of the  argument be supplied
+automatically.
+
+There are  several ways in  which a completion  command processor
+could be implemented.  Perhaps  the most straightforward would be
+a  version of  the video  system which  supported the  new escape
+sequences.(1)  Whenever one of  the escape sequences was entered,
+the editor  routine bound to  the escape sequence  would pass the
+entire command line typed so  far, plus information on the cursor
+position and function desired (eg,  help or completion) to a cap_
+entrypoint.   This  entrypoint  would   parse  the  command  line
+fragment using the BID, and based upon the cursor position, would
+then  provide  help or  a  completion function  on  the specified
+parameter.  The command line  (perhaps revised by the completion)
+would  be returned  to the editor  routine, which  would make any
+changes required  to the actual  command line seen  on the screen
+and return to the video editor.
+
+                                 completer
+ _____________   __________________ esc  _________________   ____________
+ |           |   | iox_$get_line  | seq  | vid. ed. CAP  |   |   cap_   |
+ | listener_ |--&gt;| (video editor) |-----&gt;| completer req |--&gt;| complete |
+ |___________|   |________________|      |_______________|   |__________|
+                       |                 _________________   ____________
+         |             |                 | vid. ed. CAP  |   |   cap_   |
+  once listener_       |----------------&gt;| help req      |--&gt;| help rtn |
+  has read a               help esc seq  |_______________|   |__________|
+  complete line
+         |       _____________         ________   ___________
+         |       |  command  |  BID    |      |   |         |
+         |------&gt;| processor |--------&gt;| cap_ |--&gt;| command |
+                 |___________| found   |______|   |_________|
+
+This process might be repeated  several times on the same command
+line if the user asked for  several arguments to be completed, or
+asked  for  help  on several  of  the arguments,  etc.   Once the
+command  line was  finally typed  in (as  indicating by  the user
+typing  a newline  character), it would  be processed  via CAP as
+explained above in 3.3.1.
+
+Clearly, there are several  optimizations that might be performed
+to  avoid  repeated  reprocessing   of  the  same  command  line.
+However,  since  a command  line  completer could  be implemented
+
+_________________________________________________________________
+
+(1) These  could   even  be  implemented   as  totally  separate,
+    user-defined video editor requests.
+
+
+MTB-646                                             CAP: Overview
+
+exactly as  described above, we  need not concern  ourselves with
+possible performance optimizations here.
+
+There are also some problems  with the scheme proposed here.  For
+example, the video editor can be  used for any type of input, not
+just  typing in  command lines.  So  there would have  to be some
+method of distinguishing between  input to the listener_ (command
+line input) and other types of input.
+
+It should also  be clear that, once these  problems are resolved,
+both command line completion  and prompting for missing arguments
+could be performed together.
+
+3.3.4 FORM :  INTERACTIVE- COMMAND LEVEL
+
+This mode of operation is a new type of command interface.  It is
+not a menu, but instead is a display of the arguments and control
+arguments   accepted   by  the   command.   One   possible  forms
+implementation might begin by displaying the following form:
+
+                   ---- copy (version 1) ----
+source_path: ___________________________________________________
+target_path: ==
+-acl:  no
+-chase:  yes
+-name:  no
+-long:  yes
+
+  |  RETURN   | ESCx? |  TAB  | ESC-TAB | ESC-RETURN | ESCxq |
+  | end input | help  |  next |   prev  |   invoke   | quit  |
+  |   field   |       | field |  field  |   command  |       |
+
+The form consists of a title  naming the command and its version,
+followed  by  a  list of  arguments  to be  supplied,  shown with
+default control  argument settings.  At the  bottom of the screen
+are reminder lines indicating what keystrokes can be used to move
+through the form.
+
+When the form is first displayed, the cursor is positioned at the
+first field.   The user can type  in or change the  value of that
+field, or use keystrokes to move to another field.  The following
+keystrokes might be defined:
+
+
+CAP: Overview                                             MTB-646
+
+ESCx?
+     provide information  about the field at  which the cursor is
+     positioned.  Also, ask the user  if he wants additional help
+     about  the  command as  a whole  or about  use of  the forms
+     interface.
+
+RETURN
+     ends an input field value, and  moves the cursor to the next
+     field.
+
+ESC-RETURN
+     completes input,  and causes the command  to be invoked with
+     the argument values currently displayed in the form.
+
+TAB  moves cursor to the next field.  When positioned at the last
+     field, TAB moves the cursor back to the first field.
+
+ESC-TAB
+     moves cursor back to previous field.
+
+ESCxq
+     quits the forms interface without invoking the command.
+
+other characters
+     When positioned at other than  a type C argument, causes the
+     typed character  to be entered  as part of  the field value.
+     Input ends for  this field when RETURN is  typed.  The video
+     editor can be used to edit the value being typed.
+
+There are (at least) 4 types  of arguments which can be displayed
+in the form:
+
+A)   required  arguments  for  which  there is  no  default.  For
+     example, a pathname.
+
+B)   required  arguments  for  which  a  default  exists,  and is
+     displayed.  Arguments such as  target_path in the form above
+     are in this category.  Its default value is ==.
+
+C)   Required  arguments which  accept a small  set of predefined
+     values as operands.  The default value is displayed, and the
+     user  cycles  through other  possible  values by  typing any
+     character  (other than  a control  or escape  sequence).  An
+     example is "-long:  yes" or "-sort:  names".
+
+     One  enhancement  would  be  to add  an  escape  sequence to
+     display   a  pop-up   menu  of  the   choices  allowed  (for
+     multi-valued arguments).  This would  give the user a chance
+     to  position to  a particular  value and  use ESCx?   to get
+     information about that value.
+
+
+MTB-646                                             CAP: Overview
+
+     When the cursor was positioned in this type of argument, the
+     reminder line might be of the form:
+
+|   n   |   p   |   m   | ESCx? |  TAB  | ESC-TAB | ESC-RETURN | ESCxq |
+| next  | prev  | value | help  | next  |   prev  |   invoke   | quit  |
+| value | value | menu  |       | field |  field  |   command  |       |
+
+     and when the pop-up menu was on display, it might be:
+
+|   n   |   p   | RETURN | ESCx? |  TAB  | ESC-TAB | ESC-RETURN | ESCxq |
+| next  | prev  | select | help  | next  |   prev  |   invoke   | quit  |
+| value | value | value  |       | field |  field  |   command  |       |
+
+D)   Optional  arguments  which the  user  can give  to  supply a
+     value.   An  example  would   be  the  -select  argument  of
+     display_list.
+
+The  interface described  above is very  similar to  that used by
+Stratus for their  forms command interface.  It is  an example of
+what might be done.
+
+Remember that  the purpose of analyzing  argument processing with
+various  interfaces   and  environments  is   to  determine  what
+functionality  an  argument  processor  must  provide  to operate
+correctly  with  these   interfaces/environments.   The  flow  of
+control is very similar to that for the normal command interface,
+except that  cap_ displays a  form and the  user provides command
+arguments by filling in the form:
+
+ _____________   _____________         ________   ___________
+ |           |   |  command  |  BID    |      |   |         |
+ | listener_ |--&gt;| processor |--------&gt;| cap_ |--&gt;| command |
+ |___________|   |___________| found   |______|   |_________|
+                                      /        
+                _____________________/          ___________
+               /                                            
+              ___________   ______________   _________________
+              | display |   | user fills |   | build arglist |
+              |  form   |--&gt;|  in form   |--&gt;|   from form   |
+              |_________|   |____________|   |_______________|
+
+The following steps might be used  in processing a form to invoke
+a command:
+
+1)   The forms interface might be invoked in any of several ways.
+     In the  Stratus system, the  user indicates that  he wants a
+     forms invocation by typing the command name and then hitting
+     a  special  DISPLAY-FORM function  key.   We might  use that
+     approach,  but it  would require that  the command processor
+
+
+CAP: Overview                                             MTB-646
+
+     run in breakall  mode, and function keys don't  go well with
+     video  editor  escape  sequences.   However,  a  new  escape
+     sequence could be added to  the video editor to request that
+     a forms interface  be used if any exists.   The video editor
+     would  have  to pass  this  forms information  along  to the
+     command processor.
+
+     Alternately,  if the  user types  "command_name -form", cap_
+     could use  -form as a  trigger for the  forms interface.  Or
+     there  could be  an option in  the value  segment which asks
+     that a  form be displayed  if the user  types the name  of a
+     command without any arguments.
+
+     As  a  fourth alternative,  there  could be  a  special cap_
+     entrypoint that  could be called by  a menu application such
+     as Xservices to trigger the forms interface.
+
+2)   Once  the cap_  forms entry was  called, it  would display a
+     form   using  the   information  in   the  binary  interface
+     description  (BID).   cap_  might  not  display  the  entire
+     description.  Some arguments might be  marked in the BID for
+     nondisplay  (eg,  debugging  arguments).  Or  some  might be
+     marked with  a user experience level  which is compared with
+     the user's actual experience level  (a variable in his value
+     segment) to determine if the field should be displayed.
+
+3)   Once the form was filled out  (ie, the use hit ESC-RETURN to
+     invoke the command), cap_ would extract information from the
+     form and  would construct an argument  list, as described in
+     3.3.1 above for the command line interface, steps 4 and 5.
+
+4)   cap_  would call  the command  as in  section 3.3.1,  step 6
+     above.  The command would perform its function as in steps 7
+     and 8 above, and would  return any error diagnostics to cap_
+     as in step 9.
+
+5)   If  error  diagnostics were  returned  by the  command, cap_
+     would display them below the  form, position to the argument
+     in error and allow the user  to edit the argument.  The user
+     could  optionally  quit rather  than  editing by  use  of an
+     escape sequence.  If  she chose to edit, she  would then hit
+     the  INVOKE escape  sequence following editing  to cause the
+     command to be reinvoked with the edited value.
+
+Of course, both the sample form and the processing scenario above
+are only possibilities.  But  several problems remain unanswered.
+For example, at what point (and  by what mechanism) does the form
+get  cleared  from  the screen  so  the command  can  display its
+output?   The  whole  issue  of  the  forms  interfaces  must  be
+discussed in more detail in a separate MTB.
+
+
+MTB-646                                             CAP: Overview
+
+3.3.5 COMMAND LINE- WITH OPTIONS :  INTERACTIVE- SSU_
+
+This  interface  is  the  standard ssu_  request  line interface,
+modified  to support  command line  completion and  prompting for
+missing arguments.   Since ssu_ uses the  command processor and a
+version   of  the   listener_  to  process   request  lines,  the
+modifications  suggested in  3.3.1, 3.3.2  and 3.3.3  above apply
+equally well to ssu_.
+
+3.3.6 FORM :  INTERACTIVE- SSU_
+
+This mode of  operation would provide a new  type of interface to
+ssu_   subsystems.   Each   subsystem  whose   requests  had  CAP
+interfaces  would  accept  a  standard  -forms  control  argument
+(similar to  the standard -abbrev control  arg).  When -forms was
+given, then ssu_  would present a menu of  request names (similar
+to the list printed by the ?  request).  When the user selected a
+request, ssu_ would call cap_ to display the request's form using
+information in the BID.
+
+Once the form  was display, processing would continue  as for the
+command level forms interface described in 3.3.4 above.
+
+3.3.7 FORM :  INTERACTIVE- XSERVICES
+
+One interesting enhancement to Noah David's Xservices proposal is
+to  give the  commands invoked from  the Xservices  main menu CAP
+forms interfaces.   In the same  way that the  CAP/ssu_ interface
+provides  a  menu  of  requests and  a  forms  interface  to each
+request,  so a  CAP/Xservices interface  would provide  a menu of
+commands,  and (for  some of the  commands) a  forms interface to
+each command.
+
+In this case, Xservices would determine that the command selected
+by menu  option has a CAP  interface, and call cap_  to display a
+form  for the  command interface.   Processing of  the form could
+occur as  suggested in section  3.3.4 above.  Flow  of control is
+shown below:
+
+
+CAP: Overview                                             MTB-646
+
+ _____________                    _____________   ___________
+ |           | menu option gives  |           |   |         |
+ | XServices |-------------------&gt;| cap_$form |--&gt;| command |
+ |___________|    command name    |___________|   |_________|
+                                  /            
+                _________________/              ___________
+               /                                            
+              ___________   ______________   _________________
+              | display |   | user fills |   | build arglist |
+              |  form   |--&gt;|  in form   |--&gt;|   from form   |
+              |_________|   |____________|   |_______________|
+
+3.3.8 COMMAND LINE OR FORM :  KEYWORD SYNTAX- ARCHIVE, ETC
+
+Rather  than  describing  another  combination  of  interface and
+operating  environment,  this  section  describes  how  CAP would
+handle another type of  command syntax, the keyword-driven syntax
+of  the  archive, tape_archive,  manage_volume_pool, window_call,
+mrds_call, dial_manager_call, memo and other similar commands.
+
+All of these commands have a basic syntax of the form:
+
+     command_name function_keyword {arguments}
+
+where  the particular  arguments and control  arguments which can
+follow the function_keyword depend upon the value of the keyword.
+To  provide a  CAP interface,  the BID  would contain  a table of
+accepted  function  keywords, and  for  each function  keyword it
+would define an acceptable  command syntax, arguments and control
+arguments.
+
+The BID information fits the  command line interface described in
+sections  3.3.1, 3.3.2  and 3.3.3 in  an obvious  way.  Since the
+keyword appears  in the command  line before other  arguments and
+control  arguments, cap_  can validate  the function  keyword and
+parse the  remainder of the  command line (or  prompt for missing
+values or perform command line completion) based upon the keyword
+value.
+
+For  the  forms interface  described in  section 3.3.4,  the form
+would initially display just the keyword argument (perhaps with a
+default keyword  and its operands).  When  the user specified (or
+changed)  the keyword,  then the remainder  of the  form would be
+filled in  (or redisplayed) to  reflect the syntax  for the given
+function.  Once the form was  filled in, processing would proceed
+as in section 3.3.4 above.
+
+
+MTB-646                                             CAP: Overview
+
+3.3.9 COMMAND LINE OR FORM :  KEYWORD SYNTAX- EXEC_COM
+
+The  exec_com  is  an  important type  of  command  interface, so
+important  that in  MTB-612, Greg  Baryza proposes  to modify the
+command  processor to  have exec_com  files treated  as commands.
+For  many  applications,  an  exec_com  can  provide satisfactory
+performance.   However,  the exec_com  argument  interface oftens
+leaves  much  to  be  desired,   since  it  is  difficult  to  do
+non-positional argument processing in an exec_com.
+
+I propose  to use the  CAP command line and  forms interfaces for
+processing arguments to exec_com files.   This can be done simply
+because the  exec_com command is  quite similar in  syntax to the
+keyword-driven commands described in the previous section:
+
+     ec exec_com_file_path {ec_args}
+
+or with Baryza's changes:
+
+     exec_com_file_path {ec_args}
+
+The first form  is quite similar to the  keyword-driven syntax of
+the archive  command, except that  instead of accepting  a canned
+list of keywords defined in the  BID, the exec_com command uses a
+searching  mechanism  (via  exec_com   search  paths)  to  locate
+exec_com files.  The same search mechanism could be used to check
+for  a  BID  associated  with  the  exec_com  file,  and  to  use
+information  in the  BID to  validate arguments  to the exec_com,
+prompt for missing arguments and perform command line completion,
+and even to display a forms interface for the exec_com.
+
+With a capability in cap_ to  search for the exec_com file's BID,
+parsing of a command line can proceed as in sections 3.3.1, 3.3.2
+and 3.3.3 above.  Processing of a  form can proceed as in section
+3.3.4.   It is  important to note  that, whether  command line or
+forms interface is used, the end result is that the exec_com file
+gets invoked with a fixed number of positional arguments which it
+references by number.  All of this could be done without changing
+the exec_com command at all.
+
+With only a small change to the exec_com command, the programming
+interface  for exec_coms  could be  improved even  further.  cap_
+could call a new entrypoint in the exec_com command, passing both
+the reordered argument list and  an array of parameter names from
+the  BID.   exec_com  could  preset  the  value  for  each  named
+parameter to be the corresponding  argument in the arg list, thus
+allowing the  exec_com file to  reference its parameters  by name
+(eg, &amp;(path)) rather than by number.  This would give the flow of
+control shown below:
+
+
+CAP: Overview                                             MTB-646
+
+                              exec_com
+ _____________   _____________  BID   ________  ec file  ________________
+ |           |   |  command  | found  |      | BID found |              |
+ | listener_ |--&gt;| processor |-------&gt;| cap_ |----------&gt;| exec_com$cap |
+ |___________|   |___________|        |______|           |______________|
+
+3.3.10 COMMAND LINE OR FORM :  KEYWORD SYNTAX- IO_CALL
+
+The io_call  command is an  important command level  interface to
+the  I/O  system.  If  we are  to provide  CAP interfaces  to I/O
+modules,  then the  io_call command  should support  use of these
+interfaces from command level.
+
+Like  the archive  command, io_call has  a keyword-driven syntax.
+However, like the exec_com command, this keyword syntax cannot be
+driven strictly from a list of defined keywords.  The syntax also
+depends  upon information  provided by  each I/O  module defining
+attach,  open_file,  close_file,  detach,  modes,  position,  and
+control options.
+
+In order to  provide CAP interfaces via the  io_call command, I/O
+modules  will  have  to  be  converted  to  have  CAP interfaces.
+Section  3.3.11 discusses  I/O module interfaces  in more detail.
+For  now,  let's assume  there  are BIDs  describing  the various
+interfaces of an I/O module and  see what changes would be needed
+to support the io_call command.  If the BID mechanism can support
+the  interdependencies of  the io_call  command, it  can probably
+support an arbitrarily complex set of such interdependencies.
+
+To   accommodate  the   interdependencies  of   io_call,  we  can
+generalize  the  keyword syntax  mechanism described  in sections
+3.3.8 and 3.3.9.  The general syntax was:
+
+   &lt;command_name&gt; &lt;function_keyword&gt; {&lt;args&gt;}
+
+                           A
+                           |
+                 SYNTAX FORK MECHANISM
+
+where some forking mechanism is needed to determine what keywords
+are allowed and the syntax of  the remainder of the command line,
+which  depends upon  the particular  keyword chosen.  Information
+about this syntax  is extracted from a BID  related to the chosen
+keyword.
+
+For example, with the tape_archive command:
+
+   tape_archive keyword table_path {args}
+
+                    A
+                    |
+
+
+MTB-646                                             CAP: Overview
+
+         list of keywords in BID
+
+the   keyword  is   any  of  the   allowed  archiving  functions.
+Presumably a list of allowed keywords would be defined in the BID
+for the tape_archive command.  Associated with each keyword would
+be a syntax line:
+
+   tape_archive x table_path {pathnames} {-control_arg}
+   tape_archive a table_path pathnames {-control_args}
+   tape_archive t table_path {entrynames} {-control_args}
+   ta compact table_path
+   ta alter table_path warning_limit floatnum
+   ta alter table_path volume -number N {new_vol} {-alternate}
+
+In fact, the alter  keyword takes sub-keywords (eg, warning_limit
+and  volume)  which  further  control the  allowed  syntax.  This
+points  out  the need  for a  multi-level forking  mechanism that
+allows  the  syntax of  the  command line  to diverge  at several
+points, based upon use of  several different keywords or names of
+exec_com files, etc:
+
+   &lt;command_name&gt;  &lt;forkword&gt; {&lt;args&gt;}  {&lt;forkword&gt; {&lt;args&gt;}} ...
+
+                       A                    A ...
+                       |____________________|
+                                 |
+                      MULTIPLE FORKING POINTS
+
+This  multi-level  mechanism is  clearly  needed for  the io_call
+command,  which   supports  multiple  functions   (attach,  open,
+position,  get_line, put_chars,  read, write,  control, etc), and
+also multiple  I/O modules with  varying attach/open/close/detach
+descriptions and differing control requests.
+
+For example, consider an attachment through mtape_:
+
+   io attach sw mtape_ m2134 -label ansi
+         |         |
+         |         |__ attach description based upon mtape_'s BID
+         |
+         |__ forkword from list in io_call's BID
+
+
+CAP: Overview                                             MTB-646
+
+An open_file operation becomes more  complex, because the name of
+the I/O module is no longer contained in the command line.
+
+   io open_file sw sqo -extend -number 1 -name xyz_file
+         |      |   |
+         |      |   |__ allowed modes and remaining syntax from
+         |      |       I/O module's BID for the open_file handler
+         |      |       given in the IOCB.
+         |      |
+         |      |__ list of attached I/O switch names used to
+         |          determine which switches can be given.  Info
+         |          in IOCB used to access I/O module's BID.
+         |
+         |__ forkword from list in io_call's BID
+
+Thus with  an adequate forking  mechanism in the  BID, it appears
+that  the  io_call  command  could be  supported  by  CAP without
+modifications.   Once the  information is  available to  parse an
+io_call  command  line,  prompt  for  missing  arguments, perform
+completion or  display an io_call form,  actual processing of the
+information  can proceed  as described in  sections 3.3.1 through
+3.3.4 above.
+
+                              io_call
+ _____________   _____________  BID   ________   ___________   ________
+ |           |   |  command  | found  |      |   |         |   |      |
+ | listener_ |--&gt;| processor |-------&gt;| cap_ |--&gt;| io_call |--&gt;| iox_ |
+ |___________|   |___________|        |______|   |_________|   |______|
+                                     /        
+               _____________________/          ____________
+              /                                             
+              ___________   ______________   _________________
+              | display |   | user fills |   | build arglist |
+              |  form   |--&gt;|  in form   |--&gt;|   from form   |
+              |_________|   |____________|   |_______________|
+
+     Form Displayed depends upon
+     Finding I/O Module BID
+     ---------------------------
+     1) BID found: display full form with all options.
+     2) BID not found:  display brief form with only
+        syntax of the given io_call operation.
+
+3.3.11 COMMAND LINE :  SUBROUTINES- IOX_
+
+Picking up where we left off above, the iox_ subroutine checks to
+see if  the I/O Module has  a BID, and if  so, calls cap_$iox_ to
+convert the argument list as  described in section 3.3.1, steps 3
+through 9.
+
+
+MTB-646                                             CAP: Overview
+
+ ________        ____________    ______________
+ |      |  BID   |          |    |            |
+ | iox_ |-------&gt;| cap_$iox |---&gt;| I/O Module |
+ |______| found  |__________|    |____________|
+    |                            ______________
+    |                            |            |
+    |---------------------------&gt;| I/O Module |
+         BID not found           |____________|
+
+3.3.12 COMMAND LINE :  OTHER SUBROUTINES
+
+Just as the  iox_ subroutine was able to  call another subroutine
+having  a CAP  interface, an  arbitrary subroutine  can do  so as
+well.  An interfacing subroutine could call cap_ with the name of
+the target subroutine and an  argument list.  If fact, the target
+subroutine  could  be  another   entrypoint  in  the  interfacing
+routine.   cap_ would  proceed to  convert the  argument list and
+call the  target routine, as  outlined in section  3.3.1, steps 3
+through 9.
+
+ _____________    ________    ___________
+ | Interface |    |      |    | Target  |
+ |  Routine  |---&gt;| cap_ |---&gt;| Routine |
+ |___________|    |______|    |_________|
+
+3.3.13 COMMAND LINE- NO OPTIONS :  ABSENTEE ENVIRONMENT
+
+CAP can  work in an absentee  environment just as it  does in the
+interactive environment.  Of course, in an absentee job, there is
+no user  to prompt, or to  use completion or fill  in a form.  So
+only the  basic CAP command  line interface need  be supported in
+the absentee environment.
+
+3.4 Common Aspects of the Flow of Control
+
+It should be apparent from  the user interface descriptions above
+that  having  cap_ process  arguments  and then  call  the target
+program  provides  an  elegant   mechanism  for  turning  command
+interfaces  into  easier-to-program subroutine  interfaces.  This
+flow of data is the CAP-to-program flow.
+
+Several other facilities similar to  CAP have the command program
+call   the  CAP-like   facility,  with   the  facility  returning
+information from  the command line  or form back  to the program.
+This  is  an  awkward  flow  of  control,  especially  when  user
+interfaces such as command completion and forms come into play.
+
+
+CAP: Overview                                             MTB-646
+
+The   flow   of  control   issue  is   an  important   one.   The
+CAP-to-program flow is one  of the most important characteristics
+of  CAP.   It  was  for  this reason  that  the  flow  of control
+scenarios were described in so much detail in section 3.3.
+
+Section  4  below will  pursue  this issue  further  by examining
+several  alternatives to  CAP, comparing  the CAP-to-program flow
+with that of the alternatives.
+
+3.5 Online Documentation from the BID Information
+
+We  might  be  able to  replace  info segments  for  commands and
+subroutines having CAP interfaces by  a help interface which uses
+the  information in  the BID to  document the command/subroutine.
+The user interface would be through the help command:
+
+1)   The user types "help command_name" just as she does today.
+
+2)   The  command processor  calls cap_  to process  the argument
+     list (since help has a CAP interface).
+
+3)   cap_  does  processing similar  to  that described  in 3.3.1
+     above.  It finally calls the help command procedure.
+
+4)   help calls help_ with the  command_name as the help topic to
+     be printed.
+
+5)   help_ looks for an actual info segment containing the topic,
+     doesn't  find one,  uses object search  rules to  see if the
+     topic represents a command name,  and finds that the command
+     has a CAP interface.  So help_  calls cap_ to get the binary
+     interface  description   information  and  formats   it  for
+     printing.  The information would  include most sections that
+     now exist  in an info  segment (eg, Syntax  constructed from
+     the  description, plus  verbiage for Function,  each item in
+     Arguments  and  Control  Arguments,  plus  Access  Required,
+     Notes, and perhaps even Examples).
+
+However, there  are several problems  with this method  of online
+documentation.  First is the problem  of who controls the content
+of the online documentation  information:  the documentation unit
+or  the  programmers?   Currently,  the  documentation  unit  has
+complete  responsibility for  the content and  formatting of info
+segments,  and  no  responsibility for  the  programs themselves.
+However, if  the online documentation information  comes from the
+BID,   then   the   documentation   unit  would   have   to  gain
+responsibility  over  the  online  documentation  portion  of the
+SID/BID,   or   else   relinquish   their   online  documentation
+responsibilities  to  the  programmer.    Neither  one  of  these
+approaches seems correct.
+
+
+MTB-646                                             CAP: Overview
+
+Second, a method would have to  be provided to dprint such online
+documentation  generated  directly   from  the  binary  interface
+descriptions.  Currently,  info segments are  directly dprintable
+from &gt;doc&gt;info,  and many people  take advantage of  this fact by
+dprinting info segments to act as their hardcopy documentation.
+
+Because I haven't found an answer  to either of these problems, I
+suggest  using an  alternative approach:  providing  a command to
+extract the basic syntax information from  the BID in the form of
+a  template  info segment  (actually  a template  compin segment,
+since  both info  segments and  manual documentation  is produced
+from the same compin file, under the "single sourcing" policy for
+documentation).   The  documentation  unit  could  then  fill  in
+information describing the function and arguments.
+
+However, even  this alternative has problems.   It isn't feasible
+for documentation people  to fill in a new  template every time a
+small change is made to a command.  If a new argument is added to
+the  command interface,  it is much  easier to  edit the existing
+compin  segment that  to fill in  a new  template compin segment.
+But  by doing  so, we  lose the  direct link  between the command
+syntax defined in the BID and the documented syntax.
+
+As  a  result,  I'm  not  sure   how  to  deal  with  the  online
+documentation issue.  Clearly,  we would be no worse  off than we
+are  now if  we continue creating  documentation totally separate
+from  the coding  effort.  Also, we  could easily  provide a tool
+like  a  super  display_entry_point_dcl  which  display  the full
+syntax of a command, or the declaration and calling sequence of a
+subroutine.    Having  this   would  make   it  easier   for  the
+documentation group to check out the exact calling sequences when
+it was updating the documentation.
+
+Your ideas about how we might take better advantage of the syntax
+information  in the  SID/BID in  creating documentation  would be
+appreciated.
+
+3.6 The CAP Translation Mechanism
+
+Next, I  will describe how  a source interface  description (SID)
+for  a  command could  be  translated into  the  binary interface
+description  (BID).   This  description  will not  deal  with the
+details  of  a  particular  CAP description  language,  since the
+details of  the language are  not important at this  point in the
+design process.
+
+Before discussing the CAP command itself, let's address the goals
+of the translation process, itself.
+
+
+CAP: Overview                                             MTB-646
+
+3.6.1 GOALS FOR TRANSLATION
+
+Given  a SID  and a command  procedure source  program written in
+PL/I or Fortran, etc, we need to produce a BID translation of the
+SID which  can be referenced  efficiently, and an  object segment
+compiled  from the  command procedure source.   We basically have
+two inputs and two outputs, as shown below:
+
+  x.pl1                                x
+  --------                             --------
+  |      |                             |      |
+  |      |                             |      |
+  --------         TRANSLATION         --------
+              ====================&gt;
+  x.cap                                xcap_
+  --------                             --------
+  |      |                             |      |
+  | SID  |                             | BID  |
+  --------                             --------
+
+3.6.1.1 BID Should Be an Object Segment
+
+Because  both  the command  object  segment (x)  and the  BID are
+needed at  execution time, they  should be closely  linked in the
+runtime  environment.  If  they are stored  in separate segments,
+then some  naming convention and/or searching  convention must be
+used (and enforced) to ensure that cooperating object segment and
+BID are found during execution.
+
+A  simpler  way of  achieving this  linking is  to store  the BID
+inside  of  the  command  object  segment  (either  by  binding a
+separate BID  segment with the  command, or by  inserting the BID
+information directly into the text  section of the command object
+segment).    Either  of   these  approaches   would  ensure  that
+equivalent versions of object and BID were used during execution.
+
+Of  course,  storing the  binary data  in command  object segment
+means that  the object segment  will probably be  somewhat larger
+than it would otherwise be.   However, viewed in terms of paging,
+there will probably  be fewer page faults if  the BID is appended
+to  the text  section of  the object  program, rather  than being
+stored in  a separate data segment.   Segmentation costs would be
+less, as well.
+
+The alternative  approach of constructing and  maintaining a data
+base  separate  from  the object  segment  to hold  the  BID adds
+unneeded complexity to any CAP-like proposal.  A search mechanism
+different  from  object  search  rules would  be  needed  to find
+separately-stored   BIDs,  adding   complexity  to   the  runtime
+environment.   And  if the  BID  database were  something  like a
+
+
+MTB-646                                             CAP: Overview
+
+vfile_ (to  reduce segmentation overhead in  storageing small BID
+data segments), then we would need  new tools to maintain the BID
+data base,  perform online installations into  the database, etc.
+In fact, we  would undoubtedly need many separate  data bases, in
+order to  isolate information for  PSP programs from  one another
+for separate distribution to customers.
+
+So  one  important goal  is that  the BID  be an  object segment,
+stored with  the command object segment,  and findable via object
+search rules.
+
+3.6.1.2 Translation Mechanism Should be Simple to Use
+
+Because one of our goals is  to make it simpler to write commands
+using  the  CAP  interfaces,  a second  goal  of  the translation
+mechanism  is that  it be easy  to use.   The developer shouldn't
+have  to  go through  4 or  5 steps  to obtain  a working  set of
+modules  from his  source.  From an  ease of  use standpoint, the
+ideal translation  mechanism would provide a  single command that
+compiled  the  CAP  source  and  command  procedure  source,  and
+produced  one  or two  object segments  ready for  binding and/or
+unbound execution.
+
+3.6.1.3 Programs Using CAP Should Be Easy to Understand
+
+Besides making CAP  simple to use, it is  important that programs
+implemented using CAP are easy to understand and to maintain (far
+easier than could be achieved  with our existing command argument
+mechanisms).   Essentially,  the  CAP  language  is  a high-level
+language  for  describing the  user interface  to a  program.  To
+understand what input a CAP  command expects and how it operates,
+the reader must have both  the CAP source language description of
+the interface and the program source.  Perhaps the easiest way to
+make both available is to place both in the program source and in
+the compilation listing.
+
+3.6.1.4 The Translation Mechanism Should Be Simple to Code
+
+When it  doesn't conflict with  the other goals  above, we should
+choose a design for the  translation mechanism which is as simple
+(quick) to implement as possible.
+
+
+CAP: Overview                                             MTB-646
+
+3.6.2 POSSIBLE TRANSLATION MECHANISMS
+
+3.6.2.1 Design 1:  Separate Source and Object
+
+Perhaps the simplest  mechanism is to store the  SID in a segment
+separate from the command procedure,  and have the cap translator
+generate a CAP object segment  which is bindable with the command
+procedure object segment.  The diagram below illustrates this for
+a PL/I command procedure called x.
+
+                       FULL SERVICE CAP INTERFACE
+
+              SEPARATE SOURCE &amp; OBJECT, BINDABLE OBJECT
+
+                                                    bound_x_
+ bound_x_.s.archive      bound_x_.archive             x
+ ---------------         -------------------        ---------------
+ |             |         |                 |        |             |
+ |  x.pl1      |         |  x              |        |             |
+ |  ---------  |         |  ---------      |        |             |
+ |  |       |  |  pl1    |  |x:     |      |        | x: entry    |
+ |  |       |--------------&gt;| entry |      |        |             |
+ |  ---------  |         |  ---------      |  bind  |             |
+ |             |         |                 |-------&gt;|             |
+ |  x.cap      |         |  xcap_          |        |             |
+ |  ---------  |         |  -------------  |        |             |
+ |  |       |  |  cap    |  |x_cap_info:|  |        | x_cap_info: |
+ |  |       |--------------&gt;| entry     |  |        |    entry    |
+ |  |  SID  |  |         |  |    BID    |  |        |   -------   |
+ |  ---------  |         |  -------------  |        |   | BID |   |
+ |             |         |                 |        |   -------   |
+ ---------------         -------------------        ---------------
+
+While the  method diagrammed above  is simple, the  separation of
+the description of  the command procedure makes the  code for the
+total command (SID plus  command procedure) harder to understand.
+The  program   reader  must  access  two   separate  segments  to
+understand how  the command operates,  or must read  two separate
+compilation listings, or two pages on microfiche, etc.  Since our
+goal  is  to  make  programs   using  CAP  easier  to  write  and
+understand, this separation of SID from program is undesirable.
+
+3.6.2.2 Design 2:  Integrated Source and Object
+
+A more  integrated translation mechanism might  make it easier to
+understand  and  maintain a  command  interface coded  using CAP.
+Understanding and  maintenance would be made  easier by including
+the  SID with  the PL/I,  Fortran, exec_com,  etc source  for the
+
+
+MTB-646                                             CAP: Overview
+
+command,  rather   than  in  a  separate   file.   The  interface
+description would be tied to the  program as a whole and would be
+visible in compilation listings of the program.  This integration
+of source could be achieved  by placing the interface description
+in the program source as  a comment.  The reduction_compiler uses
+such a mechanism to tie the reductions to the source program, and
+the mechanism has proved quite effective.
+
+Similarly, the  BID could be  stored with the  command procedure,
+either by binding it into the  same bound segment as shown in the
+diagram  above,  or by  actually  placing the  BID into  the text
+section of the command procedure object segment.
+
+The diagram below shows what steps  could be performed by the cap
+command  to translate  the integrated PL/I  source and  SID for a
+command procedure into a single, executable object segment.
+
+
+CAP: Overview                                             MTB-646
+
+                       FULL SERVICE CAP INTERFACE
+
+                      INTEGRATED SOURCE AND OBJECT
+
+        (ALL of the following steps are done by the cap command)
+
+ x.pl1.cap           x.pl1              x             x.list
+ -----------         -----------        -----------   -----------
+ |         |         |         |        |         |   |         |
+ |/*       |         |/*       |  cap   | t e x t |   |/*       |
+ | ------- |  copy   | ------- |invokes |-- --- --|   | ------- |
+ | | SID | | source  | | SID | |  pl1   | d e f s |   | | SID | |
+ | ------- |--------&gt;| ------- |-------&gt;|-- --- --| &amp; | ------- |
+ |    |  */| to pdir |       */|        | l i n k |   |       */|
+ |    |    |         |         |        |-- --- --|   |         |
+ |    |    |         |         |        | s y m b |   |         |
+ -----|-----         -----------        -----------   -----------
+      |                                         |       |
+      | copy SID to pdir         merge BID with |       | update listing
+      | and expand               object segment |       | source map; put
+      | CAP includes                            |       | CAP includes
+      |                                         |       | in SID listing
+      V                                 x       V       V
+  -------     cap      -------          -----------   ----------- x.list
+  | SID |-------------&gt;| BID |          |         |   |         |
+  |  +  |  translates  -------          | t e x t |   |/*       |
+  |incls|                               | ------- |   | ------- |
+  -------                               | | BID | |   | | SID | |
+                                        | ------- |   | |  +  | |
+                    definition for      |-- --- --|   | |incls| |
+                    x_cap_info ep  ----&gt;| defs +  |   | ------- |
+                    inserted in defs    |-- --- --|   |       */|
+                                        | l i n k |   |         |
+                    source map updated  |-- --- --|   |         |
+                    to refer to    ----&gt;| symb +  |   |         |
+                    x.pl1.cap &amp; CAP     -----------   -----------
+                    include files
+
+The scheme above has the advantages of maintaining the one-to-one
+correspondence  between  source  segments  and  resulting  object
+segments; of providing a single source module which includes both
+the  CAP SID  and the command  procedure program;  of providing a
+single object segment which has a accurate source map referencing
+all  files  used in  forming  the object  segment  (including CAP
+include files); of  producing a listing which shows  the SID with
+include  files  expanded, plus  the  normal program  source.  The
+compilation  process  is  a  simpler,  one-step  operation.   And
+because  the  BID  is  integrated  with  the  object  segment, no
+additional searching is  needed to find the BID  once the command
+procedure  is  found.   The  procedure  even  works  for  unbound
+commands.
+
+
+MTB-646                                             CAP: Overview
+
+However, I'm  sure some of  the difficulties of  the scheme above
+are obvious, as well.  The cap  command would have to know how to
+interface with  a variety of compilers  (eg, pl1, fortran, cobol,
+etc).  It  would have to know  how to add the  BID and update the
+source map and compiler information to an object segment, and how
+to insert  information about CAP include  files into the listing.
+Making  even  the  smallest  change  to  the  SID  would  require
+recompiling  the PL/I  or Fortran  procedure as  well as  the SID
+itself.  All of these factors  mean that a cap command supporting
+a combined source and object  translation would be much harder to
+build and debug than would a  command for the separate source and
+object alternative.
+
+3.6.2.3 Other Designs
+
+Of  course,   other  translation  mechanisms   are  possible.   A
+compromise approach might integrate the source but not the object
+(one source  segment compiled by  two separate commands,  cap and
+pl1,  to  produce two  separate object  segments which  are bound
+together).   While  this  approach  is  simpler  than  the  fully
+integrated  design,  it  is  harder to  use  (three  commands are
+involved (cap, pl1  and bind) instead of one  or two).  Also, SID
+include files wouldn't be expanded in the pl1 program compilation
+listing.
+
+It  is  unclear  at  this  point   how  much  we  should  pay  in
+implementation costs to achieve  the benefits of fully-integrated
+source and  object.  This is  an issue that will  be discussed in
+the technical review.
+
+3.6.3 HOW TRANSLATION WORKS FOR PROGRAMS
+
+The  basic  steps  in  the  translation  process  for  a  command
+procedure  are  described in  more  detail below.   The mechanism
+described  here is  the integrated  design diagrammed  in section
+3.6.2.2 above.
+
+1)   The cap command is invoked on  a cap source program having a
+     suffix  of lang.cap,  where lang  is the  source language in
+     which the command procedure is written (eg, copy.pl1.cap for
+     the copy command).   A sample command line for  the the copy
+     command might be:
+
+          cap copy.pl1 -ot -map -table
+
+
+CAP: Overview                                             MTB-646
+
+2)   cap looks  in copy.pl1.cap for a  comment beginning "/*cap "
+     and ending with "end_cap*/".   This special comment contains
+     the source  language interface description  to be translated
+     by cap into a  binary interface description.  cap translates
+     this interface description, placing  it in temporary storage
+     in the process directory.
+
+3)   cap  then  copies copy.pl1.cap  into a  temp segment  in the
+     process  directory  called  copy.pl1, and  invokes  the PL/I
+     compiler  to compile  this segment.   The object  segment is
+     placed in  the working directory.   This step is  similar to
+     what create_data_segment does in compiling a data segment.
+
+4)   Once  the pl1  command returns,  cap checks  the compilation
+     severity.  If  errors occurred during  the PL/I compilation,
+     cap stops.
+
+5)   If pl1 compiled the program successfully, cap copies the SID
+     from  copy.pl1.cap  into  a  temp  segment  in  the  process
+     directory,  expanding  any include  files referenced  by the
+     SID.   It compiles  the expanded  SID into  a BID  placed in
+     another temp segment.
+
+6)   cap then checks the entrypoint parameter descriptors for the
+     copy entrypoint  of the PL/I object  segment against the BID
+     to  insure  that  the  entrypoint  parameters  are  declared
+     compatibly  with  binary  argument  descriptions.   The  cap
+     translation will fail  if incompatible entrypoint parameters
+     are found.
+
+7)   cap then  appends the BID  to the end of  the object segment
+     text  section,  and  adds  a  new  definition  of  this text
+     entrypoint to  the definitions section.   The entrypoint for
+     the copy command might  be called copy.cap_data.  It updates
+     the source  map for the  object segment to  include the real
+     pathname  for  the  primary  source module,  adding  any CAP
+     include files referenced by the SID.
+
+8)   Finally,  it  modifies  the  listing  produced  by  the PL/I
+     compiler  to  include  the   complete  set  of  source  file
+     pathnames (adding any SID include files), and inserts copies
+     of the SID include files into the SID part of the listing.
+
+Note  that having  the cap  command add  information to  the text
+section  of  the  command  object  segment  requires  that object
+segment sections following the text section be relocated.  It may
+be possible to  incorporate code from the binder  to perform this
+relocation, or to  use the proposed Object Utilities  (ou_) to do
+this relocation.
+
+
+MTB-646                                             CAP: Overview
+
+On  the other  hand, if it  is acceptable to  use an intermediate
+approach   of  integrated   source  but   separate  object,  such
+relocation could  be handled purely by  the binder.  In addition,
+if cap simply  created an ALM or CDS source  for the BID and then
+compiled it,  then cap would  not have to know  how to manipulate
+object segments at all.  Such  manipulation would instead be done
+by the alm or create_data_segment compilers, and by the binder.
+
+3.6.4 HOW TRANSLATION WORKS FOR EXEC_COMS
+
+The  basic  steps  of  the translation  process  for  an exec_com
+segment would differ from those for programs in that the exec_com
+segment  is interpreted  rather than  being compiled.  Therefore,
+the  BID  must be  stored  separately from  the  exec_com segment
+itself.  For an exec_com segment:
+
+1)   The  cap command  is invoked  on an  exec_com source program
+     having a suffix of ec.cap.  A sample command line might be:
+
+          cap data_file.ec
+
+2)   cap  looks  in  data_file.ec.cap  for  a  block  of comments
+     beginning "&amp;-cap" and ending with &amp;-end_cap.  cap translates
+     this  interface  description,  placing  it  in  a  permanent
+     segment  in  the  same directory  as  data_file.ec.cap.  The
+     segment  is  called  data_file.cap_data.   Knowing  that the
+     interface is for an exec_com, cap insures that all arguments
+     in the  BID have a character  string representation suitable
+     for use inside of an exec_com.
+
+3)   cap adds the name data_file.ec to data_file.ec.cap, if it is
+     not already there.  In fact, it adds names with an ec suffix
+     for each exec_com entrypoint described  by the BID.  It also
+     adds   these   names   with   a  cap_data   suffix   to  the
+     data_file.cap_data segment.
+
+3.6.5 DETECTING A CAP INTERFACE
+
+When the  command processor or  other program wants  to determine
+whether   a   program  has   a   CAP  interface,   it   can  call
+get_entry_arg_descs_$info   using  a   pointer  to   the  program
+entrypoint to  find out how  many parameters the  entrypoint has.
+Most existing commands are declared without parameters, but a CAP
+interface would have many parameters, one for each argument given
+in the  BID.  If parameters  were present, the  command processor
+could       call       hcs_$make_ptr        to       see       if
+command_name$command_name.cap_data existed.   If so, it  is a CAP
+interface.
+
+
+CAP: Overview                                             MTB-646
+
+However,  if  CAP interface  detection  were integrated  into the
+command processor, then  there would have to be  a more efficient
+method of  detecting a CAP interface.   One simple solution would
+be  to add  a CAP  bit to  the entry  sequence flags  stored just
+before the entrypoint.  The cap  translator could set the flag as
+part of compiling the SID, and  a cap_ subroutine could check the
+flag  setting  when  given  an  entry  variable  identifying  the
+entrypoint in question.
+
+For  subsystem  requests, the  subsystem request  processor would
+perform checks  similar to those  just described for  the command
+processor.   The  same  technique  could  be  used  by  iox_ when
+interfacing with I/O modules.
+
+For  exec_com  segments, cap_  could  look for  a  segment called
+&amp;ec_dir&gt;&amp;ec_name.cap_data.  If  one is found, the  exec_com has a
+CAP interface.
+
+3.7 Support for Existing Programs
+
+Up to  now, the discussion  in this MTB  has centered on  how CAP
+would  be used  in a  totally new  program or  exec_com, or  in a
+program/exec_com  that  had  been   modified  to  support  a  CAP
+interface.  However,  one of the  requirements is to  provide CAP
+interfaces for  existing commands or exec_coms  without having to
+modify them.  CAP must provide such interfaces because MDC cannot
+afford to modify all (or even many) of the existing commands, and
+yet would like to provide CAP interfaces for most of the commands
+in the MPM Commands manual.  CAP should even be able to interface
+with third  party applications programs which  cannot be modified
+(because Honeywell doesn't own the source, etc).
+
+The purpose of providing CAP  interfaces for existing programs is
+to  allow  the  features  of  CAP  (command  line  prompting  and
+completion, and  forms) to be  used for these  existing commands,
+and  to  provide standard  command line  syntax checking  for the
+commands.
+
+The flow of control when invoking an existing program which has a
+CAP  interface  would  be  the same  as  that  described  for new
+programs  in  sections 3.3.1  to  3.3.4, except  that  instead of
+changing the data type of arguments in section 3.3.1, steps 4 and
+5, cap_ would rebuild the  argument list as a standard command/af
+argument list (char(*) arguments with a char(*) varying AF return
+value).   All arguments  in the  rebuilt list  would appear  in a
+fixed order (as specified in  the BID).  cap_ would place default
+argument values  into the rebuilt list  for control arguments not
+specified by the  user.  This would allow defaults  to be changed
+in the SID without having to modify the existing program.
+
+
+MTB-646                                             CAP: Overview
+
+In order  to adapt the  CAP design to  support existing programs,
+two problems must be solved:
+
+     o    If   the  integrated   source  and   object  method  of
+          translation  is  adopted  for  CAP,  then  an alternate
+          method  would have  to be  defined to  support existing
+          programs.   This  is   because  the  integrated  method
+          involves  compiling  a  command  source  program  which
+          contains  a SID,  and inserting the  resultant BID into
+          the    command    object   program.     However,   such
+          compilation/insertion  would  not  be  permissable when
+          interfacing with  existing programs which  could not be
+          modified.
+
+     o    A method would be needed  to detect whether an existing
+          program  has  a  CAP  interface.   Counting  the  entry
+          parameter descriptors of  the existing program wouldn't
+          work,  since  the  entrypoint in  the  existing command
+          would  still  be  declared  options(variable)  with  no
+          defined arguments.
+
+3.7.1 HOW TRANSLATION WORKS FOR EXISTING PROGRAMS
+
+CAP translation  for existing programs could  be almost identical
+to  the  scheme  for   separate  source  and  object  translation
+described in section 3.6.2.1.  The  main difference would be that
+a  special keyword  would appear in  the SID to  indicate to cap_
+that the  target program should  be passed a  standard command/af
+argument  list.   A  SID which  uses  this keyword  is  called an
+Existing  Program  SID  (EPSID),  and  translation  of  an  EPSID
+produces an EPBID.  The translation is diagrammed below.
+
+
+CAP: Overview                                             MTB-646
+
+                          EXISTING PROGRAM SUPPORT
+
+                 SEPARATE SOURCE &amp; OBJECT, BINDABLE OBJECT
+
+                                                    bound_x_
+ bound_x_.s.archive      bound_x_.archive             x
+ ---------------         -------------------        ---------------
+ |             |         |                 |        |             |
+ |  x.pl1      |         |  x              |        |             |
+ |  ---------  |         |  ---------      |        |             |
+ |  |       |  |  pl1    |  |x:     |      |        | x: entry    |
+ |  |       |--------------&gt;| entry |      |        |             |
+ |  ---------  |         |  ---------      |  bind  |             |
+ |             |         |                 |-------&gt;|             |
+ |  x.cap      |         |  xcap_          |        |             |
+ |  ---------  |         |  -------------  |        |             |
+ |  |       |  |  cap    |  |x_cap_info:|  |        | x_cap_info: |
+ |  |       |--------------&gt;| entry     |  |        |    entry    |
+ |  | EPSID |  |         |  |   EPBID   |  |        |  --------   |
+ |  ---------  |         |  -------------  |        |  | EPBID|   |
+ |             |         |                 |        |  --------   |
+ ---------------         -------------------        ---------------
+
+3.7.2 DETECTING A CAP INTERFACE FOR EXISTING PROGRAMS
+
+The simplest solution for detecting  that an existing program has
+a CAP entrypoint  is to set the CAP entry  sequence flag (esf) in
+entrypoints of the existing program  object segment.  The CAP esf
+approach was described in section 3.6.5 above.
+
+To implement this  approach, the object program would  have to be
+available to whatever tool is used to set the CAP esf.  Since the
+binder  has  access  to both  the  CAP  EPBID and  to  the object
+program,  it seems  reasonable to  invent a  new bindfile control
+which tells the binder to turn on  the CAP esf for a given set of
+entrypoints.   Alternately,  the binder  could  look for  BID and
+EPBID segments, and use information in the BID to determine which
+set of entrypoints should have their CAP esf turned on.
+
+As a debugging aid, we might also provide a tool which would turn
+on or off the CAP esf for an existing, unbound program.
+
+3.8 A Sample CAP Program
+
+To further appraise this proposal, it  would be useful to look at
+a  program  which  uses a  CAP  interface.  What  follows  is the
+skeleton of the copy command, showing the sections of the program
+relating to CAP.   The sample of CAP language  shown below is not
+necessarily the  language which would  be used for  CAP, but will
+give you  a feeling for how  such language would be  used and the
+
+
+MTB-646                                             CAP: Overview
+
+kinds of user interface issues which  must be dealt with in a CAP
+language.(1)
+
+_________________________________________________________________
+
+(1) Acknowledgment:  the  sample language shown  below is derived
+    from  a language  proposed for Ford's  Command Line Interface
+    Compiler  (CLIC),  another  CAP-like  system  written  by Jay
+    McFayden et.  al.  at Ford.
+
+
+CAP: Overview                                             MTB-646
+
+/* ***********************************************************
+   *                                                         *
+   * Copyright (c) 1972 by Massachusetts Institute of        *
+   * Technology and Honeywell Information Systems, Inc.      *
+   *                                                         *
+   *********************************************************** */
+
+/*cap
+  copy: command   synonym (cp)  version(1)
+        cap_version(1)  language(pl1)
+        arguments (source_path target_path -all -acl -chase
+                   -names -long)
+        help ("causes copies of specified segments and
+          multisegment files to be created in the specified
+          directories with the specified names.  Access control
+          lists (ACLs) and multiple names are optionally
+          copied.");
+
+    source_path: group_arg (paths,1)
+        pathname count (1...*)
+        apply_star_convention (files, -chase)
+        help ("pathname of a segment or multisegment file to be
+          copied.  The star convention is allowed.  The default
+          action of this command when path1 specifies a link is
+          given below in the "Notes" section.");
+
+    target_path: group_arg (paths,2)
+        pathname count (0...*)
+        apply_equal_convention
+        default (==)
+        help ("pathname of a copy to be created from
+          source_path.  If the last target_path argument is not
+          given, the copy is placed in the working directory
+          with the entryname of source_path.  The equal
+          convention is allowed.");
+
+    -all: group_switch_arg
+        true_names (-all, -a)
+         true_help ("copies multiple names and ACLs.")
+        set_true (-acl, -names)
+        form (no);
+
+    -acl: switch_arg
+        true_names (-acl)
+         true_help ("copies the ACL.")
+        false_names (-no_acl)
+         false_help ("does not copy the ACL.")
+        default (-no_acl);
+
+
+MTB-646                                             CAP: Overview
+
+    -names: switch_arg
+        true_names (-name, -nm, (-names))
+         true_help ("copies all names.")
+        false_names (-no_name, -nnm, (-no_names))
+         false_help ("does not copy names.")
+        default (-no_names);
+
+    -chase: switch_arg
+        true_names (-chase)
+         true_help ("copies the targets of links that match
+          source_path.  See "Notes" for the default action.")
+        false_names (-no_chase)
+         false_help ("does not copy targets of links that match
+          source_path.  See "Notes" for the default action.")
+        default_depends_on (source_path);
+
+    -brief: switch_arg
+        true_names (-brief, -bf)
+         true_help ("suppresses warning messages.")
+        false_names (-long, -lg)
+         false_help ("prints warning messages when necessary.")
+        default (-long);
+
+    "Access required": help ("Read access is required for
+        source_path.  Status permission is required for the
+        directory containing source_path if the -name, -acl or
+        -all control argument is specified.  Append permission
+        is required for the directory containing target_path.
+        Modify permission is required for the directory
+        containing target_path if the -name, -acl, or -all
+        control argument is specified.");
+
+    Notes: help ("The control arguments can appear once anywhere
+        in the copy command line after the command name and
+        apply to the entire copy command line.
+
+        The default for chasing links depends on source_path.  If
+        source_path is not a starname, links are chased by default.
+        If source_path is a starname, links are not chased.");
+
+                                                  end_cap*/
+
+
+CAP: Overview                                             MTB-646
+
+copy:
+cp:  procedure (cap_info_ptr, source_path, target_path, acl_sw,
+          chase_sw, names_sw, brief_sw);
+
+/* This is the standard service system command to copy a segment or
+   multi-segment file.  This procedure also includes the move
+   command, which consists of a copy (with names and ACLs) followed
+   by a delete.  Both commands take multiple arguments and the star
+   convention.  Under control of optional arguments it will also
+   copy extra names and/or the ACL of the segment.  */
+
+dcl  source_path (*) char(*);
+dcl  target_path (*) char(*);
+dcl (acl_sw, chase_sw, names_sw, long_sw) bit(1);
+
+          .
+          .
+          .
+
+     do Ipath = lbound(source_path,1) to hbound(source_path,1);
+        call expand_pathname_ (source_path(Ipath), source_dir,
+           source_ent, code);           /* abs path, no need to */
+                                        /* check code.          */
+        call expand_pathname_ (target_path(Ipath), target_dir,
+           target_ent, code);
+
+        call copy_ (source_dir, source_ent, target_dir, "copy",
+           copy_options, err_sw, code);
+        if code = 0 then do;
+           if names_sw then do;
+              call copy_names_ (source_dir, source_ent, target_dir,
+                 target_ent, "copy", err_sw, code);
+              if code ^= 0 then ...
+              end;
+           if acl_sw then do;
+              call copy_acl_ (source_dir, source_ent, target_dir,
+                 target_ent, err_sw, code);
+              if code ^= 0 then ...
+              end;
+           end;
+        else ...
+        end;
+
+%include cap_info;
+
+     end copy;
+
+
+MTB-646                                             CAP: Overview
+
+The cap_info_ptr  argument shown in copy's  parameter list points
+to the structure shown below:
+
+dcl 1 cap_info           aligned based(cap_info_ptr),
+    2 cap_version        char(8),
+    2 prog_version       char(8),
+    2 prog_name          char(32) varying,
+    2 invoke_type        fixed bin,
+    2 code               fixed bin(35),
+    2 message            char(1000) varying,
+    2 sci_ptr            ptr,
+    2 info_ptr           ptr,
+     cap_info_ptr        ptr,
+     cap_version_1       char(8) int static options(constant)
+                         init("capv1"),
+    (COMMAND             init(1),       /* invoke_type values */
+     ACTIVE_FUNCTION     init(2),
+     REQUEST             init(3),
+     ACTIVE_REQUEST      init(4)) fixed bin int static
+                         options(constant);
+
+We  should  perhaps  consider  a  more  flexible  error reporting
+mechanism  than  that shown  above (for  example, one  similar to
+ssu_$print_message).  Also,  I haven't yet figured  out how error
+reporting  within the  form would  be integrated  with ssu_ error
+reporting (eg, ssu_$abort_line).
+
+For languages  other than PL/I, the  information in the structure
+above  would  have  to be  passed  in  a different  way.   For an
+exec_com,  it  could  be  passed by  having  exec_com_  set named
+variables containing  the information in the  structure (with the
+exception of  sci_ptr and info_ptr).  For  a FORTRAN program, the
+pertinent variables could be passed  as separate arguments to the
+FORTRAN program.
+
+
+CAP: Overview                                             MTB-646
+
+4 OTHER POSSIBLE INTERFACES
+
+Several other  mechanisms exist which  provide facilities similar
+to those described above.  These mechanisms are at varying stages
+of  design  and  implementation.   I've  investigated  three such
+facilities and  have tried to  incorporate their good  ideas into
+the proposal above while avoiding some of their pitfalls.  In the
+discussions  below,  I  will  introduce  these  three  facilities
+briefly, and describe why they  don't meet the requirements for a
+CAP-like system, as described in section 2 above.
+
+4.1 The Stratus Interface
+
+The  Stratus  Interface  is  a forms  or  command  line interface
+developed  by  Stratus,  Inc  for use  on  their  computer.  Full
+information  on  this system  is available  in the  manuals which
+describe  this  system.  If  anyone  wants to  review  the Status
+design,  John Gintell  has a set  of manuals in  Cambridge, and I
+have pertinent excerpts from the manuals in Phoenix.
+
+4.1.1 EXAMPLE
+
+In the  Stratus design, the  command calls an  s$parse subroutine
+with  pairs  of  arguments:   a character  string  describing the
+attributes  of an  argument; and a  variable in  which the parsed
+argument value is returned.
+
+A  sample  routine which  illustrates the  Stratus method  is the
+display_report  command.  If  this command  were documented  in a
+Multics info segment, the output of help -brief would be:
+
+          display_report report_name {-control_args}
+
+          Control arguments:
+            -long (default)
+            -no_long
+            -sort SORT_KEY
+
+          List of Sort Keys:
+            ascii (default)
+            alphabetical
+            numerical
+
+
+MTB-646                                             CAP: Overview
+
+The  actual  procedure  might  be structured  as  follows  on the
+Stratus system:
+
+   display_report: procedure;
+
+   dcl code                   bin(15),
+       report_name            char(32) var,
+       long_switch            bin(15),
+       sort_code              char(16) var,
+       s$parse_command        entry (char(*) var, bin(15),
+                                char(*) var, char(*) var,
+                                char(*) var, bin(15),
+                                char(*) var, char(*) var,
+                                char(*) var);
+
+       call s$parse_command ("display_report", code,
+            "report:name,required", report_name,
+            "switch(-long),=0", long_switch,
+            "option(-sort),string,length(16),
+                allow(ascii,alphabetical,numerical),=ascii",
+                sort_code,
+            "end");
+
+       if code ^= 0 then return;
+       else do;
+            ... body of pgm which uses report_name, long_switch,
+                and sort_code vars
+            end;
+
+       end display_report;
+
+In  this   example,  each  line   following  the  first   in  the
+s$parse_command call  defines the specifications  for an argument
+(called  an Argument  Description Group  (ADG)), until  the "end"
+line is reached, signalling the last specification.
+
+Each ADG has the form:
+
+ descriptor, data_variable, {given_switch,} {default_calculator,}
+
+where  each of  the above is  a separate argument  in the calling
+sequence of s$parse_command.
+
+The  descriptor  in the  first ADG  (the quoted  string argument)
+defines a  "positional command argument",  one of three  kinds of
+ADG's.  "report" is a label,  which is separated from other parts
+of the group by a colon.  The argument_type is "name".  This type
+controls the type of validation performed on the argument.  Other
+possible types  include:  date_time, number,  pathname, starname,
+string, user_name  and unclaimed (a catchall  type).  The type is
+
+
+CAP: Overview                                             MTB-646
+
+followed by a qualifier "required"  which says that the user must
+supply this argument.
+
+The  descriptor  is followed  by the  data_variable, report_name.
+This is a  variable declared in the command  which the parse sets
+according to the  arguments given by the user.   In this case, if
+the user typed:
+
+   display_report quarterly_stats
+
+then report_name would have the value "quarterly_stats".
+
+The second ADG defines a "switch command argument", the second of
+the 3 kinds.   The name of the switch is  -long.  When typed as a
+command line (what STRATUS calls Linear Form), -long and -no_long
+are used to  set the switch.  When used via  CRT Form, the switch
+argument is displayed as a field in the form:
+
+    -------------------- display_report --------------------
+    report:
+    -long:    no
+    -sort:    ascii
+
+Editing  controls are  used to position  to the  -long field, and
+then the  user hits the  CYCLE key to cycle  through the possible
+values  (in  this  case  "yes"  or "no").   The  =0  part  of the
+descriptor gives  the default value.  In  this case, 0 represents
+no.  The default value is displayed on the CRT Form.
+
+The third kind of ADG is the option.  In the example above, -sort
+is  an option  that requires  a string  operand of  max length 16
+chars.    Allowed   values   for   the   operand   are   "ascii",
+"alphabetical", or  "numerical", with "ascii"  being the default.
+In  the CRT  Form, the  user positioned  at this  field can cycle
+through  the  allowed  values  by  hitting  the  CYCLE  key.  The
+sort_code variable  would be assigned  a value of  "ascii", based
+upon the CRT  Form shown above.  In Linear Form,  if the user did
+not  give the  -sort optional arg,  then the  parser would assign
+"ascii" to sort_code.
+
+When the  user decides the  arguments are set  correctly, he hits
+the  ENTER  key.   At  that  point,  arguments  are  checked  for
+consistency  and   arg  values  are  assigned   to  the  programs
+variables.
+
+4.1.2 CRITIQUE
+
+The Stratus system provides a nice user interface.  Because it is
+a   dedicated   mini-computer   system   using   Stratus-supplied
+terminals, it  can take full advantage  of all terminal features,
+
+
+MTB-646                                             CAP: Overview
+
+including   specially-named   function    keys,   inverse   video
+highlighting of fill-in-the-blanks fields,  etc.  However, it has
+several drawbacks.
+
+The Stratus method requires that  the command be invoked prior to
+displaying the form.  The user types  the name of the command and
+then hits a DISPLAY-FORM key on the terminal.  This sets a static
+bit which controls the operation of  s$parse when it is called by
+the command.
+
+Also, the Stratus technique is rather awkward for the programmer,
+because the full interface description is encoded as arguments in
+the  call to  s$parse.  Among other  things, this  means that the
+programmer  is constantly  dealing with  lengthy argument strings
+and that  it is impossible to  include online documentation along
+with the interface description.
+
+Finally, Stratus uses a  program-to-parser flow of control.  This
+flow is somewhat  awkward.  In a forms interface,  the user types
+the name  of the command  followed by the FORM  key; the listener
+sets a static flag indicating that a form is to be generated, and
+invokes the command; the command calls s$parse to display a form;
+the  user  fills in  the  form, and  types  the ENTER  key; then,
+s$parse  returns  the user-provided  information to  the command.
+However, if the  command detects an error in  one of the argument
+values, it must diagnose the error and then call s$parse again to
+redisplay the form.
+
+Support for  command line completion processing  would be awkward
+with  a  program-to-parser flow  for  similar reasons.   What you
+would like with  a completer is to have  the completion mechanism
+built into  one set of  modules (section 3.3.3  above proposes to
+put  the  completion  mechanism   into  video  editor  requests).
+However, with  the Stratus mechanism, the  listener would have to
+read  the command  name portion of  the command  line, invoke the
+command, then the command would  call s$parse to do completion on
+the remainder of the command line.  Putting more than one command
+on a command line (via  semi-colon separation) would be extremely
+difficult since no one program  is responsible for processing the
+entire command line.
+
+4.2 The process_arguments_ Interface
+
+Lindsey  Spratt proposed  another type  of interface  in MTB-629.
+His  interface,  called  process_arguments_,  has  actually  been
+implemented  sufficiently  well  to  be used  for  parsing mtape_
+attach,  open, close  and detach descriptions.   The MTB provides
+detailed  information,  so  I'll  describe his  system  here only
+briefly.
+
+
+CAP: Overview                                             MTB-646
+
+4.2.1 EXAMPLE
+
+In  Lindsey's  system,  an interface  is  described by  a  set of
+control  information  expressed via  bind_file-like  keywords.  A
+sample control  file showing part of  mtape_'s attach description
+is shown below:
+
+Program_name: mtape_.attach;
+Default_linear_form:
+     "-density 1600 -device 1 -default_volume_type ansi",
+     " -track 9 -wait_time 10 -error -label -no_display",
+     " -no_ring -no_system -no_wait";
+Initial_implied_option: volume;
+
+Option:  comment;
+  Option_name:  -comment, -com;
+  First_argument:  comment;
+ Argument:  comment;
+   Presence:  required;
+   Validate:
+    "[and [ngreater [length &amp;r1] 0] [nless [length &amp;r1]  65]]";
+
+Option:  default_volume_type;
+  Option_name:  -default_volume_type, -dvt;
+  First_argument:  default_volume_type;
+ Argument:  default_volume_type;
+   Presence:  required;
+   Validate:
+    "[and [ngreater [length &amp;r1] 0] [nless [length &amp;r1] 22]]";
+          .
+          .
+Option:  density;
+  Option_name:  -density, -den;
+  First_argument:  density;
+ Argument:  density;
+   Presence:  required;
+   Validate:  "[or [nequal (200 556 800 1600 6250) &amp;r1]]";
+
+Option:  display;
+  Option_name:  -display, -ds;
+  Antonym:  -no_display, -nds;
+ Argument:  flag;
+   Default_value:  "true";
+   Antonym_value:  "false";
+
+Option:  error;
+  Option_name:  -error, -err;
+  Antonym:  -no_error, -nerr;
+ Argument:  flag;
+   Default_value:  "true";
+   Antonym_value:  "false";
+
+
+MTB-646                                             CAP: Overview
+
+          .
+          .
+End;
+
+This   source   is   converted   to  a   binary   description  (a
+print_vector_array)  by  the  cvapd   command,  with  the  binary
+description stored in a vector database.
+
+As with  Stratus, the command  must be invoked  prior to argument
+processing.        It       passes        its       name       to
+process_arguments_$argument_list,  along  with a  pointer  to its
+argument  list,  and  other  arguments.   The  process_arguments_
+subroutine  finds the  binary interface  description, uses  it to
+parse  the  argument list,  and  places the  parsed  arguments in
+character string form in  a resultant print_vector_array which is
+returned to the  command.  The command can then  scan through the
+print_vector_array  itself  looking  for arguments,  or  can call
+process_arguments_$get_option_value   to   obtain   a  particular
+argument.
+
+4.2.2 CRITIQUE
+
+The process_arguments_ approach is currently in the middle of its
+implementation stage, and  the design has evolved as  it has come
+into use in  mtape_.  I think the design  includes some very good
+ideas.  These include the ability to define a hierarchy of binary
+command  interface descriptions,  so that the  site or individual
+users  could  tailer command  interfaces (eg,  changing defaults)
+without modifying the command procedure itself.
+
+But  overall, it  does not meet  several of  the requirements set
+forth in section 2 above.
+
+1)   Use  of print_vector_arrays  to hold  parsed argument values
+     adds  complexity to  PL/I programs,  rather than simplifying
+     them.  The program wants to  deal with the arguments as PL/I
+     variables.   But to  get a variable,  it must  either call a
+     special vector  array lookup routine to  assign the value of
+     the -brief argument  to a variable; or it  must walk through
+     the complex vector array data structure itself.
+
+     A  more  natural,  user-friendly  technique is  to  have the
+     arguments  directly addressable  by name  as PL/I variables.
+     It  seems like  needless overhead  for process_arguments_ to
+     construct  an  elaborate  print_vector_array  which  is  not
+     directly  usable  by the  command,  when the  command really
+     needs PL/I  variables set to  the argument values.   The CAP
+     design  accomplishes  this  by passing  the  parsed argument
+
+
+CAP: Overview                                             MTB-646
+
+     values in  an argument list  which the command  can directly
+     reference via parameters.
+
+2)   use  of  the   print_vector_array  implementation  makes  it
+     difficult for non-PL/I programs (eg, Fortran, Cobol, Pascal,
+     exec_com)   to   interface  with   process_arguments_.   The
+     print_vector_array   mechanism   relies   heavily   on  data
+     structures chained  together using pointers.   However, none
+     of the  above languages support pointers  in the PL/I sense,
+     and most don't support structures.
+
+     One possible  way to cope with  print_vector_arrays would be
+     to create a set of service routines (similar to ft_menu_) to
+     deal with print vectors from other languages.  However, this
+     involves  extra  code,  extra  programming  interfaces,  and
+     unnecesary programming complexity.
+
+3)   this design  also suffers from the  flow of control problems
+     caused by having the command call process_arguments_.  These
+     flow  of  control  problems  are outlined  above  in section
+     4.1.2.
+
+4)   the current implementation requires that the source language
+     interface description reside in  a separate segment from the
+     PL/I source of the command.  This separation makes it harder
+     to understand and maintain  the command, and adds additional
+     segments  to  the  system  libraries when  the  command gets
+     installed.  Section 3.6 above  discussed these problems, and
+     stresses the importance of  having the interface description
+     reside directly in the source segment for the command.
+
+5)   using  print_vector_arrays  to  hold  the  binary  interface
+     description and storing it in a vector database prevents the
+     interface description  from being stored  inside the command
+     object  segment.   Section  3.6 points  out  the maintenance
+     headaches this can cause.
+
+6)   use of a print_vector_array  to hold the resultant processed
+     arguments  greatly  limits  the  processing  services  which
+     process_arguments_  can  provide   to  the  command.   Print
+     vectors are  limited to character string  values, so no data
+     type conversions can be performed by process_arguments_.
+
+All in all, it would  appear that the vector array implementation
+chosen for process_arguments_ is a serious drawback.
+
+
+MTB-646                                             CAP: Overview
+
+4.3 The Ford Clic Interface
+
+Several  programmers  at  Ford  are  working  on  a  Command Line
+Interface Compiler (CLIC).  Programming is nearing completion.  I
+quote from the Clic Language Specification(1) overview:
+
+     The command line interface compiler is intended to produce a
+     tabular description of the command, an include file of a pl1
+     structure  containing the  complete set  of possible command
+     arguments, and at least a skeletal runoff/compose segment to
+     be used in producing a help  file for the command.  Any of a
+     number  of  special  user   interfaces  obtains,  edits  and
+     validates   argument   values,  filling   in   the  argument
+     structure,  and   then  calls  the   appropriate  processing
+     subroutine(s) or system commands.
+
+     The  processing program  receives a  pointer to  a filled-in
+     structure  containing all  of the argument  values, with the
+     argument values [referenced] by name, rather than by several
+     pointer  references.   The  structure  is  described  by the
+     include file produced by the  clic compile process, and then
+     compiled into the program.
+
+Copies of the  Clic Specification can be made  available to those
+who would like to review the full spec.  Contact Gary Dixon.
+
+4.3.1 EXAMPLE
+
+Most  of  the work  on the  Clic system  relates to  defining the
+source language for the interface description.  The Clic language
+specification for the copy command is shown below:
+
+_________________________________________________________________
+
+(1) The Command  Line Interface Compiler  Language Specification,
+    June 4,  1983, written by  the Warranty Programming  group of
+    the  Engineering Information  Systems Department,  Ford Motor
+    Company.   Designers are  Jay McFayden,  Mike Dean  and Steve
+    DeDoes.
+
+
+CAP: Overview                                             MTB-646
+
+copy:   command  synonym (cp)
+        help ("causes copies of specified segments and
+               multisegment files to be created in the
+               specified directories with the specified names.
+               Access control lists (ACLs) and multiple names
+               are optionally copied.")
+
+        args (path)
+        switch_args (all, acl, brief, chase, name);
+
+path:   argument  domain (char(168) edit(expand_pathname))
+        dim(1:)
+        help ("from and to paths of segments to be copied from
+               and to.");
+
+all:    switch_arg
+        true_names (all)
+        incon (acl, no_acl, name, no_name)
+        help ("copies multiple names and ACLs.");
+
+acl:    switch_arg
+        true_names (acl)
+        false_names (no_acl)
+        default (no_acl)
+        incon (all)
+        help ("copies the ACL.");
+
+chase:  switch_arg
+        true_names (chase)
+        false_names (no_chase)
+        help ("copies the targets of links that match path.");
+
+brief:  switch_arg
+        true_names (brief, bf)
+        false_names (long, lg)
+        default (long)
+        help ("suppresses warning messages.");
+
+name:   switch_arg
+        true_names (name, nm)
+        false_names (no_name, nmn)
+        default (no_name)
+        incon (all)
+        help ("copies multiple names.");
+
+Data  type  information  (eg,  "domain(char(168))"  in  the  path
+argument)  is  included  in  the  description  because  the  Clic
+compiler  translates the  description above  into a  PL/I include
+file  to  be  used  by  the  command,  plus  a  binary  interface
+description  of  unspecified  format.   As with  the  Stratus and
+process_arguments_ systems,  the command would  call a subroutine
+to  parse  the arguments.   With  Clic, the  argument  values are
+
+
+MTB-646                                             CAP: Overview
+
+stored  in the  PL/I structure which  the command  passes to this
+subroutine along with its argument list.
+
+4.3.2 CRITIQUE
+
+The   Clic   interface  description   language  is   a  flexible,
+easy-to-read  language which  should make  interface descriptions
+easy to  devise, understand and  maintain.  The language  is less
+cumbersome that  that used by  Stratus, making it  easier to use.
+It is  less keyword-driven than  the process_arguments_ language,
+making it easier  to read and understand.  And  it seems to offer
+adequate flexibility for describing command/request syntax.
+
+On the other hand, the Clic system shares several of the problems
+described for the other systems.
+
+1)   Use of a PL/I structure to hold parsed argument values makes
+     the Clic interface difficult to use from non-PL/I languages.
+     The job of  the Clic translator is also  made harder because
+     it  has to  know how  to parse  data type  descriptions (eg,
+     "domain (char(168))")  and build a PL/I  structure.  The CAP
+     facility avoids this complexity  by having the PL/I compiler
+     translate   parameter  declarations   into  entry  parameter
+     descriptors.
+
+2)   Clic also  suffers from the control  flow problems caused by
+     having the command call the argument parsing routine.
+
+3)   Clic does not allow the Clic source language to be stored as
+     part  of  the command  source  program.  As  pointed  out in
+     section  3.6,  this can  make the  command source  harder to
+     understand and maintain.
+
+4)   The  current  Clic  documentation  does  not  make  it clear
+     whether the Clic object segment is really a standard-format,
+     bindable  object  segment.   If  it isn't,  this  is another
+     disadvantage as pointed out in section 3.6.
+
+
+CAP: Overview                                             MTB-646
+
+5 QUESTIONS FOR THE TECHNICAL REVIEW
+
+The MR11/MR12 Technical Review Board should address the following
+issues:
+
+1)   Is there a problem  with the current Multics command/request
+     interfaces?   If so,  does Section  1 properly  describe the
+     problem?
+
+2)   Does  Section   2  define  the  proper   audience  to  which
+     improvements  in  the  Multics command  interface  should be
+     directed?
+
+3)   Does Section 2 define the  proper set of requirements for an
+     improved command interface?
+
+4)   Does the design outlined in Section  3 meet the needs of the
+     audience, and fulfill the requirements in Section 2?
+
+5)   Is there a viable solution  to the unresolved design issues?
+     These are:
+
+     o    Does  the  proposed  CAP   design  support  the  needed
+          interfaces and operating environments?
+
+     o    How should documentation be  handled for CAP interfaces
+          (Section 3.5).
+
+     o    How should the mechanism for translating the SID into a
+          BID  work (Section  3.6).  Should SID  be separate from
+          program source?  Should BID be:  stored in text section
+          of  command  object;  be  a  separate,  bindable object
+          segment; be stored in a database?
+
+6)   Can MDC afford the cost  of retrofitting CAP interfaces onto
+     existing commands?
+
+7)   The development  plan calls for  CAP to be  in operation for
+     MR12,  at the  earliest.  Will CAP  be ready  soon enough to
+     meet marketing needs?
+
+
+MTB-646                                             CAP: Overview
+
+6 OTHER QUESTIONS
+
+The questions in Section 5 address  the aspects of the CAP design
+which  are needed  to meet the  major requirements  of Section 2.
+There are also a set of things it  would be nice for CAP to do at
+some point after its first release.  These include:
+
+A)   The  ability  to  map  command  names,  argument  values and
+     operands into a foreign language.
+
+B)   The ability to distinguish  between novice and expert users,
+     and  to   present  novice  users   with  simplified  command
+     interfaces (reduced numbers of control arguments, etc).
+
+C)   The  ability  to  interface   with  a  new  error  reporting
+     mechanism, should one be developed in the future.
+
+These questions are discussed briefly below.
+
+6.1 Foreign Language Support
+
+As  indicated  in  section  2.2, providing  complete  support for
+foreign language interfaces to  commands involves doing more than
+changing  command  names, control  arguments and  their operands,
+etc.  It also involves mapping  command output and error messages
+into the  foreign language.  These  are areas outside  of the CAP
+design.
+
+However, CAP should  be able to do the  mapping of command names,
+control arguments and operands.  It would do this using a special
+BID which  maps the various  command and argument  names from the
+foreign  language into  the local  language.  The  special BID is
+called a  Foreign Language BID (FLBID).   The diagram below shows
+how the FLBID might be used:
+
+
+CAP: Overview                                             MTB-646
+
+                  FOREIGN LANGUAGE TRANSLATION
+
+                           S E G M E N T S     I N
+                                        |
+                    &gt;french_sss         |            &gt;sss
+                    --------------------|------------------------
+                                        |
+                                               bound_fscom2_
+                                                 copy
+                                               ------------------
+                                               | copy:          |
+                                               |    entry       |
+                                               |                |
+                                               | copy_cap_info: |
+  copie.cap         copie       references     |    entry       |
+  ---------  cap    ---------   by pathname    |   -------      |
+  | FLSID |--------&gt;| FLBID |---------------------&gt;| BID |      |
+  ---------         ---------                  |   -------      |
+                                               ------------------
+
+                                               bound_pl1_
+                                                 pl1
+                                               ------------------
+                                               | pl1:           |
+                                               |    entry       |
+                                               |                |
+                                               | pl1_cap_info:  |
+  pl1.cap           pl1         references     |    entry       |
+  ---------  cap    ---------   by pathname    |   -------      |
+  | FLSID |--------&gt;| FLBID |---------------------&gt;| BID |      |
+  ---------         ---------                  |   -------      |
+                                               ------------------
+
+Notes:
+
+1)   Object  search  rules would  be  used to  select  the French
+     version  rather  than the  English.  Thus  &gt;french_sss would
+     appear before &gt;sss in the object search rules.
+
+2)   There  would  be two  pl1.cap  segments, one  containing SID
+     (English  version)  and  one  containing  the  FLSID (French
+     version).
+
+3)   The  FLBID   is  an  object  segment   created  by  the  cap
+     translator.  This object segment  has an the main entrypoint
+     for the command (eg, copie) which simply calls cap_ with its
+     argument list, and cap_ does  the mapping between French (as
+     given in the FLBID) and English (as given in the BID).
+
+
+MTB-646                                             CAP: Overview
+
+4)   There would  be two object  segments with the  name pl1 (the
+     FLBID in &gt;french_sss&gt;pl1, and &gt;sss&gt;bound_pl1_).
+
+5)   The FLBID  would reference the  BID by an  absolute pathname
+     given in the  FLSID and stored by the  cap translator in the
+     FLBID.  This pathname provides the mapping between FLBID and
+     BID.  Object  search rules cannot  be used for  this mapping
+     since there are two object segments in the search rules with
+     the  reference name  pl1 (the FLBID  in &gt;french_sss&gt;pl1, and
+     &gt;sss&gt;bound_pl1_).
+
+6.2 Novice vs.  Expert Users
+
+In making systems easier to use, one important feature is to have
+the  system  tailor the  user  interface to  the user's  level of
+expertize.   Having  both a  command line  interface and  a forms
+interface provides  a certain amount of  tailorability.  The form
+provides  a  prompting-type  interface  to  novice  users,  while
+command  lines  provide an  efficient to  use interface  for more
+expert users.
+
+However,  for   a  command  with  many   control  arguments  (eg,
+enter_output_request or list), a novice user might be intimidated
+more when presented with a  many-optioned form than he would when
+asked to issue the command in a command line.
+
+Clearly,  a  mechanism  for   limiting  the  number  of  optional
+arguments which are  presented in a form is  desirable for novice
+users.   The  detailed  mechanism  for  providing  user expertize
+levels  is  a  subject  for  future  study.   However,  a minimum
+requirement  for any  such mechanism  is that  the options  to be
+displayed for any given expertize level be identified in the BID.
+Thus,  the  BID  should   provide  the  capability  to  designate
+expertize levels for arguments and control arguments.
+
+6.3 Interacting with New Error Reporting Mechanism
+
+There are  many problems with the  current Multics mechanisms for
+reporting errors to the user.   A discussion of these problems is
+beyond the scope of this MTB.  However, it is clear than any plan
+to improve  Multics error reporting mechanisms  is likely to have
+an impact  on CAP.  For  example, to provide  multi-lingual error
+messages, it may be desirable to  store error message text in the
+BID,  so that  this information  could be  replaced in  a Foreign
+Language BID (FLBID).  The design for CAP should provide for such
+future  enhancements   to  the  error   reporting  mechanism,  by
+structuring the BID  in a way which makes  it easily extended for
+hold new kinds of information.
+
+
+CAP: Overview                                             MTB-646
+
+7 FUTURE DEVELOPMENT PLANS
+
+The following steps  would be necessary to pursue  the design and
+implementation of the CAP  facility after the MR11/MR12 Technical
+Review:
+
+1)   Review current commands and I/O  modules in MPM Commands and
+     MPM Subroutines to categorize command syntax types, argument
+     types, and control argument types.  (2 person weeks)
+
+2)   Write  a CAP  Language MTB  describing results  of the above
+     study.   The  MTB  would  define  which  syntaxes  CAP would
+     support.   These  supported syntaxes  would  probably become
+     defacto standards.  The MTB would define features of the SID
+     needed to  support forms and  command completion interfaces,
+     and would  then propose a  CAP language to be  used in SIDs.
+     (4-6 person weeks)
+
+3)   Hold a  design review on  the CAP Language  MTB.  (.5 person
+     weeks)
+
+4)   Write a CAP Implementation  MTB describing a detailed design
+     for implementing the command line interface (with completion
+     and prompting) for  commands, subsystem requests, exec_coms,
+     I/O  modules,  and existing  programs.   The MTB  might also
+     propose  a  implementation   for  a  user-settable  defaults
+     mechanism (eg, mtape_set_defaults).  (4 person weeks)
+
+5)   Hold  a design  review on  the CAP  Implementation MTB.  (.5
+     person weeks)
+
+6)   Implement   the  CAP   command  line   interface,  including
+     prompting,   completion,   builtin    help   facility,   and
+     user-settable defaults.  (about 30 person weeks)
+
+7)   Modify a  significant number of existing  commands, and some
+     new commands to use CAP.  (5-10 person weeks, depending upon
+     how many commands were involved).
+
+8)   Review literature on forms interfaces.  (2 person weeks)
+
+9)   Build a prototype forms interface.  (4 person weeks)
+
+10)  Write a  CAP Forms MTB which  proposes an implementation for
+     the  forms interface,  based upon results  of the literature
+     review and prototype studies.  (4 person weeks)
+
+11)  Hold  a  design review  on  the CAP  Forms MTB.   (.5 person
+     weeks)
+
+12)  Implement the CAP forms interface.  (about 15 person weeks)
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-549, Rev. 1</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-549, Rev. 1: Data Management: Index Manager Functional Specification.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  Multics Technical Bulletin                        MTB-549, Rev. 1
+  DM: Index Manager Functional Spec
+
+  To:       Distribution
+
+  From:     Lindsey Leroy Spratt
+
+  Date:     04/04/84
+
+  Subject:  Data Management: Index Manager Functional Specification
+
+  1 ABSTRACT
+
+       This document describes the operations of the index manager.
+  It implements a  sorting index (as opposed to,  for example, some
+  sort of hashing  index).  Keys may have multiple  fields and each
+  field may be  any one of several data types.   All of the keys in
+  the same index must have the same set of fields, however.
+
+       The index_manager_ is a (simple) database manager in its own
+  right and  may be used directly  for implementing applications of
+  the Data  Management Architecture.  Its primary  use, however, is
+  by the relation_manager_.
+
+       This revision  includes the addition  of a new  entry point, |
+  and changes that were made to the referenced include files.       |
+
+  Comments should be sent to the author:
+
+  via Multics Mail:
+     Spratt.Multics on either MIT Multics or System M.
+
+  via US Mail:
+     Lindsey Spratt
+     Honeywell Information Systems, inc.
+     4 Cambridge Center
+     Cambridge, Massachusetts 02142
+
+  via telephone:
+     (HVN) 261-9321, or
+     (617) 492-9321
+
+  _________________________________________________________________
+
+  Multics  project  internal  working  documentation.   Not  to  be
+  reproduced or distributed outside the Multics project without the
+  consent of the author or the author's management.
+
+
+
+                            CONTENTS
+
+                                                         Page
+
+                 1 Abstract . . . . . . . . . . . . . .     i
+                 2 Introduction . . . . . . . . . . . .     1
+                 3 Summary of changes contained in
+                  Revision 1  . . . . . . . . . . . . .     1
+                 4 Subsets  . . . . . . . . . . . . . .     1
+                 5 Description of the operations  . . .     2
+                    index_manager_  . . . . . . . . . .     3
+                       Data management data types . . .     3
+                       Specification structures . . . .     3
+                          The specification_head
+                           structure  . . . . . . . . .     3
+                          The subset_specification
+                           structure  . . . . . . . . .     4
+                          The search_specification
+                           structure  . . . . . . . . .     5
+                          The numeric_specification
+                           structure  . . . . . . . . .     8
+                       $create_cursor . . . . . . . . .     9
+                       $create_index  . . . . . . . . .    10
+                       $create_subset_index . . . . . .    11
+                       $delete_key  . . . . . . . . . .    12
+                       $destroy_cursor  . . . . . . . .    13
+                       $destroy_index . . . . . . . . .    14
+                       $get_key . . . . . . . . . . . .    15
+                          The id_list structure . . . .    16
+                          The interval_list structure .    17
+                       $get_key_count_array . . . . . .    18
+                          The key_count_array structure    18
+                       $key_count . . . . . . . . . . .    20
+                       $position_cursor . . . . . . . .    21
+                       $put_key . . . . . . . . . . . .    22
+                       $put_key_array . . . . . . . . .    23
+                       $copy_cursor (unimplemented) . .    24
+
+  Multics Technical Bulletin                        MTB-549, Rev. 1
+  DM: Index Manager Functional Spec
+
+  2 INTRODUCTION
+
+       The index manager defined herein  is for managing keys which
+  are to be  kept in a sorted order.  These  keys may have multiple
+  fields, but all of the keys in an index must have the same set of
+  fields.  Various  data types are supported,  and different fields
+  in the same index may be of different data types.
+
+  3 SUMMARY OF CHANGES CONTAINED IN REVISION 1                      |
+
+       The  index_manager_$key_count  entry point  has  been added. |
+  The destroy_cursor entry point is now implemented.                |
+
+       The   specification_head   structure  has   been   moved  to |
+  dm_specification_head.inl.pl1.       The     subset_specification |
+  structure  has  been  moved  to dm_subset_specification.incl.pl1. |
+  Declarations  for  the range  type constants  have been  moved to |
+  dm_range_constants.incl.pl1.              The            variable |
+  and_group.constraint.value_field_id   has   been  added   to  the |
+  search_specification structure.                                   |
+
+       The descriptions of the info structures have been updated to |
+  reflect the currently installed include files.                    |
+
+       All references to "page files"  have been changed to "files" |
+  (which  assumes a  Data Management file).   Consequently, some of |
+  the  arguments  have  had  name changes  (i.e.,  pf_opening_id is |
+  changed to file_opening_id).                                      |
+
+       Descriptions  have been  provided for  those arguments which |
+  were previously described as "is as above."                       |
+
+  4 SUBSETS
+
+       A subset of  the keys in an index  is implemented by storing
+  the  specified  fields as  keys  in another  index.   The "subset |
+  index"  is  created by  the index  manager "create  subset index"
+  operation  in a  file specified  by the  caller.  The  keys to be
+  included  in  the  subset  are identified  by  a  standard search
+  specification (and cursor).  If two keys in the source index have
+  the  same  values for  the specified  fields and  one of  them is |
+  selected in  defining a subset,  then further references  to that
+  subset will indicate that both of these keys are contained in it.
+
+       There is no intrinsic connection  between a subset index and
+  its source index.  It is possible to use a subset index extracted
+  from one index to control the selection of keys in another index.
+  This is useful when there are multiple indices with data from the |
+
+
+  MTB-549, Rev. 1                        Multics Technical Bulletin
+                                  DM: Index Manager Functional Spec
+
+  same  source,  such as  several  indices used  to index  a common
+| collection  of records  as is  done for  relatins by  the relatin
+| manager.
+
+       Since a subset index is  a regular index differentiated only
+| by way it  is used from "regular" indices,  the standard "destroy
+  index" is used to destroy subset indices.
+
+  5 DESCRIPTION OF THE OPERATIONS
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+  Name:  index_manager_
+
+       The  index_manager_ subroutine  manages keys.   The keys may
+  have multiple fields,  and each field may be  any of several data
+  types.
+
+  Data management data types
+
+       There are several data types supported in the index_manager_
+  module.   They  are specified  using Multics  standard descriptor
+  structures.  The supported data types are:
+     Real binary   - data types 1 through 4;
+     Real decimal  - data types 9 and 10;
+     Strings       - data types 19 through 22.
+
+       All data  must be scalar  (i.e., arrays are  not supported).
+  Both aligned and unaligned data is valid.
+
+  Specification structures
+
+       There  are several  types of search  specifications.  A spec
+  may  be  numeric  positioning or  search  on values.   It  may be
+  absolute, done by starting at the  beginning or end of the index,
+  or it may  be relative, done by starting  at a position specified
+  by a cursor.
+
+       Searches  are started  with the key  following the "current"
+  key as identified by the cursor.
+
+  The specification_head structure
+
+  The  following  structure  is  used in  specifying  keys.   It is
+  declared in the dm_specification_head.incl.pl1 include file:      |
+
+     dcl 1 specification_head         based (sh_ptr) aligned,       |
+           2 version                  fixed bin (35),               |
+           2 type                     fixed bin (17) unal,          |
+           2 pad                      bit (18) unal,                |
+           2 subset_specification_ptr ptr;                          |
+
+  where:                                                            |
+
+         version                                                    |
+              is the version of the structure.  The current version |
+              is a static variable named SPECIFICATION_VERSION_4.   |
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+         type
+              is  the type  of the  specification.  There  are four
+              types    for    index_manager_;    absolute   numeric
+              positioning,  relative numeric  positioning, absolute
+              (from the  "root") searching, and  relative (from the
+              current  position indicated  by a  cursor) searching.
+|             These       constants       are       defined      in
+|             dm_specification_head.incl.pl1.
+
+|        pad
+|             must be "0"b.
+
+         subset_specification_ptr
+              is  a  pointer to  a  subset_specification structure.
+              This structure is used  to constrain selected keys to
+              either be members of a subset  or not be members of a
+              subset.   (See  below for  the documentation  of this
+              structure.)
+
+  The subset_specification structure
+
+      Following  is  the structure  to  specify subset  indices and
+| their  relation to  a specification of  keys.  It  is declared in
+| dm_subset_specification.incl.pl1.
+
+     dcl 1 subset_specification based (subset_specification_ptr),
+|          2 version            char (8),
+|          2 number_of_subsets  fixed bin,
+           2 subset             (ss_number_of_subsets refer
+                                (subset_specification
+                                 .number_of_subsets)),
+              3 id_list_ptr      ptr,
+              3 is_member        bit (1) unaligned,
+              3 pad              bit (35) unaligned,
+              3 cursor_ptr       ptr;
+
+  where:
+
+         version
+              is  the  version of  the  structure.  The  version is
+              given    by    the     internal    static    constant
+              SUBSET_SPECIFICATION_VERSION_1.
+
+         number_of_subsets
+              is  the  number  of  subsets  used  in  defining  the
+              specification.  Subsets may be used in either numeric
+              or value, and absolute or relative positioning.
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+         subset.id_list_ptr
+              is a pointer to a id_list structure which defines the
+              relationship of the fields of the subset index to the
+              index   being   searched.    id_list.id(I)   is   the
+              identifier of  the field in the  index being searched
+              which is associated with the I'th field of the subset
+              index.
+
+         subset.is_member
+              if on,  indicates that keys  which this specification
+              identifies  must  be  found  in this  subset.   For a
+              subset to have a (source  index) key as a member, the
+              subset index must contain as  a key the data which is
+              found  in  the attendant  data  fields of  the source
+              index  key.   This  is  a special  case  of  the more
+              general  subset "membership"  definition which allows
+              the caller to  define the way in which  data from the
+              source index  is to match  data in the  subset index.
+              This special case is useful for the relation manager.
+
+         subset.pad                                                 |
+              must be "0"b.                                         |
+
+         subset.cursor_ptr
+              is a pointer to a cursor for the subset index.
+
+  The search_specification structure
+
+       This  structure  is  used  when   a  search  for  keys  with
+  particular   values   is  to   be  done.    It  is   declared  in |
+  dm_specification.incl.pl1.                                        |
+
+     dcl 1 search_specification    based (ss_ptr),
+           2 head                  like specification_head,
+           2 maximum_number_of_constraints,
+                                   fixed bin (17) unal,             |
+           2 range,                unal,                            |
+             3 type                fixed bin (17),
+             3 size                fixed bin (17),
+           2 number_of_and_groups  fixed bin (17) unal,             |
+           2 and_group             (ss_number_of_and_groups refer   |
+                                   (search_specification            |
+                                    .number_of_and_groups)),        |
+           2 number_of_constraints fixed bin (17) unal,             |
+             3 constraint          (ss_maximum_number_of_constraints
+                                   (refer search_specification
+                                    .maximum_number_of_constraints)),
+               4 field_id          fixed bin (17) unal,             |
+               4 operator_code     fixed bin (17) unal,             |
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+|              4 value_field_id    fixed bin (17) unal,
+|              4 pad               bit (18) unal,
+|              4 value_ptr         ptr unal;
+
+  where:
+
+         maximum_number_of_constraints
+              is the number of field specifications to be allocated
+              for each and_group.
+
+         range.type
+              is the type of range of the specified keys desired:
+                 0 - all
+                 1 - top
+                 2 - bottom
+|             Constants   for   these   values   are   defined   in
+|             dm_range_constants.incl.pl1.
+
+         range.size
+              is the size  of the range.  If the  type is "all" (or
+              0), then the  size is ignored.  If the  type is "top"
+              and the value  of size is N, then  the highest N keys
+              of the  keys selected are  returned.  In the  case of
+              "bottom", the lowest N keys  of the keys selected are
+              returned.
+
+         number_of_and_groups
+              is   the   number   of   and_groups   used   in   the
+              search_specification.  The elements satisfied by each
+              and_group are joined by  union to obtain the complete
+              set to satisfy the search_specification.
+
+         and_group.number_of_constraints
+              is the number of constraints actually in use for this
+              and_group.  Each constraint of  the and_group must be
+              satisfied in order  for an element to be  a member of
+              the and_group.
+
+         and_group.constraint.field_id
+              is the id for the field being constrained.
+
+         and_group.constraint.operator_code
+              is  the relationship  the value  of the  desired keys
+              must have to the  value specified in this constraint.
+              The operator codes can be  dealt with as either fixed
+              binary  number  or as  a  bit string  (which  must be
+              converted to a fixed binary number).  When considered
+              as a  bit string the  meaning of the  bits are "or"ed
+              together.    The  right-most   bits  are   given  the
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+              following meaning:
+
+                 "00001"b - = (equals)
+                 "00010"b - &gt; (greater than)
+                 "00100"b - ^ (not)
+                 "01000"b - regular expression match
+                 "10000"b - field may be absent.
+
+              An "absent" field always compares to false for any of
+              the other  four comparisons.  If  this bit is  on, an
+              "absent"  field will  compare "true"  and a "present"
+              field will compare false.
+
+              Some combinations of operators "bits" are not defined
+              to have any meaning, e.g.  "regular expression match"
+              or'ed with  "greater than".  The  complete definition
+              of the meanings  of all of the combinations  of the 5
+              right-most operator bits follows:
+
+                 1 - "00001"b - =
+                 2 - "00010"b - &gt;
+                 3 - "00011"b - &gt;=
+                 4 - "00100"b - ^
+                 5 - "00101"b - ^= (&gt;&lt;)
+                 6 - "00110"b - ^&gt; (&lt;=)
+                 7 - "00111"b - ^&gt;= (&lt;)
+                 8 - "01000"b - regular expression match
+                 9 through 15 - undefined
+                 16 - "10000"b - field is absent from key
+                 17 - "10001"b - field is absent or =
+                 18 - "10010"b - field is absent or &gt;
+                 19 - "10011"b - field is absent or &gt;=
+                 20 - "10100"b - field is not absent
+                 21 - "10101"b - field is absent or ^&gt; (&lt;=)
+                 22 - "10110"b - field is absent or  ^=
+                 23 - "10111"b - undefined
+                 24 - "11000"b - if field is present, regular expression match
+                 25 through 31 - undefined
+
+         and_group.constraint.value_field_id                        |
+              specifies intra-key/record compares.                  |
+
+         and_group.constraint.pad                                   |
+              must be "0"b.                                         |
+
+         and_group.constraint.value_ptr
+              is  a pointer  to the value  to be  compared with the
+              values in the database.   The value must be allocated
+              according to the DM data types.
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+  The numeric_specification structure
+
+|      This  structure  is  used  when a  search  for  keys  with a
+| particular  numeric position  is to be  done.  It  is declared in
+| dm_specification.incl.pl1.
+
+     dcl 1 numeric_specification based (nss_ptr),
+           2 head                like specification_head,
+|          2 range_size          fixed bin (35) aligned,
+|          2 position_number     fixed bin (17) unal,
+|          2 pad                 bit (18) unal;
+
+  where:
+
+         range_size
+              is the  number of keys  to be returned  including the
+              key  identified  by position_number,  below.   If the
+              range_size  is negative,  it indicates  that the keys
+              desired  precede   the  specified  key.    If  it  is
+              positive,  the keys  are to  be the  ones immediately
+              following the specified key.
+
+         position_number
+              is interpreted according to  the absolute or relative
+              nature of the specification.   If absolute, it is the
+              position_number'th  key  of  the index  to  which the
+              position is  moved.  If position_number  is negative,
+              the keys  are counted backwards  from the end  of the
+              index  for position_number  keys.  If position_number
+              is  positive, the  keys are counted  forward from the
+              beginning of the index.  If  the type is relative, it
+              is  the  position_number'th   key  from  the  current
+              position  to   which  the  position   is  moved.   If
+              position_number  is negative,  the position  is moved
+              backwards  from  the  current   position;  if  it  is
+              positive,  it  is  moved  forwards  from  the current
+              position.
+
+              If position_number moves the cursor beyond the index,
+              i.e.  it is  either too large or too  small, then the
+              cursor is moved to the  beginning or end of the index
+              as appropriate and error_table_$beginning_of_index or
+              error_table_$end_of_index is returned.
+
+|        pad
+|             must be "0"b.
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+  Entry:  index_manager_$create_cursor
+
+            Allocates  an  index_cursor structure  in  the provided |
+  work area.  This cursor is tailored for the index collection with |
+  which it is to be used.  Its initial position is at the beginning |
+  of the collection.                                                |
+
+  Usage
+
+       dcl index_manager_$create_cursor entry (bit (36) aligned,
+            bit (36) aligned, ptr, ptr, fixed bin (35));
+
+       call index_manager_$create_cursor (file_opening_id,
+            index_collection_id, work_area_ptr, index_cursor_ptr,
+            code);
+
+  where:
+
+         file_opening_id              (Input)
+              is the opening identifier of the file of interest.
+
+         index_collection_id          (Input)
+              is an index identifier returned by create_index.
+
+         work_area_ptr                (Input)
+              is a pointer to a pl1 area defined by the caller.
+
+         index_cursor_ptr             (Output)
+              is a pointer  to a data structure used  to identify a
+              position in an index.  It  is managed entirely by the
+              index    manager.     The    cursor    contains   the
+              file_opening_id,    the    index_collection_id,   the
+              work_area_ptr (to  facilitate freeing), the  value of
+              the  key  which  is  the  current  position,  and the
+              "address" of  the key which is  the current position.
+              The address is to provide  swift access, the value is
+              to  verify  that  the  address is  still  valid.  The
+              address   and  value   (the  current   position)  are
+              "undefined" when  the cursor is  created.  It becomes
+              "defined"  when  given  as   input  to  any  absolute
+              positioning   operation   (put_key,   or  delete_key,
+              modify_key,   position_cursor,    get_key   with   an
+              "absolute" specification).
+
+         code                         (Output)
+              is a standard system error code.
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+  Entry:  index_manager_$create_index
+
+|           Creates  an  empty index  in  the given  file  with the
+| specified fields.  An index collection identifier is assigned for
+| referencing this collection.
+
+  Usage
+
+|      dcl index_manager_$create_index entry (bit(36) aligned, ptr,
+|           fixed bin (17), bit (36) aligned, fixed bin(35));
+
+|      call index_manager_$create_index (file_opening_id,
+|           typed_vector_array_ptr, number_of_duplication_fields,
+|           index_collection_id, code);
+
+  where:
+
+|        file_opening_id              (Input)
+|             is the opening identifier of the file of interest.
+
+         typed_vector_array_ptr       (Input)
+              is a  pointer to a  typed_vector_array structure, the
+              dimension table of which is used to define the fields
+              of  the index.   In operations  where the  fields are
+              referred  to,  either explicitly  or  implicitly, the
+              array index  of the field  in the dimension  table is
+              its identifier.
+
+         number_of_duplication_fields (Input)
+              sets the number of fields, starting with field 1, for
+              which the concatenated  values must uniquely identify
+              each key.   The number of  duplication_fields must be
+              greater than or equal to 1  and less than or equal to
+              the number of  fields in the index plus  one.  If the
+              number  of  duplication  fields is  greater  than the
+              number  of fields,  then fully identical  keys may be
+              inserted into the index.
+
+|        index_collection_id          (Output)
+|             is an index identifier returned by create_index.
+
+         code                         (Output)
+              is a standard system error code.
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+  Entry:  index_manager_$create_subset_index
+
+            Creates  a  subset  index  from an  index.   The subset |
+  index's  keys are  derived from keys  found in  the source index. |
+  The subset  index keys can have  any of the fields  in the source |
+  index in any order.                                               |
+
+  Usage
+
+       dcl index_manager_$create_subset_index entry (ptr, bit (36)
+            aligned, ptr, ptr, bit (36) aligned, fixed bin(35));
+
+       call index_manager_$create_subset_index (specification_ptr,
+            subset_file_opening_id, cursor_ptr, id_list_ptr,
+            subset_index_id, code);
+
+  where:
+
+         specification_ptr            (Input)
+              is a pointer to a specification.
+
+         subset_file_opening_id       (Input)
+              is  the  file  in which  the  subset index  is  to be
+              placed.
+
+         cursor_ptr                   (Input)
+              is the  cursor giving the  position for use  with the
+              specification.  See the create_cursor operation for a
+              brief discussion of cursors.
+
+         id_list_ptr                  (Input)
+              is  a  pointer to  an  id_list structure  (see below)
+              which defines the relationship  between the fields in
+              the  index from  which the subset  is being extracted
+              and  the  fields of  the  keys of  the  subset index.
+              id_list.id(N) is  the identifier of the  field in the
+              "source"  index which  is associated with  field N of
+              the subset index.  The  id_list must specify at least
+              one field to be extracted from the source index.
+
+         subset_index_id              (Output)
+              is the  index_id of the subset  index created by this
+              operation.
+
+         code                         (Output)
+              is a standard system error code.
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+  Entry:  index_manager_$delete_key
+
+            Deletes the keys identified  by the specification.  The
+  cursor  is  left  pointing  at the  key  following  the  last key
+  deleted.
+
+  Usage
+
+       dcl index_manager_$delete_key entry (ptr, ptr, ptr, fixed
+            bin (35), fixed bin(35));
+
+       call index_manager_$delete_key (specification_ptr,
+            work_area_ptr, index_cursor_ptr,
+            number_of_keys_deleted, code);
+
+  where:
+
+         specification_ptr            (Input)
+              is a pointer to a specification.
+
+         work_area_ptr                (Input)
+              is  a  pointer  to  a "freeing"  area,  which  may be
+              extensible.
+
+         index_cursor_ptr             (Input/Output)
+              is a pointer  to a data structure used  to identify a
+              position in  an index.  (See  the create_cursor entry
+              point).
+
+         number_of_keys_deleted       (Output)
+              is the number of keys  which were deleted as a result
+              of this operation.
+
+         code                         (Output)
+              is standard system error code.
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+  Entry:  index_manager_$destroy_cursor
+
+            Destroys a cursor.
+
+  Usage
+
+       dcl index_manager_$destroy_cursor entry (ptr, fixed
+            bin(35));
+
+       call index_manager_$destroy_cursor (index_cursor_ptr, code);
+
+  where:
+
+         index_cursor_ptr             (Input)
+              is a pointer  to a data structure used  to identify a
+              position in  an index.  (See  the create_cursor entry
+              point).
+
+         code                         (Output)
+              is standard system error code.
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+  Entry:  index_manager_$destroy_index
+
+|           Destroys  an index  collection, freeing  its associated
+| storage.  Index identifiers may  be re-used by the "create_index"
+| operation.
+
+  Usage
+
+       dcl index_manager_$destroy_index entry (bit(36) aligned,
+            bit(36) aligned, fixed bin(35));
+
+       call index_manager_$destroy_index (file_opening_id,
+            index_collection_id, code);
+
+  where:
+
+         file_opening_id              (Input)
+              is the opening of the file of interest.
+
+         index_collection_id          (Input)
+              is an index identifier returned by create_index.
+
+         code                         (Output)
+              is a standard system error code.
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+  Entry:  index_manager_$get_key
+
+            Gets the desired fields of all (or the first or last N)
+  of the keys identified by  the specification.  The cursor is left
+  pointing at the last key  returned.  Data from any particular key
+  only appears once, regardless of the nature of the specification.
+
+  Usage
+
+       dcl index_manager_$get_key entry (ptr, ptr, ptr, ptr, ptr,
+            ptr, fixed bin(35));
+
+       call index_manager_$get_key (specification_ptr, id_list_ptr,
+            work_area_ptr, index_cursor_ptr,
+            typed_vector_array_ptr, interval_list_ptr, code);
+
+  where:
+
+         duplication_flags            (Input)
+              are flags  which determine the  handling of duplicate |
+              keys.   If  allow_indexed_duplicates is  on  then any |
+              returned  keys  which are  duplicates  in all  of the
+              indexed  fields being  returned will  be returned (in
+              addition to any keys which are not duplicates at all,
+              of course) otherwise the first  found of the two will
+              be       returned.       Similarly       for      the
+              allow_attendant_duplicates   flag.   Hence,   to  get
+              completely  unique  values returned,  leave  both the
+              allow_indexed_duplicates            and           the
+              allow_attendant_duplicates    flags    off.     These
+              duplication  flags are  only concerned  with the data
+              actually being returned, which is not necessarily the
+              entire key.
+
+         specification_ptr            (Input)
+              is a pointer to a specification.
+
+         id_list_ptr                  (Input)
+              is a pointer to an id_list structure.  This specifies
+              what fields are to returned,  and in what order.  The
+              structure is defined below.
+
+         work_area_ptr                (Input)
+              is a pointer to a pl1 area defined by the caller.
+
+         index_cursor_ptr             (Input/Output)
+              is a pointer  to a data structure used  to identify a
+              position in  an index.  (See  the create_cursor entry
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+              point).
+
+         typed_vector_array_ptr       (Output)
+              is a pointer to a typed_vector_array structure.  It's
+              allocated  in the  work area provided  by the caller.
+              Each "key value" is a  list of field values extracted
+              from  a  key, which  fields and  in what  order being
+              determined by the id_list.
+
+         interval_list_ptr            (Output)
+              is a pointer to an interval_list structure (described
+              below)  which   is  present  when  not   all  of  the
+              constraints  in  the   search_specification  are  for
+              fields present in the index.
+
+         code                         (Output)
+              is standard system error code.
+
+  The id_list structure
+
+       The following is the id_list structure (found in the include
+  file dm_id_list.incl.pl1):
+
+|      dcl 1 id_list                aligned based (id_list_ptr),
+             2 version              fixed bin(35),
+|            2 number_of_ids        fixed bin(17),
+             2 id                   (il_number_of_fields refer
+|                                   (id_list.number_of_ids))
+|                                   fixed bin(17);
+
+  where:
+
+         version
+              is  the  version  of  this  structure.   The  current
+              version is a static variable named ID_LIST_VERSION_1.
+
+         number_of_ids
+              is  the number  of identifiers  in the  list.  Set by
+              setting  il_number_of_fields  prior to  allocation of
+              the list.
+
+         id
+              is   the   index,   in   the  field   array   of  the
+              field_definition_list  used to  create the  index, of
+              the I'th field to be returned.
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+  The interval_list structure
+
+       The      interval_list      structure,      declared      in
+  dm_interval_list.incl.pl1,   is  used   in  conjunction   with  a
+  search_specification  to identify  partially processed and_groups
+  with which  keys were found  to satisfy those  constraints in the
+  and_group  which  pertain to  the  fields present  in  the index.
+  Constraints for  fields not present  in the index  have field_ids
+  less than zero.
+
+  dcl 1 interval_list             based (interval_list_ptr) aligned,|
+        2 version                 fixed bin (35) aligned,           |
+        2 number_of_intervals     fixed bin (17) unal,
+        2 pad                     bit (18) unal,
+        2 interval                (intl_number_of_intervals refer
+                                  (interval_list.number_of_intervals))
+          3 low_vector_idx        fixed bin (35),
+          3 high_vector_idx       fixed bin (35),
+          3 and_group_id_list_ptr ptr;
+
+  where:
+
+         version
+              is   the  current   version.   It  must   be  set  to
+              INTERVAL_LIST_VERSION_1.
+
+         number_of_intervals
+              is the number of intervals  in the interval list.  It
+              is set by the refer option at allocation time.
+
+         pad
+              must be "0"b.
+
+         interval.low_vector_idx
+              is the  index into the  associated typed_vector_array
+              of the first key of the interval.
+
+         interval.high_vector_idx
+              is the  index into the  associated typed_vector_array
+              of the last key of the interval.
+
+         and_group_id_list_ptr
+              is  a pointer  to an  id_list structure  (declared in
+              dm_id_list.incl.pl1) which contains a  list of ids of
+              the  and_groups  to be  applied  to this  interval of
+              keys.   These  and_group  ids  are  indices  into the
+              and_group      array      of      the      associated
+              search_specification.
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+  Entry:  index_manager_$get_key_count_array
+
+            This entry returns the number of keys which are present
+  in the index, the number of keys in the index which have the same
+  first field value as another key in the index, the number of keys
+  in the index which have the same first and second field values as
+  some other key in the index, and so on up to the number of fields
+  present in the index.
+
+  Usage
+
+       dcl index_manager_$get_key_count_array entry (ptr, ptr, ptr,
+            fixed bin (35));
+
+       call index_manager_$get_key_count_array (index_cursor_ptr,
+            work_area_ptr, key_count_array_ptr, code);
+
+  where:
+
+         index_cursor_ptr             (Input)
+              is a pointer  to a data structure used  to identify a
+              position in  an index.  (See  the create_cursor entry
+              point).
+
+         work_area_ptr                (Input)
+              is a pointer to a pl1 area defined by the caller.
+
+         key_count_array_ptr          (Output)
+              is   a  pointer   to  a   key_count_array  structure,
+              described below.
+
+         code                         (Output)
+              is a standard system error code.
+
+  The key_count_array structure
+
+       The  key_count_array structure  contains one  count for each
+  number of duplication fields possible for the index, which is the
+  same as  the number of  fields in the  index.  It is  declared in
+  dm_key_count_array.incl.pl1
+
+  dcl 1 key_count_array    based (key_count_array_ptr),
+        2 version          fixed bin (35),
+        2 number_of_counts fixed bin (17) unal,
+        2 pad              bit(18) unal,
+        2 count            (0:kca_number_of_counts refer
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+                           (key_count_array.number_of_counts))
+                           fixed bin (35) aligned;                  |
+
+  where:
+
+         version
+              is the current version of  the structure.  It must be
+              set to KEY_COUNT_ARRAY_VERSION_1.
+
+         number_of_counts
+              is the  number of key_counts in  the structure.  This
+              number is equal to the number of fields in the index.
+
+         pad
+              must be "0"b.
+
+         count(I)
+              is the number  of keys which have the  same values in
+              their first I fields as at least one other key in the
+              index.  count(0) is the number of keys in the index.
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+| Entry:  index_manager_$key_count
+
+|           This entry returns the number of keys which are present
+| in the index.
+
+| Usage
+
+|      dcl index_manager_$key_count entry (ptr, ptr, ptr, fixed
+|           bin(35), fixed bin(35));
+
+|      call index_manager_$key_count (specification_ptr,
+|           work_area_ptr, index_cursor_ptr, key_count, code);
+
+| where:
+
+|        specification_ptr            (Input)
+|             is a pointer to a specification.
+
+|        work_area_ptr                (Input)
+|             is a pointer to a pl1 area defined by the caller.
+
+|        index_cursor_ptr             (Input)
+|             is a pointer  to a data structure used  to identify a
+|             position in  an index.  (See  the create_cursor entry
+|             point).
+
+|        key_count                    (Output)
+|             is the number of keys in the index.
+
+|        code                         (Output)
+|             is a standard system error code.
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+  Entry:  index_manager_$position_cursor
+
+            Sets the value  of the cursor to be  the given position
+  in  the specified  index.  If  the specification  identifies more
+  than one key, the cursor points at the first of these.
+
+  Usage
+
+       dcl index_manager_$position_cursor entry (ptr, ptr, ptr,
+            fixed bin(35));
+
+       call index_manager_$position_cursor (specification_ptr,
+            work_area_ptr, index_cursor_ptr, code);
+
+  where:
+
+         specification_ptr            (Input)
+              is a pointer to a specification.
+
+         work_area_ptr                (Input)
+              is a  pointer to a  pl1 area in which  freeing may be
+              done.
+
+         index_cursor_ptr             (Input/Output)
+              is a pointer  to a data structure used  to identify a
+              position in  an index.  (See  the create_cursor entry
+              point).
+
+         code                         (Output)
+              is a standard system error code.
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+  Entry:  index_manager_$put_key
+
+            Puts keys into an index collection.
+
+  Usage
+
+       dcl index_manager_$put_key entry (ptr, ptr, fixed bin(35));
+
+       call index_manager_$put_key (typed_vector_ptr,
+            index_cursor_ptr, code);
+
+  where:
+
+         typed_vector_ptr             (Input)
+              is  an array  of pointers  to typed_vector structures
+              which are keys to be inserted.
+
+         index_cursor_ptr             (Input/Output)
+              is a pointer  to a data structure used  to identify a
+              position in  an index.  (See  the create_cursor entry
+              point).  It is left positioned at the key inserted.
+
+         code                         (Output)
+              is a standard system error code.  If a non-zero error
+              code is returned  the index may have been  left in an
+              inconsistent state.  If a  transaction is in progress
+              when this happens it should be rolled back.
+
+| Notes
+
+| If  the index  is empty,  a "node" is  created and  the key(s) is
+| inserted into it.  Otherwise, the  existing index is searched for
+| the key to be "put".  If  the key is found (and duplicates aren't
+| allowed)  then an  error is noted  and the module  returns to its
+| caller.
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+  Entry:  index_manager_$put_key_array
+
+            Puts the keys specified in a typed_vector_array into an
+  index.
+
+  Usage
+
+       dcl index_manager_$put_key_array entry (ptr, ptr, fixed bin
+            (35));
+
+       call index_manager_$put_key_array (typed_vector_array_ptr,
+            index_cursor_ptr, code);
+
+  where:
+
+         typed_vector_array_ptr       (Input)
+              is  a  pointer   to  a  typed_vector_array  structure
+              containing pointers to typed_vector structures.
+
+         index_cursor_ptr             (Input/Output)
+              is a pointer  to a data structure used  to identify a
+              position in  an index.  (See  the create_cursor entry
+              point).   It  is  left  positioned  at  the  last key
+              inserted.
+
+         code                         (Output)
+              is a standard system error code.  If any typed_vector
+              cannot be inserted, the operation stops at that point
+              and returns.
+
+  ______________                                     ______________
+
+  index_manager_                                     index_manager_
+  ______________                                     ______________
+
+  Entry:  index_manager_$copy_cursor (unimplemented)
+
+            Makes a copy of a cursor.   The new cursor has the same
+  position as the template cursor from which it was copied.
+
+  Usage
+
+       dcl index_manager_$copy_cursor (unimplemented) entry (ptr,
+            ptr, ptr, fixed bin(35));
+
+       call index_manager_$copy_cursor (unimplemented)
+            (input_cursor_ptr, work_area_ptr, output_cursor_ptr,
+            code);
+
+  where:
+
+         input_cursor_ptr             (Input)
+              is a pointer to the cursor to be copied.
+
+         work_area_ptr                (Input)
+              is a pointer  to the area in which  the new cursor is
+              to be allocated.
+
+         output_cursor_ptr            (Output)
+              is a pointer to the new cursor.
+
+         code                         (Output)
+              is a standard system error code.
+
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

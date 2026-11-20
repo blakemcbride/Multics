@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : An Architecture for End User Data Access.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+MULTICS TECHNICAL BULLETIN                                MTB-621
+
+To:       MTB Distribution
+
+From:     Roger D. Lackey,
+          L. A. Dupuis,
+          Ronald B. Harvey,
+          Ronald A. Barstad,
+          Noah S. Davids,
+          Michael S. Kubicar,
+          David J. Schimke,
+          Craig L. Senft,
+          Paul W. Benjamin
+
+Date:     05/11/83
+
+Subject:  An Architecture for End User Data Access
+
+Forum Meeting:  &gt;udd&gt;Demo&gt;dbm_test&gt;con&gt;End_User_Data_Access (euda)
+
+ABSTRACT
+
+This paper proposes a long range plan for the implementation of a
+facility that will provide an end-user interface to various types
+of files, including but not restricted to, MRDS databases, Lister
+databases, ASCII text files, and structured files.  Major aspects
+are:
+
+     o A new End User Facility (EUF) to replace LINUS.
+
+     o Retrievals  across  databases   and  across  database
+       types.
+
+     o A  selection  expression  parser  that  uses  the SQL
+       selection  language,  and  produces  Canonical  Query
+       Language (CQL).
+
+     o A  single  uniform subroutine  interface to  MRDS and
+       Lister databases, replacing dsl_ and lister_.
+
+_________________________________________________________________
+
+Multics  Project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics Project.
+
+
+MTB-621                                      End User Data Access
+
+LINUS
+
+Starting  from the  top, let's look  at LINUS.  What  does it do?
+And what are the alternatives?
+
+It processes requests, or at least  used to do so.  The subsystem
+utilities now do that for the most part.
+
+It offers a macro facility  via the invoke request.  The exec_com
+feature supplied by ssu_ does a much better job of that.
+
+It  offers  LILA.  What  does  LILA do?   It performs  very crude
+editing functions  and parses selection expressions.   There is a
+proposal for a  common parser that would support  the MRDS, LINUS
+and SQL  selection languages.  Editors  such as ted or  qedx do a
+much better job of editing than LILA could hope to accomplish.
+
+LINUS produces reports, sort of.   There is an interface to MRPG,
+but MRPG is  generally recognized not to be  a good interface for
+end users.  There  is a method of creating  Lister files, but the
+user is left  with escaping from LINUS and  using Lister commands
+directly to  produce reports.  There is  the LINUS print request,
+which merely displays the data in an inflexible format.  And then
+there is the  new LINUS report writer, which  is much better than
+any  of these,  and fortunately modularized  so that  it could be
+extricated from LINUS and stand on its own.
+
+And finally,  LINUS accesses MRDS  databases.  In some  cases, it
+communicates  properly  with   the  appropriate  MRDS  subroutine
+entrypoints.   In others,  it does  the inexcusable  and looks at
+MRDS files and structures directly.
+
+The New EUF
+
+We propose a  new LINUS, similar in task,  simpler in design, and
+broader in scope.  The standard  subsystem tasks would be handled
+by ssu_, the selection expression editing by the user's editor of
+choice,  the selection  expression parsing by  a common selection
+expression  parser,  report  generation by  the  (formerly LINUS)
+report writer and file access by  something we will call the View
+Manager.   Precisely what  that EUF would  look like  will be the
+topic of another paper.  There  are various approaches that could
+be  taken.   One  is to  have  it essentially  similar  to LINUS.
+Another is to  mimic IBM's ISQL interface (or  MEDC's IQ which is
+similar).  That point need not be worked out at this stage of the
+discussion.
+
+
+End User Data Access                                      MTB-621
+
+View Manager
+
+At  the  center of  this  proposal is  something called  the View
+Manager (VM).  VM will act as a traffic cop of sorts for database
+accesses.   It will  have entrypoints  such as  open, close, get,
+put, get_description, get_population, etc.  These entrypoints are
+named for sake of argument, not as an actual proposal, the actual
+implementation  should  include the  full repertoire  of database
+functions.
+
+VM's task includes determining the  type (MRDS, Lister, etc.)  of
+the  database  in  question  and   routing  the  request  to  the
+appropriate database manager.
+
+To simplify VM's  task, those routines that want  to be supported
+by VM will provide a uniform  set of entrypoints that is a subset
+of the  VM entrypoints.  This  subset will consist  of primitives
+for database  manipulation.  For example, VM  will have an "open"
+entrypoint,   as  will   MRDS,  Lister,   et  al.    More  exotic
+entrypoints, however,  such as one  that would parse  a selection
+expression and  retrieve a tuple  in one call,  would be provided
+only in VM.   There are 2 reasons for this.   It isolates as much
+functionality as possible in VM, making it unnecessary to add new
+features in more than one place.  It also makes VM more palatable
+as the  "approved" interface.  The  dsl_ interface to  MRDS would
+continue to be supported for some period of releases, but no work
+beyond bugfixes would be applied  to them.  The direct subroutine
+interfaces to MRDS, Lister, etc.  would be "internal interfaces".
+The VM  interface would be the  approved, recommended, documented
+interface.   This  is  not  to  say,  however,  that  the  Lister
+commands, for example, would not continute to be supported.
+
+So,  in the  simple case, the  user asks  the EUF to  open a MRDS
+database,  EUF  calls, for  example,  VM$open who  sees  that the
+object  in  question is  MRDSish  and in  turn  calls mrds_$open.
+Whenever the task involves only one database and involves nothing
+more than the  primitive operation, VM acts as  a transfer vector
+of sorts.  Note  however, that EUF cares not  what type of object
+is  being manipulated.   It can  be MRDS,  Lister, whatever.  EUF
+handles it in  the same fashion.  So, with  this simple approach,
+the EUF is made much more powerful.
+
+Now, consider the  situation where the user has  opened more than
+one database  and requests a retrieval  whose selection criterion
+involves  more  than  one  database.  The  parser  translates the
+expression to Canonical Query  Language (discussed in more detail
+later  in this  paper) which  is returned  to the  EUF.  EUF then
+calls VM$get (or whatever) with this CQL.  VM determines that the
+selection involves more than one database and breaks the CQL down
+into appropriate parts.  Retrievals are made from both databases,
+comparisons are made by VM, and the requested data is returned to
+the user.
+
+
+MTB-621                                      End User Data Access
+
+Canonical Query Language
+
+A  selection  expression  parser  reads  user-supplied  selection
+expressions, e.g.  "select foo from bar" and translates it into a
+form suitable for processing  by the database manager's selection
+mechanism.  Currently  on Multics we have  such parsers for MRDS,
+LINUS and Lister (plus tr_query  but this proposal does not speak
+to that).   Each accepts a different  selection language as input
+and creates a different  internal representation as output.  This
+paper proposes that the various parsers produce the same internal
+representation as output.  This  internal representation is known
+as Canonical Query Language or CQL.
+
+There  are   several  relational  or   quasi-relational  database
+packages  under  development   for  various  Honeywell  operating
+systems.  Work is underway on  DPS6 in Billerica, DPS7 in France,
+GCOS  3/8 at  the Multi-Environment Development  Center (MEDC) in
+Phoenix, CP-6 in  Los Angeles and at CCSC  in Minneapolis.  There
+has  been a  fair amount of  contact between  these developers in
+hopes of  establishing a Canonical Query  Language.  The idea was
+that any user-visible selection  language should/would be reduced
+to an internal  representation that would be common  to all.  The
+MRDS  group  in  Phoenix  was  not  directly  involved  in  these
+discussions.  The effort to establish  a CQL that spanned product
+lines was singularly unsuccessful.  One  group was not far enough
+along in their  work to agree to the proposal  of another while a
+third could not wait for resolution,  having to get a product out
+the door.   While there exists no  agreement, there still appears
+to be a sincere desire to conform to such a standard should it be
+established.  The  MEDC group in  Phoenix, in developing  RAM for
+GCOS, was unable to wait and established their own protocol.  RAM
+has  been  announced and  was demonstrated  at the  Toronto HLSUA
+(4/83).
+
+The original intent of this proposal was to attempt to conform to
+the  Honeywell standard.   Since their  is no  such standard, the
+proposal is now  to look at the RAM CQL  and attempt to use that.
+Initial  contact with  MEDC has  indicated a  willingness to make
+some modifications to their CQL if  it was necessary to do so for
+MRDS.   This CQL  could well  provide a  basis for  the hoped-for
+company-wide standard.
+
+Company-wide standardization is a lofty ideal and one that should
+not get lost in this process.  However, if we were unable to come
+to   an  agreement   even  with  the   GCOSians,  a  Multics-only
+implementation would still be a win.   It would make it easier to
+implement new  end-user interfaces such  as the Query  By Example
+package  that  is  wanted  so badly  by  Marketing.   The Multics
+implementation should be structured in a fashion that would allow
+modifications if and when a Honeywell standard were chosen.
+
+
+End User Data Access                                      MTB-621
+
+Parsers
+
+Regardless of what CQL is chosen (even if Multics rolls its own),
+there would be a new parser.  The language that this parser would
+process would  be essentially the  ISQL language, but  the parser
+would  be equipped  to handle  both the  existing LINUS  and MRDS
+languages.  Our documentation would  be upgraded to describe only
+the  ISQL  dialect,  as  that is  rapidly  becoming  the industry
+standard.
+
+This  proposal  is  not new.   Jim  Gray  wrote a  paper  in 1981
+describing it and  at least one BNF grammar  exists.  It would be
+implemented using LALR.
+
+The parser would serve 3 purposes:
+
+     1) It would be used by the new EUF to process selection
+        expressions.  Since the proposal  calls for MRDS and
+        Lister to  be supported under EUF/VM,  both MRDS and
+        Lister would have to be  taught to accept CQL.  This
+        would mean that the user would use the ISQL language
+        for  Lister  selections within  the EUF.   Since the
+        existing Lister  command interface would  have to be
+        retained, at  least for a  period of time,  it might
+        also be necessary to alter lister_compile_select_ to
+        produce CQL.  If there  was strong sentiment for the
+        Lister commands to continue  indefinitely, it may be
+        useful  to  have them  optionally accept  either the
+        existing selection syntax or the new syntax.
+
+     2) It would  be used by VM  itself to process selection
+        expressions.    Currently,   the   user   can   call
+        dsl_$retrieve to get a tuple, passing in an unparsed
+        selection  expression.  Although  the EUF  would not
+        use  the  capability,  such  functionality  must  be
+        provided to the user.   Therefore, for each function
+        in VM  that required selection  criterion (retrieve,
+        modify  and  delete  operations,  whatever  they are
+        called) there would be  2 entrypoints, one that took
+        CQL as input and one that took an unparsed selection
+        expression.   In the  latter case, VM  would have to
+        call the parser.
+
+     3) The parser would be available as a system subroutine
+        for  anyone  wishing  to write  an  application that
+        accepted  the standard  syntax as  input and desired
+        CQL.
+
+
+MTB-621                                      End User Data Access
+
+The Database Managers
+
+MRDS  and Lister  have been used  as examples  of facilities that
+would supply  the appropriate entrypoints for  access by VM.  The
+conversion  of  these modules  to  provide the  entrypoints  is a
+mandatory part of this proposal.  MRDS has a myriad of subroutine
+entries, but unless the dsl_ entries  are used as a model for the
+definition of  the VM entries (not  likely), new entrypoints will
+have to be provided.  Lister,  for all practical purposes, has no
+subroutine interface.  You can't do a whole lot with lister_.  It
+exists only for the purposes of the LINUS create_list request.
+
+Two more  examples of system  routines for file  handling are for
+ASCII  files and  structured files.  A  manager (with appropriate
+entrypoints) could  easily be written  to allow support  of ASCII
+files under  VM, perhaps having  a file defined  like card images
+(the first 2 positions are field A, the next 7 field B, etc.), or
+perhaps using delimiters a la the LINUS write and store requests.
+A structured  file would be  one not limited to  ASCII data which
+could be described by a PL/1 structure declaration.
+
+The  potential for  support of  other objects  is intriguing.  An
+interface to  RDMS or JANUS  would be feasible.   Anybody who can
+provide  the appropriate  entrypoints can  conceivably have their
+package  and  database  type  supported  under  VM.   Consider  a
+subsystem that communicated with  the Intel database machine.  So
+long as the interface is correct, it works.
+
+Questions Needing Answers
+
+This paper does not purport to have all of the details worked out
+as  to how  such an  architecture would  be implemented.   We are
+aware  of several  things that need  to be worked  out.  They are
+presented  here  to stimulate  discussion  and will  hopefully be
+resolved in future MTBs:
+
+1) When the users have more than  one database open and are doing
+   cross-database   activities,   what   they   are  conceptually
+   accessing is a "virtual database"  or "view".  How should this
+   view  be defined?   How should  it be  established?  There are
+   potential  naming  conflicts  within  a  view (relations/files
+   and/or  attributes/fields  with  the same  name).   How should
+   these conflicts be resolved?
+
+   One approach (best  we've come up with this far)  is to have a
+   view identified  by some sort of  descriptor.  This descriptor
+   could be a separate segment ("open foo.view").  It could be an
+   entry in  a data dictionary  (the authors shudder  to use that
+   term  since it  can mean so  many things).  Or  perhaps a data
+   dictionary could be just an archive of .view segments.  Taking
+   the  single segment  approach for  sake of  argument, it could
+   created  by  a create_view  command that  took as  input ASCII
+
+
+End User Data Access                                      MTB-621
+
+   source and  "compiled" the view.  Any  name conflicts would be
+   flagged as errors.  There could  also be a command to recreate
+   the ASCII  source from the compiled  version.  Within the EUF,
+   perhaps  the user  could open  several separate  databases and
+   then issue  the "establish_view" request.   That request would
+   create  a view,  prompting the  user for  resolution of naming
+   conflicts,  and then  open the  view.  Another  useful request
+   would  be "save_view"  request where  this dynamically created
+   view could be preserved in a .view segment (or data dictionary
+   or whatever we decide on).
+
+2) Let's  start  thinking of  any  opening (single  database, for
+   example) as a view.  The user can have more than one view open
+   at a time.   How will the view to be  acted upon be identified
+   by the  user in a  request.  Database indices  (view indices?)
+   are  not to  thrilling from a  Schneidermanian viewpoint.  How
+   about reference names of sorts, i.e.  "open foo" opens foo and
+   then  the user  refers to  it as  foo in  subsequent requests,
+   whereas "open foo  bar" opens foo which is  refered to as bar.
+   Is  it  cumbersome to  have to  specify the  view name  in all
+   requests?  Probably.  How about a use request?  That speaks to
+   the EUF, how about the  subroutine interface to VM?  Should we
+   use view indices, a la MRDS?
+
+3) As  implied earlier,  we have no  idea what the  EUF will look
+   like.  Should it  look much like LINUS (and  Multics, for that
+   matter) and  have ctl_args, standard request  names, etc., for
+   compatibility  with  other  Multics  subsystems  or  should it
+   follow a different drummer?  A case could certainly be made by
+   Marketing  for it  to look like  ISQL.  When  the LINUS Report
+   Writer  design  review was  held,  the consensus  was  that it
+   should use  ctl_args where the original  design said no.  Does
+   that mean that  the same logic calls for this  new EUF to look
+   like  the rest  of Multics?   Probably not.   A good  case for
+   ctl_args  in  LRW was  that it  was part  of a  subsystem that
+   already used clt_args.  If an ISQL-like or other human factors
+   oriented  interface  was  chosen,  it would  only  need  to be
+   internally  consistent with  regard conventions.   So, what it
+   probably boils down  to is who the audience  for this EUF will
+   be.  Will it be primarily for systems programmers?  Engineers?
+   Clerical people?  Seasoned Multicians?   And so on.  Should it
+   be a video and/or menu interface?  If is not an interface that
+   requires  intelligent  video  terminals, should  it  have such
+   things  built into  it as  options or  alternate approaches or
+   should a video/menu interface be a separate EUF?
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

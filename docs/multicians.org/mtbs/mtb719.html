@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : MRDS Rework/Cleanup.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+MTB 719-000                            Multics Technical Bulletin
+
+To:        MTB Distribution
+
+From:      Al Dupuis
+
+Date:      08/01/85
+
+Subject:   MRDS Rework/Cleanup
+
+ABSTRACT
+
+This MTB provides an overview  of a consolidated design for MRDS.
+MRDS  will  be  reworked  to  conform  to  this  new design.  The
+reworked MRDS  will provide a  number of features  lacking in the
+current MRDS system, and will  provide the framework necessary to
+more easily add new features in the future.
+
+This  MTB is  one of  a group  of related  documents in  the MRDS
+Rework/Cleanup series.  Documents identified at this time are:
+
+     MTB-720 The mrds subsystem.
+     MTB-721 The mrds_ subroutine.
+     MTB-722 The mrds_data_utility_ subroutine.
+     MTB-717 The mrds_model_manager_ subroutine.
+     MTB-723 The mrds_relation_manager_ subroutine.
+     MTB-724 The mrds_scope_manager_ subroutine.
+     MTB-725 The mrds_submodel_manager_ subroutine.
+     MTB-726 The mrds_transaction_manager_ subroutine.
+
+Comments may be made:
+
+     Via forum:
+                    &gt;udd&gt;d&gt;dbmt&gt;con&gt;MRDS_Development
+
+     Via electronic mail:
+                    Dupuis.Multics on System M
+
+     Via telephone:
+                    (HVN) 249-6674 or (602) 249-6674
+
+_________________________________________________________________
+
+Multics  Project  internal  working  documentation.   Not  to  be
+reproduced outside the Multics Project.
+
+
+MTB 719-000                            Multics Technical Bulletin
+
+                            Background
+
+Over  the past six  months a customer  has been negotiating  with
+Honeywell for  a truly secure  MRDS.  The secure  MRDS would have
+the   model,  submodels,    sensitive  runtime   structures,  and
+executable code in an inner  ring.  It would also allow different
+tuples in one relation, to be at different AIM levels.
+
+A   large  part   of  the   deliverables  of   this  contract  is
+documentation.   The  documentation  required  is  spelled out in
+great detail in NSAM 81-3, a two inch thick document that details
+the requirements that must be  adhered to for compliance with the
+contract.  The requirements include:  overall system description;
+overall data flow diagrams;  major subsystems and descriptions of
+them;  major  data  structures  (and  who  they're  used by); and
+complete flowcharts and p-code for each module.  Negotiations are
+currently  under way  to determine   what level  we will  have to
+produce, because there currently  isn't any documentation of this
+nature to speak of.  Developing this detailed documentation could
+result in no  time left to perform code changes  to implement the
+required new functionality.
+
+A  MRDS  study  was  recently  conducted  to  help  provide  cost
+estimates and work plans for this contract.  The rest of this MTB
+describes the results of the  study.  It begins by describing the
+current  MRDS  structure;  the  current  problems;  and the study
+conclusion.  It then describes:  goals; the new architecture; the
+Data  Definition and  Data Manipulation  subsystems; the  layered
+architecture approach; existing interfaces; future direction; and
+the future MRDS product.
+
+                        Current Structure
+
+The  MRDS system is  a collection of  PL/I, ALM, CDS  and include
+files  that have  accumulated since  the 1975  to 1976 timeframe.
+Currently MRDS, vfile_ relation manager, and LINUS amount to over
+300 source programs and over 200  include files, making it one of
+the largest systems on Multics.
+
+Unfortunately  this collection  of programs  isn't made  up of  a
+number of  well defined subsystems communicating  through clearly
+defined data structures and protocals.   Nor can it be thought of
+as  different  software  layers   that  shield  each  other  from
+implementations  local  to  a  layer.   Instead,  it  can best be
+described  as one  large tangled  plate of  spaghetti, where  any
+program  is  free  to  call  any  program  and  overlay  any data
+structure  to manipulate  it directly.   The tangled  mess has  a
+liberal sprinkling of bind file  chants and incantations to allow
+entry  through:  commands  (LINUS  is  considered a  MRDS command
+throughout this  MTB); undocumented mdbm_util_ entry  points; and
+
+
+MTB 719-000                            Multics Technical Bulletin
+
+documented  dsl_, mmi_,  and msmi_  entrypoints.  The  previously
+documented entrypoints dmd_ and dsmd_  were moved out of the MRDS
+manual  with  MR10.2,  and  will  be  de-supported  with the MR12
+release of  MRDS.  This current  architecture is depicted  in the
+following diagram.
+
+                          ____________
+                          |          |
+                          |   USER   |
+                          |__________|
+                               ^|
+                               |
+                               |
+     __________________________|__________________________
+     |            |            |            |            |
+     v|            v|            v|            v|            v|
+____________ ____________ ____________ ____________ ____________
+|          | |          | |          | |          | |          |
+|   dsl_   | |   mmi_   | |  msmi_   | |mdbm_util_| | commands |
+|__________| |__________| |__________| |__________| |__________|
+     |            |            |            |            |
+     |____________|____________|____________|____________|
+                               |
+     ^|                         |            ^|            ^|
+     |                    _____v|______      |            |
+     |                    |  REST OF |      |            |
+     |____________________|   MRDS   |______|____________|
+                          |__________|
+
+Two things about this architecture should be noted.  The first is
+that users  can enter the system through  a subroutine entrypoint
+like dsl_  which results in a  transfer down to a  lower level of
+MRDS, and  then the lower  level can call  back up to  a command.
+The second  is that the  bulk of the  code is in  the box labeled
+"REST OF MRDS".
+
+                      Current MRDS Problems
+
+A  system as  large as  MRDS should  be made  up of  a number  of
+distinct subsystems  that have definite  responsibilities.  There
+are  many  reasons  for  this.   One  of  the more important ones
+relative to this contract, is that we could more easily determine
+what a  given change would  affect.  As it  currently stands, the
+management of  a single entity  is scattered throughout  MRDS.  A
+good  example  of  this  is  the  scope  mechanism.   There  is a
+requirement that users at different AIM  levels be able to open a
+database and  set scope, with  high level users  being allowed to
+retrieve lower level tuples.   In the current implementation, the
+higher  level  users  fault  when  MRDS  tries  to write into the
+database control segment.  Support  for different AIM level users
+
+
+MTB 719-000                            Multics Technical Bulletin
+
+requires that the database control segment be in ring 1, and code
+that reads or writes it would be ring 1 code.  This is impossible
+in  the  current  architecture,  because  portions  of  MRDS from
+commands down to the lowest  level subroutines, use structures to
+directly overlay the segment and perform their operations.  It is
+unacceptable to  try to move all  of MRDS into ring  1 (the TCB),
+but this action is required with the current architecture.
+
+This  scope  situation  is  also  mirrored  by  a number of other
+entities  like   the  database  model,  submodels,   and  runtime
+structures.   Rather than provide  one subsystem that  manages an
+entity, the knowledge of the entity is scattered throughout MRDS.
+Changing  one entity in  MRDS has the  potential to require  many
+code changes throughout MRDS.
+
+The documentation requirements for the contract being bid on have
+made  it painfully  obvious that  there isn't  really any overall
+data flow design or overall  documentation for how the system all
+fits together.  This problem is made  more acute by the fact that
+individual   modules   contain   inaccurate,   uninformative,  or
+non-existent   descriptions.   The    code  itself   hampers  the
+understanding  effort because  of meaningless  local and  include
+file variable  names.  Obscure coding techniques  (e.g.  it's use
+of  areas and  temporary segments)  cloud limits  defined in  the
+mrds_data_ segment, and result in customer modifications breaking
+from  release  to  release  (e.g.   increases  to  the  number of
+attributes per relation).
+
+The requirement that  MRDS be split between rings 4,  2, and 1 is
+impossible   to  fulfill   with  the   current  structure.   This
+architecture  also makes  it extremely  hard to  add new customer
+requested functionality, and makes  providing new interfaces like
+SQL impossible.
+
+                      MRDS Study Conclusion
+
+The conclusion reached was that MRDS must be reworked and cleaned
+up  to be able  to:  divide it  between ring 4  and ring 2;  move
+scope (AIM  support) to ring  1; provide a  layered architecture;
+reduce    overall   complexity;   increase    documentation   and
+understanding;  increase maintainability;  facilitate changes  to
+MRDS in the future; and provide modern interfaces.
+
+                        MRDS Cleanup Goals
+
+The  MRDS rework/cleanup  will try  to meet  the following eleven
+goals.
+
+1.  Remain compatible at the user interface.
+
+
+MTB 719-000                            Multics Technical Bulletin
+
+2.  No  conversion of  data  required.   (Conversion of  the data
+    model, data  submodels, and database control  segment will be
+    required.)
+
+3.  Layered architecture with individually documented subsystems.
+
+4.  Ring 4 databases and optionally ring 2 databases.
+
+5.  Multi-level  tuple  DMS  relations   if  SRDBMS  contract  is
+    awarded.
+
+6.  High level readers of lower level vfile_ relations.
+
+7.  Reduced maintenance requirements.
+
+8.  Provide customer requested new functionality.
+
+9.  Move towards support of modern interfaces.
+
+10. Provide uniform MRDS interface.
+
+11. Stage migration to new MRDS interface.
+
+
+MTB 719-000                            Multics Technical Bulletin
+
+                      New MRDS Architecture
+
+The new MRDS structure is depicted in the following diagram.
+
+                          ____________
+                          |          |
+                          |   USER   |
+                          |__________|
+                               ^|
+                               |
+                               |
+     __________________________|__________________________
+     |            |            |            |            |
+     v|            v|            v|            v|            v|
+____________ ____________ ____________ ____________ ____________
+|          | |          | |          | |          | |          |
+|   dsl_   | |   mmi_   | |  msmi_   | |mdbm_util_| | commands |
+|__________| |__________| |__________| |__________| |__________|
+     |            |            |            |            |
+     |            |            |            |            |
+     |            RING 4 CODE ABOVE THIS LEVEL           |
+     |            |            |            |            |
+     |V            |V            |V            |V            |V
+________________________________________________________________
+|                                                              |
+|                            mrds_                             |
+|                                                              |
+|______________________________________________________________|
+                               |
+                               |
+                 RING 1 &amp; 2 CODE BELOW THIS LEVEL
+                               |
+                               |V
+_______________________________________________________________
+|                                                              |
+|              MRDS Integrated Data Definition And             |
+|                 Data Manipulation Subsystems                 |
+|______________________________________________________________|
+
+In this new structure the MRDS commands and subroutine interfaces
+will be pared down considerably and  the bulk of the code will be
+present  in  the  MRDS  Data  Definition  and  Data  Manipulation
+Subsystems  (MRDS DD &amp;  DM Subsystems).  The  DD &amp; DM  subsystems
+will  be  a  number   of  individually  documented  and  designed
+subsystems.  Each one will manage  a single entity and provide an
+abstract  interface to  it.  MRDS   code will  use this  abstract
+interface  instead  of  containing  direct  knowledge  about  the
+entity.   These  individual  subsystems  will  be  described in a
+
+
+MTB 719-000                            Multics Technical Bulletin
+
+series of MTBs that will be written and published after this one.
+DD &amp; DM subsystems identified so far are:
+
+     Subsystem                      Manages
+
+mrds_data_utility_            Data Conversions, etc.
+mrds_model_manager_           MRDS Models
+mrds_relation_manager_        MRDS Relations
+mrds_scope_manager_           Concurrent Usage, Quiescing
+mrds_submodel_manager_        MRDS Submodels
+mrds_transaction_manager_     Transactions
+
+Detailed investigation  is currently under way  to identify other
+subsystems  that will  be required.   (e.g.  Translator  support,
+relational  operations, optimization, search  program generation,
+area and temporary segment management, etc.)
+
+The mrds_ transfer vector will provide one consolidated interface
+for all database  functions.  It will be the  building block that
+other interfaces  call, and will provide  all database functions.
+The  mrds_  interface  will  provide  a  general  way to describe
+operations, and specific interfaces above it will implement their
+user  interface.    For  example,  the   restructure_mrds_db  and
+create_mrds_db commands provide the ability  for a user to create
+a relation.  They  will both call the mrds_ entry  that creates a
+relation,  after   translating  their  user   interface  relation
+specification  into  the   specification  structures  that  mrds_
+understands.
+
+In  many cases, mrds_  will transfer to  a corresponding DD  &amp; DM
+subsystem  entrypoint that   implements that  particular database
+function.   An  example  of  this  would  be  the  two previously
+mentioned   commands   calling   mrds_$create_relation,   and  it
+transferring  directly  to   the  mrds_model_manager_  equivalent
+entrypoint  (the mrds_model_manager_  is described  later in this
+section).
+
+Other times  it will transfer  to a program  that groups together
+several DD &amp;  DM subsystem operations.  An example  of this would
+be  the mrds_$create_database  entrypoint, that  creates an empty
+database.   This grouping  program would   call several  DD &amp;  DM
+subsystems to have the individual  portions of a database created
+(e.g.  the database and the database control segment).
+
+This  same grouping can  sometimes be thought  of as providing  a
+lower level interface than the current MRDS supports.  An example
+of this will be the  mrds_$delete entrypoint, that deletes tuples
+from a relation.  Several  different user interface programs will
+translate their user interface specification, into the structures
+that  the mrds_  entrypoint understands.   This will  provide the
+framework  for supporting   multiple languages.   The dsl_$delete
+
+
+MTB 719-000                            Multics Technical Bulletin
+
+syntax  and the  LINUS syntax   can both  be translated  into the
+common  mrds_$delete  specification   structures,  and  then  the
+mrds_$delete  entrypoint can  provide the   bulk of  the code  to
+perform the operation.  New interfaces like SQL or a mouse-driven
+interface  can  be  supported  in  the  future  through this same
+mrds_$delete entrypoint.
+
+The mrds_ interface will also provide the conceptual line between
+the  secure MRDS  and the  non-secure MRDS.   All code  above the
+mrds_ interface will be considered non-secure, and all code below
+this  interface  will  be  considered  secure.   This  will allow
+processing of argument lists with a variable number of arguments,
+and translation, to be done in a non-secure layer.
+
+An example best illustrates the need  for the DD &amp; DM subsystems.
+The  MRDS model  at one  time  was  a single  segment managed  by
+pointer I/O.   Over time this has  changed and currently it  is N
+segments managed by  pointer I/O (1 plus the  number of relations
+in the database).  Each time changes were made to the model, code
+had to be changed to generate and interpret the new formats.  The
+code that had to be changed did not reside in one clearly defined
+subsystem; instead it was  scattered between various commands and
+subroutines.   If  the  code  that  had  knowledge  of  the model
+implementation  resided  in  one  subsystem,  only  it would have
+changed.  A command like  create_mrds_db would have worked almost
+unchanged,    if    it    had    called    something   like   the
+mrds_model_manager_ which created relations, domains, attributes,
+etc.  for it.  A  command like display_mrds_data_model would have
+worked almost unchanged if it  called the same subroutine to have
+information about the model returned.
+
+The current  implementation makes it impossible  to protect model
+modifications across  system and process failures,  so once again
+the implementation will have to change.  This time we will change
+MRDS  commands and  subroutines to  call the  mrds_model_manager_
+(through    mrds_)    for    services    they    require.     The
+mrds_model_manager_ will shield the rest of MRDS from the details
+of  how the  model is   implemented, and  once this  isolation is
+achieved  it   is  quite  likely  that   several  different  Data
+Management System implementations will  be experimented with.  We
+will  be free,  for example,  to vary  the implementation  from a
+single DMS file to a full  blown data dictionary.  We can do this
+knowing in advance:  that the bulk of the code changes will be in
+the   mrds_model_manager_;  the   size  and   complexity  of  the
+mrds_model_manager_ (e.g.   how many modules we're  going to have
+to change and  the extent of the changes); what  include files we
+will have  to change; what  documentation this will  affect; what
+ring the code to be changed executes in; etc.  These are luxuries
+that we do not currently enjoy.
+
+
+MTB 719-000                            Multics Technical Bulletin
+
+The   following  diagram   illustrates  the   interfaces  to  the
+mrds_model_manager_.
+
+____________ ____________ ____________ ____________ ____________
+|          | |          | |          | |          | |   other  |
+|   dsl_   | |   mmi_   | |   rmdb   | |   cmdb   | |   MRDS   |
+|          | |          | |          | |          | |   code   |
+|__________| |__________| |__________| |__________| |__________|
+     |            |            |            |            |
+     |            |            |            |            |
+     |            |            |            |            |
+_____|V____________|V____________|V____________|V____________|V______
+|                                                              |
+|                            mrds_                             |
+|                                                              |
+|______________________________________________________________|
+                               |
+                               |
+                               |
+_______________________________V________________________________
+|                                                              |
+|                      mrds_model_manager_                     |
+|                                                              |
+|______________________________________________________________|
+                               |
+                               |
+                               |
+                       ________|V_______
+                      /      MRDS        ONE OR MORE DMS FILES
+                     /     DATABASE     
+                        /   MODEL       /
+                      _/_______________/
+
+
+MTB 719-000                            Multics Technical Bulletin
+
+                       Layered Architecture
+
+The  identification and  construction of  the DD  &amp; DM subsystems
+will  allow us  to develop  a layered  architecture within  MRDS,
+where  these different  subsystems shield  the bulk  of MRDS code
+from entity implementation details.  For example, if current MRDS
+is  working against  a DMS   database, widely  scattered code  is
+implementing transaction support.  An  executable include file is
+used to  help alleviate duplicate  code, but decision  making and
+transaction specifics  are implemented in too  many places.  More
+importantly, if DMS implementations change, this widely scattered
+code must also change.  This problem will be intensified when the
+mrds_model_manager_  uses  DMS  files,  if  transaction knowledge
+isn't taken out of the bulk of MRDS code.
+
+The knowledge-of-transactions problem  also exists with different
+types of relations.  Although MRDS uses entry variables to try to
+shield itself from knowing if it  is a vfile_ or DMS relation, it
+still  contains specifics  so that  it can  do things differently
+depending on the type of relation.
+
+The following diagrams illustrate how  the layering will look for
+the create_mrds_db and restructure_mrds_db commands under the new
+MRDS  architecture, when  a database  is created  through either.
+These  commands would  call the  mrds_$create_database entry, and
+would  result in  a call  to the mrds_model_manager_$create_model
+entry  and  the   mrds_scope_manager_$create  entry.   The  first
+diagram shows the sequence for the model creation, and the second
+diagram  shows  the  sequence  for  the  database control segment
+creation.
+
+
+MTB 719-000                            Multics Technical Bulletin
+
+                     Database Model Creation
+
+      _____________________________________________________
+      |                         |                         |
+      |                         |                         |
+      |   restructure_mrds_db   |     create_mrds_db      |
+      |                         |                         |
+      |_________________________|_________________________|
+                   |                        |
+                   |                        |
+                   |          mrds_         |
+                   |                        |
+                   |________________________|
+                   |                        |
+                   |                        |
+                   |   mrds_model_manager_  |
+                   |                        |
+      _____________|________________________|______________
+      |                         |                         |
+      |                         |                         |
+      |mrds_transaction_manager_|  mrds_relation_manager_ |
+      |                         |                         |
+      |_________________________|_________________________|
+                   |                         |
+                   |                         |
+                   |  DATA MANAGEMENT SYSTEM |
+                   |                         |
+                   |_________________________|
+                               |
+                               |
+                       ________|V_______
+                      /      MRDS        ONE OR MORE DMS FILES
+                     /     DATABASE     
+                        /   MODEL       /
+                      _/_______________/
+
+
+MTB 719-000                            Multics Technical Bulletin
+
+                Database Control Segment Creation
+
+      _____________________________________________________
+      |                         |                         |
+      |                         |                         |
+      |   restructure_mrds_db   |     create_mrds_db      |
+      |                         |                         |
+      |_________________________|_________________________|
+                   |                        |
+                   |                        |
+                   |          mrds_         |
+                   |                        |
+                   |________________________|
+                   |                        |
+                   |                        |
+                   |   mrds_scope_manager_  |
+                   |                        |
+                   |________________________|
+                               |
+                               |
+                       ________|V_______
+                      /      MRDS        ONE SEGMENT
+                     /      SCOPE       
+                        /  SEGMENT      /
+                      _/_______________/
+
+
+MTB 719-000                            Multics Technical Bulletin
+
+This  layered architecture  also allows  for the  support of  new
+modern   interfaces,  such   as  SQL.    The  following   diagram
+illustrates   how  the  create_mrds_db   and  restructure_mrds_db
+commands could co-exist with the  SQL create table, create index,
+delete table, delete index, etc.  statements.
+
+      _____________________________________________________
+      |                         |                         |
+      |                         |                         |
+      |   EXISTING INTERFACES   |     SQL INTERFACES      |
+      |                         |                         |
+      |_________________________|_________________________|
+                   |                         |
+                   |                         |
+                   |          mrds_          |
+                   |                         |
+                   |_________________________|
+                   |                         |
+                   |                         |
+                   |   mrds_model_manager_   |
+                   |                         |
+      _____________|_________________________|_____________
+      |                         |                         |
+      |                         |                         |
+      |mrds_transaction_manager_|  mrds_relation_manager_ |
+      |                         |                         |
+      |_________________________|_________________________|
+                   |                         |
+                   |                         |
+                   |  DATA MANAGEMENT SYSTEM |
+                   |                         |
+                   |_________________________|
+                               |
+                               |
+                               |
+                       ________|V_______
+                      /      MRDS        ONE OR MORE DMS FILES
+                     /     DATABASE     
+                        /   MODEL       /
+                      _/_______________/
+
+
+MTB 719-000                            Multics Technical Bulletin
+
+                     Existing MRDS Interfaces
+
+All user  interactions are done through LINUS,  MRDS commands, or
+MRDS subroutines.  Existing MRDS interfaces are:
+
+o  adjust_mrds_db, create_mrds_db, create_mrds_dm_include,
+   create_mrds_dm_table, create_mrds_dsm, display_mrds_db_access,
+   display_mrds_db_population, display_mrds_db_status,
+   display_mrds_db_version, display_mrds_dm, display_mrds_dsm,
+   display_mrds_open_dbs, display_mrds_scope_settings,
+   display_mrds_temp_dir, quiesce_mrds_db, secure_mrds_db,
+   set_mrds_temp_dir, unpopulate_mrds_db
+
+o  linus, mrds_call, restructure_mrds_db
+
+o  dmd_, dsmd_
+
+o  dsl_, mmi_, msmi_
+
+The  most popular  relational  database  system language  is SQL.
+Although SQL is  far from perfect, it does  provide all functions
+through one uniform interface that can be used by a terminal user
+or a  programmer through a  programming language.  MRDS  does not
+have this quality.  When compared  directly to SQL, it appears to
+be a collection of interfaces that bear little resemblance to one
+another.  This  isn't surprising when you consider  that each new
+release  of  MRDS  contained  new  interfaces,  but  the  overall
+interface wasn't designed in the beginning.  Some of the problems
+with the current interface are:
+
+Too many ways to get the same thing done.
+
+   o  linus list_scope, mrds_call get_scope, dsl_$get_scope,
+      display_mrds_scope_settings
+
+   o  display_mrds_dm, rmdb's display_data_model, various dsl_
+      entries
+
+No way to get other things done.
+
+   o  How do I delete an attribute?
+
+   o  How do I select groups or sort?
+
+   o  How do I create a view?
+
+Only some functions available in some interfaces.
+
+   o  LINUS missing critical functionality (data base creation or
+      restructuring).
+
+
+MTB 719-000                            Multics Technical Bulletin
+
+New functionality must be implemented in several places.
+
+   o  rmdb functions in cmdb.
+
+   o  Sorting and null values in dsl_ and LINUS.
+
+New functionality won't be implemented in all places.
+
+   o  New parser for dsl_ and not LINUS.
+
+   o  rmdb functions won't be added to LINUS.
+
+                      Future MRDS Direction
+
+The  MRDS  rework/cleanup  effort  will  provide  a well planned,
+layered architecture which will  allow old interfaces to co-exist
+with  new  interfaces.   Current  applications  will be supported
+through the old interfaces, and  new applications will have these
+or  the new  interfaces to   choose between.   Incentive will  be
+provided, however, to use the new interfaces.
+
+The new interfaces will be provided through one subsystem and one
+subroutine interface.  The subsystem and the subroutine interface
+will use a Multics version  of SQL to direct database processing.
+All  functions   will  be  present  through   the  subsystem  and
+subroutine.   The only  differences  will  be due  to programming
+language  considerations.   (e.g.   A  programming  language that
+needed  a row  at a  time interface  for a  retrieve would  use a
+cursor.  A programming language that processed sets, such as APL,
+wouldn't require the use of a cursor.)
+
+
+MTB 719-000                            Multics Technical Bulletin
+
+                       Future MRDS Product
+
+The following diagram illustrates, from a high-level perspective,
+what the reworked MRDS will look like.
+
+                   ___________________________
+                   |                         |
+                   |                         |
+                   |          USER           |
+                   |                         |
+      _____________|_________________________|_____________
+      |                         |                         |
+      |                         |         EXISTING        |
+      |           LINUS         |      MRDS INTERFACES    |
+      |                         |                         |
+      |_________________________|_________________________|
+      |                                                   |
+      |                                                   |
+      |           MRDS DD &amp; DM SUBSYSTEMS                 |
+      |                                                   |
+      |___________________________________________________|
+
+The following diagram illustrates, from a high-level perspective,
+how an SQL interface could be built upon the mrds_ interface.
+
+                   ___________________________
+                   |                         |
+                   |                         |
+                   |          USER           |
+                   |                         |
+      _____________|_________________________|_____________
+      |                         |                         |
+      |                         |                         |
+      |      SQL Subsystem      |  SQL Program Interface  |
+      |                         |                         |
+      |_________________________|_________________________|
+      |                                                   |
+      |                                                   |
+      |           MRDS DD &amp; DM SUBSYSTEMS                 |
+      |                                                   |
+      |___________________________________________________|
+
+The  following benefits  are expected   as a  result of  the MRDS
+rework/cleanup.
+
+o  revamped code and layered architecture will aid maintenance
+   and facilitate addition of new functionality
+
+
+MTB 719-000                            Multics Technical Bulletin
+
+o  layered architecture and documented product will provide a
+   truly secure product that should be the first B2 certified
+   database manager
+
+o  customer investment will be protected by continuing to support
+   the old interfaces
+
+o  reduced workload because new functionality is only provided in
+   the new interface
+
+o  customers will move towards new interface because of reduction
+   of complexity, industry standard SQL, and new functionality
+
+o  new interfaces are more easily supported in the future (e.g.
+   MacMRDS)
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

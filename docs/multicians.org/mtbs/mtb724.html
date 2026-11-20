@@ -1,0 +1,1468 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : MRDS scope mechanism.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+
+MULTICS TECHNICAL BULLETIN                                MTB-724
+
+To:  MTB Distribution
+
+From:  Jim Lippard
+
+Date:  August 1, 1985
+
+Subject:  MRDS scope mechanism
+
+This  MTB describes  the implementation  of a  secure MRDS  scope
+mechanism for vfile_ relations.   DM-file scope is made optional.
+Vfile_  scope  is  made  secure  by  putting  the MRDS db.control
+segment  in  an  inner  ring.   Scope  enforcement  is secured by
+performing scope checks during retrieval and update operations in
+ring 2 and is not described in this MTB.
+
+Comments and questions should be sent to the author:
+
+by Multics mail:
+
+   Lippard on System-M, CISL-Service-Multics or MIT-Multics
+
+via System-M forum:
+
+   &gt;udd&gt;Demo&gt;dbmt&gt;continuum&gt;MRDS_Development.forum (mrdsdev)
+
+or by telephone:
+
+   (602) 249-6832 or HVN 249-6832
+
+_________________________________________________________________
+
+Multics Project  working documentation.  Not to  be reproduced or
+distributed  outside the Multics  project without the  consent of
+the author or the author's management.
+
+
+
+                             CONTENTS
+
+                                                         Page
+
+                 The Existing Scope Mechanism . . . . .   1
+                    Permit/Prevent Operations . . . . .   1
+                    Setting Scope . . . . . . . . . . .   2
+                    Queueing Mechanism  . . . . . . . .   3
+                    Deleting Scope  . . . . . . . . . .   3
+                    Enforcing Scope . . . . . . . . . .   4
+                 A New Scope Mechanism  . . . . . . . .   4
+                    Setting Scope/Deleting Scope  . . .   5
+                    Queueing Mechanism  . . . . . . . .   6
+                    Enforcing Scope . . . . . . . . . .   6
+                    Conclusion  . . . . . . . . . . . .   6
+                    mrds_scope_manager_ . . . . . . . .   7
+                       add_relation . . . . . . . . . .   7
+                       adjust . . . . . . . . . . . . .   8
+                       close  . . . . . . . . . . . . .   10
+                       copy . . . . . . . . . . . . . .   11
+                       create . . . . . . . . . . . . .   12
+                       delete . . . . . . . . . . . . .   14
+                       delete_relation  . . . . . . . .   16
+                       delete_scope . . . . . . . . . .   18
+                       get_all_scope  . . . . . . . . .   21
+                       get_scope_info . . . . . . . . .   24
+                       get_update_counter . . . . . . .   26
+                       increment_update_counter . . . .   28
+                       open . . . . . . . . . . . . . .   30
+                       quiesce  . . . . . . . . . . . .   32
+                       rename_relation  . . . . . . . .   34
+                       set_scope  . . . . . . . . . . .   36
+                       unquiesce  . . . . . . . . . . .   38
+                       validate . . . . . . . . . . . .   40
+                    suffix_control_ . . . . . . . . . .   41
+
+
+
+THE EXISTING SCOPE MECHANISM
+
+The scope mechanism is used to  control who may access a database
+and  what  operations  they  may  perform  on  it.   The  segment
+db.control  in the  database  contains  the information  used for
+this.  It  has locks for  opening the database  and setting scope
+(among  other things)  and a  list of  users threaded  three ways
+(effectively three lists).   The first list is of  users who have
+the database  open.  The second list  is of users who  have scope
+set.  The  third list is of  users who are waiting  to set scope.
+For each user, a list of open relations is kept, along with scope
+settings for each one.
+
+When  a user  opens a  database,  he  uses one  of the  following
+opening modes:
+
+retrieval (r)
+   This  is a  shared mode,   scope must  be set  before actually
+   accessing part of the database.  The maximum permit scope that
+   can  be  set  with  this   mode  is  read_attr  (see  list  of
+   permit/prevent ops below).
+
+update (u)
+   This  is  also  a  shared   mode,  scope  again  must  be  set
+   separately.  Any scope may be set with this opening mode.
+
+exclusive_retrieval (er)
+   When  the  database  is  opened   with  this  mode,  scope  is
+   automatically set for all relations in the database so that no
+   other user may update the  database, but reading is permitted.
+   The opening user may only read.  This is equivalent to opening
+   the database in retrieval mode  and then setting scope for all
+   relations   with   read_attr   permitted   and   append_tuple,
+   delete_tuple, and modify_attr prevented.
+
+exclusive_update (eu)
+   When  the  database  is  opened   with  this  mode,  scope  is
+   automatically set for all relations in the database so that no
+   other user may read or  update the database.  The opening user
+   can perform all operations.  This  is equivalent to opening in
+   update  mode and  then setting  scope for  all relations  with
+   everything permitted and everything prevented.
+
+
+
+Permit/Prevent Operations
+
+The following operations may be permitted (for the opening user's
+process) or prevented (for other users):
+
+   read_attr* or read (r)
+      This permits/prevents reading  attributes (fields) from the
+      database.
+
+   append_tuple* or store (s)
+      This  permits/prevents adding  new tuples  (records) to the
+      database.
+
+   delete_tuple* or delete (d)
+      This permits/prevents deleting tuples from the database.
+
+   modify_attr* or modify (m)
+      This permits/prevents changing attributes in the database.
+
+   (Names marked with an asterisk are the current terminology.)
+
+Once scope  has been set, additional permits/prevents  may not be
+set until  the current scope has been  completely deleted.  Parts
+at a time may be deleted, however.
+
+Other  users may  set scope  as  long  as their  requests do  not
+conflict  with existing  granted scope  requests.  If  there is a
+conflict, their request is queued for the duration of a wait time
+they specify.
+
+Setting Scope
+
+Scope   is  set   by  a    call  to   either  dsl_$set_scope   or
+dsl_$set_scope_all.  The former sets  scope on a single relation,
+the latter on  all relations in a database.   The module actually
+being called  here is mrds_dsl_set_scope, which  essentially just
+validates  the database  index and   passes the  arguments on  to
+mrds_dsl_set_fscope, which does all of the real work.
+
+In the  case of a database  being opened with an  opening mode of
+exclusive_retrieval  or exclusive_update  (a call  to dsl_$open),
+mrds_dsl_open calls mrds_dsl_set_fscope  directly, having already
+validated the database index.
+
+What mrds_dsl_set_fscope  does first is  check that the  user has
+access to  do what he wants  to do.  If so,  it checks to see  if
+scope  is already  set by  this user.   If it  is, the request is
+
+
+
+rejected, since scope may not be set again on a specific relation
+until the old scope is deleted.
+
+Next, mrds_dsl_set_fscope  attempts to set the scope  lock in the
+db.control  segment, then it  checks for conflicts  with existing
+scope set by other users.  If either setting the scope lock fails
+or there is a conflict in the scope request (checked by a call to
+mu_check_scope), the user is put into the waiting queue.  If both
+succeed, scope is  set for the specified relations  and the scope
+lock is unlocked.
+
+Queueing Mechanism
+
+The enqueueing  mechanism is implemented  in mrds_dsl_set_fscope.
+When a user's scope request  is enqueued, his entry in db.control
+is placed in the waiting list.  The entry gets out of the waiting
+queue in one of two ways:  either  by timing out or by having the
+scope request fulfilled.
+
+The call to  dsl_$set_scope specifies how long the  user wants to
+wait for the scope request  to be fulfilled.  This is implemented
+by  calling timer_manager_$alarm_wakeup  with the  specified wait
+time.  If the alarm goes off before the request is fulfilled, the
+user  is dequeued  by a  call to  mu_de_queue_user and  the scope
+setting fails.
+
+When a user is put in the waiting list, an IPC channel is created
+to receive wakeups from users who have scope set when they delete
+scope.  When a wakeup is received, mrds_dsl_set_fscope again sets
+the scope lock and calls mu_check_scope  to see if there is still
+a scope  conflict.  If either  fails, the whole  procedure starts
+again.  If it  succeeds, the user then looks  through the waiting
+list  to see if  any other users  can now set  scope.  If one  is
+found, a wakeup is sent to that user.  (The search ends after the
+first user found.)
+
+
+
+Deleting Scope
+
+A   call  to   dsl_$dl_scope  (really   mrds_dsl_set_scope)  just
+validates  the database  index and   passes the  arguments on  to
+mrds_dsl_dl_fscope.    A   call    to   dsl_$close   also   calls
+mrds_dsl_dl_fscope.  It  first sets the scope  lock, then deletes
+the scope  for the user.  If  locking fails, it sets  the trouble
+switch for the database.
+
+After scope  has been deleted,  it goes through  the waiting list
+looking  for scope requests  which can now  be satisfied.  If  it
+finds one, a wakeup is sent to that user and it returns.
+
+Each time  a user in the  waiting list is checked,  a counter for
+that user is incremented.  After it gets up past a certain point,
+the high_priority flag for that user is set (even though it isn't
+used).
+
+Each time a waiting user's request is checked for conflict, it is
+also checked to see if the  conflict is caused by a dead process.
+If so, and the dead process  was not doing any updating, the dead
+process  is dequeued and  the waiting user  is awakened.  If  the
+dead  process was  doing updating,  the waiting  user is awakened
+anyway (since  there is no  reason for him  to continue waiting),
+and  his attempt to  set scope will  fail and the  trouble switch
+will be set.
+
+Enforcing Scope
+
+For  mrds_dsl_retrieve,   mrds_dsl_modify,  and  mrds_dsl_delete,
+scope  enforcement  is  done  by  mrds_dsl_select_clause.  All of
+these  dsl_  entry  points  call  mrds_dsl_translate, which calls
+mrds_dsl_select_clause,  which  does  the  scope  checking.   The
+module mrds_dsl_store does its own scope checking.
+
+A NEW SCOPE MECHANISM
+
+The primary problem  to be solved is allowing  users of different
+authorizations to  access a single database.  Since  scope is not
+really  necessary  for  DM-file   relations,  scope  will  become
+optional.  When  scope is not  set on DM-files,  open information
+will continue to be printed by display_mrds_db_status.
+
+
+
+For  vfile_ relations,  the  scope  information in  db.control is
+still always used.  This  requires making db.control a multiclass
+(ring 1) segment.  This solution  also solves a secondary problem
+of random users trashing the  db.control segment, since access to
+it is controlled by gates.
+
+Since ring 1 code is part of the Trusted Computing Base (TCB) and
+must  be evaluated for  Multics' DoD rating,  the amount of  such
+code  should be  minimized.  Any  dealings with  data of multiple
+access classes must be in ring 1.  MRDS vfile_ relations will all
+be of a single access class, so they do not need to be in ring 1.
+For  SRDBMS, they  will be  in ring  2, so  some processing which
+needs to  be kept secure but  doesn't involve AIM may  be done in
+ring 2.
+
+Setting Scope/Deleting Scope
+
+The  actual setting  of scope  must be  done in  ring 1, since it
+involves modifying  db.control.  The AIM authorization  level for
+each  user (opening, waiting,  and active) must  be kept in  each
+entry in db.control.  Scope setting cannot fail because of a user
+with  a higher  authorization, since   that would  open a  covert
+channel.
+
+   There are two ways to deal  with this problem.  In both cases,
+the  lower  level  user  is  immediately  granted  the  scope  he
+requests.  In  the first case,  the lower level  user deletes the
+higher level user's scope and  sends him a signal indicating that
+he no longer has his scope.   This opens a covert timing channel.
+The  bandwidth  depends  on   the  implementation  and  could  be
+minimized or removed by auditing rapid scope settings or adding a
+random pause.
+
+   The  second case does  not create a  covert channel.  In  this
+case, the  lower level user  completely ignores the  higher level
+user.   All  modifications  to  the  database,  however,  cause a
+counter  to  be  incremented.   The  high  level  user checks the
+counter  before  and  after  retrieving  each  tuple.   If it has
+incremented, he  knows he has  no assurance of  having consistent
+data  and dsl_$retrieve  can abort   with an  error code  to that
+effect.  This method  appears to be easier than the  first and is
+the planned implementation.
+
+What scope can be set depends on  what access the user has to the
+relations,  so a  higher level  user would  only be  able to  set
+read_attr on  relations at a  lower access class.   The conflicts
+with  lower level  users arise  when the  higher level  user sets
+update prevents (indicating that he wants consistent data).
+
+
+
+Queueing Mechanism
+
+A user cannot be allowed to see that there are scope requests for
+users of higher authorization.
+
+Another  problem is  that  the  current queueing  mechanism calls
+timer_manager_$alarm_wakeup.  This can be  solved by changing the
+queueing mechanism to set up an event call channel for the wakeup
+from a user deleting  scope and then calling timer_manager_$sleep
+for  the desired  wait time.   The next  statements after calling
+timer_manager_$sleep  will be  executed in  the case  of timeout.
+The event call  procedure will do a non-local goto  to just after
+the timeout code.  The  cleanup handler in timer_manager_ insures
+that the user ring timer is reset.
+
+Enforcing Scope
+
+For the purposes  of implementing read down, it  is not necessary
+that  the enforcement  of scope  be secure.   For SRDBMS,  on the
+other hand, it is.  To implement  read down, it is only necessary
+that the user not be able to see scope set by higher level users,
+not  that a  user be  unable to  fake his  own scope  by changing
+scope_info and then calling some  dsl_ entry point to retrieve or
+modify data.  To prevent this requires that all scope checking be
+in the  inner ring.  Since AIM  does not come into  play here, it
+may be done in ring 2 rather than ring 1.
+
+The trouble  switch can only  be set by  users at the  lowest AIM
+level for a  given database.  The same is true  for quiescing and
+adjusting.   Higher  level  users  are  still  affected  by these
+switches being on.
+
+Conclusion
+
+The new scope mechanism will be accessed through a new subroutine
+called mrds_scope_manager_,  described below.  The  existing dsl_
+calling  sequences will  continue  to  be supported.   Old format
+db.control segments, on the other  hand, will not be.  A database
+conversion tool will be supplied for this and other changes which
+will come about as a result of the restructuring of MRDS.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+MRDS_SCOPE_MANAGER_
+
+The mrds_scope_manager_ is used for  all access to the db.control
+segment.
+
+Entry:  add_relation
+
+This  entry  point  adds  a  relation  to  the list maintained in
+db.control.
+
+USAGE
+
+dcl   mrds_scope_manager_$add_relation   entry   (fixed  bin(35),
+char(*), char(*), fixed bin(35));
+
+call  mrds_scope_manager_$add_relation (db_index,  relation_name,
+error_message, code);
+
+ARGUMENTS
+
+db_index (Input)
+   is  the index  of the  database to  which a  relation is to be
+   added.
+
+relation_name (Input)
+   is the name of the relation to be added.
+
+error_message (Output)
+   is  a printable  error message  that is  returned if  the code
+   argument is  set to a non-zero  value.  It should be  at least
+   150 characters long.
+
+code (Output)
+   is a standard system error code.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+Entry:  adjust
+
+This  entry  point  adjusts  the  specified  database,  either by
+removing dead  processes from the db.control seg  or toggling the
+trouble switch.
+
+USAGE
+
+dcl  mrds_scope_manager_$adjust  entry  (char(*),  char(*),  ptr,
+char(*), fixed bin(35));
+
+call  mrds_scope_manager_$adjust (dname,  ename, adjust_info_ptr,
+error_message, code);
+
+ARGUMENTS
+
+dname (Input)
+   is the directory containing the database.
+
+ename (Input)
+   is the entry name of the database.
+
+adjust_info_ptr (Input)
+   is  a   pointer  to  the  following   structure  (declared  in
+   msm_adjust_info.incl.pl1):
+
+     dcl 1 adjust_info aligned based (adjust_info_ptr),
+           2 version char (8),
+           2 flags unaligned,
+             3 reset bit (1),
+             3 toggle_trouble_switch bit (1),
+             3 remove_deadprocs bit (1),
+             3 force bit (1),
+             3 mbz bit (32);
+
+   where:
+
+   version
+      is  a  version  string  for  this  structure.   It  must be
+      MSM_ADJUST_INFO_VERSION_1.
+
+   reset
+      specifies that the db.control segment  is to be restored to
+      a  consistent   state.   Any  scope  or   open  information
+      currently in the segment is lost.
+
+   toggle_trouble_switch
+      specifies that the trouble switch is to be toggled.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+   remove_deadprocs
+      specifies that dead processes are to be removed.
+
+   force
+      specifies that  actions are to  be performed even  if there
+      are active users.
+
+   mbz
+      is reserved for future expansion and must be zero.
+
+error_message (Output)
+   is  a printable  error message  that is  returned if  the code
+   argument is set to a non-zero value.
+
+code (Output)
+   is a standard system error code.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+Entry:  close
+
+This entry point closes a database.
+
+USAGE
+
+dcl  mrds_scope_manager_$close  entry  (fixed  bin(35),  char(*),
+fixed bin(35));
+
+call mrds_scope_manager_$close (db_index, error_message, code);
+
+ARGUMENTS
+
+db_index (Input)
+   is the index of the database to be closed.
+
+error_message (Output)
+   is  a printable  error message  that is  returned if  the code
+   argument is set to a non-zero value.
+
+code (Output)
+   is a standard system error code.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+Entry:  copy
+
+This entry point copies a db.control segment.
+
+USAGE
+
+dcl mrds_scope_manager_$copy entry (ptr, char(*), fixed bin(35));
+
+call  mrds_scope_manager_$copy (copy_options_ptr,  error_message,
+code); ARGUMENTS
+
+copy_options_ptr (Input/Output)
+
+   is  a  pointer  to  the  structure  copy_options  declared  in
+
+   copy_options.incl.pl1.
+
+error_message (Output)
+
+   is  a printable  error message  that is  returned if  the code
+
+   argument is set to a non-zero value.
+
+code (Output)
+
+   is a standard system error code.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+Entry:  create
+
+This entry  point creates a  db.control segment in  the specified
+
+database.
+
+USAGE
+
+dcl mrds_scope_manager_$create entry  (char(*), char(*), char(*),
+
+fixed bin(35));
+
+call  mrds_scope_manager_$create  (dname,  ename,  error_message,
+
+code);
+
+ARGUMENTS
+
+dname (Input)
+
+   is the directory containing the database.
+
+ename (Input)
+
+   is the entry name of the database.
+
+error_message (Output)
+
+   is  a printable  error message  that is  returned if  the code
+
+   argument is set to a non-zero value.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+code (Output)
+
+   is a standard system error code.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+Entry:  delete
+
+This entry  point deletes a  db.control segment in  the specified
+
+database.
+
+USAGE
+
+dcl mrds_scope_manager_$delete entry  (char(*), char(*), char(*),
+
+fixed bin(35));
+
+call  mrds_scope_manager_$delete  (dname,  ename,  error_message,
+
+code);
+
+ARGUMENTS
+
+dname (Input)
+
+   is the directory containing the database.
+
+ename (Input)
+
+   is the entry name of the database.
+
+error_message (Output)
+
+   is  a printable  error message  that is  returned if  the code
+
+   argument is set to a non-zero value.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+code (Output)
+
+   is a standard system error code.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+Entry:  delete_relation
+
+This entry point  deletes a relation from the  list maintained in
+
+db.control.
+
+USAGE
+
+dcl  mrds_scope_manager_$delete_relation  entry  (fixed  bin(35),
+
+char(*), char(*), fixed bin(35));
+
+call        mrds_scope_manager_$delete_relation        (db_index,
+
+relation_name, error_message, code);
+
+ARGUMENTS
+
+db_index (Input)
+
+   is the  index of the database  from which a relation  is to be
+
+   deleted.
+
+relation_name (Input)
+
+   is the name of the relation to be deleted.
+
+error_message (Output)
+
+   is  a printable  error message  that is  returned if  the code
+
+   argument is set to a non-zero value.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+code (Output)
+
+   is a standard system error code.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+Entry:  delete_scope
+
+This entry point deletes scope  from the specified relations in a
+
+database.
+
+USAGE
+
+dcl  mrds_scope_manager_$delete_scope entry (fixed  bin(35), ptr,
+
+char(*), fixed bin(35));
+
+call mrds_scope_manager_$delete_scope  (db_index, scope_info_ptr,
+
+error_message, code);
+
+ARGUMENTS
+
+db_index (Input)
+
+   is the index of the database for which scope is to be deleted.
+
+scope_info_ptr (Input)
+
+   is  a   pointer  to  the  following   structure  (declared  in
+
+   msm_scope_info.incl.pl1):
+
+     dcl 1 scope_info aligned based (scope_info_ptr),
+
+           2 version char (8),
+
+           2 relation_count fixed bin,
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+           2 relations (si_init_relation_count refer
+
+                       (scope_info.relation_count)),
+
+             3 name char (32),
+
+             3 permits like permit_prevent_flags,
+
+             3 prevents like permit_prevent_flags;
+
+     dcl 1 permit_prevent_flags unaligned,
+
+           2 read_attribute bit (1),
+
+           2 append_tuple bit (1),
+
+           2 delete_tuple bit (1),
+
+           2 modify_attribute bit (1),
+
+           2 null bit (1),
+
+           2 mbz bit (31);
+
+   where:
+
+   version
+
+      is  a  version  string  for  this  structure.   It  must be
+
+      MSM_SCOPE_INFO_VERSION_1.
+
+   relation_count
+
+      is the number of relations on which scope is to be deleted.
+
+   name
+
+      is the name of a relation.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+   permits:     read_attribute,    append_tuple,    delete_tuple,
+
+   modify_attribute
+
+      are bits  specifying which operations  are no longer  to be
+
+      permitted.
+
+   prevents:     read_attribute,   append_tuple,    delete_tuple,
+
+   modify_attribute
+
+      are bits  specifying which operations  are no longer  to be
+
+      prevented.
+
+   mbz
+
+      is reserved for future expansion and must be zero.
+
+error_message (Output)
+
+   is  a printable  error message  that is  returned if  the code
+
+   argument is set to a non-zero value.
+
+code (Output)
+
+   is a standard system error code.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+Entry:  get_all_scope
+
+This entry returns the scope set  on the database by users of the
+
+same or lower AIM authorization as the caller.
+
+USAGE
+
+dcl mrds_scope_manager_$get_all_scope entry  (fixed bin(35), ptr,
+
+ptr, char(*), fixed bin(35));
+
+call mrds_scope_manager_$get_all_scope entry (db_index, area_ptr,
+
+all_scope_ptr, error_message, code);
+
+ARGUMENTS
+
+db_index (Input)
+
+   is the index to the database for which scope information is to
+
+   be returned.
+
+area_ptr (Input)
+
+   is a pointer  to an area in which the  scope information is to
+
+   be allocated.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+all_scope_ptr (Output)
+
+   is  a   pointer  to  the  following   structure  (declared  in
+
+   msm_scope_info.incl.pl1:
+
+     dcl 1 all_scope aligned based (all_scope_ptr),
+
+           2 version char (8),
+
+           2 user_count fixed bin (21),
+
+           2 users (user_count refer (all_scope.user_count)),
+
+             3 user_id char (32),
+
+             3 process_id bit (36),
+
+             3 scope_ptr ptr;
+
+   where:
+
+   version
+
+      is  a  version  string  for  this  structure.   It  must be
+
+      MSM_ALL_SCOPE_VERSION_1.
+
+   user_count
+
+      is  the number  of users   for which  information is  being
+
+      returned.
+
+   user_id
+
+      is a Multics user ID.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+   process_id
+
+      is a Multics process ID.
+
+   scope_ptr
+
+      is a pointer to a scope_info structure as described above.
+
+error_message (Output)
+
+   is  a printable  error message  that is  returned if  the code
+
+   argument is set to a non-zero value.
+
+code (Output)
+
+   is a standard system error code.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+Entry:  get_scope_info
+
+This  entry point  returns the  caller's scope  on the  specified
+
+database.
+
+USAGE
+
+dcl mrds_scope_manager_$get_scope_info entry (fixed bin(35), ptr,
+
+ptr, char(*), fixed bin(35));
+
+call   mrds_scope_manager_$get_scope_info  (db_index,   area_ptr,
+
+scope_info_ptr, error_message, code);
+
+ARGUMENTS
+
+db_index (Input)
+
+   is the index to the database for which scope information is to
+
+   be returned.
+
+area_ptr (Input)
+
+   is  a pointer  to the  area in  which the  structure is  to be
+
+   allocated.
+
+scope_info_ptr (Input/Output or Output)
+
+   is a pointer to a scope_info structure as described above.  If
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+   the  pointer supplied  is null,  it will  be allocated  in the
+
+   specified area with information for all relations on which the
+
+   user has scope set.  Otherwise, the existing structure will be
+
+   filled in with information for the specified relations.
+
+error_message (Output)
+
+   is  a printable  error message  that is  returned if  the code
+
+   argument is set to a non-zero value.
+
+code (Output)
+
+   is a standard system error code.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+Entry:  get_update_counter
+
+This entry point returns the value  of the update counter for the
+
+specified relation.   It is called by  dsl_$retrieve to determine
+
+if updates  have taken place  during a retrieval  by a user  at a
+
+higher AIM authorization than the relation.
+
+USAGE
+
+dcl mrds_scope_manager_$get_update_counter  entry (fixed bin(35),
+
+char(*), fixed bin(35), char(*), fixed bin(35));
+
+call       mrds_scope_manager_$get_update_counter      (db_index,
+
+relation_name, update_counter, error_message, code);
+
+ARGUMENTS
+
+db_index (Input)
+
+   is the database index.
+
+relation_name (Input)
+
+   is the name of the relation for which the update counter is to
+
+   be returned.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+update_counter (Output)
+
+   is the value of the update counter.
+
+error_message (Output)
+
+   is  a printable  error message  that is  returned if  the code
+
+   argument is set to a non-zero value.
+
+code (Output)
+
+   is a standard system error code.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+Entry:  increment_update_counter
+
+This entry point increments the  update counter for the specified
+
+relation.   It  is  used  by   dsl_  entry  points  which  modify
+
+relations.
+
+USAGE
+
+dcl  mrds_scope_manager_$increment_update_counter   entry  (fixed
+
+bin(35), char(*), char(*), fixed bin(35));
+
+call    mrds_scope_manager_$increment_update_counter   (db_index,
+
+relation_name, error_message, code);
+
+ARGUMENTS
+
+db_index (Input)
+
+   is the index of the database.
+
+relation_name (Input)
+
+   is the name of the relation for which the update counter is to
+
+   be incremented.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+error_message (Output)
+
+   is  a printable  error message  that is  returned if  the code
+
+   argument is set to a non-zero value.
+
+code (Output)
+
+   is a standard system error code.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+Entry:  open
+
+This entry point opens a database.
+
+USAGE
+
+dcl  mrds_scope_manager_$open  entry   (char(*),  char(*),  fixed
+
+bin(35), char(*), fixed bin(35));
+
+call    mrds_scope_manager_$open    (dname,    ename,   db_index,
+
+error_message, code);
+
+ARGUMENTS
+
+dname (Input)
+
+   is the directory containing the database.
+
+ename (Input)
+
+   is the entry name of the database.
+
+db_index (Output)
+
+   is the index for this database opening.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+error_message (Output)
+
+   is  a printable  error message  that is  returned if  the code
+
+   argument is set to a non-zero value.
+
+code (Output)
+
+   is a standard system error code.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+Entry:  quiesce
+
+This entry point quiesces the specified database.
+
+USAGE
+
+dcl  mrds_scope_manager_$quiesce entry  (char(*), char(*),  fixed
+
+bin, char(*), fixed bin(35));
+
+call   mrds_scope_manager_$quiesce   (dname,   ename,  wait_time,
+
+error_message, code);
+
+ARGUMENTS
+
+dname (Input)
+
+   is the directory containing the database.
+
+ename (Input)
+
+   is the entry name of the database.
+
+wait_time (Input)
+
+   is  the  length  of  time  in  seconds  to wait for successful
+
+   quiescing.  If it is -1, there is no wait limit.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+error_message (Output)
+
+   is  a printable  error message  that is  returned if  the code
+
+   argument is set to a non-zero value.
+
+code (Output)
+
+   is a standard system error code.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+Entry:  rename_relation
+
+This  entry point renames  a relation in  the list maintained  in
+
+db.control.
+
+USAGE
+
+dcl  mrds_scope_manager_$rename_relation  entry  (fixed  bin(35),
+
+char(*), char(*), char(*), fixed bin(35));
+
+call        mrds_scope_manager_$rename_relation        (db_index,
+
+relation_name, new_relation_name, error_message, code);
+
+ARGUMENTS
+
+db_index (Input)
+
+   is  the index  of the  database to  which a  relation is to be
+
+   added.
+
+relation_name (Input)
+
+   is the name of the relation to be renamed.
+
+new_relation_name (Input)
+
+   is the new name of the relation.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+error_message (Output)
+
+   is  a printable  error message  that is  returned if  the code
+
+   argument is set to a non-zero value.
+
+code (Output)
+
+   is a standard system error code.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+Entry:  set_scope
+
+This  entry point  sets scope   on the  specified relations  in a
+
+database.
+
+USAGE
+
+dcl  mrds_scope_manager_$set_scope  entry  (fixed  bin(35),  ptr,
+
+fixed bin, char(*), fixed bin(35));
+
+call  mrds_scope_manager_$set_scope   (db_index,  scope_info_ptr,
+
+wait_time, error_message, code);
+
+ARGUMENTS
+
+db_index (Input)
+
+   is the index of the database for which scope is to be set.
+
+scope_info_ptr (Input)
+
+   is a pointer to a scope_info structure as described above.
+
+wait_time (Input)
+
+   is  the amount  of time,  in seconds,  to wait  for the  scope
+
+   setting  to be  successful.  If  it is  -1, there  is no  wait
+
+   limit.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+error_message (Output)
+
+   is  a printable  error message  that is  returned if  the code
+
+   argument is set to a non-zero value.
+
+code (Output)
+
+   is a standard system error code.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+Entry:  unquiesce
+
+This entry point unquiesces the specified database.
+
+USAGE
+
+dcl   mrds_scope_manager_$unquiesce   entry   (char(*),  char(*),
+
+char(*), fixed bin(35));
+
+call mrds_scope_manager_$unquiesce  (dname, ename, error_message,
+
+code);
+
+ARGUMENTS
+
+dname (Input)
+
+   is the directory containing the database.
+
+ename (Input)
+
+   is the entry name of the database.
+
+error_message (Output)
+
+   is  a printable  error message  that is  returned if  the code
+
+   argument is set to a non-zero value.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+code (Output)
+
+   is a standard system error code.
+
+___________________                           ___________________
+
+mrds_scope_manager_                           mrds_scope_manager_
+___________________                           ___________________
+
+Entry:  validate
+
+This entry  point verifies that  a given segment  is a db.control
+
+segment.
+
+USAGE
+
+dcl   mrds_scope_manager_$validate   entry   (char(*),   char(*),
+
+char(*), fixed bin(35));
+
+call  mrds_scope_manager_$validate (dname,  ename, error_message,
+
+code); ARGUMENTS
+
+dname (Input)
+
+   is the directory in which the segment to be validated resides.
+
+ename (Input)
+
+   is the name of the segment to be validated.
+
+error_message (Output)
+
+   is  a printable  error message  that is  returned if  the code
+
+   argument is set to a non-zero value.
+
+code (Output)
+
+   is a standard system error code.
+
+_______________                                   _______________
+
+suffix_control_                                   suffix_control_
+_______________                                   _______________
+
+SUFFIX_CONTROL_
+
+The  suffix_control_ subroutine  is for  the use  of the extended
+
+entry  software.   The  following  operations  are not supported:
+
+chname_file, add_acl_entries, delete_acl_entries, replace_acl.
+
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

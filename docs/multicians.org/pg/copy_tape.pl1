@@ -1,0 +1,152 @@
+copy_tape:
+     proc;
+
+/* entries */
+
+dcl (ios_$read, ios_$write, ios_$attach, ios_$order,
+     ios_$detach) entry options (variable);
+dcl  com_err_ entry options (variable);
+dcl  command_query_ entry options (variable);
+dcl  ioa_ entry options (variable);
+dcl  analyze_device_stat_$rsnnl entry (char (*), ptr, bit (72) aligned, bit (18) aligned);
+
+/* external static */
+
+dcl  tape_status_table_$tape_status_table_ external;
+
+/* internal static */
+
+dcl  nine_track_eof bit (12) static initial ("100100010011"b);
+dcl (input_tape initial ("input_tape_"),
+     output_tape initial ("output_tape_")) char (12) aligned internal static;
+
+/* builtins */
+
+dcl (null, size, addr) builtin;
+
+/* automatic */
+
+dcl  status_bits bit (72) aligned;
+dcl  n_records fixed bin;
+dcl 1 query_info aligned,
+    2 version fixed bin,
+    2 yes_or_no_sw bit (1) unal,
+    2 suppress_name_sw bit (1) unal,
+    2 code fixed bin (35),
+    2 query_code fixed bin (35);
+
+dcl  answer char (3) varying;
+dcl  msg char (100);
+
+dcl  record (256) bit (36),
+     done bit (1) aligned,
+     eof_flag bit (1) aligned,
+     n_read fixed bin,
+     nelemt fixed bin;
+dcl 1 status aligned,
+    2 code fixed bin (35),
+    2 major bit (6) unal,
+    2 minor bit (6) unal,
+    2 pad bit (24) unal;
+
+/* based */
+
+dcl 1 based_status aligned based (addr (status)),
+    2 skip bit (24) unal,
+    2 bits bit (12) unal;
+
+/* program */
+
+          n_records = 0;                                    /* keep track of number of records read */
+
+          call ios_$attach (input_tape, "nstd_", "PG#1:input_tape", "r", status);
+          if status.code ^= 0 then call abort ("Can't attach input tape.");
+
+          call ios_$order (input_tape, "d1600", null, status);
+          if status.code ^= 0 then call abort ("Can't set density to 1600 on input.");
+
+          call ios_$order (input_tape, "nine", null, status);
+          if status.code ^= 0 then call abort ("Can't set nine mode on input.");
+
+          call ios_$attach (output_tape, "nstd_", "PG#2:output_tape", "w", status);
+          if status.code ^= 0 then call abort ("Can't attach output tape.");
+
+          call ios_$order (output_tape, "d800", null, status);
+          if status.code ^= 0 then call abort ("Can't set density 800.");
+
+          call ios_$order (output_tape, "nine", null, status);
+          if status.code ^= 0 then call abort ("Can't set nine mode on output.");
+
+          eof_flag,
+               done = "0"b;
+          do while (^done);
+               call ios_$read (input_tape, addr (record), 0, size (record),
+                    n_read, status);
+               if status.code = 0
+               then do;
+                    n_records = n_records + 1;
+                    eof_flag = "0"b;
+                    call ios_$write (output_tape, addr (record), 0,
+                         n_read, nelemt, status);
+                    if status.code ^= 0 then go to quit;
+                    if n_read ^= nelemt then go to short_write;
+               end;
+               else if based_status.bits = nine_track_eof
+               then do;
+                    call ios_$order (output_tape, "eof", null, status);
+                    if status.code ^= 0 then call abort ("Unable to write eof.");
+                    done = eof_flag;                        /* QUIT if this is 2nd eof */
+                    eof_flag = "1"b;
+               end;
+               else do;
+                    eof_flag = "0"b;
+                    msg = "";
+                    status_bits = substr (unspec (status.code), 25, 12);
+                    call analyze_device_stat_$rsnnl (msg, addr (tape_status_table_$tape_status_table_), status_bits, ""
+);
+                    call ioa_ ("Error while reading input tape: ^a",
+                         msg);
+                    query_info.version = 2;
+                    query_info.yes_or_no_sw = "1"b;
+                    query_info.suppress_name_sw = "0"b;
+                    query_info.code = 0;
+                    query_info.query_code = 0;
+                    call command_query_ (addr (query_info), answer, "copy_tape",
+                         "Do you wish to continue? ");
+                    if answer = "no" then go to quit;
+               end;
+          end;
+
+all_done:
+          call ioa_ ("^d records copied", n_records);
+          call ios_$order (output_tape, "eof", null, status);
+          call ios_$order (output_tape, "eof", null, status);
+          call ios_$order (input_tape, "unload", null, status);
+          call ios_$order (output_tape, "unload", null, status);
+          call ios_$detach (input_tape, "", "", status);
+          call ios_$detach (output_tape, "", "", status);
+          return;
+
+quit:
+          call com_err_ (status.code, "copy_tape", "ugh");
+          go to all_done;
+
+short_write:
+          call com_err_ (status.code, "copy_tape", "Didn't write whole record.");
+          return;
+
+NON_LOCAL_RETURN:
+          return;
+
+abort:
+          procedure (bv_msg);
+
+dcl  bv_msg char (*);
+dcl  com_err_ entry options (variable);
+
+               call com_err_ (status.code, "copy_tape", bv_msg);
+               go to NON_LOCAL_RETURN;
+
+          end;
+
+     end;

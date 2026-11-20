@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Structure Marking</title>
+    <meta name="description" content="Programming practice to guard data structures against corruption.">
+    <meta name="keywords" content="quality">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- stdformat.htmi -->
+<link rel="stylesheet" href="tvvstyle.css">
+<style>
+body {margin: 0px 0px; padding: 0px; text-align: center;} 
+.outer {min-width: 200px; max-width: 800px; width: auto !important; width: 576px; margin: 0px auto; text-align: left; padding: 5px;}
+.tail {text-align: center; margin: 10px auto;}
+@media print {
+ .navbar {display: none;}
+ .tail {display: none;}
+ a {text-decoration: none;}
+ a:link {color: black;}
+}
+</style>
+  </head>
+  <body>
+    <div class="outer">
+<div class="seshead"><a href="tvvswe.html">Software Engineering Stories</a></div>
+<p id="fltdatebox">
+  1995-06-14
+</p>
+<h1>Structure Marking</h1>
+
+<span class="author">Tom Van Vleck</span> 
+
+<h2>Abstract</h2>
+<p><em>Structure marking</em> is a programming technique that defends data against damage, especially from software bugs. It adds flags to data structures and checks them at each use to detect damaged data immediately. </p>
+
+<p><em>Index terms--Error detection, robust data structures, software fault tolerance, file systems.</em></p>
+
+<h2>Introduction</h2>
+<p>Various applications have taken <em>ad hoc</em> approaches to redundant data storage and data recovery, including telephony systems[1] and IBM's OS/VS-2 release 2[2]. Theoretical studies have calculated detectability and correctability for various structures and estimated the space and time cost of protecting and repairing data[3,4]. </p>
+
+<p>Structure marking is an <em>ad hoc</em> technique used in the <a href="../multics.html" title="Multics site home page">Multics</a>[5] file system. It provides many of the benefits of the academic approaches at nominal cost.</p>
+
+<h2>Technique</h2>
+<p>This section explains how to apply structure marking to data structures and the programs that maintain them. </p>
+
+<h2>Marking</h2>
+<p>To use structure marking, declare data items TYPE, SIZE, VERSION and OWNER in every data structure, defined as follows: </p>
+
+<dl>
+  <dt>TYPE</dt>
+
+  <dd>Unique number for each different structure or record type.</dd>
+
+  <dt>SIZE</dt>
+
+  <dd>In the same units for everything.</dd>
+
+  <dt>VERSION</dt>
+
+  <dd>Number changed whenever structure declaration changes.</dd>
+
+  <dt>OWNER</dt>
+
+  <dd>Unique ID of parent structure.</dd>
+</dl>
+<p>Place OWNER at the end of the structure and TYPE, SIZE, and VERSION at the beginning. If the environment does not provide standard unique IDs, use the least significant bits of a clock reading for OWNER; the important idea is that it not be a function of the record contents. </p>
+
+<p><img src="vvimg/marking1.gif" width="147" height="174" alt="type,size,version,data,owner" title=""></p>
+
+<p>Don't use common values like zero or one for TYPE and VERSION values.</p>
+
+<h2>Checking</h2>
+<p>Check all four elements before using a new structure instance: for main storage, this is whenever a pointer or index item changes; for disk records, it is whenever a record is read in. If any check fails, the data structure is damaged, and your program can't continue safely. The checking is easy to code: it looks like this: <br></p>
+
+<pre>
+  if (s.type != Stype ||
+  s.size != Ssize ||
+  s.version != Sversion3 ||
+  s.owner != m.uid)
+  badS (sptr);
+</pre>
+
+<p>If the structure's size varies, use SIZE (after range checking) to find OWNER.</p>
+
+<p>Structure checks like these are easy to implement and fast. Checking the form of data (e.g., "Is the name composed of legal characters?") or data content (e.g., "Is the file name unique?") is much slower and more complex.</p>
+
+<h2>Marking and Checking Lists</h2>
+<p>Augment list structure head pointers by a count of the number of items in the list. Check TYPE, SIZE, VERSION, and OWNER as you get each list item; count steps and stop when you've taken more steps than there are items on the list, to detect looped lists. For example, code to search a list looks like this: <br></p>
+
+<pre>
+  n = list.head.nentries;
+  p = list.head;
+  found = False;
+  while ((p != NIL) &amp;&amp;
+  (!found) &amp;&amp; (n &gt; 0)) {
+  /* check entry as above */
+  if (p -&gt; x.name == arg) {
+  found = True
+  }
+  else {
+  p = p -&gt; x.next;
+  n = n - 1;
+  }
+  }
+  if (n &lt;= 0) badL (list);
+</pre>
+
+
+<h2>Version Numbers</h2>
+<p>Define VERSION numbers by a literal in the source for each data structure definition, and set the structure value from the literal: </p>
+
+<p><code>s.version = S_Version_3;</code></p>
+
+<p>When you create a new structure version, define a new literal for <span class="tty">S_Version_4</span>. Modify places where the old literal is referenced to handle the new structure or to handle old or new depending on the value of VERSION.</p>
+
+<p>For procedure calls that return complex structures, make VERSION an input argument, meaning "return a version N value." Obtain the actual value passed from a literal. If the return value has variable-sized parts, mark them with at least TYPE and SIZE.</p>
+
+<h2>Verifying Pointers</h2>
+<p>Structure marking ensures that a pointer or index points to a valid main storage structure before the object is used. Garbage pointers or indices might cause a machine fault when the check is executed, so check locator values for validity before use, or provide a fault handler that will catch such machine faults and treat them as if the structure check failed. </p>
+
+<h2>When the Checks Fail</h2>
+<p>When structure checks detect damage, the program action to take depends on the environment. Some (non-orthogonal) possibilities are: <br></p>
+
+<ul>
+  <li><p>Repair the damaged structure. Use a repair procedure or salvager to rebuild the structure from redundant information, or reload it from a backup. When this can be done, the caller only notices a delay in responding to the request. (This is how the Multics file system handles damaged file directory entries.) 
+  </p></li>
+
+  <li><p>Place the damaged structures out of service. Defer repair or replacement of the damaged object. (Multics does this when a volume's bit map is damaged.) 
+  </p></li>
+
+  <li><p>Discard the damaged structure. This makes sense in environments like a message system that re-sends lost packets. 
+  </p></li>
+
+  <li><p>Return an error. This exports recovery complexity into all the callers, and allows inconsistent behavior by different callers. It is still better than continuing with garbage input. 
+  </p></li>
+
+  <li><p>Abort processing. If the environment provides transaction services, cause a rollback to a valid state before processing started. This strategy only handles errors introduced during the scope of a transaction. 
+  </p></li>
+
+  <li><p>Halt, expecting a subsequent reload or repair. This tactic is often chosen during debugging.</p></li>
+</ul>
+
+<h2>Experience</h2>
+<p>Structure marking was added to the Multics file system in 1977. Directories and their substructures contain TYPE, SIZE, VERSION, and OWNER. Each directory is owned by its parent directory; file entries are owned by their containing directory; names and access control lists (ACLs) are owned by their entry; and ACL entries are owned by their ACL. List counters are kept for the number of entries, number of names on an entry, and number of ACL entries on an ACL. </p>
+
+<p>When structure marking checks detect errors in a Multics directory entry, the file system invokes a salvager to rebuild the entire directory, and then retries the user's call. Address faults in the file system with a directory locked also salvage the directory.</p>
+
+<p>Before this improvement, Multics systems salvaged every directory after a system crash; it took hours on a system with many disk volumes. Almost all this time was wasted, since most crashes didn't damage any directory.</p>
+
+<p>With structure marking, a Multics system simply restarts after a crash. Damaged directories are repaired automatically before use.</p>
+
+<p>Introducing structure marking improved system reliability noticeably. Standard benchmarks showed no measurable performance cost; space cost was a few percent. We considered storing a checksum for each structure, but there were not enough cases where structure was good but contents were damaged, to justify the additional cost of computing it.</p>
+
+<h2>Theory</h2>
+<p>Structure marking's redundant information defines additional invariants for code that accesses a structure. The checking code ensures that the invariants hold, and thus reduces the number of possible program states downstream from the checks. </p>
+
+<p>Structure marking defends against:</p>
+
+<ul>
+  <li><p>Damage that turns data into garbage without regard to the structure of the data, such as wild stores, disk decay, or overwriting of physical containers. TYPE and OWNER checking catches these problems unless the garbage happens to match expected values; the more redundant information used, the less chance of accepting garbage as good data. 
+  </p></li>
+
+  <li><p>Programming errors. TYPE and OWNER checking detect logic errors, incorrect calls, using data after freeing it, and wrong pointer and list operations. Typographical errors and mental lapses become hard failures. 
+  </p></li>
+
+  <li><p>System integration errors. SIZE and VERSION checking notice cases where programs are unprepared to handle the data they are passed. 
+  </p></li>
+</ul>
+<p>These checks hide "expected, undesirable" events[6] from software that can proceed as if these kinds of damage never happen. </p>
+
+<p>Structure checks are not so good for:</p>
+
+<ul>
+  <li><p>Design errors. A wrong algorithm can produce perfect structure with incorrect contents. Content-level checking is needed to catch errors like this. 
+  </p></li>
+
+  <li><p>Errors in the tools. A compiler bug may introduce corresponding errors in both mainline code and structure checks. 
+  </p></li>
+</ul>
+<p>Separating structure checks from content checks leads to a code organization that is easy to maintain. The repair procedure for a marked data structure is simpler, faster, and better organized by using the marking items. </p>
+
+<h2>Questions</h2>
+<p>Several questions are often asked about this technique.</p>
+
+<ol>
+  <li><p><em>Will structure marking checks slow a program down?</em> The cost of repeatedly checking for a "can't happen" situation offends some programmers. In fact, there are few cases where performance is so critical, or space so tight, that structure marking can't be used. The cost of recovering from a single major system failure is often much more than the cost of checking for hundreds of years. And "can't happen" events DO happen: disk contents are rarely corrupted, but rarely doesn't mean never. 
+  </p></li>
+
+  <li><p><em>Is it non-modular?</em> Distributing the checks to all the places where a new structure is made current worries some programmers; it appears to make all parts of the system more complex by introducing many new control paths and decisions. Some of this appearance is illusory: using unchecked data might cause a fault and cause control to branch. Use language features such as DEFINEs and module packaging to implement the structure checks in a stylized way that minimizes the chances for a typographical error in the checking code. 
+  </p></li>
+
+  <li><p><em>Can it catch every error?</em> There are some kinds of structure damage that structure checks won't catch. For example, a damaged pointer could point to garbage that happened to look valid, or the structure could be altered by a wild store just after the check. There is a very small probability that the data will be wrong despite checking. Instead of "We assume this record is OK to use because the pointer points to it," we have "We assume this record is OK to use because the pointer points to it AND it looks like a valid record."</p></li>
+</ol>
+
+<h2>Acknowledgments</h2>
+<p>Bernard Greenberg, Steve Webber, Bob Mullen, and Andrew Kobziar were among the many members of the Multics team who helped refine the original idea of structure marking. </p>
+
+<h2>References</h2>
+<p>[1] R. P. Almquist, J. R. Hagerman, R. J. Hass, R. W. Peterson, and S. L. Stevens, "Software Protection in No. 1 ESS," <cite>Proc. Int. Switching Symp.</cite>, 1972, pp 565-569. </p>
+
+<p>[2] Alan L. Scherr, "The Design of OS/VS2 Release 2," <cite>Proc. Nat. Computing Conf</cite>., 1973, pp 387-394.</p>
+
+<p>[3] D. J. Taylor, D. E. Morgan, and J. P. Black, "Redundancy in Data Structures: Improving Software Fault Tolerance," <cite>IEEE Trans. on Software Engineering</cite>, Volume SE-6, number 6, November 1980, pp 585-594.</p>
+
+<p>[4] S. C. Seth and R. Muraldihar, "Analysis and Design of Robust Data Structures," Proc. FTCS, 1985, pp 14-19.</p>
+
+<p>[5] Honeywell, <cite>Multics Storage System Program Logic Manual</cite>, Order no. AN61, 1975.</p>
+
+<p>[6] B. W. Lampson and H. Sturgis, "Crash Recovery in a Distributed File System," Technical report, Computer Science Laboratory, Xerox, Palo Alto Research Center, 1976.</p>
+
+<img src="vvimg/comix-4.gif" width="576" height="720" alt="comic strip" title=""> 
+
+<p><span class="copyright">Copyright (c) 1995 by Tom Van Vleck</span></p>
+      <div class="tail">
+       <div class="textnav">
+	 <a href="tvv-home.html%3F1.html" title="Home Page">Home</a> | <a href="tvvvita.html%3F1.html" title="Vita">Resume</a> | <a href="../multics.html" title="Multics site home page">Multics</a> | <a href="7094.html%3F1.html" title="The IBM 7094 computer, and MIT Computation Center&#39;s CTSS time-sharing system.">CTSS</a>
+	 <br>
+	 <a href="tvvswe.html%3F1.html" title="Stories about software engineering practices and lessons.">SE Stories</a> | <a href="mulvaney.html%3F1.html" title="Cartoon booklet about bomb disposal from World War II.">Mulvaney</a> | <a href="mushrooms.html%3F1.html" title="Lessons about hunting mushrooms.">Mushrooms</a> | <a href="affinity.html%3F1.html" title="How to use Affinity Photo to prepare web graphics.">Photo</a> | <a href="borges-animals.html%3F1.html" title="Jorge Luis Borges&#39; essay on classification of animals.">Borges</a>
+       </div>
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="vvmft.txt"><input type="hidden" name="name" value="Tom Van Vleck"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail Tom Van Vleck" title="send mail to Tom Van Vleck" class="mfaddr"></address></form>
+      </div>
+    </div>
+  </body>
+</html>

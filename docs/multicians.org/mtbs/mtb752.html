@@ -1,0 +1,4219 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Network Login Servers.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  MULTICS TECHNICAL BULLETIN                              MTB752-03
+
+  To:       MTB Distribution
+
+  From:     Robert S. Coren
+            Gary Dixon
+            Edward C. Brunelle Jr.
+
+  Date:     May 19, 1987
+
+  Subject:  Network Login Servers
+
+                 -----------------------------------
+
+  This  MTB  describes  the  design  for  a  type  of  process that
+  functions  as a "login  server" for a  particular set of  network
+  endpoints.   Such  a  process  has  ultimate  control  of all the
+  connections  to  those  endpoints,   engages  in  all  pre-access
+  dialogue,  and  assigns  the  connections  to  user  processes as
+  appropriate.   This  relieves  the  Initializer  process  of  the
+  necessity of learning how to  communicate with each network as it
+  comes  along;  the  functions  of  user  validation  and  process
+  creation, which must continue to be performed by the Initializer,
+  are separated from those of communications channel management.  A
+  protocol  has  been  developed   for  communication  between  the
+  Initializer  and  the  login  servers,  so  that  the servers can
+  request  the creation  of processes,   find out  process IDs,  be
+  notified  of  process  terminations  in  order  to  clean  up all
+  connections, etc.
+
+  The login server itself will not  be part of the standard Multics
+  system  in MR12;  it will  only be  included in  the DSA  package
+  marketed  by Bull.   Its implementation,  however, requires  some
+  modifications   to   standard    system   software,   and   these
+  modifications are planned for MR12.   Most notable among them are
+  extensions  to are  extensions to  the answering  service and the
+  message coordinator; these modifications  are referred to in this
+  MTB, and described in greater detail in MTBs 750 and 751.
+
+  Revision 1 documents corrections  to documentation information in
+  for  connect_list_manager_,  missing  entrypoint  information and
+  those changes required to support network accounting.
+
+  Revision  2  documents   changes  to  the  active_connection_list
+  header.
+
+  Revision   3   adds   elements   to   the   user_connection_info, |
+  login_server_process_request,         login_server_list_response, |
+  login_server_validate_response,    login_server_process_response, |
+  and login_server_operator_response structures.  It also moves the |
+  user_connection_info         substructure        into         the |
+  login_server_request_header,  so  that  it  is  available for all |
+  login  server requests.   Finally, it  documents a  change to the |
+
+
+  MTB752-03                                   Network Login Servers
+
+| assign_connection entry of the login_server_entries structure and
+| adds the documentation for the display_connection_list command.
+
+                 -----------------------------------
+
+  Comments should be sent to the author:
+
+  via Multics Mail:
+     GDixon at System-M.
+
+  via Forum:
+     &gt;udd&gt;DSA&gt;mtgs&gt;dsaimp.forum
+
+  via telephone:
+     (HVN) 862-3593
+     (602) 862-3593
+
+  _________________________________________________________________
+
+  Multics project  internal documentation; not to  be reproduced or
+  distributed outside the Multics project without permission of the
+  Director of MDC.
+
+
+  Network Login Servers                                   MTB752-03
+
+                               CONTENTS
+
+                                                           Page
+
+     1:  Statement of the Problem  . . . . . . . . . . . . . . .   1
+     2:  Overview of the Proposed Solution . . . . . . . . . . .   1
+     3:  Implications of the Proposed Design . . . . . . . . . .   3
+     3.1:  The CDT . . . . . . . . . . . . . . . . . . . . . . .   3
+     3.2:  Channel Administration  . . . . . . . . . . . . . . .   3
+     3.3:  Messages From the Initializer . . . . . . . . . . . .   3
+     3.4:  Message Coordinator Channels  . . . . . . . . . . . .   4
+     4:  Details of the Proposed Design  . . . . . . . . . . . .   5
+     4.1:  Login Server Process Environment  . . . . . . . . . .   5
+     4.1.1:  Transaction Protocol  . . . . . . . . . . . . . . .   5
+     4.1.2:  Control Points  . . . . . . . . . . . . . . . . . .   5
+     4.1.3:  Initialization  . . . . . . . . . . . . . . . . . .   6
+     4.1.4:  Establishing Connections  . . . . . . . . . . . . .   7
+     4.1.5:  Pre-access Dialogue . . . . . . . . . . . . . . . .   7
+     4.2:  Login Channels  . . . . . . . . . . . . . . . . . . .   7
+     4.3:  Dial Qualifiers . . . . . . . . . . . . . . . . . . .   8
+     4.4:  Message Coordinator Connections . . . . . . . . . . .   8
+     4.5:  Password Management . . . . . . . . . . . . . . . . .   8
+     4.6:  Active Connection Table . . . . . . . . . . . . . . .   9
+     4.7:  Per-connection Data . . . . . . . . . . . . . . . . .   9
+     5:  Scenarios . . . . . . . . . . . . . . . . . . . . . . .  11
+     5.1:  Login/connect Sequence  . . . . . . . . . . . . . . .  11
+     5.2:  Dial Sequence . . . . . . . . . . . . . . . . . . . .  13
+     5.3:  Operator Login  . . . . . . . . . . . . . . . . . . .  15
+     5.4:  Dial_out, Priv_attach, and Release  . . . . . . . . .  16
+     5.5:  Process Termination (Login Channel) . . . . . . . . .  16
+     5.6:  Process Termination (Dialed Connections)  . . . . . .  17
+     5.7:  Disconnection Sequence  . . . . . . . . . . . . . . .  17
+     Appendix A:  Summary of Data Structures . . . . . . . . . .  19
+     A.1:  Structures for Login Server Requests  . . . . . . . .  19
+     A.1.1:  Common Structures . . . . . . . . . . . . . . . . .  19
+     A.1.1.1:  ls_request_header . . . . . . . . . . . . . . . .  19
+     A.1.1.2:  user_connection_info  . . . . . . . . . . . . . .  20
+     A.1.2:  Validate Request  . . . . . . . . . . . . . . . . .  22
+     A.1.3:  Process Request . . . . . . . . . . . . . . . . . .  24*
+     A.1.4:  List Request  . . . . . . . . . . . . . . . . . . .  28
+     A.1.5:  Dial Request  . . . . . . . . . . . . . . . . . . .  29
+     A.1.6:  Disconnect Request  . . . . . . . . . . . . . . . .  30*
+     A.1.7:  Logout Request  . . . . . . . . . . . . . . . . . .  31
+     A.1.8:  Operator Request  . . . . . . . . . . . . . . . . .  32
+
+
+  MTB752-03                                   Network Login Servers
+
+                           CONTENTS (cont)
+
+                                                           Page
+
+     A.2:  Structures for Answering Service Responses  . . . . .  33
+     A.2.1:  Common Structures . . . . . . . . . . . . . . . . .  33
+     A.2.1.1:  login_server_response_header  . . . . . . . . . .  33
+     A.2.2:  Validate Response . . . . . . . . . . . . . . . . .  34
+     A.2.3:  Process Response  . . . . . . . . . . . . . . . . .  37
+     A.2.4:  List Response . . . . . . . . . . . . . . . . . . .  41
+     A.2.5:  Dial Response . . . . . . . . . . . . . . . . . . .  42
+     A.2.6:  Termination Response  . . . . . . . . . . . . . . .  43
+     A.2.7:  New_proc Response . . . . . . . . . . . . . . . . .  45
+     A.2.8:  Operator Response . . . . . . . . . . . . . . . . .  46
+     A.3:  Structures for Login Server User Message  . . . . . .  47
+     A.3.1:  ls_connection_message_common  . . . . . . . . . . .  48
+     A.3.2:  ls_connection_message . . . . . . . . . . . . . . .  48
+     A.4:  Dial Event Message  . . . . . . . . . . . . . . . . .  50
+     A.5:  Connection List Manager . . . . . . . . . . . . . . .  52
+     A.5.1:  active_connection_list  . . . . . . . . . . . . . .  52
+     A.5.2:  active_connection . . . . . . . . . . . . . . . . .  54
+     Appendix B:  Module Descriptions  . . . . . . . . . . . . .  57
+        net_info_  . . . . . . . . . . . . . . . . . . . . . . .  57
+           net_info_$get_field . . . . . . . . . . . . . . . . .  57
+           net_info_$get_service_entries . . . . . . . . . . . .  58
+        login_service_entries  . . . . . . . . . . . . . . . . .  61
+            login_service_entries.listen . . . . . . . . . . . .  61
+            login_service_entries.stop_listen  . . . . . . . . .  63
+            login_service_entries.assign_connection  . . . . . .  64
+            login_service_entries.unassign_connection  . . . . .  66
+            login_service_entries.disconnect . . . . . . . . . .  67
+            login_service_entries.force_disconnect . . . . . . .  68
+            login_service_entries.validate_user  . . . . . . . .  69
+        connection_list_manager_ . . . . . . . . . . . . . . . .  75
+           connection_list_manager_$add  . . . . . . . . . . . .  76
+           connection_list_manager_$priv_change_user . . . . . .  78
+           connection_list_manager_$priv_delete_name . . . . . .  80
+           connection_list_manager_$hpriv_delete_name  . . . . .  80
+           connection_list_manager_$priv_delete_offset . . . . .  81
+           connection_list_manager_$hpriv_delete_offset  . . . .  81
+           connection_list_manager_$priv_delete_all_for_user . .  82
+           connection_list_manager_$hpriv_delete_all_for_user  .  82
+           connection_list_manager_$priv_get_name  . . . . . . .  83
+           connection_list_manager_$hpriv_get_name . . . . . . .  85
+           connection_list_manager_$priv_get_next_user . . . . .  86
+           connection_list_manager_$hpriv_get_next_user  . . . .  86
+           connection_list_manager_$priv_get_next_owner  . . . .  87
+           connection_list_manager_$hpriv_get_next_owner . . . .  88
+           connection_list_manager_$hpriv_get_next . . . . . . .  89
+           connection_list_manager_$priv_remove_user . . . . . .  90
+           connection_list_manager_$init . . . . . . . . . . . .  91
+
+
+  Network Login Servers                                   MTB752-03
+
+                           CONTENTS (cont)
+
+                                                           Page
+
+        priv_connection_list_  . . . . . . . . . . . . . . . . .  92
+        hpriv_connection_list_ . . . . . . . . . . . . . . . . .  93
+        display_connection_list  . . . . . . . . . . . . . . . .  94|
+
+
+  Network Login Servers                                   MTB752-03
+
+  111:::  SSSTTTAAATTTEEEMMMEEENNNTTT OOOFFF TTTHHHEEE PPPRRROOOBBBLLLEEEMMM
+
+  Today,  all terminal  and network  connections are  owned by  the
+  Initializer,  and  the  answering  service  code  running  in the
+  Initializer process  performs all pre-access dialogue  by calling
+  the ring  0 terminal management routines  directly.  As indicated
+  in  MTB-748,   this  mechanism  is  no  longer   workable  in  an
+  environment where arbitrary networks,  accessed through a variety
+  of interfaces, can be used  to communicate with the system; every
+  new network would require answering service changes.  The current
+  Telnet mechanism gets around this problem by using "software tty"
+  (STY)  channels,  but  this  adds  complexity  to  the data path,
+  sending every  piece of input  and output on  an extra, otherwise
+  unnecessary trip through ring 0.
+
+  222:::  OOOVVVEEERRRVVVIIIEEEWWW OOOFFF TTTHHHEEE PPPRRROOOPPPOOOSSSEEEDDD SSSOOOLLLUUUTTTIIIOOONNN
+
+  The general idea behind the  proposed solution is to separate the
+  communications  aspects of the  answering service's job  from its
+  user validation and process  creation tasks.  In particular, each
+  system has one  or more "login server" daemon  processes, each of
+  which "owns" a set of actual or potential communications channels
+  and  assigns  them  for  use  by  other  processes,  just  as the
+  Initializer does  today.  Each login server process,  using a set
+  of entrypoints defined in the Network Information Table (NIT) for
+  each endpoint, listens for  incoming connections and conducts the
+  login dialogue with  the user.  The login server  passes name and
+  password  information  to  the  Initializer  for  validation, and
+  requests  the creation  of processes;  the Initializer,  in turn,
+  informs  the login  server of  process terminations,  so that the
+  latter can unassign any network connections currently assigned to
+  the terminated process.
+
+  The  creation of outgoing  connections (i.e., dial_out  and slave
+  attachments)  is  done  via  the  tty_  I/O  module,  as  for MCS
+  channels.   Modifications   have  been  made  to   tty_  to  call
+  appropriate  DSA   entries  for  DSA  connections,   rather  than
+  signalling the answering service.   The inner-ring DSA code makes
+  the necessary access  checks to determine if the  user is allowed
+  to establish  the connection.  The  login server is  not involved
+  because it only listens for incoming connections.
+
+  Communications between the login  servers and the Initializer are
+  carried  out by means  of wakeups and  messages placed in  ring 1
+  message segments.  Login servers send messages to the Initializer
+  using  a  mechanism  similar  to  that  used  by  the as_request_
+  subroutine,  and  the  Initializer  sends  messages  to the login
+  servers using the "user_messages" mechanism described in MTB-699.
+
+  The assigning and unassigning of connections to user processes is
+  performed in cbm 1 an inner ring, since it includes enforcing AIM
+
+
+  MTB752-03                                   Network Login Servers
+
+  restrictions,  i.e., ensuring  that the  user's authorization and
+  the connection's access class are compatible.
+
+  Conceptually, MCS  connections are included in  this design; that
+  is, there could  eventually be a login server  for connections on
+  MCS FNP channels, which engages in pre-login dialogue and assigns
+  channels  by  calling  the  various  hcs_$tty_*  entries  as  the
+  answering  service does  today.  In  the initial  implementation,
+  however,  the mechanism  described in  this MTB  and the  present
+  Initializer-only Answering Service will exist side by side.
+
+  User validation  continues to be done in  the Initializer process
+  for several  reasons.  For one thing,  it keeps to a  minimum the
+  number  of  processes  that  require  access  to  the  PNT.  More
+  importantly, it avoids the possible  locking issues that arise if
+  multiple processes  have occasion to  modify the PNT  (when users
+  change their passwords, for instance).  Furthermore, the creation
+  of  absentee and  daemon processes   does not  involve the  login
+  server, and will  remain the province of the  Initializer, so the
+  validation  and creation of  interactive processes might  as well
+  stay there too.
+
+
+  Network Login Servers                                   MTB752-03
+
+  333:::  IIIMMMPPPLLLIIICCCAAATTTIIIOOONNNSSS OOOFFF TTTHHHEEE PPPRRROOOPPPOOOSSSEEEDDD DDDEEESSSIIIGGGNNN
+
+  The  following  are  some  of  the  implications  of  the changes
+  required to support login servers.
+
+  333...111:::  TTThhheee CCCDDDTTT
+
+  The CDT in its current form is  used both to contain more or less
+  static  information  about  channel  configuration,  and  dynamic
+  information  used  and  maintained  by  the  answering service to
+  describe the current state of each connection, such as whether it
+  is active, what the current terminal  type is, what process it is
+  assigned to, etc.  The configuration  function of the CDT will be
+  transferred to the  NIT; each login server must  maintain a table
+  of  dynamic information  pertaining  to  the connections  that it
+  manages,  the  details  of  which  may  vary  from  one server to
+  another.  A  system-wide table of existing  connections will also
+  be  maintained, containing  the process   IDs of  both the  using
+  process   and  the  owning   login  server.   This   enables  the
+  Initializer  to identify  the server(s)   that must  be woken  up
+  whenever a process that  has dialed "slave" terminals terminates,
+  as explained further on.
+
+  333...222:::  CCChhhaaannnnnneeelll AAAdddmmmiiinnniiissstttrrraaatttiiiooonnn
+
+  The  operator commands "attach"  and "remove" are  not meaningful
+  for  dynamically-configured  channels,  and  cannot  be used with
+  connections not  represented in the CDT.  The  "bump" command, if
+  invoked with an argument that is  neither a user ID nor a channel
+  name  found  in  the  CDT,  assumes  that  it  is  a network-type
+  connection  ID,  and  searches  the  answer  table  for  an entry
+  containing the  specified name as  the channel name;  if it finds
+  one, it  logs the user out  and wakes up the  owning login server
+  process, as described in the "process termination" scenario later
+  in this document.  The "detach"  command, if given a channel name
+  not in the CDT, behaves similarly.
+
+  333...333:::  MMMeeessssssaaagggeeesss FFFrrrooommm ttthhheee IIInnniiitttiiiaaallliiizzzeeerrr
+
+  Since the Initializer no longer controls communications channels,
+  it  cannot seize  the user's  terminal to  write automatic logout
+  notices, the output of "warn"  commands, etc.  Instead, it writes
+  a "user_message"  that contains appropriate information  to allow
+  the  user's  process  to  generate  a  message,  and sends an IPS
+  signal.   This  mechanism  is  described  in  greater  detail  in
+  MTB-747.
+
+
+  MTB752-03                                   Network Login Servers
+
+  333...444:::  MMMeeessssssaaagggeee CCCoooooorrrdddiiinnnaaatttooorrr CCChhhaaannnnnneeelllsss
+
+  The message  coordinator has already  been converted to  use iox_
+  attachments (see  MTB-694).  It is therefore  possible to arrange
+  for  the  appropriate  login  server   to  listen  on  a  message
+  coordinator  channel  and  assign  it  to  the  Initializer, thus
+  allowing  the  use  of  the  message  coordinator  over a network
+  connection.  The  changes to the message  coordinator required to
+  identify such channels are described in MTB-750.
+
+
+  Network Login Servers                                   MTB752-03
+
+  444:::  DDDEEETTTAAAIIILLLSSS OOOFFF TTTHHHEEE PPPRRROOOPPPOOOSSSEEEDDD DDDEEESSSIIIGGGNNN
+
+  This section describes the login server design in more detail, in
+  part  by means  of scenarios  describing the  sequences of events
+  necessary  to  create   processes,  establish  connections,  etc.
+  Appendix A  outlines the data structures that  are passed between
+  the  login server and  the Initializer for  each of the  messages
+  referred to in the scenarios.
+
+  444...111:::  LLLooogggiiinnn SSSeeerrrvvveeerrr PPPrrroooccceeessssss EEEnnnvvviiirrrooonnnmmmeeennnttt
+
+  The login server  must be a highly trusted  daemon process, since
+  it handles  user passwords.  Very few login  servers are required
+  in  the   DSA  environment,  so  they  are   created  as  message
+  coordinator  daemons  in  much  the  same  way  as  other  daemon
+  processes  (I/O daemons, etc.).   A process overseer  is provided
+  that runs the server in an ssu_ subsystem with a very limited set
+  of commands:  "start_login_service" and "stop_login_service" with
+  an argument naming a single generic endpoint (see below).
+
+  4.1.1:  TRANSACTION PROTOCOL
+
+  Some of the sequences described below include several messages to
+  be  exchanged between  the login  server and  the Initializer; in
+  order  to maintain  the identity   of each  sequence, a  "handle"
+  mechanism is  used.  The first  message of each  sequence in each
+  direction provides  a unique 72-bit handle that  the recipient is
+  to use  in subsequent transactions  of the sequence.   The handle
+  provided by the login server is the handle to which user_messages
+  are to be sent (as described  in MTB-699); the handle provided by
+  the Initializer includes the index  of the user table entry (UTE)
+  that the Initializer uses to identify the connection.
+
+  4.1.2:  CONTROL POINTS
+
+  The   primitive   tasking   mechanism   currently   used  by  the
+  (uninstalled) network mail software  is being integrated into the
+  system  for use by  login servers (and  any other subsystem  that
+  requires it),  and is described  in MTB-753.  To  avoid confusion
+  with the full tasking implementation  of which it was intended as
+  a precursor, it has been  renamed "control point management", and
+  the  objects  that  used  to  be  called  "tasks"  are now called
+  "control points".  The essential elements are:
+
+
+  MTB752-03                                   Network Login Servers
+
+  o    if a  given control point calls  ipc_$block, another control
+       point in the same process may run;
+
+  o    each control point has its own stack;
+
+  o    all  the control points  in a given  process share the  same
+       internal static storage;
+
+  o    when  a control point  is created, it  may either share  its
+       parent's standard I/O switches (user_input, user_output, and
+       error_output)  or it  may attach   its own  according to  an
+       attach description provided at the time of its creation.
+
+  4.1.3:  INITIALIZATION
+
+  Initialization  of   the  login  server  consists   primarily  of
+  establishing an ssu_ subsystem to process start_login_service and
+  stop_login_service requests.  When  a start_login_service request
+  is received, the  login server creates a control  point to listen
+  on  the  specified  endpoint.   This  control  point  (called the
+  "listen" control  point) must ascertain which entries  to call to
+  manipulate connections owned by the particular server.  The types
+  of entries available to login servers are as follows:
+
+  o    listen:  await incoming connections;
+
+  o    stop_listen:  stop waiting for incoming connections;
+
+  o    assign_connection:   give  the  connection  to  a  specified
+       process;
+
+  o    unassign_connection:   take  the   connection  away  from  a
+       process to which it had previously been assigned;
+
+  o    disconnect:  terminate the connection;
+
+  o    force_disconnect:  terminate the connection  even if not the
+       owning process  (for use when  the owning process  no longer
+       exists);
+
+  o    validate_user:  get the user's  ID and password, and request
+       the Initializer to create a process.
+
+  The actual entries depend on  the endpoint (see MTB-748) that the
+  server is accepting  connections on.  The server makes  a call to
+  net_info_$get_service_entries (described in Appendix B) to obtain
+  entry variables  which it saves  in allocated storage  for use by
+  both the listen control point  and its various subsidiary control
+  points (see  below).  The main control  point, meanwhile, returns
+
+
+  Network Login Servers                                   MTB752-03
+
+  to   ssu_$listen  to    await  further   start_login_service  and
+  stop_login_service requests.
+
+  4.1.4:  ESTABLISHING CONNECTIONS
+
+  The  main control  point of  the login  server process  calls the
+  "listen"  entry returned  by net_info_$get_service_entries;  this
+  call goes  blocked until a  connection is established.   Once the
+  connection is set up, the  listen entry returns, providing, among
+  other things, an  attach description which can be  used to attach
+  the connection  through an I/O switch.  The  listen control point
+  creates a new control point (called a "connection" control point)
+  to manage  the new connection, providing  this attach description
+  to control  point management for use in  attaching the connection
+  control point's standard I/O  switches.  The listen control point
+  then   calls  the   listen  entry   again  to   await  additional
+  connections.
+
+  4.1.5:  PRE-ACCESS DIALOGUE
+
+  The  remainder  of  this  discussion  assumes  that  the endpoint
+  specified  in  the  start_login_service   request  was  a  normal
+  interactive  login endpoint  that expects  to receive connections
+  from    user     terminals.     For    such     endpoints,    the
+  login_service_entries.validate_user         entrypoint         is
+  ls_validate_user_,  which engages  in a  login dialogue  with the
+  user  corresponding  to  that  implemented  by  dialup_  for  CDT
+  channels.  For other types of  endpoints (for example, those used
+  for  file transfer), other  validate_user entries might  be used,
+  which are not discussed in this document.
+
+  Because  the login  dialogue is  conducted in  a separate control
+  point  with its  own standard  I/O switches,  it can  all be done
+  using  iox_ over  these standard   switches.  In  fact, to  avoid
+  having to invent new  parsing mechanisms, the pre-access dialogue
+  is implemented  as an ssu_ subsystem, internal  to the subroutine
+  ls_validate_user_ (described in Appendix B), which implements the
+  various  scenarios  described  later  in  this  section.  Once an
+  appropriate  user process  has been  created or  found, the login
+  server   calls   the   "assign_connection"   entry   returned  by
+  net_info_$get_service_entries, and wakes up the process.
+
+  444...222:::  LLLooogggiiinnn CCChhhaaannnnnneeelllsss
+
+  Included   in  the   dynamic  information   maintained  for  each
+  connection by  the login server  is an indication  of whether the
+  connection is the  user's "login channel" -- i.e.,  whether it is
+  the connection on  which the process was established  (or, in the
+  case of a disconnected  process, reconnected).  This is necessary
+
+
+  MTB752-03                                   Network Login Servers
+
+  so that the server knows what  action to take when it is notified
+  that the user process has terminated.
+
+  444...333:::  DDDiiiaaalll QQQuuuaaallliiifffiiieeerrrsss
+
+  Dial qualifiers --  the names used to register  processes as dial
+  servers,  and  provided  as  arguments  to  the "dial" pre-access
+  request -- continue to be  registered with the Initializer, since
+  an incoming  dial connection can  come to any  login server.  The
+  mechanism  for registering   dial qualifiers  remains essentially
+  unchanged.
+
+  444...444:::  MMMeeessssssaaagggeee CCCoooooorrrdddiiinnnaaatttooorrr CCCooonnnnnneeeccctttiiiooonnnsss
+
+  The concept of "virtual channels"  has been incorporated into the
+  message  coordinator  to  facilitate  the  connection  of message
+  coordinator terminals  whose actual connection IDs  are not known
+  at  system_start_up  time.   The  details  of  this mechanism are
+  described  in MTB-750.   The  login  server's contribution  is to
+  support  two   new  control  arguments  to   the  login  request:
+  -operator,  which  requests  that  the  user  be  signed on as an
+  operator   and  connected   to  the   message  coordinator;   and
+  -virtual_channel, which specifies the name of the virtual channel
+  (presumably already accepted) to be associated with this physical
+  connection.   (The user  must be  registered with  the "operator"
+  attribute  for these  control arguments  to be  allowed.)  If the
+  user specifies -operator without  -virtual_channel, or uses "dial
+  system"  as  at  present,  the  connection  must  be  accepted by
+  explicit operator command.
+
+  444...555:::  PPPaaasssssswwwooorrrddd MMMaaannnaaagggeeemmmeeennnttt
+
+  In keeping with the principle currently followed by the answering
+  service  that the  clear-text password  should stay  in (virtual)
+  memory for as short a time as possible, the login server encrypts
+  all  passwords on receipt  and sends them  to the Initializer  in
+  encrypted form.  An implication of  this is that the login server
+  must  perform password  generation when  the "-generate_password"
+  control argument  is used, since  the generated password  must be
+  sent  to the user  in clear (obviously),  but it would  hardly be
+  appropriate for the Initializer to  generate it and then leave it
+  lying around in  a message segment until the  login server picked
+  it  up.   The  login  server  must  send  an  indication  to  the
+  Initializer as to whether the  supplied password was generated in
+  this fashion,  in case the  user is administratively  required to
+  use the "-generate_password" control argument.
+
+
+  Network Login Servers                                   MTB752-03
+
+  444...666:::  AAAccctttiiivvveee CCCooonnnnnneeeccctttiiiooonnn TTTaaabbbllleee
+
+  A   system-wide  inner-ring   table  of   active  connections  is
+  maintained  to allow  the Initializer  to find  the owning  login
+  server (or other process) for a connection whose user process has
+  terminated (either normally or abnormally).  (Note:  this applies
+  only  to connections  that were  dialed to  the process;  for the
+  login  channel,  the  Initializer  maintains  the  process ID and
+  handle of  the login server  in the UTE.)   Additionally, a login
+  server  searches  the  table  during  initialization  to find any
+  connections whose user and  owner processes have both terminated,
+  in     order     to     clean      them     out     using     the
+  login_service_entries.force_disconnect  entry.  The  entries that
+  manage   this   table   are    accessible   through   the   gates
+  hpriv_connection_list_   and  priv_connection_list_,   which  are
+  described  in  Appendix  B.   For  the  most  part,  however  the
+  connection_list_manager_  entries  are  called  directly  by  the
+  inner-ring  programs   that  are  the  targets   of  the  various
+  login_service calls.
+
+  A  connection  is  added  to  the  table  by  the inner-ring code
+  associated with  the listen entry.   The calling process  is made
+  the owner of the connection, and initially the user as well.  The
+  name  of the  force_disconnect and  update_accounting entries are
+  put  in the  table, to  allow a  process other  than the original
+  owner (eg,  the Initializer) to  destroy the connection  or force
+  updating of accounting information for the connection.
+
+  When  the  login  server  eventually  calls the assign_connection
+  entry,      the     associated     inner-ring      code     calls
+  connection_list_manager_$change_user  to make  the newly-assigned
+  user process show up as the  user in the active connection table.
+  The login  server also provides at  this time the names  of event
+  channels  over  which  wakeups  are  to  be  sent  if  either the
+  connection or the user process is terminated.
+
+  444...777:::  PPPeeerrr---cccooonnnnnneeeccctttiiiooonnn DDDaaatttaaa
+
+  Some connections have associated data, dependent on the top-level
+  networking  entity,   that  is  created  or   obtained  when  the
+  connection is  established (in the  login server process)  but is
+  needed by higher layers in the  user's process.  (A case in point
+  is the  negotiation data associated  with a DSA  session; this is
+  established  when the session  is created, and  may be needed  by
+  Terminal Management in the user process.)  On the other hand, the
+  login  server is  not in  a position  to know  anything about the
+  format of such data.  Therefore,  the listen entrypoint returns a
+  pointer to, and the length  of, any connection-specific data; the
+  login  server uses  the user_message  facility to  send a message
+  containing the data to the user process (once the latter has been
+  created), and  software running in  the user process  can read it
+
+
+  MTB752-03                                   Network Login Servers
+
+  out at its convenience.
+
+  The login server  also sends the process a wakeup  so that it can
+  start running or, if it is a dial server, to inform it that a new
+  dialed connection  exists.  The format of the  event message sent
+  with  this wakeup  is compatible   with that  used by  dial_ctl_;
+  however, since there is no "devx" for the new connection, nor can
+  its  name be  expected to  fit in  6 characters,  a flag has been
+  added to  the event message to indicate  that further information
+  (including  the  connection  name)  are  contained  in  the  user
+  message.  The  convert_dial_message_ subroutine has  been changed
+  to recognize this flag and read the message to get the connection
+  name.   The format  of the   event message,  now declared  in the
+  include   file  dial_event_message.incl.pl1,   is  described   in
+  Appendix A.
+
+
+  Network Login Servers                                   MTB752-03
+
+  555:::  SSSCCCEEENNNAAARRRIIIOOOSSS
+
+  The  scenarios  described  below   are  not  intended  as  formal
+  specifications, but rather give a general idea of the sequence of
+  events  associated with each  type of situation  being described.
+  The formats  of the messages  exchanged between the  login server
+  and the Initializer  are described in Appendix A.   Note that all
+  messages   from  the  server   to  the  Initializer   are  called
+  "requests", and  all messages from the Initializer  to the server
+  are  called "responses", even  though some of  the former do  not
+  request  anything and  some of  the latter  are not  responses to
+  anything.
+
+  Any  of these  scenarios can   be terminated  prematurely in  the
+  following ways:
+
+       Any of the  messages from the Initializer to  the server can
+       include a  "hangup" flag, indicating that  the connection is
+       to be closed.
+
+       If  the connection  is closed  or broken  at any  point, the
+       server  sends a message  to the Initializer  indicating this
+       fact.   The  Initializer  then  discards  (i.e.,  frees) any
+       newly-allocated  UTE, and  the sequence  is terminated.  The
+       same  thing  happens  if  the  user  enters  the "hangup" or
+       "logout" request during the login/connect or dial sequences.
+
+  555...111:::  LLLooogggiiinnn///cccooonnnnnneeecccttt SSSeeeqqquuueeennnccceee
+
+  This scenario describes the normal  sequence followed when a user
+  initiates an incoming connection with the intention of logging in
+  and   creating   a   process   or   manipulating   one   or  more
+  previously-disconnected processes.   Thus it includes the  use of
+  the  -connect, -new_proc,  etc.  control  arguments to  the login
+  command, as well as the use of the corresponding requests used in
+  the "disconnected process" dialogue.
+
+  Validation of  the user's name  and password and  the creation of
+  the  process are performed  in separate transactions  because the
+  validation transaction  is used in  the dial sequence  (below) if
+  the -user control argument is  specified; further, it is entirely
+  possible that other (as yet undefined) applications will want the
+  ability  to  validate  users   by  password  without  necessarily
+  creating processes for them.
+
+  Note that  this scenario is  described under the  assumption that
+  the login dialogue is actually  conducted by the login server, as
+  indicated above.  Some variations would be introduced in the case
+  where the user validation information comes from elsewhere in the
+  network, but  the interactions between  the login server  and the
+  Initializer remain the same.
+
+
+  MTB752-03                                   Network Login Servers
+
+    1) The server receives a wakeup indicating the completion of an
+       incoming connection, and sends the Multics greeting message.
+
+    2) The user enters the login request line.
+
+    3) The server  processes any control arguments  relating to the
+       connection (-ttp, -modes, etc.)
+
+    4) The server  parses the login  line.  If it  is syntactically
+       unacceptable,  print an  error message,  and go  to step  2.
+       Otherwise, the server prompts  for, and receives, the user's
+       password.
+
+    5) If the user specified neither -cpw or -gpw, go to step 9.
+
+    6) If   the  user   specified  -gpw,   the  server   calls  the
+       password-generating  routine, and  sends the  result to  the
+       user.
+
+    7) The  server  prompts  for,  and  receives,  the  user's  new
+       password twice.
+
+    8) If the  two instances of the  new password do not  match, or
+       the  new password  does  not  match the  generated password,
+       print a message, and go to step 2.
+
+    9) The  server  sends  a   "validate_request"  message  to  the
+       Initializer  to request  validation of  the user's  name and
+       password,  also providing   project and/or  authorization if
+       supplied  by the user.   If the user  provided any of  -cpw,
+       -gpw,            -change_default_authorization,           or
+       -change_default_project,   the   relevant   information   is
+       included in this request.
+
+   10) The Initializer assigns a UTE, looks the user up in the PNT,
+       and  sends  a  "validate_response"  message  to  the  server
+       indicating the result.  If  the lookup succeeded, the return
+       message  includes the  long form  of the  user's person  and
+       project  IDs  and  his  default  authorization  if  none was
+       supplied.
+
+   11) If the return message from the Initializer indicates failure
+       to validate, print a message and go to step 2.
+
+   12) If the  user specified "-operator", switch  to the "operator
+       login" scenario (below).
+
+   13) If   the  user  specified   "-list",  the  server   sends  a
+       "list_request".  Otherwise, go to step 16.
+
+   14) The Initializer  sends a "list_response"  message containing
+       the  list  of  processes  with  their  associated  times and
+
+
+  Network Login Servers                                   MTB752-03
+
+       connection-endpoints.   If  the  user  has  no  disconnected
+       processes,  the  return  message  contains  a nonzero status
+       code.  In  either case, the server  displays the appropriate
+       information, and prompts for a request.
+
+   15) The user  enters another request line; the  server parses it
+       and goes to step 13.
+
+   16) The  server   sends  a  "process_request"  message   to  the
+       Initializer containing the  effective command (i.e., create,
+       connect,   new_proc,  destroy),   the  process   number,  if
+       supplied, information about the channel, and all other login
+       control   arguments   that   relate   to   process  creation
+       (-home_dir, -outer_module, etc.).
+
+   17) The  Initializer does whatever  is necessary to  fulfill the
+       user's  request, e.g.,  call ring   0 to  create a  process,
+       destroy a  disconnected process, etc.  If a  new process was
+       created or  reconnection to an old  process established, the
+       Initializer's   "process_response"   message   includes  the
+       process group  ID, the process  ID, and the  process number.
+       If  the  user's  request  is  ambiguous  or inappropriate in
+       relation to the number of disconnected processes, the return
+       "process_response"   message   includes    the   number   of
+       disconnected processes and a nonzero status code.
+
+   18) If the status  code returned by the Initializer  is zero, go
+       to step 21.
+
+   19) The   server  outputs   a  message   indicating  that   more
+       information is  needed, and the  user enters a  request line
+       (e.g.  "connect", "destroy 3", etc.).
+
+   20) The server parses the request line, and goes to step 13.
+
+   21) The server  calls the assign_connection entry  to assign the
+       new process ID  to the connection, and saves  the process ID
+       in its own table entry for the connection, which it marks as
+       the "login channel".
+
+   22) The  server sends  a user_message  containing the  necessary
+       information  for  attaching  the   connection  in  the  user
+       process.
+
+   23) The server sends  the process a wakeup to cause  it to start
+       (or in the case of a suspended process, to resume).
+
+  555...222:::  DDDiiiaaalll SSSeeeqqquuueeennnccceee
+
+  This scenario describes  the sequence that takes place  if a user
+  enters the "dial" request.
+
+
+  MTB752-03                                   Network Login Servers
+
+    1) The server receives a wakeup indicating the completion of an
+       incoming connection, and sends the Multics greeting message.
+
+    2) The user enters the dial command.
+
+    3) The  server  parses  the  command.   If  it is syntactically
+       incorrect, print a message and go to step 2.
+
+    4) If the  command specifies the -user control  argument, go to
+       step 6.
+
+    5) If access to the channel is  restricted (i.e., it has an ACS
+       that  does  not  grant  access  to  all  users), or the dial
+       qualifier is "system", print a message noting that the -user
+       control argument is required, and  go to step 2.  Otherwise,
+       go to step 11.
+
+    6) The server prompts for, and receives, the user's password.
+
+    7) The  server  sends   the  Initializer  a  "validate_request"
+       message  giving  the  user's   person  ID,  project  ID  (if
+       supplied), and password, requesting validation.
+
+    8) The Initializer assigns a UTE, looks the user up in the PNT,
+       and  sends  a  "validate_response"  message  to  the  server
+       indicating the result.  If the lookup succeeded, the message
+       includes the long form of  the user's person and project IDs
+       and his default authorization if none was supplied.
+
+    9) If the "validate_response" message contains a nonzero status
+       code, print a message and go to step 2.
+
+   10) If the  dial qualifier is "system", switch  to the "operator
+       login" scenario (below).
+
+   11) The server sends a "dial_request" message to the Initializer
+       giving the dial qualifier and  the target process's user ID,
+       if supplied.
+
+   12) The  Initializer   tries  to  find  the   process  with  the
+       registered dial  qualifier, or if the dial  qualifier is not
+       registered,  a process  with the  specified user  ID that is
+       accepting  dials;  it  sends  the  server  a "dial_response"
+       message  indicating the  result, and  including the  process
+       group ID and  the process ID of the process,  as well as the
+       name  of  the  event  channel  being  used  for dials, if it
+       succeeds.
+
+   13) If  the "dial_response"  message contains  a nonzero  status
+       code, print a message and go to step 2.
+
+
+  Network Login Servers                                   MTB752-03
+
+   14) The server  calls the assign_connection entry  to assign the
+       new process ID  to the connection, and saves  the process ID
+       in its own table entry for the connection, which it marks as
+       a "dial channel".
+
+   15) The  server sends  the  user  process a  unique user_message
+       containing  the name  of the  connection and  the I/O module
+       through   which  it   is  to   be  attached,   for  use   by
+       convert_dial_message_.
+
+   16) The server sends the  user process a user_message containing
+       the  connection  attachment  information  as  in  the  login
+       sequence (above).
+
+   17) The server sends the process a wakeup on the specified event
+       channel.
+
+  NOTES
+
+  This scenario can branch into the login/connect sequence any time
+  it returns to step 2 (i.e., the user enters a new request).
+
+  555...333:::  OOOpppeeerrraaatttooorrr LLLooogggiiinnn
+
+  This  scenario  describes  what  happens  when  a  user  requests
+  connection to the message coordinator.  The description begins at
+  the point after the user  has been validated, whether the initial
+  request was "login User -operator" or "dial system".
+
+    1) The server  sends an "operator_request" to  the Initializer,
+       providing the virtual channel name if one was specified.
+
+    2) The   Initializer  passes   the  request   to  the   message
+       coordinator.   If  a  preaccepted  virtual  channel  is  not
+       specified,  a message is  sent to the  Initializer terminal,
+       and further processing of the  request awaits an "accept" or
+       "drop" command from the system operator.
+
+    3) The  Initializer sends   the server  an "operator_response",
+       indicating success or failure of the request.  If the status
+       code  is zero, the  response includes the  name of an  event
+       channel over which to wake up the message coordinator.
+
+    4) If the status  code is nonzero, the server  prints a message
+       and awaits further requests, as above.
+
+    5) The server  calls the assign_connection entry  to assign the
+       message coordinator's process ID to the connection.
+
+
+  MTB752-03                                   Network Login Servers
+
+    6) The server  sends a user_message to  the message coordinator
+       containing  the  necessary  information  for  attaching  the
+       connection, as above.
+
+    7) The server sends a wakeup over the specified event channel.
+
+  555...444:::  DDDiiiaaalll_ooouuuttt,,, PPPrrriiivvv_aaattttttaaaccchhh,,, aaannnddd RRReeellleeeaaassseee
+
+  These  are handled  entirely in  the user's  process, and  follow
+  essentially the same logic  as the current dial_ctl_.  Therefore,
+  the scenario is not described in this document.
+
+  555...555:::  PPPrrroooccceeessssss TTTeeerrrmmmiiinnnaaatttiiiooonnn (((LLLooogggiiinnn CCChhhaaannnnnneeelll)))
+
+  This scenario describes the actions  taken with respect to a user
+  process's login  channel when that process  terminates, either by
+  logging out, taking a fatal error, or via the new_proc command.
+
+       The  Initializer sends  a "termination_response"  message to
+       the login server, giving it the process ID of the terminated
+       process,  accounting  information,  and  indications  of the
+       control arguments  supplied (-hold, -brief) and  the type of
+       termination (automatic logout,  user-requested logout, fatal
+       error, etc.).   It then sends  the server a  wakeup over the
+       "termination"  event channel  provided by  the server during
+       the login sequence.
+
+    8) The server  calls the unassign_connection entry  to unassign
+       the connection.
+
+    9) If  the response  indicates a  fatal error,  print the fatal
+       error message and additional  messages as appropriate; go to
+       step 5.
+
+   10) If the  status code in the termination  response is nonzero,
+       print the corresponding error message.
+
+   11) If the "offer_help" flag is set in the termination response,
+       print a message inviting the user to type "help".
+
+   12) If the "logout" flag is not set in the termination response,
+       thus indicating  that a new  process will be  created, go to
+       step 9.
+
+   13) If  the  "brief"  flag  is  not  set  set in the termination
+       response,   print  a   message  containing   the  accounting
+       information for the login session.
+
+   14) If the "hold" flag is  set in the termination response, send
+       the  greeting  message,  and  switch  to  the  login/connect
+
+
+  Network Login Servers                                   MTB752-03
+
+       sequence  (above).  Otherwise,   call the  disconnect entry,
+       ending the sequence.
+
+   15) The server blocks to await a "new_proc" response.
+
+   16) The  Initializer creates  a new  process for  the user,  and
+       sends the server a new_proc response, containing the process
+       ID,  authorization, and  starting event  channel of  the new
+       process.
+
+   17) If  the new  process was  the result  of a  fatal error, the
+       server prints the "New process created" message.
+
+   18) The server  assigns the connection and  sends a user_message
+       and wakeup as in the login sequence (above).
+
+  555...666:::  PPPrrroooccceeessssss TTTeeerrrmmmiiinnnaaatttiiiooonnn (((DDDiiiaaallleeeddd CCCooonnnnnneeeccctttiiiooonnnsss)))
+
+  This  scenario  describes  the  sequence  followed  for  a dialed
+  connection  when  the  user  process  to  which  it  was assigned
+  terminates.   When terminating  a process,  the Initializer calls
+  hpriv_connection_list_$get_next_user  repeatedly to  identify all
+  of that  process's dialed connections and  their respective login
+  servers; the sequence below is followed for each such connection.
+
+       The Initializer sends a termination response and a wakeup to
+       the login server, as above.
+
+   19) The login  server prints a message indicating  that the user
+       process has terminated.
+
+   20) The  server prints  the greeting  message, and  reenters the
+       login/connect sequence.
+
+  555...777:::  DDDiiissscccooonnnnnneeeccctttiiiooonnn SSSeeeqqquuueeennnccceee
+
+  This scenario describes the sequence  when a connection is closed
+  while a process has it assigned.
+
+    1) The  login  server  receives  a  wakeup  indicating that the
+       connection has been closed.
+
+    2) The server  calls the unassign_connection entry  to unassign
+       the connection.
+
+    3) If the connection is not the login channel, the server wakes
+       up the process to which the connection had been assigned, in
+       order to inform it that the connection has been closed.
+
+
+  MTB752-03                                   Network Login Servers
+
+    4) The  server sends  a "disconnection_request"  message to the
+       Initializer to indicate that the process's login channel has
+       been disconnected.
+
+    5) If  the connection  is  the  login channel,  the Initializer
+       decides  whether the process  should be suspended  or logged
+       out.   In   the  latter  case,  it  sends   wakeups  to  all
+       appropriate  login servers,  as in  the termination sequence
+       (above).
+
+    6) If the connection is not  the login channel, the Initializer
+       simply  discards the  UTE created  during the  dial sequence
+       (above).
+
+
+  Network Login Servers                                   MTB752-03
+
+  AAAPPPPPPEEENNNDDDIIIXXX AAA:::  SSSUUUMMMMMMAAARRRYYY OOOFFF DDDAAATTTAAA SSSTTTRRRUUUCCCTTTUUURRREEESSS
+
+  This appendix identifies the various data structures required for
+  the implementation of login servers.
+
+  AAA...111:::  SSStttrrruuuccctttuuurrreeesss fffooorrr LLLooogggiiinnn SSSeeerrrvvveeerrr RRReeeqqquuueeessstttsss
+
+  The following  structures describe the  requests sent by  a login
+  server  to   the  Initializer  process.   They   are  defined  in
+  login_server_messages.incl.pl1.
+
+  A.1.1:  COMMON STRUCTURES
+
+  The  following structures  are included  as substructures  of all
+  Login Server Request structures.
+
+  A.1.1.1:  ls_request_header
+
+  dcl 1 ls_request_header aligned based (ls_request_ptr),
+      2 header_version char (8),
+      2 request_version char (8),
+      2 request_type fixed bin,
+      2 pad1 bit (36),
+      2 reply_event_channel fixed bin (71),
+      2 reply_handle bit (72) aligned,                              |
+      2 connection_info like user_connection_info;                  |
+
+  Structure Elements
+
+  header_version
+     is  the version  of the  header.  It  is always  the value  of
+     LS_REQUEST_HEADER_VERSION_1.
+
+  request_version
+     is the version of the particular request structure.  Its value
+     depends on the type of request.
+
+
+  MTB752-03                                   Network Login Servers
+
+  request_type
+     identifies the type  of request.  It has one  of the following
+     values:
+
+          LS_VALIDATE_REQUEST (1)
+          LS_PROCESS_REQUEST (2)
+          LS_LIST_REQUEST (3)
+          LS_DIAL_REQUEST (4)
+          LS_DISCONNECT_REQUEST (5)
+          LS_LOGOUT_REQUEST (6)
+          LS_OPERATOR_REQUEST (7)
+
+  reply_event_channel
+     is the name of the event channel over which the Initializer is
+     to send a wakeup in order to respond to a request.
+
+  reply_handle
+     is the handle that will be  used to read the response from the
+     Initializer.
+|
+| connection_info
+|    is the user_connection_info substructure declared below.  This
+|    describes the MNA connection which is making the request.
+
+  A.1.1.2:  user_connection_info
+
+  dcl 1 user_connection_info aligned based,
+      2 connection_name char (32),
+      2 access_class_range (2) bit (72),
+      2 terminal_type char (32),
+      2 terminal_id char (4),
+|     2 line_type fixed bin;
+
+  Structure Elements
+
+  connection_name
+     is the name of the connection.
+
+  access_class_range
+     is the range of access classes within which the connection may
+     be used.
+
+  terminal_type
+     is the terminal type currently associated with the connection.
+
+
+  Network Login Servers                                   MTB752-03
+
+  terminal_id
+     is  the  terminal  identifier  currently  associated  with the
+     connection.
+                                                                    |
+  line_type                                                         |
+     is the line type of the connection.                            |
+
+
+  MTB752-03                                   Network Login Servers
+
+  A.1.2:  VALIDATE REQUEST
+
+  The "validate" request  is sent to verify a user's  person ID and
+  password.
+
+  dcl 1 login_server_validate_request aligned based,
+      2 header like ls_request_header,
+      2 current_password char (8),
+      2 authorization bit (72),
+      2 terminate_event_channel fixed bin (71),
+*     2 person_id char (22),
+      2 project_id char (9),
+      2 network_connection_type fixed bin,
+      2 new_password char (8),
+      2 flags,
+        3 gpw bit (1) unaligned,
+        3 auth_given bit (1) unaligned,
+        3 anonymous bit (1) unaligned,
+        3 anon_no_password bit (1) unaligned,
+        3 change_password bit (1) unaligned,
+        3 change_default_auth bit (1) unaligned,
+        3 change_default_proj bit (1) unaligned,
+        3 operator bit (1) unaligned,
+        3 pad bit (28) unaligned;
+
+  Structure Elements
+
+  header
+     is   as  above.    The  request_version   contains  the  value
+     LS_VALIDATE_REQUEST_VERSION_1.
+
+  current_password
+     is the password supplied by the user.
+
+  authorization
+     is  the  authorization  supplied  on  the  login  line.  It is
+     ignored if auth_given (below) is "0"b.
+
+  terminate_event_channel
+     is  the event  channel over  which the  login server  is to be
+     notified  when  the  user  process  that  will  eventually  be
+     associated with this request terminates.
+
+  person_id
+     is the person ID as given on the login line.
+
+  project_id
+     is the project  ID as given on the login  line.  If no project
+     ID was specified, it is the null string.
+
+
+  Network Login Servers                                   MTB752-03
+
+  network_connection_type
+     indicates the way the connection  was established.  It is used
+     by  the  Initializer  to  select  a  process  overseer  and an
+     instance tag for the created process.   It may have one of the
+     following values:
+
+          NETWORK_CONNECTION_LOGIN (1)
+          NETWORK_CONNECTION_DSA_FILE_TRANSFER (2)
+
+  new_password
+     is   the  user's   new  password.    It  is   only  valid   if
+     change_password is "1"b.
+
+  gpw
+     is "1"b if the user specified the "-generate_password" control
+     argument.
+
+  auth_given
+     is "1"b if the user specified an authorization.
+
+  anonymous
+     is  "1"b  if  the  user  specified  the  "enterp" request, for
+     anonymous login with a password.
+
+  anon_no_password
+     is  "1"b  if  the  user  specified  the  "enter"  request, for
+     anonymous login with no password.
+
+  change_password
+     is "1"b if the user's password is being changed through either
+     the   "-generate_password"   or   "-change_password"   control
+     arguments.
+
+  change_default_auth
+     is "1"b if the user's default authorization is being changed.
+
+  change_default_proj
+     is "1"b if the user's default project is being changed.
+
+  operator
+     is "1"b if the user requested to be signed on as an operator.
+
+
+  MTB752-03                                   Network Login Servers
+
+  A.1.3:  PROCESS REQUEST
+
+  The "process" request requests the  creation of a process, or the
+  connection or destruction of an existing process, etc.
+
+  dcl 1 login_server_process_request aligned based,
+      2 fixed_part,
+        3 header like ls_request_header,
+        3 handle bit (72),
+        3 person_id char (22),
+        3 project_id char (9),
+|       3 project_pad fixed bin,
+        3 command_type fixed bin,
+        3 process_number fixed bin,
+        3 default_io_module char (32),
+        3 switch_flags,
+          4 warn_given bit (1) unaligned,
+          4 force_given bit (1) unaligned,
+          4 save_given bit (1) unaligned,
+          4 preempt_given bit (1) unaligned,
+          4 brief_given bit (1) unaligned,
+          4 pad2 bit (31) unaligned,
+        3 switch_values,
+          4 warn bit (1) unaligned,
+          4 force bit (1) unaligned,
+          4 save_on_disconnect bit (1) unaligned,
+          4 preempt bit (1) unaligned,
+          4 brief bit (1) unaligned,
+          4 pad3 bit (31) unaligned,
+        3 other_flags,
+          4 init_ring_given bit (1) unaligned,
+|         4 minimum_ring_given bit (1) unal,
+          4 immediate bit (1) unaligned,
+          4 no_start_up bit (1) unaligned,
+          4 pad4 bit (33) unaligned,
+        3 initial_ring fixed bin,
+|       3 minimum_ring fixed bin,
+        3 home_dir char (168),
+        3 outer_module char (32),
+        3 process_overseer char (168),
+        3 subsystem char (168),
+        3 n_args fixed bin,
+      2 login_arguments,
+        3 arg_string_length fixed bin (21),
+        3 args (ls_process_request_nargs
+            refer (ls_process_request.n_args)),
+          4 start_index fixed bin (21),
+          4 arg_length fixed bin (21),
+        3 arg_string char (ls_process_request_arg_string_length
+            refer (ls_process_request.arg_string_length));
+
+
+  Network Login Servers                                   MTB752-03
+
+  Structure Elements
+
+  header
+     is  as  above.   The  request_version  contains  the  value of
+     LS_PROCESS_REQUEST_VERSION_1.
+
+  handle
+     is  the  Initializer's  handle  for  this connection (provided
+     initially in the "validate" response, below).
+
+  person_id
+     is the user's person ID.
+
+  project_id
+     is the user's project ID.
+
+  command_type
+     indicates what  command the user  gave on the  login line.  It
+     may have one of the following values:
+
+          LOGIN_REQ (1)
+          ENTER_REQ (2)
+          ENTERP_REQ (3)
+          CREATE_REQ (4)
+          CONNECT_REQ (5)
+          DESTROY_REQ (6)
+          LIST_REQ (7)
+
+  process_number
+     is the number of the process to be connected, etc., or 0 if no
+     process number was supplied.
+
+  default_io_module
+     is  the name  of the  I/O module  through which  the process's
+     standard I/O  switches are to  be attached if  no outer_module
+     (below) is specified.
+
+  switch_flags
+     indicate which  of the "switch-valued" control  arguments were
+     given.
+
+  warn_given
+     is "1" if the user specified "-warn" or "-no_warn".
+
+  force_given
+     is "1" if the user specified "-force" or "-no_force".
+
+  save_given
+     is  "1"   if  the  user  specified   "-save_on_disconnect"  or
+     "-no_save_on_disconnect".
+
+
+  MTB752-03                                   Network Login Servers
+
+  preempt_given
+     is "1" if the user specified "-preempt" or "-no_preempt".
+
+  brief_given
+     is "1" if the user specified "-brief" or "-long"
+
+  switch_values
+     indicate the values given for the control arguments specified.
+     Each of switch_values is valid  only if the corresponding flag
+     under switch_flags (above) is "1"b.
+
+  warn
+     is "1"b for -warn, "0"b for -no_warn.
+
+  force
+     is "1"b for -force, "0"b for -no_force.
+
+  save_on_disconnect
+     is     "1"b     for      -save_on_disconnect,     "0"b     for
+     -no_save_on_disconnect.
+
+  preempt
+     is "1"b for -preempt, "0"b for -no_preempt.
+
+  brief
+     is "1"b for -brief, "0"b for -long.
+
+  init_ring_given
+     is "1" if the user specified an initial ring.
+|
+| minimum_ring_given
+|    is "1" if  the MNA terminal manager must run  in a ring higher
+|    than 1.
+
+  immediate
+     is "1" if the user specified "-immediate".
+
+  no_start_up
+     is "1"b if the user specified "-no_start_up".
+
+  initial_ring
+     is the initial ring given on the login line.  It is ignored if
+     init_ring_given (above) is "0"b.
+|
+| minimum_ring
+|    is the minimum ring in which the MNA terminal manager can run.
+|    For DSA,  this is set to  ring 2.  This ring  number imposes a
+|    limit  on the minimum  ring of the  process beyond the  limits
+|    given in the SAT and PDT.
+
+
+  Network Login Servers                                   MTB752-03
+
+  home_dir
+     is the home directory specified on the login line, or the null
+     string if none was given.
+
+  outer_module
+     is the outer  module specified on the login line,  or the null
+     string if none was given.
+
+  process_overseer
+     is the  process overseer specified  on the login  line, or the
+     null string if none was given.
+
+  subsystem
+     is  the subsystem  specified on  the login  line, or  the null
+     string if none was given.
+
+  n_args
+     is the number of  arguments specified following the -arguments
+     control argument, or 0 if no additional arguments were given.
+
+  login_arguments
+     describes  the  arguments  following  the  -arguments  control
+     argument.  If n_args (above) is  0, this part of the structure
+     is ignored.
+
+  arg_string_length
+     is the total length of arg_string (below) in characters.
+
+  args
+     describes the position of each argument in arg_string.
+
+  start_index
+     is the starting index in arg_string of the current argument.
+
+  arg_length
+     is the length of the current argument in characters.
+
+  arg_string
+     contains all the arguments concatenated into a single string.
+
+
+  MTB752-03                                   Network Login Servers
+
+  A.1.4:  LIST REQUEST
+
+  The  "list" request  indicates that  the user  entered the "list"
+  request  or provided  the -list  control argument  to the "login"
+  request.
+
+  dcl 1 login_server_list_request aligned based,
+      2 header like ls_request_header,
+      2 handle bit (72);
+
+  Structure Elements
+
+  header
+     is as above.  The request_version  field contains the value of
+     LS_LIST_REQUEST_VERSION_1.
+
+  handle
+     contains   the  Initializer's   handle  as   returned  in  the
+     validate_response.
+
+
+  Network Login Servers                                   MTB752-03
+
+  A.1.5:  DIAL REQUEST
+
+  The "dial" request reports that  the "dial" preaccess command was
+  entered, and requests the finding of an appropriate dial_server.
+
+  dcl 1 login_server_dial_request aligned based,
+      2 header like ls_request_header,
+      2 initializer_handle bit (72),
+      2 terminate_event_channel fixed bin (71),
+      2 dial_qualifier char (22),                                   *
+      2 person_id char (22),
+      2 project_id char (9),
+      2 user_person_id char (22),
+      2 user_project_id char (9);
+
+  Structure Elements
+
+  header
+     is as above.  The request_version  field contains the value of
+     LS_DIAL_REQUEST_VERSION_1.
+
+  initializer_handle
+     is the Initializer's handle for this connection if there was a
+     previous  "validate" request   for this  connection, otherwise
+     ""b.
+
+  terminate_event_channel
+     is  the event  channel over  which the  login server  is to be
+     notified  when  the  user  process  that  will  eventually  be
+     associated with this request terminates.
+
+  dial_qualifier
+     is the dial qualifier supplied on the request line.
+
+  person_id
+     is  the person   ID of  the dial  server, or   "" if  none was
+     supplied.
+
+  project_id
+     is  the project  ID of  the  dial  server, or  "" if  none was
+     supplied.
+
+  user_person_id
+     is the person ID supplied  with the -user control argument, or
+     "" if -user was not specified.
+
+  user_project_id
+     is the project ID supplied with the -user control argument, or
+     "" if none was supplied.
+
+
+  MTB752-03                                   Network Login Servers
+
+  A.1.6:  DISCONNECT REQUEST
+
+  The "disconnect" request is used  to indicate that the connection
+  has been terminated.
+
+  dcl 1 login_server_disconnect_request aligned based,
+      2 header like ls_request_header,
+      2 handle bit (72),
+      2 process_id bit (36);
+*
+
+  Structure Elements
+
+  header
+     is as above.  The request_version  field contains the value of
+     LS_DISCONNECT_REQUEST_VERSION_1.
+
+  handle
+     is the  Initializer's handle for this  connection, as supplied
+     in the "validate" response, below.
+
+  process_id
+     is the process ID of the  user process to which the connection
+     was assigned.
+
+
+  Network Login Servers                                   MTB752-03
+
+  A.1.7:  LOGOUT REQUEST
+
+  The "logout"  request indicates that the user  entered the logout
+  request in  order to terminate the dialogue.   The Initializer is
+  not expected to provide a response.
+
+  dcl 1 login_server_logout_request aligned based (ls_request_ptr),
+      2 header like ls_request_header,
+      2 handle bit (72);
+                                                                    *
+
+  Structure Elements
+
+  header
+     is as above.  The request_version  field contains the value of
+     LS_LOGOUT_REQUEST_VERSION_1.
+
+  handle
+     is the Initializer's handle for the connection, as provided in
+     the validate_response.
+
+
+  MTB752-03                                   Network Login Servers
+
+  A.1.8:  OPERATOR REQUEST
+
+  The "operator" request requests that the  user be signed on as an
+  operator.   It  is  sent  instead   of  a  process_request  or  a
+  dial_request if the user  supplied the -operator control argument
+  or used "system" as a dial qualifier, respectively.
+
+  dcl 1 login_server_operator_request aligned based (ls_request_ptr),
+      2 header like ls_request_header,
+      2 initializer_handle bit (72) aligned,
+      2 terminate_event_channel fixed bin (71),
+      2 person_id char (22),
+      2 project_id char (9),
+      2 virtual_channel char (32);
+*
+
+  Structure Elements
+
+  header
+     is as above.  The request_version  field contains the value of
+     LOGIN_SERVER_OPERATOR_REQUEST_VERSION_1.
+
+  initializer_handle
+     is the handle provided in the validate_response.
+
+  terminate_event_channel
+     is the event channel over which the login server is to be sent
+     a  wakeup  if  the  connection   is  dropped  by  the  message
+     coordinator.
+
+  person_id
+     is the user's person ID.
+
+  project_id
+     is the user's project ID.
+
+  virtual_channel
+     is  the virtual channel  name provided by  the user, or  "" if
+     none was supplied.
+
+
+  Network Login Servers                                   MTB752-03
+
+  AAA...222:::  SSStttrrruuuccctttuuurrreeesss fffooorrr AAAnnnssswwweeerrriiinnnggg SSSeeerrrvvviiiccceee RRReeessspppooonnnssseeesss
+
+  The  following  structures  define  the  responses  sent  by  the
+  Initializer   to  the   login  server.    They  are   defined  in
+  login_server_messages.incl.pl1.
+
+  A.2.1:  COMMON STRUCTURES
+
+  All  the types  of Answering   Service responses  share a  common
+  header, with the following format:
+
+  A.2.1.1:  login_server_response_header
+
+  dcl 1 login_server_response_header aligned based,
+      2 message_type fixed bin,
+      2 header_pad bit (36),
+      2 version char (8);
+
+  Structure Elements
+
+  message_type
+     identifies  the  type  of  the  response.   It  has one of the
+     following values:
+
+          LS_VALIDATE_RESPONSE (101)
+          LS_PROCESS_RESPONSE (102)
+          LS_LIST_RESPONSE (103)
+          LS_DIAL_RESPONSE (104)
+          LS_TERMINATION_RESPONSE (105)
+          LS_NEW_PROC_RESPONSE (106)
+          LS_OPERATOR_RESPONSE (107)
+
+  version
+     is the  version of the response structure.   Its value depends
+     on the type of the response.
+
+
+  MTB752-03                                   Network Login Servers
+
+  A.2.2:  VALIDATE RESPONSE
+
+  The "validate"  response indicates whether a user  specified in a
+  "validate" request was properly validated.
+
+  dcl 1 login_server_validate_response aligned based,
+      2 header like login_server_response_header,
+      2 handle bit (72),
+      2 authorization bit (72),
+      2 authorization_range (2) bit (72),
+      2 status_code fixed bin (35),
+      2 person_id char (22),
+      2 project_id char (9),
+      2 n_disconnected_processes fixed bin,
+|     2 validate_pad fixed bin,
+      2 previous_login_info,
+        3 time fixed bin (71),
+        3 terminal_type char (32),
+        3 terminal_id char (4),
+      2 incorrect_passwords fixed bin,
+      2 last_incorrect_password,
+|       3 time fixed bin(71),
+        3 terminal_type char (32),
+        3 terminal_id char (4),
+      2 password_interval fixed bin,
+      2 flags,
+        3 disconnect bit (1) unaligned,
+        3 password_changed bit (1) unal,
+        3 default_auth_changed bit (1) unal,
+        3 default_proj_changed bit (1) unal,
+        3 password_expired bit (1) unal,
+        3 password_unused_too_long bit (1) unal,
+        3 pad bit (30) unaligned;
+
+  Structure Elements
+
+  header
+     is   as  above.    The  version   field  has   the  value   of
+     LS_VALIDATE_RESPONSE_VERSION_1.
+
+  handle
+     is the Initializer's handle for this connection, to be used by
+     the login server in subsequent requests.
+
+  authorization
+     is the default authorization of the user if none was supplied.
+
+  authorization_range
+     is the range of authorizations permitted for this user.
+
+
+  Network Login Servers                                   MTB752-03
+
+  status_code
+     is a standard system status code.  It  is 0 if and only if the
+     user  was properly  validated.  All  of the  remaining fields,
+     except disconnect, are invalid if it is non-zero.
+
+  person_id
+     is the primary form of the user's person ID.
+
+  project_id
+     is the primary form of the user's person ID.
+
+  n_disconnected_processes
+     is the number of disconnected processes currently belonging to
+     the user.
+
+  previous_login_info
+     describes the  user's most recent  previous login, for  use in
+     the message beginning, "Last login at...".
+
+  time
+     is the time of the previous login.
+
+  terminal_type
+     is the terminal type associated with the previous login.
+
+  terminal_id
+     is the terminal ID associated with the previous login.
+
+  incorrect_passwords
+     is  the number  of times  the user's  password has  been given
+     incorrectly since the last time it was given correctly.
+
+  last_incorrect_password
+     contains  information about  the most  recent instance  of the
+     user's     password     being     given     incorrectly,    if
+     incorrect_passwords (above) is nonzero.
+                                                                    |
+  time                                                              |
+     is the time at which the last bad password was given.          |
+
+  terminal_type
+     is the terminal  type from which the user's  password was last
+     given incorrectly.
+
+  terminal_id
+     is the ID  of the terminal from which the  user's password was
+     last given incorrectly.
+
+
+  MTB752-03                                   Network Login Servers
+
+  password_interval
+     is the limit (in days) after which the user's password must be
+     changed,  or the maximum  number of days  it is allowed  to go
+     unused.   This  field  is  only  valid  if password_expired or
+     password_unused_too_long (below) is "1"b.
+
+  disconnect
+     is "1"b if the disconnection  is to be terminated immediately.
+     This field is valid even if status_code (above) is non-zero.
+
+  password_changed
+     is "1"b if the password was changed by the validate_request.
+
+  default_auth_changed
+     is "1"b  if the default  authorization was changed  changed by
+     the validate_request.
+
+  default_proj_changed
+     is  "1"b if  the default  project was  changed changed  by the
+     validate_request.
+
+  password_expired
+     is "1"b if  the user's password has been  expired, through not
+     having   been   changed   for    the   number   of   days   in
+     password_interval (above).
+
+  password_unused_too_long
+     is "1"b is the user's password has not been used for more than
+     the system time limit, given in password_interval (above).
+
+
+  Network Login Servers                                   MTB752-03
+
+  A.2.3:  PROCESS RESPONSE
+
+  The  "process" response  provides information  about the  process
+  found or created in response to a "process" request.
+
+  dcl 1 login_server_process_response aligned based,
+      2 header like login_server_response_header,
+      2 status_code fixed bin (35),
+      2 process_id bit (36),
+      2 new_handle bit (72),
+      2 authorization bit (72),
+      2 process_group_id char (32),
+      2 process_number fixed bin,
+      2 n_disconnected_processes fixed bin,
+      2 start_event_channel fixed bin (71),
+      2 login_instance fixed bin,
+      2 accounting_info,
+        3 cpu_usage fixed bin (71),
+        3 cost float bin,
+      2 flags,
+        3 disconnect bit (1) unaligned,
+        3 logout bit (1) unaligned,
+        3 created bit (1) unaligned,
+        3 connected bit (1) unaligned,
+        3 new_proc bit (1) unaligned,
+        3 destroyed bit (1) unaligned,
+        3 anonymous bit (1) unaligned,
+        3 already_logged_in bit (1) unaligned,
+        3 message_coordinator bit (1) unaligned,
+        3 brief bit (1) unaligned,                                  |
+        3 pad bit (26) unaligned,                                   |
+      2 initial_ring fixed bin,
+      2 already_logged_in_info,
+        3 connection_name char (32),
+        3 terminal_type char (32),
+        3 terminal_id char (4),
+      2 accounting_message_struc,
+        3 accounting_message_length fixed bin,
+        3 accounting_message char
+          (ls_process_response_accounting_message_length
+           refer (login_server_process_response.
+             accounting_message_length));
+
+  Structure Elements
+
+  header
+     is  as  above.   The  version  field  contains  the  value  of
+     LOGIN_SERVER_PROCESS_RESPONSE_VERSION_1.
+
+
+  MTB752-03                                   Network Login Servers
+
+  status_code
+     is 0 if  and only if the request was  fulfilled.  If non-zero,
+     it  might indicate  that the  process number  specified by the
+     user was nonexistent,  or that the user did  not specify which
+     of several processes was to be connected to, etc.
+
+  process_id
+     is the process ID of the process created or found.
+
+  new_handle
+     is the  handle associated with  a preexisting process,  if the
+     user  requested reconnection;  this handle  is to  be used  in
+     subsequent communications with the Initializer.  If this field
+     is 0, the handle  previously returned in the validate_response
+     should continue to be used.
+
+  authorization
+     is  the authorization  of the   process which  was created  or
+     found.
+
+  process_group_id
+     is  the process group  ID (person.project.tag) of  the process
+     created or found.
+
+  process_number
+     is the process number of the  process created or found (as in,
+     "Your  disconnected  process  #N  will  be  connected  to this
+     terminal").
+
+  n_disconnected_processes
+     is  the number  of disconnected  processes the  user currently
+     has.   This  may  be  valid  even  if  status_code  (above) is
+     non-zero.
+
+  start_event_channel
+     is the event channel over which  to send a wakeup to start (or
+     restart) the process.
+
+  login_instance
+     indicates  how  many  interactive   processes  the  user  has,
+     disconnected or not.
+
+  accounting_info
+     if a  disconnected process was destroyed,  contains accounting
+     information for that process.
+
+  cpu_usage
+     is the amount of CPU time used by the destroyed process.
+
+  cost
+     is the dollar cost of the destroyed process.
+
+
+  Network Login Servers                                   MTB752-03
+
+  disconnect
+     is "1"b if the connection is to be terminated immediately.  It
+     is valid even if status_code (above) is non-zero.
+
+  logout
+     is  "1"b if  the current  login session  is to  be terminated,
+     i.e.,  the user  must enter  name and  password again.   It is
+     valid even if status_code (above) is non-zero.
+
+  created
+     is "1"b if a new process was created.
+
+  connected
+     is   "1"b   if   the   user    is   being   connected   to   a
+     previously-disconnected process.
+
+  new_proc
+     is "1"b if the user has  a disconnected process which is being
+     replaced by a new process.
+
+  destroyed
+     is "1"b if the specified process has been destroyed.
+
+  anonymous
+     is "1"b if the process belongs to an anonymous user.
+
+  already_logged_in
+     is  "1"b if the  user cannot create  a process because  one is
+     already logged in.
+
+  message_coordinator
+     is "1"b if this connection is  going to be used by the message
+     coordinator.
+                                                                    |
+  brief                                                             |
+     is "1"b is the user brief attributes from the PDT.             |
+
+  initial_ring
+     is the ring in which the process was created.
+
+  already_logged_info
+     contains  information  about  the  user's  existing process if
+     already_logged_in (above) is "1"b.
+
+  connection_name
+     is the name of the connection over which the process is logged
+     in.
+
+  terminal_type
+     is the type of terminal associated with the process.
+
+
+  MTB752-03                                   Network Login Servers
+
+  terminal_id
+     is the ID of the terminal associated with the process.
+
+  accounting_message_struc
+     contains  an error  or  warning  message from  the Initializer
+     concerning  the  user's  account.   It  may  be  valid even if
+     status_code (above) is non-zero.
+
+  accounting_message_length
+     is  the length  in characters  of the  accounting message.  If
+     there is no message, this field is 0.
+
+  accounting_message
+     is the text of the message.
+
+
+  Network Login Servers                                   MTB752-03
+
+  A.2.4:  LIST RESPONSE
+
+  The "list"  response responds to the "list"  request by providing
+  information about the user's disconnected processes, if any.
+
+  dcl 1 login_server_list_response aligned based,
+      2 header like login_server_response_header,
+      2 n_processes fixed bin,
+      2 pad_header fixed bin,                                       |
+      2 process_info (login_server_list_response_n_processes
+         refer (login_server_list_response.n_processes)),
+        3 creation_time fixed bin (71),
+        3 authorization bit (72),
+        3 initial_ring fixed bin,                                   |
+        3 pad_process_info fixed bin,                               |
+        3 connection_info like user_connection_info;
+
+  Structure Elements
+
+  header
+     is  as  above.   The  version  field  contains  the  value  of
+     LOGIN_SERVER_LIST_RESPONSE_VERSION_1.
+
+  n_processes
+     is  the number  of disconnected  processes.  If  it is  0, the
+     process_info structure is ignored.
+
+  process_info
+     describes each disconnected process.
+
+  creation_time
+     is the time at which the process was created.
+
+  authorization
+     is the authorization of the process.
+
+  initial_ring                                                      |
+     is  the ring into  which the process  initially logged in,  if |
+     this was not the user's default ring.  Otherwise, it is 0.     |
+
+  connection_info
+     describes the connection that had been assigned to the process
+     before its disconnection.
+
+
+  MTB752-03                                   Network Login Servers
+
+  A.2.5:  DIAL RESPONSE
+
+  The "dial" response identifies the  process to which a connection
+  issuing a "dial" request is to be assigned.
+
+  dcl 1 login_server_dial_response aligned based,
+      2 header like login_server_response_header,
+      2 status_code fixed bin (35),
+      2 process_id bit (36),
+      2 process_group_id char (32),
+      2 authorization bit (72),
+      2 start_event_channel fixed bin (71),
+      2 process_ring fixed bin,
+      2 flags,
+        3 disconnect bit (1) unaligned,
+        3 pad bit (35) unaligned;
+
+  Structure Elements
+
+  header
+     is  as  above.   The  version  field  contains  the  value  of
+     LOGIN_SERVER_DIAL_RESPONSE_VERSION_1.
+
+  status_code
+     is 0 if and only if an appropriate process was found.
+
+  process_id
+     is the process ID of the dial server.
+
+  process_group_id
+     is  the  process  group  ID  (person.project.tag)  of the dial
+     server.
+
+  authorization
+     is the authorization of the dial server.
+
+  start_event_channel
+     is the event channel over which a  wakeup is to be sent to the
+     dial server to inform it that  a connection has been dialed to
+     it.
+
+  process_ring
+     is the ring in which the dial server process was created.
+
+  disconnect
+     if  "1"b, indicates  that the  connection is  to be terminated
+     immediately.
+
+
+  Network Login Servers                                   MTB752-03
+
+  A.2.6:  TERMINATION RESPONSE
+
+  The  "termination"  response  indicates  that  the  user  process
+  associated  with   the  connection  has  terminated,   either  by
+  deliberate user action (logout or new_proc command) or because of
+  a fatal error.
+
+  dcl 1 login_server_termination_response aligned based,
+      2 header like login_server_response_header,
+      2 accounting_info,
+        3 cpu_usage fixed bin (71),
+        3 cost float bin,
+        3 pad bit (33) unaligned,
+      2 process_id bit (36),
+      2 process_group_id char (32),
+      2 status_code fixed bin (35),
+      2 flags,
+        3 logout bit (1) aligned,
+        3 automatic_logout bit (1) unaligned,
+        3 hold bit (1) unaligned,
+        3 brief bit (1) unaligned,
+        3 new_proc bit (1) unaligned,
+        3 fatal_error bit (1) unaligned,
+        3 fpe_caused_logout bit (1) unaligned,
+        3 fpe_loop bit (1) unaligned,
+        3 fpe_during_init bit (1) unaligned,
+        3 offer_help bit (1) unaligned,
+        3 pad bit (27) unaligned;
+
+  Structure Elements
+
+  header
+     is  as  above.   The  version  field  contains  the  value  of
+     LOGIN_SERVER_TERMINATION_RESPONSE_VERSION_1.
+
+  accounting_info
+     is accounting  information for the  login session, for  use in
+     printing  as part of  the logout message  (if the logout  flag
+     (below) is "1"b).
+
+  cpu_usage
+     is the session's virtual CPU usage, in microseconds.
+
+  cost
+     is the cost of the session.
+
+  process_id
+     is the process ID of the terminated process.
+
+
+  MTB752-03                                   Network Login Servers
+
+  process_group_id
+     is the process group ID (person.project.tag) of the terminated
+     process.
+
+  status_code
+     is non-zero  if the termination  is "abnormal", i.e.,  not the
+     result of an explicit user command.
+
+  logout
+     is "1"b if the user is to  be logged out, i.e., no new process
+     will be created.   If this flag is "0"b, it  is assumed that a
+     new  process  will  be   created,  and  the  Initializer  will
+     subsequently send a new_proc response (see below).
+
+  automatic_logout
+     is  "1"  if  the  user  was  automatically  logged  out by the
+     Initializer.
+
+  hold
+     is "1"b if the user specified "-hold" to the logout command.
+
+  brief
+     is "1"b if the user specified "-brief" to the logout command.
+
+  new_proc
+     is "1"b if the user entered the new_proc command.
+
+  fatal_error
+     is "1"b if the process terminated because of a fatal error.
+
+  fpe_caused_logout
+     is "1"b if a fatal error resulted in the user being logged out
+     (with no new process being created).
+
+  fpe_loop
+     is "1"b  if the user  appears to be  in a fatal  process error
+     loop.
+
+  fpe_during_init
+     is   "1"b   if   a   fatal   error   occurred  during  process
+     initialization.
+
+  offer_help
+     is  "1"b if the  login server is  supposed to print  a message
+     inviting the user to type "help".
+
+
+  Network Login Servers                                   MTB752-03
+
+  A.2.7:  NEW_PROC RESPONSE
+
+  The  "new_proc" response  indicates that  a new  process has been
+  created  for  this  connection.   It  is  always  preceded  by  a
+  termination_response (above).
+
+  dcl 1 login_server_new_proc_response aligned based,
+      2 header like login_server_response_header,
+      2 new_authorization bit (72),
+      2 new_start_event_channel fixed bin (71),
+      2 new_process_id bit (36);
+
+  Structure Elements
+
+  header
+     is  as  above.   The  version  field  contains  the  value  of
+     LOGIN_SERVER_NEW_PROC_RESPONSE_VERSION_1.
+
+  new_authorization
+     is the authorization of the new process.
+
+  new_start_event_channel
+     is the event channel over which the new process should be sent
+     a wakeup in order to start it.
+
+  new_process_id
+     is the process ID of the new process.
+
+
+  MTB752-03                                   Network Login Servers
+
+  A.2.8:  OPERATOR RESPONSE
+
+  The "operator"  response indicates the  success or failure  of an
+  attempt to assign  a connection to the message  coordinator, as a
+  result of an operator_request (above).
+
+  dcl 1 login_server_operator_response aligned based,
+      2 header like login_server_response_header,
+      2 status_code fixed bin (35),
+      2 process_id bit (36),
+|     2 process_group_id char (32),
+      2 event_channel fixed bin (71),
+      2 ring fixed bin,
+      2 flags,
+        3 disconnect bit (1) unaligned,
+        3 mbz bit (35) unaligned;
+
+  Structure Elements
+
+  header
+     is  as  above.   The  version  field  contains  the  value  of
+     LOGIN_SERVER_OPERATOR_RESPONSE_VERSION_1.
+
+  status_code
+     is  a standard  system status  code.  If  it is  non-zero, the
+     request could not be fulfilled.
+
+  process_id
+     is the process ID of the message coordinator process.
+|
+| process_group_id
+|    is  the process group  ID (Person.Project.tag) of  the message
+|    coordinator process.
+
+  event_channel
+     is  the name  of the  event  channel  over which  to send  the
+     message coordinator a wakeup to  tell it that a new connection
+     has been assigned.
+
+  ring
+     is the ring of the message coordinator process.
+
+  disconnect
+     is  as above.   It is   valid even  if status_code  (above) is
+     non-zero.
+
+
+  Network Login Servers                                   MTB752-03
+
+  AAA...333:::  SSStttrrruuuccctttuuurrreeesss fffooorrr LLLooogggiiinnn SSSeeerrrvvveeerrr UUUssseeerrr MMMeeessssssaaagggeee
+
+  The        following         structure        (declared        in
+  ls_connection_message.incl.pl1)  defines the  user_message passed
+  by  the login  server to  a  user  process when  a connection  is
+  assigned to or disconnected from that process.  If the connection
+  is a "dialed" channel, two  messages are sent:  one that contains
+  only the common header, for use by convert_dial_message_, and one
+  that contains  the complete message,  for use when  attaching the
+  connection.   For other  connections, only  the second, complete,
+  message is sent.
+
+
+  MTB752-03                                   Network Login Servers
+
+  A.3.1:  LS_CONNECTION_MESSAGE_COMMON
+
+  The first  declaration below describes the common  portion of the
+  message.
+
+  dcl 1 ls_connection_message_common aligned based,
+      2 version char (8),
+      2 connection_name char (32),
+      2 io_module_name char (32);
+
+  Structure Elements
+
+  version
+     is   the   version   of   the   structure.    Its   value   is
+     LS_CONNECTION_MESSAGE_V1.
+
+  connection_name
+     is the name of the connection.
+
+  io_module_name
+     is  the name  of the  I/O module  to be  used in attaching the
+     connection.
+
+  A.3.2:  LS_CONNECTION_MESSAGE
+
+  The   following  declaration   describes  the   complete  message
+  structure.
+
+  dcl 1 ls_connection_message aligned based,
+      2 common like ls_connection_message_common,
+      2 connection_handle fixed bin (35),
+      2 reason fixed bin,
+      2 connection_info_length fixed bin (18) unsigned,
+      2 mbz bit (36),
+      2 connection_info (ls_connection_message_info_length refer
+         (ls_connection_message.connection_info_length)) bit (36);
+
+  Structure Elements
+
+  common
+     is as described above.
+
+  connection_handle
+     is the unique identifier of the connection to be used in calls
+     to the network service entries.
+
+
+  Network Login Servers                                   MTB752-03
+
+  reason
+     indicates  whether  the  reason  for  this  message  is  a new
+     connection  or  a  disconnection.   It  may  have  one  of the
+     following values:
+
+          LS_MSG_CONNECTED (1)
+          LS_MSG_DISCONNECTED (2)
+
+  connection_info_length
+     is the  the length, in words, of  the connection_info (below).
+     It is only used if reason (above) is LS_MSG_CONNECTED.
+
+  connection_info
+     is  information specific  to the  connection, for  use by  the
+     attaching I/O module.   Its format depends on the  type of the
+     connection.
+
+  Notes
+
+  The message handle  associated with the message (as  sent via the
+  user_message_ facility) takes one of two forms.  For the complete
+  message (including the connection_info)  the handle has the value
+  of   USER_MESSAGE_LS_CONNECTION_INFO_HANDLE.   For   the  message
+  containing the common header only,  the low-order 18 bits contain
+  the value  of USER_MESSAGE_LS_CONNECTION_INFO_HANDLE_LOWER_18 and
+  the high-order 54 bits contain a unique identifier.
+
+
+  MTB752-03                                   Network Login Servers
+
+  AAA...444:::  DDDiiiaaalll EEEvvveeennnttt MMMeeessssssaaagggeee
+
+  The following structure (declared in dial_event_message.incl.pl1)
+  defines the event message sent to  a process when a channel dials
+  to  it,  when  a  dialed  channel  is  disconnected,  or when the
+  answering service responds to a request to act as a dial server.
+
+  dcl  1 dial_event_message aligned based,
+         2 description char (6) unaligned,
+         2 flags unal,
+           3 devx_msg bit (1),
+           3 error_msg bit (1),
+           3 ls_msg bit (1),
+           3 control bit (15);
+
+  Structure Elements
+
+  description
+     is  an indicator of  the name of  the connection, or  an error
+     code, depending on the values of the flags (see below).
+
+  devx_msg
+     if "1"b, indicates  that the channel is a  normal MCS channel,
+     and  the first  36 bits   of description  (above) contain  its
+     device index ("devx").
+
+  error_msg
+     if "1"b,  indicates that an  error occurred, and  the first 36
+     bits of description contain a standard system status code.
+
+  ls_msg
+     if "1"b, indicates  that the wakeup came from  a login server,
+     and description  contains the unique portion of  the handle to
+     be used in reading  the user_message that contains information
+     describing the connection (see above).
+
+
+  Network Login Servers                                   MTB752-03
+
+  control
+     contains one of the following values:
+
+          JUST_DIALED  ("77770"b3)   --  the  connection  has  been
+             dialed to the process.
+          JUST_HUNGUP  ("77771"b3)   --  the  connection  has  been
+             terminated.
+          DIALS_ALLOWED ("77772"b3) --  a request to act  as a dial
+             server has been accepted.
+          DIALS_DENIED ("77773"b3)  --  a request to act  as a dial
+             server has been denied.
+
+     If  control is  DIALS_ALLOWED, the  rest of  the structure  is
+     ignored.   If  control  is  DIALS_DENIED,  the description may
+     contain  a status  code, but   will not  contain a  connection
+     description.
+
+
+  MTB752-03                                   Network Login Servers
+
+  AAA...555:::  CCCooonnnnnneeeccctttiiiooonnn LLLiiisssttt MMMaaannnaaagggeeerrr
+
+  The        following         structure        (declared        in
+  active_connection_list.incl.pl1)    defines     the    inner-ring
+  system-wide table of network  connections that have been assigned
+  to  user processes,  either by  login servers  or as  a result of
+  dial_out operations.  This table is  maintained by entries in the
+  connection_list_manager_ subroutine, described in Appendix B.
+
+  A.5.1:  ACTIVE_CONNECTION_LIST
+
+  dcl 1 active_connection_list aligned based,
+      2 header,
+        3 version char (8),
+        3 lock bit (36) aligned,
+        3 initializer_of_list bit (36) aligned,
+        3 no_of_connections fixed bin,
+        3 first_connection_offset bit (18),
+        3 last_connection_offset bit (18),
+        3 header_pad (7) fixed bin (35),
+      2 hash_table,
+        3 size fixed bin,
+        3 entries (actl_hash_table_size
+          refer (active_connection_list.hash_table.size))
+          bit (18) unaligned,
+      2 connection_area area (connection_area_size);
+
+  Structure Elements
+
+  header
+     describes the header of the table.
+
+  version
+     is  the version  of this  structure.  Its  value is  the named
+     constant ACTL_VERSION_1.
+
+  lock
+     is  a lock word  used to prevent  simultaneous updates of  the
+     table by more than one process.
+
+  initializer_of_list
+     is  the   lock  ID  of  the  process   which  initialized  the
+     active_connection_list  during this  bootload.  It  is used to
+     allow  initialization  of  the  list  only  once  per bootload
+     (presuming that  the Initializer process is the  one doing the
+     initialization, and that  it stays active for the  life of the
+     bootload).
+
+
+  Network Login Servers                                   MTB752-03
+
+  no_of_connections
+     is the number of currently-active connections.
+
+  first_connection_offset
+     is the offset in the segment of the first active connection.
+
+  last_connection_offset
+     is the offset in the segment of the last active connection.
+
+  hash_table
+     is a hash table for finding connections by name.
+
+  size
+     is the number  of entries in the hash  table, initialized from
+     connection_list_manager_data_.
+
+  entries
+     are  the  individual  hash  table  entries.   The  hash_index_
+     subroutine is used to convert  a connection name into an index
+     into this table.  The entry either contains ""b, in which case
+     there is no corresponding connection entry, or it contains the
+     offset in the segment of the first in a linked list of entries
+     whose names hash to this index.
+
+  connection_area
+     is  the area  in which  the individual  connection entries are
+     allocated.
+
+
+  MTB752-03                                   Network Login Servers
+
+  A.5.2:  ACTIVE_CONNECTION
+
+  The following structure describes  the entries for the individual
+  connections.
+
+  dcl 1 active_connection aligned based,
+      2 version char (8),
+      2 connection_name char (32),
+      2 service_type char (32),
+      2 user_process_id bit (36) aligned,
+|     2 user_group_id char (32),
+|     2 owner_process_id bit (36) aligned,
+|     2 owner_group_id char (32),
+      2 owner_terminate_event_channel fixed bin (71),
+      2 owner_initializer_id bit (72) aligned,
+      2 force_disconnect_entry char (64),
+      2 force_accounting_flush_entry char (64),
+      2 connection_handle fixed bin (35),
+      2 prev_connection bit (18) unaligned,
+      2 next_connection bit (18) unaligned,
+      2 prev_hash bit (18) unaligned,
+      2 next_hash bit (18) unaligned,
+      2 prev_connection_for_user bit (18) unaligned,
+      2 next_connection_for_user bit (18) unaligned,
+      2 prev_connection_for_owner bit (18) unaligned,
+      2 next_connection_for_owner bit (18) unaligned,
+      2 usage_type fixed bin,
+      2 flags,
+        3 delegated bit (1) unaligned,
+        3 mbz_bits bit (35) unaligned;
+
+  Structure Elements
+
+  version
+     is  the version  of the   structure.  Its  value is  the named
+     constant ACT_VERSION_1.
+
+  connection_name
+     is the name of the connection.
+
+  service_type
+     is the type of network service used to initiate the connection
+     (e.g., "login_service").
+
+  user_process_id
+     is the process ID of the  user process to which the connection
+|    is assigned.
+
+
+  Network Login Servers                                   MTB752-03
+
+  user_group_id                                                     |
+     is  the  process  group  ID  (person.project.tag)  of the user |
+     process.                                                       |
+
+  owner_process_id                                                  |
+     is the  process ID of  the process that  "owns" the connection |
+     (i.e., has the right to assign it to users).                   |
+
+  owner_group_id                                                    |
+     is the  process group ID (person.project.tag)  of the "owning" |
+     process.                                                       |
+
+  owner_terminate_event_channel
+     is the name  of the event channel on which the  owner is to be
+     sent  a   wakeup  if  the  user  process   of  the  connection
+     terminates.
+
+  owner_initializer_id
+     is  the "handle"  used by  the owner  to communicate  with the
+     Initializer about the connection.
+
+  force_disconnect_entry
+     is the name of the entry  to be called to force termination of
+     the  connection.  (It has  to be a  name rather than  an entry
+     variable because it  might have to be used in  a process other
+     than the owner.)
+
+  force_accounting_flush_entry
+     is the name of the entry  to be called to flush all accounting
+     information  for  the  connection  to  the  network accounting
+     table.   (It has to  be a name  rather than an  entry variable
+     because it might  have to be used in a  process other than the
+     owner.)
+
+  connection_handle
+     is  the unique  identifier of   the connection  to be  used in
+     calling the various network service entries.
+
+  prev_connection
+     is the offset of the previous entry in the list.
+
+  next_connection
+     is the offset of the next entry in the list.
+
+  prev_hash
+     is the offset of the previous entry with the same hash index.
+
+  next_hash
+     is the offset of the next entry with the same hash index.
+
+
+  MTB752-03                                   Network Login Servers
+
+  prev_connection_for_user
+     is  the  offset  of  the  previous  entry  in  the  list for a
+     connection with the same user.
+
+  next_connection_for_user
+     is the offset  of the next entry in the  list for a connection
+     with the same user.
+
+  prev_connection_for_owner
+     is  the  offset  of  the  previous  entry  in  the  list for a
+     connection with the same owner.
+
+  next_connection_for_owner
+     is  the  offset  of  the  previous  entry  in  the  list for a
+     connection with the same owner.
+
+  usage_type
+     indicates how  the user process  is using the  connection.  It
+     can have any of the values declared in ls_usage_types.incl.pl1
+     (see          the          description          of         the
+     login_service_entries.assign_connection entry in Appendix B).
+
+  delegated
+     indicates  that the  connection has  been assigned  to a  user
+     other than the owner.
+
+
+  Network Login Servers                                   MTB752-03
+
+  AAAPPPPPPEEENNNDDDIIIXXX BBB:::  MMMOOODDDUUULLLEEE DDDEEESSSCCCRRRIIIPPPTTTIIIOOONNNSSS
+
+  Name:  net_info_
+
+  The  net_info_  subroutine  contains  various  entries  to return
+  information derived from the  Networking Information Table (NIT).
+  The   only   entries   of   interest   for   login   servers  are
+  net_info_$get_field and  net_info_$get_service_entries, described
+  below.
+
+  EEEnnntttrrryyy:::  nnneeettt_iiinnnfffooo_$$$gggeeettt_fffiiieeelllddd
+
+  This entry returns the field of a defined object from the Network
+  Information Table (NIT).
+
+  Usage
+
+  dcl net_info_$get_field (char (*), char (*), char (*), char (*),
+       fixed bin (35))
+
+  call net_info_$get_field (object_type, object_name, field_name,
+       field_value, code)
+
+  Arguments
+
+  object_type
+     is a character string giving the object type which is to be
+     searched for in the NIT by it's name and from which a
+     specified field id is to be returned.  (Input)
+
+  object_name
+     is the name of the specific object from which the information
+     is to be extracted.  (Input)
+
+  field_name
+     is the identification of the field within the object which is
+     to be returned.  (Input)
+
+  field_value
+     is the value of the field.  (Output)
+
+  code
+     is a standard system status code.  (Output)
+
+
+  _________                                               _________
+
+  net_info_                                               net_info_
+  _________                                               _________
+
+  EEEnnntttrrryyy:::  nnneeettt_iiinnnfffooo_$$$gggeeettt_ssseeerrrvvviiiccceee_eeennntttrrriiieeesss
+
+  This entry returns a list of  entries to be called to implement a
+  specified service for a specified endpoint.  The types of entries
+  depend  on the particular  service, and the  specific entrypoints
+  depend on the particular endpoint.
+
+  Usage
+
+  dcl net_info_$get_service_entries entry (char (*), char (*), ptr,
+       fixed bin (35))
+
+  call net_info_$get_service_entries (service, endpoint_name,
+       entry_list_ptr, code)
+
+  Arguments
+
+  service
+     is the name of the service whose entrypoints are desired.  For
+     a login server, the service name is always "login_service".
+     (Input)
+
+  endpoint_name
+     is the name of the endpoint.  (Input)
+
+  entry_list_ptr
+     is a pointer to a structure in which the entries for
+     performing the service are returned.  The format of this
+     structure depends on the service.  The structure for the
+     "login_service" service is described under "Notes," below.
+     (Input)
+
+  code
+     is a standard system status code.  (Output)
+
+  Notes
+
+  The structure pointed to by entry_list_ptr for a login server is
+  defined in login_service_entries.incl.pl1, and has the following
+  format:
+
+
+  _________                                               _________
+
+  net_info_                                               net_info_
+  _________                                               _________
+
+  dcl 1 login_service_entries aligned based,
+      2 version char (8),
+      2 listen variable entry (char (*), ptr, fixed bin (71),
+        char (*), fixed bin (35), ptr, fixed bin (18) unsigned,
+        char (*) varying, (2) bit (72) aligned, fixed bin, fixed bin (35)),
+      2 stop_listen variable entry (char (*), fixed bin (35)),
+      2 assign_connection variable entry (char (*), fixed bin (35),
+        bit (36) aligned, char (32), bit (72) aligned,              |
+        fixed bin (71), fixed bin (71), fixed bin, fixed bin (35)), |
+      2 unassign_connection variable entry (char (*),
+        fixed bin (35), bit (72) aligned, fixed bin (35)),
+      2 disconnect variable entry (char (*), fixed bin (35),
+        bit (72) aligned, fixed bin (35)),
+      2 force_disconnect variable entry (char (*), fixed bin (35),
+        fixed bin (35)),
+      2 validate_user variable entry (ptr, ptr, fixed bin (35));
+
+  Structure Elements
+
+  version
+     is the version of the structure.  It should be set to the
+     value of LS_ENTRIES_V1.
+
+  listen
+     is the entry to be called to listen for incoming connections.
+
+  stop_listen
+     is the entry to be called to stop listening for incoming
+     connections.
+
+  assign_connection
+     is the entry to be called to assign a connection to a user
+     process.
+
+  unassign_connection
+     is the entry to be called to take an assigned connection back
+     from a user process.
+
+  disconnect
+     is the entry to be called to terminate a connection.
+
+  force_disconnect
+     is the entry to be called to terminate a connection even if
+     the calling process is not the owner.
+
+
+  _________                                               _________
+
+  net_info_                                               net_info_
+  _________                                               _________
+
+  validate_user
+     is the entry to be called to ascertain the identity of a user
+     and arrange for the creation of a process.
+
+
+  _____________________                       _____________________
+
+  login_service_entries                       login_service_entries
+  _____________________                       _____________________
+
+  NNNaaammmeee:::  lllooogggiiinnn_ssseeerrrvvviiiccceee_eeennntttrrriiieeesss
+
+  The  set of  entrypoints described   below are  used by  login to
+  establish,  assign,  and  unassign  connections  through  various
+  networking  entities.  The  actual entrypoints  to be  used for a
+  particular top-level networking entity are found in the structure
+  returned  by  net_info_$get_service_entries  when  called  with a
+  first argument of "login_service".
+
+  EEEnnntttrrryyy:::   lllooogggiiinnn_ssseeerrrvvviiiccceee_eeennntttrrriiieeesss...llliiisssttteeennn
+
+  This  entry  listens  for  an  incoming  connection  on  a set of
+  endpoints, and  returns to its  caller when such  a connection is
+  established.
+
+  Usage
+
+  dcl login_service_entries.listen entry (char (*), ptr,
+       fixed bin (71), char (*), fixed bin (35), ptr,
+       fixed bin (18) unsigned, char (*) varying, (2) bit (72)
+       aligned, fixed bin, fixed bin (35))                          |
+
+  call login_service_entries.listen (endpoint_name, area_ptr,
+       disconnect_event_channel, connection_name,
+       connection_handle, connection_info_ptr,
+       connection_info_length, attach_description,
+       access_class_range, minimum_ring, code)                      |
+
+  Arguments
+
+  endpoint_name
+     is the name of the endpoint on which a connection is to be
+     accepted.  (Input)
+
+  area_ptr
+     is a pointer to an area in which the connection_info (below)
+     is to be allocated.  (Input)
+
+  disconnect_event_channel
+     is the name of the event channel over which a wakeup is to be
+     sent to this process if the connection is disconnected.
+     (Input)
+
+
+  _____________________                       _____________________
+
+  login_service_entries                       login_service_entries
+  _____________________                       _____________________
+
+  connection_name
+     is the name (channel name, etc.)  of the specific connection
+     that was actually established.  (Output)
+
+  connection_handle
+     is a unique identifier for the connection, to be used in
+     subsequent calls.  (Output)
+
+  connection_info_ptr
+     is a pointer to information about the connection that is to be
+     made available to the process to which the connection will
+     eventually be assigned.  The format of this information
+     depends on the top-level networking entity.  If there is no
+     connection information, this argument is set to null.
+     (Output)
+
+  connection_info_length
+     is the length, in words, of the information pointed to by
+     connection_info_ptr.  (Output)
+
+  attach_description
+     is an attach description to be used in attaching an I/O switch
+     in order to perform input/output operations over the
+     connection.  (Output)
+
+  access_class_range
+     is the range of access classes at which the connection can be
+     used.  (Output)
+
+| minimum_ring
+|    is the lowest ring in which the connection can run.  User
+|    control uses this value to limit the lowest ring into which
+|    users can login over the connection.  (Output)
+
+  code
+     is a standard system status code.  If the listen is terminated
+     by a "stop_listen" call, this is set to
+     error_table_$listen_stopped.  (Output)
+
+  Notes
+
+  The connection information addressed by connection_info_ptr is
+  placed by the login server in a message segment by means of the
+  user_message_ mechanism, so that it will be available to the user
+  process.
+
+
+  _____________________                       _____________________
+
+  login_service_entries                       login_service_entries
+  _____________________                       _____________________
+
+  EEEnnntttrrryyy:::   lllooogggiiinnn_ssseeerrrvvviiiccceee_eeennntttrrriiieeesss...ssstttoooppp_llliiisssttteeennn
+
+  This  entry causes an  outstanding listen on  the endpoint to  be
+  aborted.
+
+  Usage
+
+  dcl login_service_entries.stop_listen entry (char (*),
+       fixed bin (35))
+
+  call login_service_entries.stop_listen (endpoint_name, code)
+
+  Arguments
+
+  endpoint_name
+     is the name of the endpoint.  (Input)
+
+  code
+     is a standard system status code.  (Output)
+
+
+  _____________________                       _____________________
+
+  login_service_entries                       login_service_entries
+  _____________________                       _____________________
+
+  EEEnnntttrrryyy:::   lllooogggiiinnn_ssseeerrrvvviiiccceee_eeennntttrrriiieeesss...aaassssssiiigggnnn_cccooonnnnnneeeccctttiiiooonnn
+
+  This entry assigns the connection to a user process.
+
+  Usage
+
+  dcl login_service_entries.assign_connection entry (char (*),
+|      fixed bin (35), bit (36) aligned, char (32), bit (72)
+|      aligned, fixed bin (71), fixed bin (71), fixed bin,
+       fixed bin (35))
+
+  call login_service_entries.assign_connection (connection_name,
+|      connection_handle, process_id, group_id, initializer_handle,
+|      disconnect_event_channel, terminate_event_channel,
+       usage_type, code)
+
+  Arguments
+
+  connection_name
+     is the name of the connection, as returned by the listen
+     entrypoint, above.  (Input)
+
+  connection_handle
+     is the connection_handle returned by the listen entry (above).
+     (Input)
+
+  process_id
+     is the process ID of the process to which the connection is to
+|    be assigned.  (Input)
+
+| group_id
+|    is the group ID of the process to which the connection is to
+|    be assigned.  (Input)
+
+  initializer_handle
+     is the handle used by the owner to communicate with the
+     Initializer about the connection.  It is used in notifying the
+     Initializer of disconnection if the owner process is found to
+     have been terminated.  (Input)
+
+  disconnect_event_channel
+     is the name of the event channel over which the login server
+     is to be sent a wakeup when the connection is closed.  (Input)
+
+
+  _____________________                       _____________________
+
+  login_service_entries                       login_service_entries
+  _____________________                       _____________________
+
+  terminate_event_channel
+     is the name of the event channel over which the login server
+     is to be sent a wakeup if the user process terminates.
+     (Input)
+
+  usage_type
+     is an indicator of the way the connection is being used by the
+     user process (e.g., login channel, dialed channel, etc.).  The
+     possible values are described under "Notes", below.  (Input)
+
+  code
+     is a standard system status code.  (Output)
+
+  Notes
+
+  The possible values for usage_type are listed below.  They are
+  declared in the include file ls_usage_types.incl.pl1.
+
+     LS_LOGIN_USAGE (1) -- primary login connection
+     LS_DIAL_USAGE (2) -- assigned to dial server
+     LS_DIAL_OUT_USAGE (3) -- user did dial_out operation
+     LS_SLAVE_ATTACH_USAGE (4) -- user did slave attachment
+     LS_MC_USAGE (5) -- message coordinator channel
+
+
+  _____________________                       _____________________
+
+  login_service_entries                       login_service_entries
+  _____________________                       _____________________
+
+  EEEnnntttrrryyy:::   lllooogggiiinnn_ssseeerrrvvviiiccceee_eeennntttrrriiieeesss...uuunnnaaassssssiiigggnnn_cccooonnnnnneeeccctttiiiooonnn
+
+  This entry takes a connection away from a user process.
+
+  Usage
+
+  dcl login_service_entries.unassign_connection entry (char (*),
+       fixed bin (35), bit (72) aligned, fixed bin (35))
+
+  call login_service_entries.unassign_connection (connection_name,
+       connection_handle, wakeup_message, code)
+
+  Arguments
+
+  connection_name
+     is the name of the connection, as above.  (Input)
+
+  connection_handle,
+     is the connection handle, as above.  (Input)
+
+  wakeup_message
+     is an event message which may optionally be sent to the user
+     process.  (Output)
+
+  code
+     is a standard system status code.  (Output)
+
+
+  _____________________                       _____________________
+
+  login_service_entries                       login_service_entries
+  _____________________                       _____________________
+
+  EEEnnntttrrryyy:::   lllooogggiiinnn_ssseeerrrvvviiiccceee_eeennntttrrriiieeesss...dddiiissscccooonnnnnneeecccttt
+
+  This entry terminates a connection.
+
+  Usage
+
+  dcl login_service_entries.disconnect entry (char (*),
+       fixed bin (35), bit (72) aligned, code)
+
+  call login_service_entries.disconnect (connection_name,
+       connection_handle, wakeup_message, code)
+
+  Arguments
+
+  connection_name
+     is the name of the connection, as above.  (Input)
+
+  connection_handle
+     is the connection handle, as above.  (Input)
+
+  wakeup_message
+     is an event message which may optionally be sent to the user
+     process.  (Output)
+
+  code
+     is a standard system status code.  (Output)
+
+
+  _____________________                       _____________________
+
+  login_service_entries                       login_service_entries
+  _____________________                       _____________________
+
+  EEEnnntttrrryyy:::   lllooogggiiinnn_ssseeerrrvvviiiccceee_eeennntttrrriiieeesss...fffooorrrccceee_dddiiissscccooonnnnnneeecccttt
+
+  This entry terminates a connection even if the calling process is
+  not  the   owner.   This  entry  is  used   during  login  server
+  initialization if the owner process no longer exists.
+
+  Usage
+
+  dcl login_service_entries.force_disconnect entry (char (*),
+       fixed bin (35), code)
+
+  call login_service_entries.force_disconnect (connection_name,
+       connection_handle, code)
+
+  Arguments
+
+  connection_name
+     is the name of the connection, as above.  (Input)
+
+  connection_handle
+     is the connection handle, as above.  (Input)
+
+  code
+     is a standard system status code.  (Output)
+
+
+  _____________________                       _____________________
+
+  login_service_entries                       login_service_entries
+  _____________________                       _____________________
+
+  EEEnnntttrrryyy:::   lllooogggiiinnn_ssseeerrrvvviiiccceee_eeennntttrrriiieeesss...vvvaaallliiidddaaattteee_uuussseeerrr
+
+  This  entry conducts  the preaccess  dialogue with  the user  and
+  communicates with  the Initializer process to find  or create the
+  user process to which a connection should be assigned.
+
+  Usage
+
+  dcl login_service_entries.validate_user entry ( ptr, ptr, ptr,    *
+       fixed bin (35))
+
+  call login_service_entries.validate_user ( ls_cp_info_ptr,        *
+       option_structure_ptr, ls_process_info_ptr, code)
+
+  Arguments
+
+  ls_cp_info_ptr
+     is a pointer to a structure containing information about the
+     connection control point (including information about the
+     connection itself).  It is described under "Notes", below.
+     (Input)
+
+  option_structure_ptr
+     is a pointer to a structure containing options to be used by
+     the validate_user entry.  It is described under "Notes",
+     below.  (Input)
+
+  ls_process_info_ptr
+     is a pointer to a structure in which information about the
+     process to be assigned to the connection is placed.  This
+     structure is only filled in if code (below) is 0.  It is
+     described under "Notes", below.  (Input)
+
+  code
+     is a standard system status code.  (Output)
+
+  Notes
+
+  The ls_cp_info_ptr points to a structure of the following form,
+  declared in ls_cp_info.incl.pl1.  Most of the elements in this
+  structure are used internally by the login server software; only
+  those fields of interest to the validate_user entry are described
+  here.
+
+
+  _____________________                       _____________________
+
+  login_service_entries                       login_service_entries
+  _____________________                       _____________________
+
+  dcl 1 ls_cp_info aligned based (ls_cp_info_ptr),
+      2 version char (8),
+      2 connection_desc_ptr pointer,
+      2 error_info_ptr pointer,
+      2 error_event_channel fixed bin (71),
+      2 connection_gone_event_channel fixed bin (71),
+      2 answer_table_ptr pointer,
+      2 installation_parms_ptr pointer,
+      2 flags,
+        3 debug_mode bit (1) unaligned,
+        3 fault_recursion bit (1) unaligned,
+        3 trace bit (1) unaligned,
+        3 no_io_switches bit (1) unaligned,
+        3 pad bit (32) unaligned;
+
+  Structure Elements
+
+  version
+     is the version of the structure.  It should have the value of
+     LS_CP_INFO_V1.
+
+  connection_desc_ptr
+     is a pointer to a structure describing the connection.  This
+     structure is described below.
+
+  answer_table_ptr
+     is a pointer to the system answer table.
+
+  installation_parms_ptr
+     is a pointer to the system installation_parms structure.
+
+  debug_mode
+     if "1"b, indicates that the login server is running in a
+     debugging environment.
+
+  trace
+     if "1"b, indicates that trace messages may be written to a
+     log.
+
+  no_io_switches
+     if "1"b, indicates that no separate I/O switches are
+     associated with this control point.
+
+  The element ls_cp_info.connection_desc_ptr points to the
+  following structure, declared in ls_connection_desc.incl.pl1:
+
+
+  _____________________                       _____________________
+
+  login_service_entries                       login_service_entries
+  _____________________                       _____________________
+
+  dcl 1 ls_connection_desc aligned based,
+      2 version char (8),
+      2 name char (32),
+      2 endpoint_name char (32),
+      2 io_module char (32),
+      2 disconnect_event_channel fixed bin (71),
+      2 terminate_event_channel fixed bin (71),
+      2 service_entries_ptr ptr,
+      2 connection_info_ptr ptr,
+      2 connection_info_len fixed bin (18),
+      2 connection_handle fixed bin (35),
+      2 process_info_ptr ptr,
+      2 access_class_range (1) bit (72);
+
+  Structure Elements
+
+  version
+     is the version of the structure.  It should be the value of
+     LS_CONNECTION_DESC_V1.
+
+  name
+     is the name of the connection.
+
+  endpoint_name
+     is the name of the endpoint through which the connection was
+     made.
+
+  io_module
+     is the name of the I/O module through which the connection is
+     attached.
+
+  disconnect_event_channel
+     is the name of the event channel over which the login server
+     is sent a wakeup when the connection is closed.
+
+  terminate_event_channel
+     is the name of the event channel over which the login server
+     is sent a wakeup when the user process terminates.
+
+  service_entries_ptr
+     is a pointer to the login_service_entries structure described
+     under net_info_$get_service_entries.
+
+  connection_info_ptr
+     is a pointer to the connection-specific information, as
+     described under the listen entry.
+
+
+  _____________________                       _____________________
+
+  login_service_entries                       login_service_entries
+  _____________________                       _____________________
+
+  connection_info_len
+     is the length (in words) of the connection-specific
+     information, as described under the listen entry.
+
+  connection_handle
+     is the unique identifier of the connection.
+
+  process_info_ptr
+     is a pointer to a structure containing information about the
+     user process, as described below.
+
+  access_class_range
+     is the range of access classes at which the connection may be
+     used.
+
+  The option_structure_ptr points to a structure of the following
+  form, declared in ls_process_info.incl.pl1:
+
+  dcl 1 ls_validate_options aligned based (ls_validate_options_ptr),
+      2 version char (8),
+      2 flags,
+        3 brief bit (1) unaligned,
+        3 not_first bit (1) unaligned,
+        3 mbz bit (34) unaligned;
+
+  Structure Elements
+
+  version
+     is the version of the structure.  It should be set to the
+     value of LS_VALIDATE_OPTIONS_V1.
+
+  brief
+     if "1"b, indicates that the -brief control argument was
+     supplied to the login request or the logout command.
+
+  not_first
+     if "1"b, indicates that this is not the first call to
+     validate_user for this connection, e.g., a previous process
+     was terminated by logout -hold.
+
+  The ls_process_info_ptr (and ls_connection_desc.process_info_ptr,
+  above) points to a structure of the following form, declared in
+  ls_process_info.incl.pl1:
+
+
+  _____________________                       _____________________
+
+  login_service_entries                       login_service_entries
+  _____________________                       _____________________
+
+  dcl 1 ls_process_info aligned based (ls_process_info_ptr),
+      2 version char (8),
+      2 process_group_id char (32),
+      2 start_event_channel fixed bin (71),
+      2 authorization bit (72),
+      2 initializer_handle bit (72),
+      2 server_handle bit (72),
+      2 process_id bit (36),
+      2 initial_ring fixed bin,
+      2 usage_type fixed bin,
+      2 flags,
+        3 fatal_error bit (1) unaligned,
+        3 terminal_info_set bit (1) unaligned,
+        3 pad bit (34) unaligned,
+      2 terminal_type char (32),
+      2 terminal_id char (4);
+
+  Structure Elements
+
+  version
+     is the version of the structure.  It should be set to the
+     value of LS_PROCESS_INFO_V1.
+
+  process_group_id
+     is the process group ID (Person.Project.tag) of the user
+     process.
+
+  start_event_channel
+     is the name of the event channel over which a wakeup is to be
+     sent to the user process once the connection has been assigned
+     to it.
+
+  authorization
+     is the authorization of the user process.
+
+  initializer_handle
+     is the handle used when sending request messages to the
+     Initializer concerning this connection.
+
+  server_handle
+     is the handle used when reading response messages from the
+     Initializer concerning this connection.
+
+  process_id
+     is the process ID of the user process.
+
+
+  _____________________                       _____________________
+
+  login_service_entries                       login_service_entries
+  _____________________                       _____________________
+
+  initial_ring
+     is the initial ring of the user process.
+
+  usage_type
+     is the usage type of the connection, as described under the
+     assign_connection entry.
+
+  fatal_error
+     if "1"b, indicates that the user process has been terminated
+     by a fatal error.  It is used during the termination sequence
+     when awaiting a new_proc response.
+
+  terminal_info_set
+     if "1"b, indicates that the terminal_type and terminal_info
+     fields (below) are valid.
+
+  terminal_type
+     is the terminal type associated with the connection.
+
+  terminal_id
+     is the terminal ID associated with the connection.
+
+
+  ________________________                 ________________________
+
+  connection_list_manager_                 connection_list_manager_
+  ________________________                 ________________________
+
+  NNNaaammmeee:::  cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_mmmaaannnaaagggeeerrr_
+
+  The connection_list_manager_ module maintains the inner-ring list
+  of active  connections.  The entries  in this module  are used to
+  add, delete, update, and obtain  information about entries in the
+  active connection  list.  Most of  these entries (apart  from the
+  "get_*"  entries)  are  usually  called  in  the  inner  ring  by
+  network-specific  modules, but all  are available through  one of
+  the  gates priv_connection_list_ or  hpriv_connection_list_.  The
+  gate entries  and their associated  target entries are  listed at
+  the end of this module description.
+
+  These entries  may be viewed  as being divided  into two classes:
+  privileged  and   highly  privileged.   Privileged   entries  are
+  available  through  priv_connection_list_,  and  can  be  used on
+  connections of  which the calling  process is the  owner.  Highly
+  privileged entries are  available through hpriv_connection_list_,
+  and  allow the  caller to  operate on  any connection  entry.  In
+  general, the presence  of the string "hpriv_", or  "priv_" at the
+  beginning  of  the  name  of  an  entry  indicates  the  level of
+  privilege associated with it.
+
+
+  ________________________                 ________________________
+
+  connection_list_manager_                 connection_list_manager_
+  ________________________                 ________________________
+
+  EEEnnntttrrryyy:::  cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_mmmaaannnaaagggeeerrr_$$$aaadddddd
+
+  This entry adds a connection to the list.  The connection will be
+  assigned  to  the  calling  process  as  the  "owner", and to the
+  specified user process as the "user".  This entry is privileged.
+
+  Usage
+
+  dcl connection_list_manager_$add entry (char (*), fixed bin (35),
+       char (*), char (*), char (*), fixed bin, bit (18),
+       fixed bin (35))
+
+  call connection_list_manager_$add (connection_name,
+       connection_handle, network_service_type,
+       force_disconnect_entry, force_accounting_flush_entry,
+       usage_type, connection_offset, code)
+
+  Arguments
+
+  connection_name
+     is the name of the connection, as returned by
+     login_service_entries.listen.  (Input)
+
+  connection_handle
+     is the unique identifier of the connection, as returned by
+     login_service_entries.listen.  (Input)
+
+  network_service_type
+     is the name of the service provided by the top-level
+     networking entity for the connection.  (Input)
+
+  force_disconnect_entry
+     is the name of the force_disconnect entrypoint returned by
+     net_info_$get_service_entries.  Note that this must be a name
+     and not an entry variable because it may have to be used by a
+     process other than the caller.  (Input)
+
+  force_accounting_flush_entry
+     is the name of the entrypoint which can be used to force
+     accounting for the particular process to be made.  Note that
+     this must be a name and not an entry variable because it may
+     have to be used by a process other than the caller.  (Input)
+
+
+  ________________________                 ________________________
+
+  connection_list_manager_                 connection_list_manager_
+  ________________________                 ________________________
+
+  usage_type
+     is an indicator of the way in which the connection is going to
+     be used, as described for
+     login_service_entries.assign_connection (above).  (Input)
+
+  connection_offset
+     is the offset in the connection list at which the specified
+     connection has been added.  This can be used by other entries
+     to find and/or delete the specific connection with comparative
+     efficiency.  (Output)
+
+  code
+     is a standard system status code.  (Output)
+
+  Notes
+
+  The force_disconnect_entry and force_accounting_flush_entry
+  fields are character strings defining an entrypoint to do the
+  assigned task.  The target entrypoint is expected to be declared
+  as
+
+  Usage
+
+  dcl  module$entrypoint entry (char (*), fixed bin (35))
+
+  call module$entrypoint (connection_name, code)
+
+  Arguments
+
+  connection_name
+     is the name of the connection to pass to the entry.  (Input)
+
+  code
+     is a standard system status code.  (Output)
+
+
+  ________________________                 ________________________
+
+  connection_list_manager_                 connection_list_manager_
+  ________________________                 ________________________
+
+  EEEnnntttrrryyy:::  cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_mmmaaannnaaagggeeerrr_$$$ppprrriiivvv_ccchhhaaannngggeee_uuussseeerrr
+
+  This entry is used to change the user process in the table entry.
+  The calling process must be the owner.
+
+  Usage
+
+  dcl connection_list_manager_$priv_change_user entry (bit (18),
+       bit (36) aligned, char (*), fixed bin, fixed bin (71),
+       bit (72) aligned, fixed bin (35)))
+
+  call connection_list_manager_$priv_change_user
+       (connection_offset, user_process_id, user_group_id,
+       usage_type, terminate_event_channel, initializer_handle,
+       code)
+
+  Arguments
+
+  connection_offset
+     is the offset of the connection in the list, as returned by
+     the add entry, above.  (Input)
+
+  user_process_id
+     is the process ID of the user process to which the connection
+     is assigned.  (Input)
+
+  user_group_id
+     is the process group ID (person.project.tag) of the user
+     process to which the connection is assigned.  (Input)
+
+  terminate_event_channel
+     is the name of an event channel over which a wakeup can be
+     sent to the owner process if the user process terminates.
+     (Input)
+
+  initializer_handle
+     is the handle used in requests from the login server to the
+     Initializer concerning this connection.  (Input)
+
+  usage_type
+     indicates the way the connection is to be used by the process,
+     i.e., login, dial, etc.  Its possible values are declared in
+     ls_usage_types.incl.pl1; see the description of
+     login_service_entries.assign_connection for the possible
+     values.  (Input)
+
+
+  ________________________                 ________________________
+
+  connection_list_manager_                 connection_list_manager_
+  ________________________                 ________________________
+
+  code
+     is a standard system status code.  (Output)
+
+
+  ________________________                 ________________________
+
+  connection_list_manager_                 connection_list_manager_
+  ________________________                 ________________________
+
+  EEEnnntttrrryyy:::  cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_mmmaaannnaaagggeeerrr_$$$ppprrriiivvv_dddeeellleeettteee_nnnaaammmeee
+
+  This entry  deletes the connection  with the specified  name from
+  the  active connection  list.  The  calling process  must be  the
+  owner of the connection.
+
+  Usage
+
+  dcl connection_list_manager_$priv_delete_name entry (char (*),
+       fixed bin (35))
+
+  call connection_list_manager_$priv_delete_name (connection_name,
+       code)
+
+  Arguments
+
+  connection_name
+     is the name of the connection, as above.  (Input)
+
+  code
+     is a standard system status code.  (Output)
+
+  EEEnnntttrrryyy:::  cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_mmmaaannnaaagggeeerrr_$$$hhhppprrriiivvv_dddeeellleeettteee_nnnaaammmeee
+
+  This entry  deletes the connection  with the specified  name from
+  the active connection list, no  matter what process is the owner.
+  The  calling sequence  is the  same as  for the  priv_delete_name
+  entry, above.
+
+
+  ________________________                 ________________________
+
+  connection_list_manager_                 connection_list_manager_
+  ________________________                 ________________________
+
+  EEEnnntttrrryyy:::  cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_mmmaaannnaaagggeeerrr_$$$ppprrriiivvv_dddeeellleeettteee_oooffffffssseeettt
+
+  This entry deletes the connection  with the specified offset from
+  the  active connection  list.  The  calling process  must be  the
+  owner of the connection.
+
+  Usage
+
+  dcl connection_list_manager_$priv_delete_offset entry (bit (18),
+       fixed bin (35))
+
+  call connection_list_manager_$priv_delete_offset
+       (connection_offset, code)
+
+  Arguments
+
+  connection_offset
+     is the connection offset as returned by the add entry, above.
+     (Input)
+
+  code
+     is a standard system status code.  (Output)
+
+  EEEnnntttrrryyy:::  cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_mmmaaannnaaagggeeerrr_$$$hhhppprrriiivvv_dddeeellleeettteee_oooffffffssseeettt
+
+  This entry deletes the connection  with the specified offset from
+  the active connection list, no  matter what process is the owner.
+  The calling  sequence is the  same as for  the priv_delete_offset
+  entry, above.
+
+
+  ________________________                 ________________________
+
+  connection_list_manager_                 connection_list_manager_
+  ________________________                 ________________________
+
+  EEEnnntttrrryyy:::  cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_mmmaaannnaaagggeeerrr_$$$ppprrriiivvv_dddeeellleeettteee_aaallllll_fffooorrr_uuussseeerrr
+
+  This  entry deletes  all the   connections for  a specified  user
+  process for which the calling process is the owner.
+
+  Usage
+
+  dcl connection_list_manager_$priv_delete_all_for_user entry (bit
+       (36) aligned, fixed bin (35))
+
+  call connection_list_manager_$priv_delete_all_for_user
+       (user_process_id, code)
+
+  Arguments
+
+  user_process_id
+     is the process ID of the user process whose connections are to
+     be deleted.  (Input)
+
+  code
+     is a standard system status code.  (Output)
+
+  EEEnnntttrrryyy:::  cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_mmmaaannnaaagggeeerrr_$$$hhhppprrriiivvv_dddeeellleeettteee_aaallllll_fffooorrr_uuussseeerrr
+
+  This  entry deletes  all the   connections for  a specified  user
+  process, no  matter what process is  the owner.  It has  the same
+  calling sequence as priv_delete_all_for_user (above).
+
+
+  ________________________                 ________________________
+
+  connection_list_manager_                 connection_list_manager_
+  ________________________                 ________________________
+
+  EEEnnntttrrryyy:::  cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_mmmaaannnaaagggeeerrr_$$$ppprrriiivvv_gggeeettt_nnnaaammmeee
+
+  This  entry returns  information  about  the connection  with the
+  specified  name; the  calling process  must be  the owner  of the
+  connection.
+
+  Usage
+
+  dcl connection_list_manager_$priv_get_name entry (char (*), ptr,
+       fixed bin (35))
+
+  call connection_list_manager_$priv_get_name (connection_name,
+       connection_info_ptr, code)
+
+  Arguments
+
+  connection_name
+     is the name of the connection about which information is to be
+     returned.  (Input)
+
+  connection_info_ptr
+     is a pointer to the active_connection_info structure described
+     in "Notes", below.  (Input)
+
+  code
+     is a standard system status code.  (Output)
+
+  Notes
+
+  The connection_info_ptr points to the following structure
+  (declared in active_connection_info.incl.pl1):
+
+
+  ________________________                 ________________________
+
+  connection_list_manager_                 connection_list_manager_
+  ________________________                 ________________________
+
+  dcl 1 active_connection_info aligned based,
+      2 version char (8),
+      2 connection_name char (32),
+      2 network_service_type char (32),
+      2 user_process_id bit (36),
+      2 user_group_id char (32),
+      2 owner_process_id bit (36),
+|     2 owners_group_id char (32),
+      2 terminate_event_channel fixed bin (71),
+      2 owner_initializer_handle bit (72),
+      2 force_disconnect_entry char (64),
+      2 force_accounting_flush_entry char (64),
+      2 connection_handle fixed bin (35),
+      2 usage_type fixed bin,
+|     2 flags,
+|       3 delegated bit (1) unaligned,
+|       3 mbz_bits bit (35) unaligned,
+      2 offset bit (18);
+
+  Structure Elements
+
+  version
+     is the version of the structure.  It must be filled in by the
+     caller with the value ACT_INFO_VERSION_1.
+
+  connection_name
+     is the name of the connection.
+
+  network_service_type
+     is the name of the service provided by the top-level
+     networking entity for the connection.
+
+  user_process_id
+     is the process ID of the user process to which the connection
+     is assigned.
+
+  user_group_id
+     is the process group ID (person.project.tag) of the user
+     process.
+
+  owner_process_id
+|    is the process ID of the owning process.
+|
+| owner_group_id
+|    is the process group ID (person.project.tag) of the "owning"
+|    process.
+
+
+  ________________________                 ________________________
+
+  connection_list_manager_                 connection_list_manager_
+  ________________________                 ________________________
+
+  terminate_event_channel
+     is the event channel over which the owner may be sent a wakeup
+     if the user process is terminated.
+
+  owner_initializer_handle
+     is the handle used by the owner to communicate with the
+     Initializer about the connection.  It is used to notify the
+     Initializer if the connection is terminated and the owner
+     process no longer exists.
+
+  force_disconnect_entry
+     is the name of the entrypoint to be called to force
+     termination of the connection.  It is used during login server
+     initialization if neither the user process nor the owner
+     process exists.
+
+  force_accounting_flush_entry
+     is the name of the entrypoint to be called to force all
+     current accounting data for the connection to be added to the
+     network accounting table.  It is used during during process
+     termination to make sure the latest accounting data is
+     available for the connection.
+
+  connection_handle
+     is the unique identifier of the connection, as described under
+     connection_list_manager_$add, above.
+
+  usage_type
+     specifies way in which the connection is used by the process,
+     as described under connection_list_manager_$add, above.        |
+                                                                    |
+  delegated                                                         |
+     indicates that the connection has been assigned to a user      |
+     other than the owner.                                          |
+
+  offset
+     is the offset of the connection in the list.
+
+  EEEnnntttrrryyy:::  cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_mmmaaannnaaagggeeerrr_$$$hhhppprrriiivvv_gggeeettt_nnnaaammmeee
+
+  This  entry returns  information  about  the connection  with the
+  specified name, no matter what process is the owner.  The calling
+  sequence is the same as for the priv_get_name entry, above.
+
+
+  ________________________                 ________________________
+
+  connection_list_manager_                 connection_list_manager_
+  ________________________                 ________________________
+
+  EEEnnntttrrryyy:::  cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_mmmaaannnaaagggeeerrr_$$$ppprrriiivvv_gggeeettt_nnneeexxxttt_uuussseeerrr
+
+  This  entry returns information  about the next  connection after
+  the  one at  a specified  offset assigned  to the  specified user
+  process, for which the calling process is the owner.
+
+  Usage
+
+  dcl connection_list_manager_$priv_get_next_user entry (bit (36)
+       aligned, bit (18), ptr, fixed bin (35))
+
+  call connection_list_manager_$priv_get_next_user
+       (user_process_id, connection_offset, connection_info_ptr,
+       code)
+
+  Arguments
+
+  user_process_id
+     is the process ID of the user process.  (Input)
+
+  connection_offset
+     is the offset in the list of the connection relative to which
+     the next connection is to be found.  If it is "0"b,
+     information about the first connection for the specified user
+     is returned.  (Input)
+
+  connection_info_ptr
+     is a pointer to the active_connection_info structure, as
+     above.  (Input)
+
+  code
+     is a standard system status code.  (Output)
+
+  EEEnnntttrrryyy:::  cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_mmmaaannnaaagggeeerrr_$$$hhhppprrriiivvv_gggeeettt_nnneeexxxttt_uuussseeerrr
+
+  This  entry returns information  about the next  connection after
+  the  one at  a specified  offset assigned  to the  specified user
+  process,  no  matter  what  process  is  the  owner.  The calling
+  sequence is the same as for the priv_get_next_user entry, above.
+
+
+  ________________________                 ________________________
+
+  connection_list_manager_                 connection_list_manager_
+  ________________________                 ________________________
+
+  EEEnnntttrrryyy:::  cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_mmmaaannnaaagggeeerrr_$$$ppprrriiivvv_gggeeettt_nnneeexxxttt_ooowwwnnneeerrr
+
+  This  entry returns information  about the next  connection after
+  the one  at a specified offset  for which the calling  process is
+  the owner.
+
+  Usage
+
+  dcl connection_list_manager_$priv_get_next_owner entry (bit (18),
+       ptr, fixed bin (35))
+
+  call connection_list_manager_$priv_get_next_owner
+       (connection_offset, connection_info_ptr, code)
+
+  Arguments
+
+  connection_offset
+     is the offset in the list of the connection relative to which
+     the next connection is to be found.  If it is "0"b,
+     information about the first connection for which the calling
+     process is the owner is returned.  (Input)
+
+  connection_info_ptr
+     is a pointer to the active_connection_info structure, as
+     above.  (Input)
+
+  code
+     is a standard system status code.  (Output)
+
+
+  ________________________                 ________________________
+
+  connection_list_manager_                 connection_list_manager_
+  ________________________                 ________________________
+
+  EEEnnntttrrryyy:::  cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_mmmaaannnaaagggeeerrr_$$$hhhppprrriiivvv_gggeeettt_nnneeexxxttt_ooowwwnnneeerrr
+
+  This  entry returns information  about the next  connection after
+  the one  at a specified offset  for which a specified  process is
+  the owner.
+
+  Usage
+
+  dcl connection_list_manager_$hpriv_get_next_owner entry
+       (bit (18), bit (36), ptr, fixed bin (35))
+
+  call connection_list_manager_$hpriv_get_next_owner
+       (connection_offset, owner_process_id, connection_info_ptr,
+       code)
+
+  Arguments
+
+  connection_offset
+     is the offset in the list of the connection relative to which
+     the next connection is to be found.  If it is "0"b,
+     information about the first connection for the specified owner
+     is returned.  (Input)
+
+  owner_process_id
+     is the process ID of the process for which connections are to
+     be found.  (Input)
+
+  connection_info_ptr
+     is a pointer to the active_connection_info structure, as
+     above.  (Input)
+
+  code
+     is a standard system status code.  (Output)
+
+
+  ________________________                 ________________________
+
+  connection_list_manager_                 connection_list_manager_
+  ________________________                 ________________________
+
+  EEEnnntttrrryyy:::  cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_mmmaaannnaaagggeeerrr_$$$hhhppprrriiivvv_gggeeettt_nnneeexxxttt
+
+  This  entry returns information  about the next  connection after
+  the one at a specified offset.
+
+  Usage
+
+  dcl connection_list_manager_$hpriv_get_next entry (bit (18), ptr,
+       fixed bin (35))
+
+  call connection_list_manager_$hpriv_get_next (connection_offset,
+       connection_info_ptr, code)
+
+  Arguments
+
+  connection_offset
+     is the offset in the list of the connection relative to which
+     the next connection is to be found.  If it is "0"b,
+     information about the first connection in the list is
+     returned.  (Input)
+
+  connection_info_ptr
+     is a pointer to the active_connection_info structure, as
+     above.  (Input)
+
+  code
+     is a standard system status code.  (Output)
+
+
+  ________________________                 ________________________
+
+  connection_list_manager_                 connection_list_manager_
+  ________________________                 ________________________
+
+  EEEnnntttrrryyy:::  cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_mmmaaannnaaagggeeerrr_$$$ppprrriiivvv_rrreeemmmooovvveee_uuussseeerrr
+
+  This entry  is called to make  the specified process cease  to be
+  the  user of the  specified connection.  No  new user process  is
+  assigned by this entry.  The calling process must be the owner of
+  the connection.
+
+  Usage
+
+  dcl connection_list_manager_$priv_remove_user entry (bit (18),
+       bit (36), fixed bin (35))
+
+  call connection_list_manager_$priv_remove_user
+       (connection_offset, user_process_id, code)
+
+  Arguments
+
+  connection_offset
+     is the offset of the connection in the list.  (Input)
+
+  user_process_id
+     is the process ID of the expected current user of the
+     connection.  If the user process ID in the connection entry
+     does not match this argument, no action is taken, and a
+     nonzero status code is returned.  (Input)
+
+  code
+     is a standard system status code.  (Output)
+
+
+  ________________________                 ________________________
+
+  connection_list_manager_                 connection_list_manager_
+  ________________________                 ________________________
+
+  EEEnnntttrrryyy:::  cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_mmmaaannnaaagggeeerrr_$$$iiinnniiittt
+
+  This entry initializes the active connection list segment.  It is
+  called once per bootload.  It will  create the segment if it does
+  not already exist.
+
+  Usage
+
+  dcl connection_list_manager_$init entry (fixed bin (35))
+
+  call connection_list_manager_$init (code)
+
+  Arguments
+
+  code
+     is a standard system status code.  (Output)
+
+
+  _____________________                       _____________________
+
+  priv_connection_list_                       priv_connection_list_
+  _____________________                       _____________________
+
+  NNNaaammmeee:::  ppprrriiivvv_cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_
+
+  This      gate      contains      privileged      entries      to
+  connection_list_manager_.  In  general, they can be  used only by
+  login  server  processes,  and  only  to  manipulate  entries for
+  connections  of which  the calling   process is  the owner.   The
+  entries  contained  in  priv_connection_list_  are  listed below,
+  along with their target entries in connection_list_manager_.
+
+            Gate entry                    Target
+
+            add                           add
+            change_user                   priv_change_user
+            delete_name                   priv_delete_name
+            delete_offset                 priv_delete_offset
+            delete_all_for_user           priv_delete_all_for_user
+            get_name                      priv_get_name
+            get_next_user                 priv_get_next_user
+            get_next_owner                priv_get_next_owner
+            remove_user                   priv_remove_user
+
+
+  ______________________                     ______________________
+
+  hpriv_connection_list_                     hpriv_connection_list_
+  ______________________                     ______________________
+
+  NNNaaammmeee:::  hhhppprrriiivvv_cccooonnnnnneeeccctttiiiooonnn_llliiisssttt_
+
+  This    gate    contains    highly    privileged    entries    to
+  connection_list_manager_.   They  can  be  used  only  by  highly
+  privileged processes (such as the initializer), to manipulate any
+  connection      entry.      The     entries      contained     in
+  hpriv_connection_list_ are listed below,  along with their target
+  entries in connection_list_manager_.
+
+            Gate entry                    Target
+
+            delete_name                   hpriv_delete_name
+            delete_offset                 hpriv_delete_offset
+            delete_all_for_user           hpriv_delete_all_for_user
+            get_name                      hpriv_get_name
+            get_next                      hpriv_get_next
+            get_next_owner                hpriv_get_next_owner
+            get_next_user                 hpriv_get_next_user
+            init                          init
+
+
+  _______________________                   _______________________
+
+  display_connection_list                   display_connection_list
+  _______________________                   _______________________
+
+| Name: display_connection_list
+|
+|
+| SYNTAX AS A COMMAND:
+|
+|    display_connection_list {-control_arg}
+|
+|
+| FUNCTION:  Prints  the information in the  connection list.  Used
+| by network  administrators to inspect the current  entries in the
+| list.
+|
+|
+| CONTROL ARGUMENTS:
+|
+| -brief, -bf
+|    prints brief information in tabular form.  (Default)
+|
+| -long, -lg
+|    prints  all items  of information,   one item  per line.   The
+|    default is -brief.
+|
+|
+| EXAMPLES:
+|
+|
+| The following are two samples of the command's output:
+|
+| ! display_connection_list
+|
+| Conn Name     Service Type     Usage Type   Conn Handle User
+| dsa.MUL1.0002 DSA_NETWORK_TYPE None             3670030 DSA_DSAC.Daemon
+| dsa.MUL1.0003 DSA_NETWORK_TYPE None             3932175 DSA_DSAC.Daemon
+| dsa.MUL1.0004 DSA_NETWORK_TYPE None             4194320 DSA_DSAC.Daemon
+| dsa.MUL1.0005 DSA_NETWORK_TYPE None             4456465 Login_Server.Daemon
+| dsa.MUL1.0006 DSA_NETWORK_TYPE None             4718610 DSA_DSAC.Daemon
+| dsa.MUL1.0007 DSA_NETWORK_TYPE None             4980755 DSA_DSAC.Daemon
+| dsa.MUL1.0010 DSA_NETWORK_TYPE Login            5767188 Frink.Multics
+| dsa.MUL1.0011 DSA_NETWORK_TYPE Login            6029333 Martinson.SysAdmin
+| dsa.MUL1.0012 DSA_NETWORK_TYPE Login            6291469 Brunelle.SysMaint
+| dsa.MUL1.0013 DSA_NETWORK_TYPE None             6553622 Login_Server.Daemon
+|
+|   display_connection_list -long
+|
+| Connection name = dsa.MUL1.0002
+| Network type = DSA_NETWORK_TYPE
+| User process ID = 005100634062
+| User group ID = DSA_DSAC.Daemon
+| Owner process ID = 005100634062
+
+
+  _______________________                   _______________________
+
+  display_connection_list                   display_connection_list
+  _______________________                   _______________________
+
+  Owner group ID = Login_Server.Daemon                              |
+  Connection handle = 3670030                                       |
+  Usage type = None (0)                                             |
+  Terminate event channel = 0                                       |
+  Owner Initializer handle = 000000000000000000000000               |
+  Force disconnect entry = dsa_session_admin_$terminate_force       |
+  Force accounting flush entry = dsa_session_admin_$accounting_force|
+  OFFSET = 000200                                                   |
+                                                                    |
+  ...                                                               |
+                                                                    |
+  Connection name = dsa.MUL1.0013                                   |
+  Network type = DSA_NETWORK_TYPE                                   |
+  User process ID = 005000634061                                    |
+  User group ID = Login_Server.Daemon                               |
+  Owner process ID = 005000634061                                   |
+  Owner group ID = Login_Server.Daemon                              |
+  Connection handle = 6553622                                       |
+  Usage type = None (0)                                             |
+  Terminate event channel = 0                                       |
+  Owner Initializer handle = 000000000000000000000000               |
+  Force disconnect entry = dsa_session_admin_$terminate_force       |
+  Force accounting flush entry = dsa_session_admin_$accounting_force|
+  OFFSET = 001320                                                   |
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

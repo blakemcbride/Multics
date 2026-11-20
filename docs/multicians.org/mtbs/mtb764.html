@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Changes to the sys_log_ Subroutine.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+MULTICS TECHNICAL BULLETIN                                 MTB764
+
+To:       MTB Distribution
+
+From:     Gary C. Dixon
+
+Date:     May 21, 1987
+
+Subject:  Changes to the sys_log_ Subroutine
+
+               -----------------------------------
+
+This MTB documents the sys_log_ subroutine, which the Initializer
+uses  to  report  and  log  errors.   It  documents  the  current
+interfaces (as input for the Privileged Subroutines manual).  And
+it proposes a new, more general interface to this subroutine.
+
+               -----------------------------------
+
+Please send comments by Multics mail to:
+
+    GDixon -at pco
+
+_________________________________________________________________
+
+Multics project  internal documentation; not to  be reproduced or
+distributed outside the Multics project without permission of the
+Director of MDC.
+
+
+MTB764                                           sys_log_ Changes
+
+                             CONTENTS
+
+                                                         Page
+
+   1:  Introduction to the Problem . . . . . . . . . . . . . .   1
+   1.1:  The Solution  . . . . . . . . . . . . . . . . . . . .   1
+   Appendix A:  Documentation for sys_log_ . . . . . . . . . .   1
+      sys_log_ . . . . . . . . . . . . . . . . . . . . . . . .   2
+         sys_log_$error_log  . . . . . . . . . . . . . . . . .   3
+         sys_log_$sys_log_ . . . . . . . . . . . . . . . . . .   4
+         sys_log_$binary . . . . . . . . . . . . . . . . . . .   5
+         sys_log_$command  . . . . . . . . . . . . . . . . . .   6
+         sys_log_$command_error  . . . . . . . . . . . . . . .   6
+         sys_log_$general  . . . . . . . . . . . . . . . . . .   7
+   Appendix B:  Documentation for sys_log_constants.incl.pl1 .  15
+
+
+sys_log_ Changes                                           MTB764
+
+111:::  IIINNNTTTRRROOODDDUUUCCCTTTIIIOOONNN TTTOOO TTTHHHEEE PPPRRROOOBBBLLLEEEMMM
+
+The  sys_log_  subroutine  currently  provides  5 entrypoints for
+printing and logging Initializer error and progress messages.  It
+is  used  to  maintain  security  auditing  trails,  to  document
+operator  actions,  to  record  system  activity  and  to  report
+unexpected errors  and events.  These entrypoints  are documented
+in Appendix A.
+
+While the current interfaces  do perform their intended function,
+they are cumbersome to use.  Each time a message is to be printed
+or  logged, a complex  call statement must  be inserted into  the
+program, followed by  some kind of goto or exiting  action if the
+error  is fatal.   This often-repeated  complexity makes  writing
+Initializer  programs a  harder job,  and makes  understanding of
+such program more difficult than necessary.
+
+111...111:::  TTThhheee SSSooollluuutttiiiooonnn
+
+Since many new Initializer programs are being written for the DSA
+project, a  new sys_log_ interface has been  designed.  It allows
+the complexity  of the error message interface  to be centralized
+within  sys_log_ itself  and within  an internal  error-reporting
+procedure of the  calling program.  The calls in the  body of the
+calling program are reduced to  the minimum of information needed
+to produce the message.  This  makes the programs must simpler to
+write and to understand.
+
+The new interface, called  sys_log_$general, is documented at the
+end of Appendix A.  This documentation includes an example of the
+calling program and its internal error reporting procedure.
+
+Appendix     B    shows     the    complete     text    of    the
+sys_log_constants.incl.pl1 file, which  has been greatly extended
+in support of sys_log_$general.
+
+Please review and comment upon the these appendices.
+
+AAAPPPPPPEEENNNDDDIIIXXX AAA:::  DDDOOOCCCUUUMMMEEENNNTTTAAATTTIIIOOONNN FFFOOORRR SSSYYYSSS_LLLOOOGGG_
+
+
+________                                                 ________
+
+sys_log_                                                 sys_log_
+________                                                 ________
+
+NNNaaammmeee:::  sssyyysss_llloooggg_
+
+The  sys_log_  subroutine  provides  an  error  message  handling
+facility to  programs that run  in the Initializer  process.  The
+subroutine has two modes of operation.
+
+Command mode is used by operator commands to report errors to the
+operator in a manner similar to com_err_.  The error messages are
+printed on  the operator terminal that issued  the command.  They
+are  also written into  the admin log,  which can be  printed via
+"print_sys_log -admin".
+
+Answer Service  (AS) mode is used by  noncommand programs running
+in the  Initializer to report errors  in a manner similar  to the
+hardcore  syserr_ mechanism.  The  error messages are  printed on
+one of three Answering Service I/O switches (severity1, severity2
+or severity3).  They are also  written into the Answering Service
+log, which can be printed via "print_sys_log -as".
+
+
+________                                                 ________
+
+sys_log_                                                 sys_log_
+________                                                 ________
+
+ARGUMENTS:
+
+   The following argument is used by all sys_log_ entrypoints.
+
+severity
+   defines the severity of the error.  Allowed values are defined
+   by named constants in sys_log_constants.incl.pl1.
+
+      SL_LOG_SILENT (= 0)
+          Only log the message, do not print it.
+
+      SL_LOG (= 1)
+          Log the message and print  it.  When called in AS mode,
+          print  the message on  the severity1 I/O  switch.  When
+          called  in  command  mode,  print  the  message  on the
+          operator's console.
+
+      SL_LOG_BEEP (= 2)
+          Log  the message and  print it preceeded  by a line  of
+          asterisks and followed by  a BELL character which turns
+          on the  audible alarm.  When  called in AS  mode, print
+          the message  on the severity2 I/O  switch.  When called
+          in  command mode, print  the message on  the operator's
+          console.
+
+      SL_LOG_CRASH (= 3)
+          Log  the  message,  print  it  preceeded  by  a line of
+          asterisks and  followed by a BELL  character, and crash
+          the system.  When called in  AS mode, print the message
+          on  the severity3 I/O  switch.  When called  in command
+          mode, print the message on the operator's console.
+
+EEEnnntttrrryyy:::  sssyyysss_llloooggg_$$$eeerrrrrrooorrr_llloooggg
+
+This entrypoint logs/prints an error table code and message in AS
+mode.  The message format is:
+
+     caller:  error_code_text ioa_message
+
+USAGE
+
+declare sys_log_$error_log entry options(variable);
+
+call sys_log_$error_log (severity, code, caller, ioa_ctl, args);
+
+
+________                                                 ________
+
+sys_log_                                                 sys_log_
+________                                                 ________
+
+ARGUMENTS
+
+severity
+   is  a fixed bin(17)  argument which  defines the  severity, as
+   described above.  (Input)
+
+code
+   is  a fixed bin(35)  error table  code whose  expanded text is
+   placed in the message.  If code is zero, then no error message
+   text is placed in the message.  (Input)
+
+caller
+   is a char(*)  name of the calling program.  This  is placed in
+   the  message to  identify where  the message  is coming  from.
+   (Input)
+
+ioa_ctl
+   is a char(*) or char(*) varying ioa_ control string describing
+   the message format.  (Input)
+
+args
+   are arguments to be substituted  into the ioa_ control string.
+   (Input)
+
+EEEnnntttrrryyy:::  sssyyysss_llloooggg_
+
+This entrypoint  logs/prints a message  in AS mode.   The ioa_ctl
+string  should include  the caller's  name to  identify where the
+message is coming from.
+
+USAGE
+
+declare sys_log_ entry options(variable);
+
+call sys_log_ (severity, ioa_ctl, args);
+
+ARGUMENTS
+
+severity
+   is  a fixed bin(17)  argument which  defines the  severity, as
+   described above.  (Input)
+
+ioa_ctl
+   is a char(*) or char(*) varying ioa_ control string describing
+   the message format.  (Input)
+
+
+________                                                 ________
+
+sys_log_                                                 sys_log_
+________                                                 ________
+
+args
+   are arguments to be substituted  into the ioa_ control string.
+   (Input)
+
+EEEnnntttrrryyy:::  sssyyysss_llloooggg_$$$bbbiiinnnaaarrryyy
+
+This  entrypoint logs/prints  a message  in AS  mode.  The logged
+message  includes   binary  data  which  further   describes  the
+circumstances of the error.
+
+USAGE
+
+declare sys_log_$binary entry options(variable);
+
+call sys_log_$binary (severity, data_ptr, data_lth, data_class,
+     ioa_ctl, args);
+
+ARGUMENTS
+
+severity
+   is  a fixed bin(17)  argument which  defines the  severity, as
+   described above.  (Input)
+
+data_ptr
+   is an aligned pointer to the binary data.  (Input)
+
+data_lth
+   is  a  fixed bin(17)  length  of  the  binary  data, in words.
+   (Input)
+
+data_class
+   is a  char(10) varying parameter defining the  class of binary
+   data.   This is  used by  print_sys_log to  find a  routine to
+   expand  and  print  the  binary  data.   For  example,  if the
+   data_class were CLASS, then  print_sys_log would use a routine
+   called expand_CLASS_msg_ to expand  and print the binary data.
+   (Input)
+
+ioa_ctl
+   is a char(*) or char(*) varying ioa_ control string describing
+   the message format.  (Input)
+
+args
+   are arguments to be substituted  into the ioa_ control string.
+   (Input)
+
+
+________                                                 ________
+
+sys_log_                                                 sys_log_
+________                                                 ________
+
+EEEnnntttrrryyy:::  sssyyysss_llloooggg_$$$cccooommmmmmaaannnddd
+
+This  entrypoint  logs/prints  a  message  in  command mode.  The
+ioa_ctl string should include the caller's name to identify where
+the message is coming from.
+
+USAGE
+
+declare sys_log_$command entry options(variable);
+
+call sys_log_$command (severity, ioa_ctl, args);
+
+ARGUMENTS
+
+severity
+   is  a fixed bin(17)  argument which  defines the  severity, as
+   described above.  (Input)
+
+ioa_ctl
+   is a char(*) or char(*) varying ioa_ control string describing
+   the message format.  (Input)
+
+args
+   are arguments to be substituted  into the ioa_ control string.
+   (Input)
+
+EEEnnntttrrryyy:::  sssyyysss_llloooggg_$$$cccooommmmmmaaannnddd_eeerrrrrrooorrr
+
+This entrypoint  logs/prints an error  table code and  message in
+command mode.  The message format is:
+
+     caller:  error_code_text ioa_message
+
+USAGE
+
+declare sys_log_$command_error entry options(variable);
+
+call sys_log_$command_error (severity, code, caller, ioa_ctl,
+     args);
+
+
+________                                                 ________
+
+sys_log_                                                 sys_log_
+________                                                 ________
+
+ARGUMENTS
+
+severity
+   is  a fixed bin(17)  argument which  defines the  severity, as
+   described above.  (Input)
+
+code
+   is  a fixed bin(35)  error table  code whose  expanded text is
+   placed in the message.  If code is zero, then no error message
+   text is placed in the message.  (Input)
+
+caller
+   is a char(*)  name of the calling program.  This  is placed in
+   the  message to  identify where  the message  is coming  from.
+   (Input)
+
+ioa_ctl
+   is a char(*) or char(*) varying ioa_ control string describing
+   the message format.  (Input)
+
+args
+   are arguments to be substituted  into the ioa_ control string.
+   (Input)
+
+EEEnnntttrrryyy:::  sssyyysss_llloooggg_$$$gggeeennneeerrraaalll
+
+This  entrypoint logs/print  an error   message in  either AS  or
+command modes.  It  allows the caller to specify  which items are
+placed in the  message, and whether these items are  to come from
+the input  structure or from  an associated argument  list.  This
+entrypoint should  be used in preference to  those above, because
+calling  programs can  be written   in a  more readable  fashion.
+Refer to the Notes below for an example.
+
+USAGE
+
+declare sys_log_$general (pointer);
+
+call sys_log_$general (sl_info_ptr);
+
+ARGUMENTS
+
+sl_info_ptr
+   points to the sl_info structure described below.  (Input)
+
+
+________                                                 ________
+
+sys_log_                                                 sys_log_
+________                                                 ________
+
+INFO STRUCTURE
+
+The sys_log_$general entrypoint uses  information provided by the
+following  structure to  determine which  items to  place in  the
+message,  and where  to obtain  those items.   This structure  is
+declared in sys_log_constants.incl.pl1.
+
+dcl 1 sl_info aligned automatic,
+      2 version                  char(8),
+      2 arg_list_ptr             ptr,
+      2 loc,
+        3 (mode,
+           severity,
+           code,
+           caller,
+           data,
+           class,
+           ioa_msg)              fixed bin,
+      2 flags,
+        3 ioa_msg_is_error_code  bit(1) unal,
+        3 flags_pad              bit(35) unal,
+      2 mode                     fixed bin,
+      2 severity                 fixed bin,
+      2 code                     fixed bin(35),
+      2 caller                   char(65) varying,
+      2 data,
+        3 data_ptr               ptr,
+        3 data_lth               fixed bin(21),
+      2 class                    char(10) varying,
+      2 ioa_msg                  char(500) varying;
+
+Structure Elements
+
+version
+   is the version number of this  structure.  It should be set to
+   the named constant SL_INFO_version_1.  (Input)
+
+arg_list_ptr
+   is a pointer to an argument list.  Various error message items
+   can  be extracted  from this  argument list,  under control of
+   sl_info.loc.  (Input)
+
+loc
+   is  the location  of information  needed to  process the error
+   message.   The  information  can   be  given  in  the  sl_info
+   structure, can  come from the argument list,  or certain items
+   can be  omitted completely.  (Input) All  sl_info.loc elements
+   can have one of the following values:
+
+
+________                                                 ________
+
+sys_log_                                                 sys_log_
+________                                                 ________
+
+   SL_INFO_arg_given_in_structure (= -1)
+      the  information is  located in  the correspondingly named,
+      level 2 structure element.
+
+   SL_INFO_arg_not_given (= 0)
+      the information is not given.
+
+   +N
+      a  positive  integer  giving  the  argument  number  in the
+      argument list which contains the information.
+
+loc.mode
+   is the location of the mode.
+
+loc.severity
+   is the location of the severity.
+
+loc.code
+   is the location of the error code.
+
+loc.caller
+   is the location of the caller name.
+
+loc.data
+   is the location  of the binary data pointer and  length.  If a
+   positive  integer N  is given,   then the  pointer is  the Nth
+   argument  in the  argument list,  and the  argument length  is
+   argument N+1.
+
+loc.class
+   is the location of the binary data class.
+
+loc.ioa_msg
+   is  the location of  the ioa_ control  string.  If a  positive
+   integer N is  given, then then ioa_ control string  is the Nth
+   argument  in the  argument list,  and remaining  arguments are
+   substituted      into     the     control      string.      If
+   SL_INFO_arg_given_in_structure  is  given,   then  ioa_msg  is
+   treated as a character string message text rather than an ioa_
+   control string; no argument substitution is performed.
+
+flags.ioa_msg_is_error_code
+   is "1"b  if loc.ioa_msg is a  positive integer N, and  the Nth
+   argument in the argument list  is an error code whose expanded
+   text is the ioa_ control structure.   If this flag is "0"b and
+   loc.ioa_msg is positive, then the Nth argument in the argument
+   list is a char(*) or  char(*) varying ioa_ control string.  If
+   loc.ioa_msg is nonpositive, this flag is ignored.  (Input)
+
+
+________                                                 ________
+
+sys_log_                                                 sys_log_
+________                                                 ________
+
+mode
+   is a  fixed bin(17) operating mode for sys_log_.   If the mode
+   is located  in the argument list  or not given as  input, then
+   the   value  actually   used  is   returned  in  sl_info.mode.
+   (Input/Output) It can be one of the following values:
+
+   SL_INFO_as_mode (= 1)
+      operate  in AS mode.   This is the  default if loc.mode  is
+      SL_INFO_arg_not_given.
+
+   SL_INFO_command_mode (= 2)
+      operate in command mode.
+
+severity
+   is  a fixed bin(17)  argument which  defines the  severity, as
+   described above.   If the severity is located  in the argument
+   list or  not given as input,  then the value actually  used is
+   returned in sl_info.severity.   (Input/Output) If loc.severity
+   is SL_INFO_arg_not_given, then SL_LOG is the default value for
+   mode.
+
+code
+   is  a fixed bin(35)  error table  code whose  expanded text is
+   placed  in  the  message.   If  code  is  -1  or  loc.code  is
+   SL_INFO_arg_not_given, then  no error table text  is placed in
+   the message.  If a zero code  is given, it means that no error
+   really  occurred; therefore  printing/logging of  the sys_log_
+   message is aborted.  Otherwise, code  is treated as a standard
+   error   table  code   whose  text   is  obtained   by  calling
+   convert_status_code_  and placed in  the message.  If  code is
+   located in  the argument list,  then the value  is returned in
+   sl_info.code.  (Input/Output)
+
+caller
+   is  a char(*)  name of   the program  reporting the  error.  A
+   caller name should always be  given.  If the caller is located
+   in  the   argument  list,  then   the  name  is   returned  in
+   sl_info.caller.  (Input/Output)
+
+data
+   is a pointer to and fixed bin(17) length of the binary data to
+   be associated  with the logged  message.  If the  data_ptr and
+   data_lth are  located in the argument list,  then these values
+   are   returned  in   sl_info.data_ptr  and   sl_info.data_lth.
+   (Input/Output)
+
+
+________                                                 ________
+
+sys_log_                                                 sys_log_
+________                                                 ________
+
+class
+   is a char(*) binary data class name.  It is required if binary
+   data is given.  If the class  is located in the argument list,
+   then   the   data   class   is   returned   in  sl_info.class.
+   (Input/Output)
+
+ioa_msg
+   is  a char(*)  or char(*) varying  ioa_ control  string, or an
+   error table  code whose text  is the ioa_  control string (see
+   sl_info.ioa_msg_is_error_code  above).    The  text  expansion
+   after argument substitution is returned.  (Input/Output)
+
+Notes
+
+The  calling  program  should  use  an  error diagnostic internal
+procedure to report its errors.  This internal procedure fills in
+the  sl_info structure  and calls  sys_log_$general, passing  its
+argument list as the location for various message items.
+
+The  sys_log_constants.incl.pl1  file  declares  several constant
+versions   of  the   sl_info  structure   to  simplify  structure
+assignment.   These are summarized  below.  Refer to  the include
+file for details.
+
+  sl_info_sev_code_msg
+     sl_info settings for an SL_INFO_as_mode operation to be used
+     with an Error internal procedure whose calling sequence is:
+
+        call Error (severity, code, ioa_ctl, args);
+
+     The Error  internal procedure must  set sl_info.arg_list_ptr
+     and sl_info.caller.  It may  optionally set sl_info.data and
+     sl_info.class.
+
+  sl_info_sev_msg
+     an SL_INFO_as_mode operation with Error calling sequence:
+
+       call Error (severity, ioa_ctl, args);
+
+  sl_info_sev_coded_msg
+     an SL_INFO_as_mode operation with Error calling sequence:
+
+       call Error (severity, ioa_ctl_as_error_code, args);
+
+
+________                                                 ________
+
+sys_log_                                                 sys_log_
+________                                                 ________
+
+  sl_info_sev_code_label_msg
+     an SL_INFO_as_mode operation with Error calling sequence:
+
+       call Error (severity, code, return_label, ioa_ctl, args);
+
+  sl_info_code_msg
+     an SL_INFO_as_mode operation with Error calling sequence:
+
+       call Error (code, ioa_ctl, args);
+
+  sl_info_msg
+     an SL_INFO_as_mode operation with Error calling sequence:
+
+       call Error (ioa_ctl, args);
+
+These  structure templates  can be  used in  conjunction with  an
+internal  procedure to  report errors,  as shown  in the  example
+below.
+
+
+________                                                 ________
+
+sys_log_                                                 sys_log_
+________                                                 ________
+
+  as_proc_: procedure (P_code);
+
+  dcl  P_code fixed bin(35) parameter;
+          .
+          .
+  dcl  MY_NAME char(8) initial ("as_proc_") internal static
+       options(constant);
+          .
+          .
+       call xxx_ (path, modes, code);
+       if code ^= 0 then
+       call Error (SL_LOG_BEEP, code, ABORT_LABEL,
+          "Calling xxx_ subroutine for ^a.", path);
+          .
+          .
+  ABORT_LABEL:
+       P_code = code;
+       return;
+          .
+          .
+  Error: procedure options(variable);
+
+  dcl  return_label label based(return_label_ptr),
+       return_label_ptr pointer;
+
+       sl_info = sl_info_sev_code_label_msg;
+       sl_info.arg_list_ptr = cu_$arg_list_ptr();
+       sl_info.caller = MY_NAME;
+       call sys_log_$general (addr(sl_info));
+       if sl_info.code ^= 0 then do;
+          call cu_$arg_ptr (3, return_label_ptr, 0, 0);
+          go to return_label;
+          end;
+       else return;
+
+       end Error;
+  end as_proc_;
+
+If sys_log_$general is called  with an invalid sl_info structure,
+then  it  reports  this  error  by  signalling the sys_log_error_
+condition, passing the  following condition information structure
+which is declared in sys_log_error_info.incl.pl1:
+
+dcl  1 sys_log_error_info     aligned automatic,
+       2 header               like condition_info_header,
+       2 sl_info_ptr          ptr;
+
+
+________                                                 ________
+
+sys_log_                                                 sys_log_
+________                                                 ________
+
+Structure Elements
+
+header.version
+   is  the version number  of this structure.   It is set  to the
+   named constant SYS_LOG_ERROR_INFO_version_1.
+
+header.action_flags.cant_restart
+   is  "1"b, indicating that  restarting with an  invalid sl_info
+   structure is impossible.
+
+header.status_code
+   is an error table code indicating how the sl_info structure is
+   invalid.
+
+sl_info_ptr
+   is a pointer to the invalid sl_info structure.
+
+
+sys_log_ Changes                                           MTB764
+
+AAAPPPPPPEEENNNDDDIIIXXX BBB:::  DDDOOOCCCUUUMMMEEENNNTTTAAATTTIIIOOONNN FFFOOORRR SSSYYYSSS_LLLOOOGGG_CCCOOONNNSSSTTTAAANNNTTTSSS...IIINNNCCCLLL...PPPLLL111
+
+/* BEGIN INCLUDE FILE sys_log_constants.incl.pl1  */
+
+/****^  HISTORY COMMENTS:
+  1) change(87-04-22,GDixon):
+     Added sl_info structure and associated named constants for
+     use in calling sys_log_$general.
+                                         END HISTORY COMMENTS */
+
+/* format: style4 */
+
+dcl  (
+     SL_TYPE_CRASH init (-3), /* type message with banner &amp;
+                                 kill system */
+     SL_TYPE_BEEP init (-2),  /* type message with banner */
+     SL_TYPE init (-1),       /* type message */
+     SL_LOG_SILENT init (0),  /* log message */
+     SL_LOG init (1),         /* log &amp; type message */
+     SL_LOG_BEEP init (2),    /* log &amp; type message with
+                                 banner */
+     SL_LOG_CRASH init (3)    /* log &amp; type message with banner
+                                 &amp; kill system */
+     ) fixed bin internal static options (constant);
+
+
+MTB764                                           sys_log_ Changes
+
+dcl  1 sl_info aligned automatic,
+       2 version char(8),     /* structure version       */
+       2 arg_list_ptr ptr,    /* arg_list with values    */
+       2 loc,
+         3 (mode, severity, code, caller, data, class, ioa_msg)
+           fixed bin,
+  /* These flags control where the corresponding data item is found.*/
+  /*  -1: data appears in the corresponding structure element below */
+  /*   0: data is not present anywhere                              */
+  /*  +N: data is Nth item in argument list pointed to by           */
+  /*      sl_info.arg_list_ptr.  Upon return, data copied into      */
+  /*      corresponding structure element.                          */
+  /*  if data = +N:                                                 */
+  /*      argN is data_ptr, argN+1 is data_len                      */
+  /*  if ioa_msg = +N:                                              */
+  /*      argN+1, ... argLAST are arguments substituted into the    */
+  /*      ioa_msg control string.  The formatted msg is returned.   */
+       2 flags,
+         3 ioa_msg_is_error_code bit(1) unal,
+                              /* ioa_ctl is error code.  */
+         3 flags_pad bit(35) unal,
+       2 mode fixed bin,      /* as-mode, command-mode   */
+       2 severity fixed bin,  /* error severity          */
+       2 code fixed bin(35),  /* error table code        */
+       2 caller char(65) varying,
+                              /* caller refname$entryname*/
+       2 data,                /* binary data ptr/length  */
+         3 data_ptr ptr,
+         3 data_lth fixed bin(21),
+       2 class char(10) varying,
+                              /* binary data class       */
+       2 ioa_msg char(500) varying;
+                              /* formatted message text  */
+
+/* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+/*                                                       */
+/* If data values (eg, sl_info.caller) are passed in the */
+/* argument list,their data types should be as shown in  */
+/* the structure above, except that character strings    */
+/* should be char(*) nonvarying.                         */
+/*                                                       */
+/* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+
+/* value for sl_info.version */
+dcl  SL_INFO_version_1 char (8) int static options(constant)
+     init("sl_info1");
+
+
+sys_log_ Changes                                           MTB764
+
+/* values for sl_info.mode */
+dcl (SL_INFO_as_mode init(1),
+     SL_INFO_command_mode init(2)) fixed bin int static
+     options(constant);
+
+/* values for sl_info.loc.(severity, code, caller, data,
+   class, ioa_ctl, arg) */
+dcl (SL_INFO_arg_given_in_structure init(-1),
+     SL_INFO_arg_not_given init(0)) fixed bin int static
+     options(constant);
+
+/* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+/*                                                       */
+/* The following static structures are commonly used in  */
+/* the LS user control software.                         */
+/*                                                       */
+/* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+
+/* Syntax: call Abort (severity, code, ioa_ctl, args);   */
+
+dcl  1 sl_info_sev_code_msg             aligned int static
+                                        options(constant),
+       2 version char(8)                init ("sl_info1"),
+       2 arg_list_ptr ptr               init (null),
+       2 loc,
+         3 (mode                        init (-1),
+            severity                    init ( 1),
+            code                        init ( 2),
+            caller                      init (-1),
+            data                        init ( 0),
+            class                       init ( 0),
+            ioa_msg                     init ( 3)) fixed bin,
+       2 flags,
+         3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+         3 flags_pad bit(35) unal       init ("0"b),
+       2 mode fixed bin                 init ( 1),
+       2 severity fixed bin             init ( 0),
+       2 code fixed bin(35)             init ( 0),
+       2 caller char(65) varying        init (""),
+       2 data,
+         3 data_ptr ptr                 init (null),
+         3 data_lth fixed bin(21)       init ( 0),
+       2 class char(10) varying         init (""),
+       2 ioa_msg char(500) varying      init ("");
+
+
+MTB764                                           sys_log_ Changes
+
+/* Syntax: call Abort (severity, ioa_ctl, args);            */
+
+dcl  1 sl_info_sev_msg                  aligned int static
+                                        options(constant),
+       2 version char(8)                init ("sl_info1"),
+       2 arg_list_ptr ptr               init (null),
+       2 loc,
+         3 (mode                        init (-1),
+            severity                    init ( 1),
+            code                        init ( 0),
+            caller                      init (-1),
+            data                        init ( 0),
+            class                       init ( 0),
+            ioa_msg                     init ( 2)) fixed bin,
+       2 flags,
+         3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+         3 flags_pad bit(35) unal       init ("0"b),
+       2 mode fixed bin                 init ( 1),
+       2 severity fixed bin             init ( 0),
+       2 code fixed bin(35)             init ( 0),
+       2 caller char(65) varying        init (""),
+       2 data,
+         3 data_ptr ptr                 init (null),
+         3 data_lth fixed bin(21)       init ( 0),
+       2 class char(10) varying         init (""),
+       2 ioa_msg char(500) varying      init ("");
+
+
+sys_log_ Changes                                           MTB764
+
+/* Syntax: call Abort (severity, ioa_ctl_as_error_code, args); */
+
+dcl  1 sl_info_sev_coded_msg            aligned int static
+                                        options(constant),
+       2 version char(8)                init ("sl_info1"),
+       2 arg_list_ptr ptr               init (null),
+       2 loc,
+         3 (mode                        init (-1),
+            severity                    init ( 1),
+            code                        init ( 0),
+            caller                      init (-1),
+            data                        init ( 0),
+            class                       init ( 0),
+            ioa_msg                     init ( 2)) fixed bin,
+       2 flags,
+         3 ioa_msg_is_error_code bit(1) unal init ("1"b),
+         3 flags_pad bit(35) unal       init ("0"b),
+       2 mode fixed bin                 init ( 1),
+       2 severity fixed bin             init ( 0),
+       2 code fixed bin(35)             init ( 0),
+       2 caller char(65) varying        init (""),
+       2 data,
+         3 data_ptr ptr                 init (null),
+         3 data_lth fixed bin(21)       init ( 0),
+       2 class char(10) varying         init (""),
+       2 ioa_msg char(500) varying      init ("");
+
+
+MTB764                                           sys_log_ Changes
+
+/* Syntax: call Abort (severity, code, error_return_label,
+                       ioa_ctl, args);               */
+
+dcl  1 sl_info_sev_code_label_msg       aligned int static
+                                        options(constant),
+       2 version char(8)                init ("sl_info1"),
+       2 arg_list_ptr ptr               init (null),
+       2 loc,
+         3 (mode                        init (-1),
+            severity                    init ( 1),
+            code                        init ( 2),
+            caller                      init (-1),
+            data                        init ( 0),
+            class                       init ( 0),
+            ioa_msg                     init ( 4)) fixed bin,
+       2 flags,
+         3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+         3 flags_pad bit(35) unal       init ("0"b),
+       2 mode fixed bin                 init ( 1),
+       2 severity fixed bin             init ( 0),
+       2 code fixed bin(35)             init ( 0),
+       2 caller char(65) varying        init (""),
+       2 data,
+         3 data_ptr ptr                 init (null),
+         3 data_lth fixed bin(21)       init ( 0),
+       2 class char(10) varying         init (""),
+       2 ioa_msg char(500) varying      init ("");
+
+
+sys_log_ Changes                                           MTB764
+
+/* Syntax:  call Log_error (code, ioa_ctl, args);        */
+
+dcl  1 sl_info_code_msg                 aligned int static
+                                        options(constant),
+       2 version char(8)                init ("sl_info1"),
+       2 arg_list_ptr ptr               init (null),
+       2 loc,
+         3 (mode                        init (-1),
+            severity                    init (-1),
+            code                        init ( 1),
+            caller                      init (-1),
+            data                        init ( 0),
+            class                       init ( 0),
+            ioa_msg                     init ( 2)) fixed bin,
+       2 flags,
+         3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+         3 flags_pad bit(35) unal       init ("0"b),
+       2 mode fixed bin                 init ( 1),
+       2 severity fixed bin             init ( 0),
+       2 code fixed bin(35)             init ( 0),
+       2 caller char(65) varying        init (""),
+       2 data,
+         3 data_ptr ptr                 init (null),
+         3 data_lth fixed bin(21)       init ( 0),
+       2 class char(10) varying         init (""),
+       2 ioa_msg char(500) varying      init ("");
+
+
+MTB764                                           sys_log_ Changes
+
+/* Syntax:  call Trace (ioa_ctl, args);                  */
+
+dcl  1 sl_info_msg                      aligned int static
+                                        options(constant),
+       2 version char(8)                init ("sl_info1"),
+       2 arg_list_ptr ptr               init (null),
+       2 loc,
+         3 (mode                        init (-1),
+            severity                    init (-1),
+            code                        init ( 0),
+            caller                      init (-1),
+            data                        init ( 0),
+            class                       init ( 0),
+            ioa_msg                     init ( 1)) fixed bin,
+       2 flags,
+         3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+         3 flags_pad bit(35) unal       init ("0"b),
+       2 mode fixed bin                 init ( 1),
+       2 severity fixed bin             init ( 0),
+       2 code fixed bin(35)             init ( 0),
+       2 caller char(65) varying        init (""),
+       2 data,
+         3 data_ptr ptr                 init (null),
+         3 data_lth fixed bin(21)       init ( 0),
+       2 class char(10) varying         init (""),
+       2 ioa_msg char(500) varying      init ("");
+
+/* END INCLUDE FILE sys_log_constants.incl.pl1 */
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

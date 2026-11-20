@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-694</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-694: SSU_ System Control and IOX_ Message Coordinator.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-694
+SSU_ SC, IOX MC, Logging Admin Mode
+
+To:       Distribution
+
+From:     Benson I. Margulies
+
+Date:     11/12/84
+
+Subject:  SSU_ System Control and IOX_ Message Coordinator
+
+1 ABSTRACT
+
+     The  B2 requirements  require us  to implement operator
+     login,  to  improve  the  security  of  the  admin mode
+     password, and  to audit operator traffic  in admin mode
+     as  best  we  can.   These changes  proved  most easily
+     implementable in  the context of  converting the system
+     control (initializer) command  environment to ssu_, the
+     message  coordinator terminal  management to  iox_, and
+     all answering service logs to new (mtb666) style system
+     logs.   This also  allows us to  fix a  large number of
+     bugs,  and  generally improve  the  maintainability and
+     ease of use of these subsystems.
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Margulies at either System-M, MIT, or CISL-SERVICE.
+
+via Forum:
+   &gt;udd&gt;m&gt;mtgs&gt;B2 on System-M
+
+via telephone:
+   (HVN) 261-9333, or
+   (617) 492-9333
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+MTB-694                                Multics Technical Bulletin
+                              SSU_ SC, IOX MC, Logging Admin Mode
+
+2 THE SYSTEM CONTROL ENVIRONMENT
+
+The  system  control  environment  is the  set  of  programs that
+execute commands in the Initializer process.  These programs have
+three tasks:   Reading commands, parsing  and executing commands,
+and  appropriately  routing command  output.  System  control was
+originally  invented  before  the Message  Coordinator,  and then
+adapted to work with it.  The adaptation has some problems.
+
+3 THE CURRENT DESIGN
+
+3.1 Reading commands
+
+There are  two ways that  commands typed by operators  get to the
+Initializer  for  execution:  the  "system" console,  and message
+coordinator  terminals.  The  system console is  attached via the
+ocd_  I/O module  to an I/O  switch named  master_i/o, whose IOCB
+pointer is stored  in sc_stat_$master_iocb.  system_control_, the
+Initializer's   ring  4   process  overseer,   reads  lines  from
+master_i/o  and  then  passes  them off  for  execution.  Message
+coordinator  terminals  are  run  by the  message  coordinator by
+direct calls  to hcs_$tty*.  mc_tty_ reads  commands when it gets
+wakeups from the hardcore and passes the results off.
+
+3.2 Executing commands
+
+Commands are  executed by calls  to two programs:   sc_parse_ and
+execute_sc_command_.   sc_parse_  uses  an include  file  full of
+internal  static constants  to identify commands.   It returns an
+index uniquely identifying the command and some other information
+about  it.   This information  is passed  to execute_sc_command_.
+Execute_sc_command_  either  executes  the command  in  place, or
+calls  the  normal Multics  command processor  on a  command line
+fabricated  by  replacing  the  initializer command  name  with a
+character string supplied by sc_parse_.
+
+The  modularity  of this  is not  very good,  since the  calls to
+sc_parse_ and  execute_sc_command_ are duplicated  in mc_tty_ and
+system_control_.
+
+3.3 I/O switches for commands
+
+The problems with the current design are primarily concerned with
+the   setup  of   I/O  switches  for   command  execution.   Most
+initializer commands are just  Multics commands repackaged.  They
+expect  to do  output, and in  some cases input,  on the standard
+
+
+Multics Technical Bulletin                                MTB-694
+SSU_ SC, IOX MC, Logging Admin Mode
+
+switches.  Further,  input must be  read from the  terminal where
+the operator typed the command.  Since  there can only be one set
+of  user_i/o,  user_input, user_output,  and error_output  in the
+process, these switches must be rearranged for each command.  For
+commands  that  never read,  the  switches are  left  alone.  All
+user_i/o is connected to a switch named "mc_i/o", which is routed
+as the message coordinator "sc" source.
+
+For commands that can read, the switches have to be rearranged so
+that  they are  attached to the  terminal that  sent the command.
+For  the  system console  this is  a matter  of using  syn_.  For
+message  coordinator terminals,  this is complicated  by the fact
+that it  is running the  terminals through hcs_.  It  must make a
+tty_ attachment before executing the  command and then release it
+afterwards.  This hairy mechanism  is implemented by the programs
+borrow_tty_from_mc_  and return_tty_to_mc_.   This mechanism does
+not work  correctly if a  terminal hangs up in  a borrowed state.
+The system can end up hung if a terminal hangs up in admin mode.
+
+3.4 Command Output
+
+Command output  is also complicated.  Commands  that were written
+just for system control call  the sys_log_ subroutine for output.
+That  subroutine writes  all output  to the  message coordinator.
+This  has  two problems.   First,  no message  coordinator output
+comes  out  until  after  the  command  finishes  execution.  The
+message   coordinator  is   an  asynchronous   subsystem  of  the
+Initializer,  and   all  such  subsystems   are  inhibited  while
+executing  commands  to avoid  the need  for locks.   Second, the
+message coordinator  cannot send the output  back to the terminal
+where  the command  came from.  It  just goes  wherever the three
+severity switches (or "sc") are routed.
+
+4 RESTRUCTURING SYSTEM CONTROL
+
+The  new system  control structure will  simplify this situation,
+both  from  the  point of  view  of code  structure  and operator
+interface.  Nearly all command output will return to the terminal
+that  originated the  command.  Initializer  commands (other than
+reply and intercom) will be able to use command processor special
+characters.   Online   help  will  be   available.   The  complex
+borrow_tty_from_mc_ mechanism will be removed.
+
+4.1 Reading commands
+
+system_control_ will  continue to read lines  from master_i/o via
+iox_.   The  message coordinator  will be  changed to  remove all
+
+
+MTB-694                                Multics Technical Bulletin
+                              SSU_ SC, IOX MC, Logging Admin Mode
+
+calls to  hcs_$tty_*.  Instead, it  will attach a  switch to each
+"accepted"  terminal,  and use  iox_.  It  will use  timed_io_ to
+avoid  blocking.   It will  not  use -no_block,  because commands
+reading  input  need  to  block.   It  will  handle  line_status.
+Currently,  using a  sty as a  message coordinator  terminal is a
+good  way  to  kill  the system,  since  the  message coordinator
+explodes when a line_status arrives.
+
+4.2 Executing commands
+
+ssu_   will  be   used  to  interpret   commands.   Each  message
+coordinator   terminal   will   have   an   associated  subsystem
+invocation.   The  static  variable  sc_stat_$admin_sci_ptr  will
+contain the  sci_ptr for the currently  executing command.  If no
+command is executing, this value  will be null.  The ssu_ request
+table  will  use user  flags  to define  the  message coordinator
+restrictions, as described in detail below.
+
+The  program  sc_process_command_line_  is  the  replacement  for
+sc_parse_  and execute_sc_command_.   system_control_ and mc_tty_
+call  this  program  with  the  command  line.   It  sets  up the
+environment,    establishes    cleanup   handlers,    and   calls
+ssu_$execute_line  to perform  the actual execution.   As part of
+setup,  the  standard I/O  switches are  connected to  the source
+terminal.   As  part  of   cleanup,  the  previous  switches  are
+restored.   Thus,  even aborted  file outputs  cannot permanently
+swallow output.
+
+The   program  sc_execute_command_line_   is  set   as  the  ssu_
+"execute_line"  procedure.   It implements  the  required special
+handling of  the reply and  intercom commands, and  also enforced
+terminal privilege restrictions and operator login.
+
+4.3 Command Output
+
+Command output appears  in one of two ways:   I/O to the standard
+switches,   and  calls   to  sys_log_.   sc_process_command_line_
+attaches user_i/o to signal_io_ to catch all activity.  All input
+and  output  is  logged in  &gt;sc1&gt;as_logs&gt;admin_log,  before being
+passed along to the switch for the source terminal.
+
+sys_log_  poses a  problem.  Some  of the  calls to  sys_log_ are
+intended to produce real Answering  Service log messages, with or
+without  output  through  the  message  coordinator.   Others are
+intended as responses to typed commands.  A survey of the callers
+of  sys_log_  revealed that  no  analysis of  the  currently used
+severity codes would reliably sort the one from the other.
+
+
+Multics Technical Bulletin                                MTB-694
+SSU_ SC, IOX MC, Logging Admin Mode
+
+Instead,   two   new   entrypoints   are   added   to   sys_log_:
+sys_log_$command and sys_log_$command_error.  These have the same
+calling    sequence    as   sys_log_    and   sys_log_$error_log,
+respectively.   Calls to  the new entrypoints  are interpreted as
+producing  responses  to commands.   The  output is  sent  to the
+source terminal and  logged in the admin_log, but  is NOT sent to
+the message  coordinator for further distribution.   Calls to the
+old  entrypoints are  interpreted as  real log  messages, and are
+sent to the Answering Service  log and the message coordinator as
+before.
+
+All the  initializer commands that call  sys_log_ are implemented
+in admin_.pl1 and  a few things it calls,  so that converting the
+sys_log_ calls is not hard.
+
+4.4 Admin Mode
+
+This design  for I/O handling  will result in the  logging of all
+admin mode traffic,  so long as the operator  does not manipulate
+the I/O  switches.  We cannot protect  against such manipulations
+without a really enormous effort.
+
+5 OTHER CHANGES
+
+As  part  of these  changes,  the Answering  Service log  and all
+message coordinator  logs are converted  to the new  (mtb666) log
+format.  The  print_log command cannot be  made compatable, since
+the  field may  have its  own applications  that use  the old log
+format.  The new print_sys_log command will be used for printing,
+and monitor_sys_log for monitoring.  See below for details.
+
+Other  small  bug fixes  and  enhancements are  described  in the
+detailed descriptions below.
+
+Some  changes  are made  to  ssu_ and  tty_  to support  this, as
+described in the following subsections:
+
+5.1 tty_ changes
+
+     There is a new control argument pair for tty_.
+
+-suppress_dial_manager
+This control  argument prevents tty_ from  using dial_manager_ to
+attach the  specified channel.  If  the channel cannot  be attach
+via a call to hcs_, the attach operation fails.
+
+-no_suppress_dial_manager
+
+
+MTB-694                                Multics Technical Bulletin
+                              SSU_ SC, IOX MC, Logging Admin Mode
+
+This enables dial_manager_, and is the default.
+
+In  addition  a  series of  bugs  in the  tty_  implementation of
+timed_io_  support are  fixed so  that specifying  a zero timeout
+value means "try once, and then return the results."
+
+5.2 ssu_ changes
+
+Several changes are made to  ssu_ to support this design.  First,
+the user flags are added back  to the request macros.  (They were
+deleted  in a  previous change.)  These  are used  in the request
+table to note the requirements  of each request for privilege and
+system   startup  state.    Second,  the   set_default_flags  and
+set_default_multics_flags  macros are  added.  These  are a great
+convienience.     Third,    the    get_subsystem_and_request_name
+procedure  is  made  replaceable.    This  allows  messages  from
+requests   to   say   (for   example)   "word:    "   instead  of
+"system_control  (word):".  Complete  documentation for  these is
+provided in an MCR.
+
+5.3 Detailed Descriptions of the Design
+
+This  section  describes  the  new design  in  detail,  module by
+module.
+
+5.3.1 BOUND_SYSTEM_CONTROL_
+
+This bound module contains the system control environment proper.
+
+5.3.1.1 system_control_
+
+This  is  the  Initializer's  ring  4  process  overseer.   After
+initializing  the environment  with sc_init_,  it sits  in a loop
+calling iox_$get_line  and sc_process_command_line_.  A  label in
+this program is stored  in sc_stat_$shutdown_label.  The shutdown
+request  goes  to  this  label  so  that  the  command  execution
+environment will  be cleaned up before  shutdown runs.  A handler
+for  any_other  calls  sc_signal_handler_,   and  a  handler  for
+signal_io_ calls sc_signal_io_handler_.
+
+5.3.1.2 sc_init_
+
+This program sets up the pre-message coordinator environment.  It
+attaches the  system console via  ocd_ to the  switch master_i/o,
+and three severity switches (severity1, severity2, severity3) via
+
+
+Multics Technical Bulletin                                MTB-694
+SSU_ SC, IOX MC, Logging Admin Mode
+
+syn_  to  master_i/o.  The  standard switches  (user_input, etc.)
+are  set  as  syn_'s  to master_i/o.   It  creates  the subsystem
+invocation for  the system console via  a call to sc_create_sci_.
+It opens the answering service log and the admin log.
+
+     If  it  succeeds in  setting up  the basic  attachments, but
+fails  to do  something else, it  attempts to set  up a primitive
+"admin  mode"  to allow  maintainers to  fix the  problem without
+having to reload from tape.
+
+5.3.1.3 sc_create_sci_
+
+This  procedure  creates  and destroys  system  control subsystem
+invocations.   A  system  control  subsystem  invocation  has the
+following characteristics:
+
+  *  The      info      structure,      as      described      by
+     sc_subsystem_info_.incl.pl1.  This structure stores the IOCB
+     for the source terminal of a command execution, the replaced
+     ssu_ procedures  for execute_line and  locate_request, and a
+     procedure to call if the terminal hangs up while executing a
+     command.   The  message  coordinator  restriction  flags are
+     copied  here  by  mc_commands_  from  the  mc  answer  table
+     (mc_ate) entry, and a pointer to the mc_ate entry is kept.
+
+  *  The     execute_line     procedure     is     replaced    by
+     sc_execute_command_line_.  execute_line is  replaced so that
+     the   special   commands,   reply  and   intercom,   can  be
+     implemented.   These requests  do not  parse their arguments
+     normally,  and  so cannot  be passed  to the  normal command
+     processor.
+
+  *  The  locate_request procedure  is replaced  to implement the
+     message  coordinator  command restrictions.   It  checks the
+     message coordinator command restriction flags in the request
+     table against the restriction flags in sc_subsystem_info_ to
+     see  if  the source  terminal  is permitted  to  execute the
+     request.   As explained  below, each request  in the request
+     table  is  tagged with  the  terminal privilege  required to
+     execute it.  It also check for operator login as needed.
+
+  *  The              request              tables             are
+     sc_request_table_$system_control_requests  and  the standard
+     request  table.  The  info directories  are &gt;doc&gt;initializer
+     and the standard info directory.  ".."  is disabled, and the
+     execute request is removed.
+
+  *  The get_subsystem_and_request_name procedure  is replaced to
+
+
+MTB-694                                Multics Technical Bulletin
+                              SSU_ SC, IOX MC, Logging Admin Mode
+
+     make  all  error  messages  begin with  the  string COMMAND:
+     instead of "system control (COMMAND):".
+
+5.3.1.4 sc_request_table_
+
+This is  the request table  for all of  the initializer commands.
+All   of   the   requests   that   used   to   be   implented  by
+execute_sc_command_ are  "ordinary" requests.  All  requests that
+were  implemented  by  calling  the  command  processor  are  now
+multics_requests.  The only problem here is the who request.  The
+old  mechanism  added the  -long control  argument to  the as_who
+command line.   I propose to  make -long the  default for as_who,
+since  if you  don't say  -long you might  as well  have used the
+normal who command.
+
+A set of user flags are  used to store the restriction classes of
+the commands and whether or  not they depend on answering service
+initialization.   Each  command  is  classified  as  requiring  a
+particular privilege.  There  is a set of 36  bits in the mc_ate,
+one  per  privilege.   The  "accept"  command  takes  an optional
+argument which specifies which of the flags to enable.
+
+A bunch of strange undocumented requests are removed.  A bunch of
+wierd undocumented  short names are replaced  by reasonable short
+names.  See the appendix for the complete list of requests in the
+final version.
+
+5.3.1.5 sc_signal_io_handler_
+
+This  module  catches all  signal_io_  signals.  If  there  is no
+command active, it  ignores them.  If there is  a command active,
+it  logs  the  traffic in  the  admin_log and  then  forwards the
+request     to    the     real    switch,     as    defined    by
+sc_subsystem_info.real_iocb.
+
+5.3.1.6 sc_process_command_line_
+
+This is the interface for executing  a command that was read from
+a  terminal.   The  terminal is  defined  by the  mc_atep  in the
+sc_subsystem_info  associated  with  the   sci_ptr  passed  as  a
+parameter.  All  the standard switches are  saved and reattached.
+The hangup_entry  in the sc_subsystem_info is  set to an internal
+procedure  that  non-local goes  to  a label.   This  unwinds the
+command  execution.   An  error   message  is  printed,  and  the
+environment is cleaned up.
+
+
+Multics Technical Bulletin                                MTB-694
+SSU_ SC, IOX MC, Logging Admin Mode
+
+The  command  is  executed   via  a  call  to  ssu_$execute_line.
+ssu_$execute_line  setsa  up  appropriate  handlers  for  request
+aborts and  the line and then  calls the replaceable execute_line
+procedure, which is sc_execute_command_line_.
+
+Note  that  neither  sc_command not  sc_admin_command_  call this
+program.    sc_command   assumes  that   switches  are   set  up.
+sc_admin_command_ sets up switches for  itself, as explained in a
+previous MTB.
+
+This program  implements a crucial  Answering Service programming
+convention, that of the rules  for blocking.  The Initializer may
+not go  blocked with event  calls unmasked except  while awaiting
+the  input  of  a  command.   Thus,  the  two  places  where  the
+Initializer may block  with event calls unmasked are  in the call
+to   iox_$get_line  in   system_control_  and  in   the  call  to
+iox_$get_line in  sc_admin_mode_.  This rule  guarantees that the
+code that implements the initializer  commands may not be entered
+recursively.  The  Initializer may block with  event calls masked
+anyplace,  but the  code must  guarantee that  the block  will be
+satisfied in a reasonable period of time.
+
+There  is one  exception to this  rule.  The I/O  module mr_ must
+exchange  wakeups with  the program  mc_wakeups_ to  complete the
+attachment of a switch.  When the Initializer runs turn_on_mc_ to
+attach  the three  severity switches via  mr_, it  must unmask so
+that  mc_wakeups_  will  receive   the  wakeup  sent  by  mrdim_.
+Otherwise, the system would hang.
+
+5.3.1.7 sc_execute_command_line_
+
+This procedure contains the entrypoints that replace execute_line
+and  locate_request, respectively.   The execute_line entrypoint,
+which is the main entrypoint, peeks into the command line to find
+the  request  name.  It  looks it  up in  the request  table, and
+checks to see  if it has the dont_parse_arguments  user flag.  If
+so, it specially invokes it.
+
+If  the request  is not  special, or  the request  name cannot be
+determined  (e.g.,  "[foo] bas  baz"), the  standard execute_line
+procedure stored in sc_subsystem_info is called.
+
+The  locate_request entrypoint  will be called  when the standard
+execute_line  procedure  wishes to  look up  a request  name.  It
+calls the standard locate_request stored in the sc_subsystem_info
+to  make the  table lookup.   Then it  makes a  series of checks.
+First,  if a  dont_parse_arguments request  is found  here, it is
+invalid.  ("who;reply foo bar" is not valid) Then, it checks that
+the Answering Service is available  if needed, or not started for
+
+
+MTB-694                                Multics Technical Bulletin
+                              SSU_ SC, IOX MC, Logging Admin Mode
+
+the  multics  and  start_up  requests.   Finally,  it  checks the
+message  coordinator  restrictions  for   the  terminal  and  the
+operator  login state.   If all the  checks pass,  it returns the
+request data.  Otherwise it aborts the request.
+
+5.3.1.8 Other procedures
+
+The other procedures in bound_system_control_ are utilities of no
+great  importance.   Note  that  sc_admin_mode_,  that implements
+admin mode, now enables quits on the terminal during admin mode.
+
+5.3.2 BOUND_AS_MC_
+
+This  bound  segment  contains all  of  the contents  of  the old
+bound_oprcons_    except    for    sys_log_,    write_log_    and
+dial_manager_call.   sys_log_ is  moved to bound_system_control_,
+write_log_    to    &gt;obsolete,     and    dial_manager_call    to
+bound_as_requests_.  Only a few programs in here are changed:
+
+5.3.2.1 mc_commands_
+
+mc_commands_  provides   subroutines  that  are   called  by  the
+message-coordinator-related commands in admin_.pl1.  This program
+actually does  the work of accepting  and dropping terminals, and
+is converted to use iox_ as  needed.  It attaches a switch when a
+channel is accepted.   (There is one execption --  if the mpx has
+never been loaded, the attach fails, and is retried at mpx load.)
+If the  channel is dialed  up, it sends  a wakeup over  the event
+channel to  get mc_tty_ to  pay attention.  Otherwise,  it does a
+listen control order, and the hardcore sends the wakeup.  Various
+minor problems  are cleaned up  in here.  The  vcons manipulators
+are   changed  to   call  log_write_   to  open   and  close  log
+destinations.
+
+5.3.2.2 mc_tty_
+
+This is  the read side of  message coordinator terminal handling.
+It does NOT handle input for the system console.  It is converted
+to  call  iox_  and  timed_io_,  and  it  handles  all answerback
+processing.   The  flag  mc_anstbl.trace enables  tracing  in the
+program,   which  can   be  useful  in   debugging.   It  handles
+line_status errors  by looping making  line_status control orders
+and  discarding the  line_status.  It handles  hangups by calling
+the  subsystem  invocation hangup  procedure if  and only  if the
+subsystem associated with the channel is currently executing.
+
+
+Multics Technical Bulletin                                MTB-694
+SSU_ SC, IOX MC, Logging Admin Mode
+
+5.3.2.3 mc_wakeups_
+
+This  programs  handles a  variety  of message  coordinator event
+driven  functions.  The  only one  changed was  output to message
+coordinator terminals and logs.  As with everything else, this is
+converted  to  timed_io_ for  terminals and  iox_ for  the system
+console.  Log messages are written with calls to log_write_.
+
+5.3.3 ADMIN_.PL1
+
+admin_,  all  30  records  of  pl1  source,  implements  all  the
+initializer  commands  that  are   not  just  repackaged  Multics
+commands.  All calls to  sys_log_ and sys_log_$error_log here are
+converted to calls to entry variables.  These entry variables are
+normally set to the command entrypoints in sys_log_.
+
+There are several cases where admin_  is called from a timer.  In
+these  cases, the  entry variables  are reset  to the non-command
+entrypoints  in sys_log_.   Several common stretches  of code are
+moved into internal  procedures to make this work  right, and all
+calls to cu_$arg* are changed  to cu_$arg_*_rel to make THAT work
+right.  Some  trivial bugs in  argument processing are  fixed, as
+well.  In particular, the "accept" command can once again be used
+to  change  the  restriction  or broadcast  state  of  an already
+accepted terminal.
+
+5.4 Appendix:  List of all initializer commands
+
+     This list  is in loose functional  order.  The standard ssu_
+list_requests request lists the requests  in the order they occur
+in the tables, not in alpha  order.  It would be simple to change
+the request table to be alphabetized if people preferred it.
+
+Summary of system_control requests:
+
+Type "list_help" for a list of topics available to the help request.
+Type "help TOPIC" for more information on a given topic.
+
+sign_on                  Sign in as the operator responsable for
+                         this terminal.
+sign_off                 Sign out as the operator responsable for
+                         this terminal.
+reply, r                 Send input to a daemon process.
+admin                    Enter admin mode.
+bce                      Return to BCE.
+force_reset              Force reset Answering Service locks and
+                            masks.
+go                       Start answering lines.
+
+
+MTB-694                                Multics Technical Bulletin
+                              SSU_ SC, IOX MC, Logging Admin Mode
+
+message, motd            Edit the message of the day.
+multics                  Initialize the Answering Service for a
+                            special session.
+reset                    Reset some Answering Service locks and
+                            masks.
+shutdown, shut           Shut down the system.
+startup, star            Start the Answering Service and begin
+                            answering lines.
+cripple                  Stop the Answering Service. For use
+                         in an emergency, only.
+intercom, ic             Send a message to another message
+                            coordinator terminal.
+exec, x                  Executes an extended command.
+hmu                      Prints the number of users logged in.
+list_vols, lsv           Status of storage system.
+who                      Lists logged in user.
+login, logi              Logs in a daemon process.
+logout, logo             Logs out a daemon process.
+word                     Changes the login word and banner message.
+sysid                    Changes the system ID.
+down                     Sets, cancels, or prints the scheduled
+                            shutdown time.
+stop                     Bump users in preparation for system
+                            shutdown.
+warn, w                  Sends a warning blast to a user.
+maxunits, maxu           Set the maximum number of users who may
+                            login.
+detach                   Forcibly detach a communications channel
+                            from a user.
+terminate, term          Forcibly terminate a process.
+bump                     Bump an interactive user from the system.
+unbump, unbmp            Cancel a bump of an interactive user.
+attach                   Attach a communications channel for use.
+remove                   Remove a channel from use.
+accept                   Accept a channel as a message coordinator
+                            terminal.
+substty, subs            Substitute one message coordinator terminal
+                            for another.
+drop                     Drop a channel from use as a message
+                            coordinator terminal.
+define                   Define a new virtual console, or add a
+                            disposition to an existing one.
+redefine                 Replace the disposition of a virtual
+                            console.
+undefine                 Remove a disposition from a virtual
+                            console.
+route                    Route a source stream to a virtual console.
+reroute                  Change the routing of a source stream.
+deroute                  Remove a routine of a source stream.
+abs                      Control the absentee facility.
+
+
+Multics Technical Bulletin                                MTB-694
+SSU_ SC, IOX MC, Logging Admin Mode
+
+rcp                      Control RCP.
+mc_list                  Lists message coordinator information.
+add_vol, av              Inform the system of the location of a
+                            physical volume.
+add_lv, alv              Mount a logical volume for use.
+del_vol, dv              Demount a physical volume.
+del_lv, dlv              Demount a logical volume.
+init_vol                 Initialize a new physical volume.
+salvage_vol              Physical volume salvage a volume.
+list_disks, ld           Print the status of all disks.
+set_drive_usage, sdu     Change a disk between user I/O and Storage
+                            System use.
+preload                  Preload a disk or tape volume.
+unload                   Unload a disk or tape volume.
+load_mpx                 Loads a multiplexer.
+dump_mpx                 Dumps a multiplexer.
+start_mpx                Starts a multiplexer.
+stop_mpx                 Stops a multiplexer from accepting new
+                            calls.
+add_pdir_volume          Adds a logical volume to the set of pdir
+                            volumes.
+del_pdir_volume          Deletes a logical volume from the set of
+                            pdir volumes.
+set_pdir_volumes         Specifies the set of pdir logical volumes.
+log                      Adds a message to the system log.
+shift                    Changes the shift.
+disconnect               Forcibly disconnects a user from their
+                            terminal.
+vacate_pdir_volume       Moves all user process directories off of a
+                            logical volume.
+shutdown_mpx             Shuts down a multiplexer without dumping
+                            it.
+add                      Adds hardware for use by the system.
+delete, dl               Deletes hardware from use by the system.
+.                        Identify the subsystem.
+help                     Obtain detailed information on the
+                            subsystem.
+list_help, lh            List topics for which help is available.
+list_requests, lr        List brief information on subsystem
+                            requests.
+do                       Perform substitution into a request line
+                            before execution.
+if                       Conditionally execute one of two request
+                            lines.
+answer                   Provide preset answers to another request
+                            line.
+?                        Produce a list of the most commonly used
+                            requests.
+
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

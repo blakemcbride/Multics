@@ -1,0 +1,63 @@
+display_tape_status: dts:
+          procedure;
+
+/* Program to convert octal tape status to a printable message */
+
+/* automatic */
+
+dcl  arg_len fixed bin (21),
+     arg_ptr ptr,
+     code fixed bin (35),
+     dig fixed bin,
+     i fixed bin,
+     msg char (100),
+     stat bit (72) aligned;
+
+/* based */
+
+dcl  arg_string char (arg_len) based (arg_ptr);
+
+/* external static */
+
+dcl tape_status_table_$tape_status_table_ ext;
+
+/* entries */
+
+dcl analyze_device_stat_$rsnnl entry (char (*), ptr, bit (72) aligned, bit (18) aligned),
+     com_err_ entry options (variable),
+     cu_$arg_ptr entry (fixed bin, ptr, fixed bin (21), fixed bin (35)),
+     ioa_ entry options (variable);
+
+/* program */
+
+          call cu_$arg_ptr (1, arg_ptr, arg_len, code);
+          if code ^= 0
+          then do;
+                    call com_err_ (code, "display_tape_status", "Usage: display_tape_status octal_tape_status");
+                    return;
+               end;
+
+          i = verify (arg_string, "01234567");
+          if i > 0
+          then do;
+                    call com_err_ (0, "display_tape_status", "Non-octal digit in position ^d of ^a", i, arg_string);
+                    return;
+               end;
+
+          if length (arg_string) ^= 4
+          then do;
+                    call com_err_ (0, "display_tape_status", "Exactly 4 digits must be specified.");
+                    return;
+               end;
+
+          stat = ""b;
+          do i = 1 to length (arg_string);
+               dig = index ("01234567", substr (arg_string, i, 1));
+               substr (stat, i * 3 - 2, 3) = substr ("000001010011100101110111"b, dig * 3 - 2, 3);
+          end;
+
+          msg = "";
+          call analyze_device_stat_$rsnnl (msg, addr (tape_status_table_$tape_status_table_), stat, ""b);
+          call ioa_ ("^4.3b:   ^a", stat, msg);
+
+end;

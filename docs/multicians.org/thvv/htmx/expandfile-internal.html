@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Internals of expandfile</title>
+    <meta name="description" content="Internals of expandfile.">
+    <meta name="keywords" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="xfstyle.css">
+    <style type="text/css">
+     .outer {min-width: 200px; max-width: 800px; width: auto !important; width: 600px; margin: 0px auto;}
+     .mf {display: inline; font-size: 70%;}
+     .mf .mfx {display: none;}
+     .mfaddr {font-size: 9pt; font-family: sans-serif; background-color: #aaaaff; color: #000000;}
+     .mfed {font-size: 9pt; font-family: serif;}
+    </style>
+<style type="text/css">
+<!--
+#leftpanel {background-color: #f0f0f0; margin-right: 1em;  padding: 1em 1em 1em 1em; float: left; width: 175px;}
+#leftpanel a:link {background-color: #f0f0f0; color: #0000ff;}
+#leftpanel a:visited {background-color: #f0f0f0; color: #ff00ff;}
+#leftpanel a:hover {background-color: #ffdddd; color: black;}
+#leftpanel a:active {background-color: #f0f0f0; color: #ff0000;}
+-->
+</style>
+  </head>
+  <body> 
+    <div class="outer">
+      <div class="headbar">
+	<div class="headbar2">
+	  <span class="headingdate">25 May 2025</span>
+          <div class="h1holder"><h1>Internals of expandfile</h1></div>
+	</div>
+      </div>
+      <div class="main">
+<p>
+  This note describes how <a href="expandfile.html"><span class="cmd">expandfile</span></a> is implemented and how its parts can be used.
+</p>
+
+<h2>Application</h2>
+<p>
+  The <span class="cmd">expandfile</span> application is written in the Perl 5 language.
+  It is about 75 lines of Perl code.
+  (Perl is provided with Mac and Unix systems and is available for Windows.)
+</p>
+<p>
+  <span class="cmd">expandfile</span> uses a Perl module <span class="cmd">expandfile.pm</span> that does most of the work.
+  It is about 1500 lines.
+  <span class="cmd">expandfile.pm</span> exports three functions:
+</p>
+<ul>
+  <li><span class="cmd">$newtemplate = &amp;expandblocks($template, \%symtb)</span> scans a template for <span class="cmd">block</span> constructs, defines them in the symbol table, and returns a template without them.</li>
+  <li><span class="cmd">$newtemplate = &amp;expandMulticsBody($template, \%symtb)</span> replaces low-level reference constructs when reading in a template.</li>
+  <li><span class="cmd">$ostring = &amp;expandstring($template, \%symtb)</span> expands a template and returns the result.</li>
+</ul>
+<div class="rtpic" style="width: 385px;"><img src="expand-tree.png" width="385" height="278" alt="" title="dependency tree for expandfile"></div>
+<p>
+  <span class="cmd">expandfile.pm</span> uses a Perl module <span class="cmd">readbindsql.pm</span> that it uses for processing loops over MySQL queries. It uses CPAN modules DBI and DBD::mysql.<br>
+  <span class="cmd">expandfile.pm</span> uses a Perl module <span class="cmd">readbindxml.pm</span> that it uses for processing loops over XML files. It uses CPAN module XML::LibXML<br>
+  <span class="cmd">expandfile.pm</span> also uses CPAN modules LWP::Simple and Term::AnsiColor.
+  These modules are usually installed with Perl.
+</p>
+<p>
+  <span class="cmd">expandfile</span> is open source, MIT license, <a href="https://github.com/thvv/expandfile" title="new window: https://github.com/thvv/expandfile" target="_blank" rel="noopener"><span class="nb"><img src="mulimg/tinyglob.gif" alt="" width="12" height="11" style="display: inline;"> available on GitHub</span></a>.
+</p>
+
+<h3>Using <span class="cmd">expandfile</span> for File Transformation</h3>
+<p>
+  I primarily use the <span class="cmd">expandfile</span> application to generate static HTML pages from HTMX templates,
+  as described in <a href="mx-website-features.pdf">Multics Website Features</a>.
+  At times I also use the <span class="cmd">expandfile</span> application to expand other kinds of templates, for example to convert data to new formats,
+  or to automate conversion and report generation processes by invoking the <span class="cmd">*shell</span> builtin to invoke command lines.
+</p>
+
+<h3>Using <span class="cmd">&amp;expandstring()</span> for Other HTML Production</h3>
+<p>
+  I have written a few CGI programs, executed by a web server, that invoke <span class="cmd">expandfile::&amp;expandstring()</span> to generate dynamic HTML pages or data conversions,
+  for example, mail sending and signup forms.
+</p>
+<p>
+  I have also written Perl programs that invoke <span class="cmd">expandfile::&amp;expandstring()</span> to generate static picture gallery HTML pages.
+</p>
+
+<h2>How <span class="cmd">expandfile</span> Works</h2>
+
+<h3>Processing</h3>
+<ul>
+  <li>Create an associative array <span class="cmd">%symtb</span> for the definitions of variables.</li>
+  <li>Process arguments:
+    <ul>
+      <li>
+	variable settings: if an argument has the form XX=YYY, perform <span class="cmd">*set,&amp;XX,=YYY</span>.
+      </li>
+      <li>
+	input files: if the filename is "-", read standard input. Otherwise, read the file and expand it.
+	<ul>
+	  <li>it is often useful to have the first input file consist only of comments and <span class="cmd">*set,&amp;XX,=YYY</span> commands for configuration variables.</li>
+	</ul>
+      </li>
+    </ul>
+  </li>
+  <li>For each input file,
+    <ul>
+      <li>
+	call <span class="cmd">expandblocks()</span> to make a pass over the template finding <span class="cmd">*block</span> constructs,
+	saving their value in the associative array,
+	and returning the template with the blocks removed.
+      </li>
+      <li>
+	if <span class="cmd">_xf_expand_multics</span> is nonblank, call <span class="cmd">expandMulticsBody()</span> to<br>
+	replace  <b>{: ... :}</b>, <b>{+ ... +}</b>, <b>{= ... =}</b>, <b>{- ... -}</b>,
+	<b>{@ ... @}</b>, <b>{[ ... ]}</b>, and <b>{! ... !}</b> constructs by their expansions.
+      </li>
+      <li>
+	call <span class="cmd">expandstring()</span> to expand the transformed template, expanding variables and builtins,
+	and return the result.
+      </li>
+      <li>
+	write the result of expansion to standard output.
+      </li>
+    </ul>
+  </li>
+</ul>
+
+<h2>Known Bugs</h2>
+<p>
+  Because I wrote the program, it works fine for me.
+  There are a few areas where doing something not allowed by <span class="cmd">expandfile</span> produces a poor or unhelpful error message,
+  but I avoid these mistakes.
+  One error I noticed is a very unhelpful message if you have an unbalanced quote in a COMMENT.
+  (This happens because the quote processing happens before builtin functions (such as comment) are executed.)
+  I make this mistake very rarely, and I don't see an easy fix without a lot of work, and changing the language.
+</p>
+
+<h2>Testing Expandfile</h2>
+<h3>Test Suite</h3>
+<p>
+  I built a set of smoke tests that I use after changes to <span class="cmd">expandfile.pm</span>: about 70% of the language features are exercised.
+  The tests are driven by a shell script that runs the tests and compares actual output to expected output.
+  There is also the beginning of a test for the macros in <span class="cmd">htmxlib.htmi</span>, which tries many of the possible cases for image-generation macros.
+  Much more work would be required to turn this set of tests into a thorough test library.
+  These tests are in a directory <span class="cmd">testexpandfile</span>.
+</p>
+<h3>Test Suite Installation and Configuration</h3>
+<p>
+  Install <span class="cmd">expandfile</span> and its prerequisites as described in the <a href="expandfile.html#tag_install">installation instructions</a>.
+  Install the test suite.
+  Then type the terminal command
+</p>
+<pre class="code">
+  cd bin/testexpandfile; sh setup-config.sh
+</pre>
+<p>
+  to set up <span class="cmd">bin/textexpandfile/config.htmi</span>.  If the file is already there, <span class="cmd">setup-config.sh</span> just shows its date modified.
+  If <span class="cmd">$HOME/.my.cnf</span> is available, <span class="cmd">setup-config.sh</span> will use MySQL configuration values from it.
+</p>
+<h3>Running the tests</h3>
+<p>
+  In the <span class="cmd">testexpandfile</span> directory, type
+</p>
+<pre class="code">
+  sh test.sh
+</pre>
+<p>
+  to run 49 tests of builtin functions, including <span class="cmd">*csvloop</span>, <span class="cmd">*sqlloop</span>, <span class="cmd">*xmlloop</span>, <span class="cmd">*ssvloop</span>, and <span class="cmd">*dirloop</span>.
+  This is not comprehensive... when I find time I can add more test cases.
+  The tests display what the builtin returned, and what it was expected to return.
+</p>
+<p>
+  To test a few external functions called by <span class="cmd">*shell</span>, type
+</p>
+<pre class="code">
+  sh extfunctest.sh
+</pre>
+<p>
+  To test some error messages, type
+</p>
+<pre class="code">
+  sh testerr.sh
+</pre>
+<p>
+  Type
+</p>
+<pre class="code">
+  expandfile macrotest.htmt
+</pre>
+<p>
+  To test <a href="expandfile-macros.html">macros</a> in <span class="cmd">htmxlib.htmi</span>, such as <span class="cmd">*callv,getimgdiv,...</span>.
+  Some of these macros encapsulate the handling of <a href="../high-dpi.html">High DPI images</a>.
+  These tests say !OK! if the macro returns what was expected.
+</p>
+
+<h2>Weaknesses of the Current Perl Implementation</h2>
+<ul>
+  <li>
+    Support for Perl in modern operating systems is waning:
+    Apple shipped a down-rev version for years and does not provide Perl in Big Sur and beyond.
+    I install Perl using <a href="https://formyfriendswithmacs.com/homebrew.html">Homebrew on the Mac</a>.
+    Installing Homebrew takes less than an hour.
+  </li>
+  <li>Perl is regarded as obsolescent and few programmers know it.</li>
+  <li>
+    Currently you have to have CPAN modules <span class="cmd">DBD</span> and <span class="cmd">DBI::mysql</span> installed or <span class="cmd">expandfile</span> refuses to run,
+    even if you never use the SQL features.
+    Installing <span class="cmd">DBD::mysql</span> requires that you install MySQL and set it up.
+  </li>
+  <li>
+    Currently you have to have <span class="cmd">LibXML</span> installed, even if you never use XML features.
+    Installing the XML support drags in a lot of other CPAN modules.
+  </li>
+  <li>Installing all the required Perl modules can take hours and occasionally requires workarounds.</li>
+  <li>Changing Perl versions requires reinstalling all the CPAN modules.</li>
+  <li>Perl developers are debating community standards and codes of conduct. Some developers are bailing out.</li>
+</ul>
+
+<h2>Future Improvements</h2>
+<p>
+  There are a number of possible improvements to <span class="cmd">expandfile</span> worth considering.
+  To make these changes we would have to rewrite the application code that uses the features.
+</p>
+<ul>
+  <li>We could eliminate <span class="cmd">*include</span> and <span class="cmd">*includeraw</span> in favor of <span class="cmd">*fread</span> and a variable reference. </li>
+  <li>We could eliminate <span class="cmd">*expand</span> in favor of <span class="cmd">*expandv</span> and a variable reference</li>
+  <li>
+    We could change the names of builtins that produce output to <span class="cmd">*get...</span>
+    (*callv, *dump, *expand, *include, *includeraw, *htmlescape, *if, *onchange, *onnochange)
+    <br> builtins that may or may not produce output, depending on included statement, are (*callv, *expand, *if, *onchange, *onnochange)
+    so maybe these should be called <span class="cmd">*eval...</span>.
+  </li>
+  <li>
+    We could support <span class="cmd">sqlite</span> in <span class="cmd">*sqlloop</span>, by setting hostname to <span class="cmd">sqlite</span> and databasename.
+    <ul>
+      <li>
+	I added code to try this out in <span class="cmd">readbindsql.pm</span> .. added an <span class="cmd">if</span> statement on the hostname when executing <span class="cmd">DBI->connect()</span>.
+      </li>
+      <li>
+	Unfortunately, it does not work: specifying a query will work and execute,
+	but the values bound before iterator blocks are expanded are not the same as for MySQL.
+	The sqlite calls return a blank for the table name of values returned:
+	MySQL binds query results from queries that access more than one table as, e.g. "table1.col1" and "table2.col1" --
+	sqlite binds results as ".col1" and ".col1".
+	Queries written for MySQL will not work for sqlite, and vice versa.
+	For a JOIN query, expandfile using sqlite cannot distinguish which table a variable came from.
+      </li>
+      <li>
+	This means that an sqlite database is not a drop-in replacement for a MySQL database.
+      </li>
+      <li>
+	I corresponded with Kenichi Ishigaki, the author of <span class="cmd">DBD::sqlite</span>.
+	He says that the SQLite C API does not provide an interface that returns the table name for each query value returned: it only returns the column name.
+	I will have to correspond with the sqlite C-Perl developers and propose that the API be enhanced,
+	and if they do that, suggest to Ishigaki that then <span class="cmd">DBD::sqlite</span> return the table names like <span class="cmd">DBD::mysql</span>.
+      </li>
+    </ul>
+  </li>
+  <li>
+    What about <span class="cmd">mariadb</span>, or other databases? I will have to test and see if <span class="cmd">mariadb</span> is a drop in replacement for MySQL,
+    including returning the table name.
+    I did one test using <span class="cmd">mariadb</span> on Linux systems in place of MySQL in 2022 or 2023, and simple tests worked OK.
+    (The company "mariadb" was sold in 2024, but the MariaDB foundation is "separate and thriving.")
+  </li>
+  <li>
+    Languages other than Perl handle multiple databases, e.g. Java has JDBC.
+    Can we generalize plugging a database into expandfile?
+    Does <span class="cmd">expandfile</span> need a configuration item that says what kind of database it is?
+    Could <span class="cmd">expandfile</span> connect to multiple different databases at the same time?
+    What if a user wants 2 different kinds in one <span class="cmd">expandfile</span> execution? -- perhaps the database config should be a
+    structure <span class="cmd">type/host/dbname/user/password/port/idunno..</span>
+    This needs to be redesigned to be object oriented, without making it harder to use.
+  </li>
+  <li>
+    The way configuration is specified for <span class="cmd">*sqlloop</span> etc using the global symbol table is a "tramp linkage."
+    It is ugly, inconvenient, and error prone.
+    We could pass 5 more args to <span class="cmd">sqlloop</span> everywhere and eliminate globals,
+    or have "username|password|server|port|database|options" in a variable, with the separator "|" reserved.
+    This is ugly.. what if a sixth parameter is needed by some future database?
+    Maybe we need "_xf_sql_username=u,_xf_sql_password=pp,_xf_sql_server=sss,_xf_sql_port=123,_xf_sql_database=dbname,_xf_sql_options=xxx" and so on:
+    then we could parse it as a CSV.
+    The database configuration variable names should begin with a prefix like <span class="cmd">_xf_</span> to avoid conflict with user variables.
+  </li>
+  <li>
+    Provide a <span class="cmd">*jsonloop</span> construct for JSON data instead of translating it to XML.
+    Is there an analogue to an XPath for JSON?
+  </li>
+  <li>
+    Why not generalize loop constructs so that they can be added without changing base <span class="cmd">expandfile</span>?
+    For example, replace <span class="cmd">*sqlloop</span>, <span class="cmd">*dirloop</span>, <span class="cmd">*ssvloop</span>, <span class="cmd">*csvloop</span>, <span class="cmd">*xmlloop</span> etc with
+    <br><span class="cmd">%[*forloop,&amp;outvar,setup,arg1,nextfn,arg2,testfn,arg3]%</span>
+    <br>which runs "setup(arg1)" and then "nextfn(arg2)" over and over till "testfn(arg3)" becomes empty, answer in "outvar"
+    .. e.g <span class="cmd">%[*forloop,&amp;outvar,_sqlconfig,="SELECT * FROM glop",_sqlbindexpand,iterator_block,_sqlisempty,_result]%</span>
+    <br>"nextfn" funcs to unify sqlloop and ssvloop and other possible loops  (e.g. pushdown list/array)??
+    <br>.. function <span class="cmd">%[*sqlbind,&amp;cursor,configuration,query]%</span> 
+    <br>.. function <span class="cmd">%[*sqlfetch,&amp;cursor]%</span>   -- sets cursor to null when eof
+  </li>
+  <li>
+    Improve linkage so that, e.g., if a user never uses <span class="cmd">*xmlloop</span> they don't need to have <span class="cmd">LibXML</span> installed in CPAN.
+    I tried one way to do this, but the simple solution worked in some versions of Perl but not others.
+    Perlmonks suggests doing <span class="cmd">$mod = 'My::Module1'; eval "require $mod";</span>... this will fail ugly if DBD::MySQL is not installed.
+    A fancier version depended on having the non-standard Perl Module "Class" being available -- so to avoid installing one module you have to install another.
+  </li>
+  <li>
+    Make the "Multics" expansion features e.g. {[ ... ]} an optional module.  Could it be loadable/replaceable/extensible?
+    Each expansion feature should be a separate loadable module. 
+  </li>
+  <li>
+    Define an extension protocol so that builtin functions can be separated from <span class="cmd">expandfile.pm</span>, and loaded optionally.
+    <span class="cmd">*shell</span> allows defining functions that extend the language, but the called function has limited access to the global dictionary,
+    and calls are slow because they launch a large shell process every time, which then launches other processes.
+    How about something like <span class="cmd">%[*loadfunction,="twizzle",="twizzle.pm",="Result Inoutvalue Valuessv"]%</span> where arg3 is a SSV list of argument types.
+  </li>
+  <li>Right now <span class="cmd">expandfile</span> has no typed variables.  Very Perl5-ish: everything is a string.  Just sayin.</li>
+  <li>Could we bind a C-coded function to a builtin name?  Perl6 lets you do this.  Think I would want a lot of safeguards, hard to debug.</li>
+  <li>
+    Generalize and improve error reporting.  I wasted hours debugging an unbalanced double quote in a comment.
+    The basic scanner could make some notes that get printed on an unbalanced string error.
+  </li>
+  <li>Add an internal switch that controls whether a missing <span class="cmd">*include</span> file is a fatal error or just a comment. Similarly for missing directory in <span class="cmd">*dirloop</span>. etc.</li>
+  <li> Sanitize args to subst, remove backticks, what else?</li>
+  <li> Change <span class="cmd">*dump</span> to call <span class="cmd">warn</span> instead of printing to stdout?</li>
+  <li> Add variables that control other error behavior, etc</li>
+  <li> Use single ampersand to indicate OUT param, double ampersand to indicate INOUT (would have to change many source files: *concat, *increment, *decrement, *popssv, *subst, *product)</li>
+  <li> Maybe <span class="cmd">*product</span> should not be inout</li>
+  <li> Trace goes to STDERR, is this OK? Should I make it configurable?</li>
+  <li> Add a way to trace any setting of a listed varname .. keep a table of regexp varnames .. cd have an SSV of varnames</li>
+  <li> Add a way to trace any execution of a listed func .. keep a table of regexp varnames</li>
+  <li> Find places commented DEBUG and make them switchable trace functions</li>
+  <li> Change name of HTMXDEBUG2, and be thorough about tracing interesting things; also make other <span class="cmd">*debug</span> verbs</li>
+  <li> Documentation.. build a requirements doc independent of implementation and a high level implementation tree</li>
+  <li>
+    Clean up configure/install and do it in a standard way, including a check in configure that prerequisites are present.
+    install should just install the code, configure should set up Makefile and config for a directory, and be idempotent.
+  </li>
+  <li> Vastly improve tests, generate them mechanically, invent a fuzzer</li>
+  <li>
+    We could package Perl-implemented <span class="cmd">expandfile</span> using <a href="../../index.html">SNAP</a>, a
+    <a href="https://en.wikipedia.org/wiki/Snap_(software)">a packaging technology</a> that works for Unix/Linux and Windows.
+    Users could then install SNAP on their Unix/Linux machines once, and install and use <span class="cmd">expandfile</span>, with much less work.
+    A key question is whether this has a big performance impact.
+    (SNAP does not seem to work on Mac.
+    One can install <span class="cmd">snapcraft</span> and <span class="cmd">multipass</span> using Homebrew and generate Snap files.
+    Since there is no <span class="cmd">snapd</span> for Mac, one cannot run Snap files under MacOS.)
+  </li>
+</ul>
+
+<h3>Implementation Language</h3>
+<p>
+  Efficiency has not been a crucial issue with <span class="cmd">expandfile</span> for my uses.
+  If I were dealing with templates with many thousands of lines, or frequent expansion of online templates, it might be important.
+  Perl 5 is an interpreted language.
+  Using <span class="cmd">*shell</span> launches 2 processes for every invocation, so it is even slower.
+  It would be possible to rewrite <span class="cmd">expandfile</span> in some other language than Perl:
+  a non-interpreted language would save the parsing and interpretation of every Perl statement,
+  and perhaps support some optimizations.
+  The advantage of Perl for me is that I find it easy to make incremental improvements to the program's function and to debug problems.
+</p>
+<p>
+  On the other hand, Perl has many internal optimizations, tested by time.  Regexp caching and execution, for example.
+</p>
+<p>
+  Currently, installing <span class="cmd">expandfile</span> requires command line skills on the Mac and Linux.
+  You need to install the right versions of Perl, various libraries and helper programs, MySQL, and CPAN -- all in the right order.
+  This process takes hours.
+  Some people have decided not to use <span class="cmd">expandfile</span> because the install process is so complicated,
+  so I am looking for ways to simplify the process.
+</p>
+
+<h4>Language Features Required</h4>
+<ul>
+  <li>Variables that hold strings of large size and manage the storage: i.e. no malloc()/free(), no predeclared maximum size, efficient</li>
+  <li>String operations: substr, index, concatenate, etc</li>
+  <li>Regular expression match, with subregular match, and substitute on strings</li>
+  <li>Convert string to number and number to string</li>
+  <li>Extensible 'map' or 'hash' data structure with any size strings for keys and values</li>
+  <li>Read and write local files</li>
+  <li>Read STDIN, write STDOUT</li>
+  <li>Get command line arguments</li>
+  <li>Get date and time values as string: year, month, ISO date, etc</li>
+  <li>Read shell environment variables</li>
+  <li>Pass command line to the shell and capture the result in a string</li>
+  <li>Fetch contents of a remote URL</li>
+  <li>Easy installation: e.g. on Mac, use MacPorts or brew; on Linux, use package manager</li>
+  <li>Function libraries that extend the base language:
+    <ul>
+      <li>MySQL: open database, execute queries, process each row returned, bind return values to string values, provide column names (including table name for JOINs)</li>
+      <li>* desired: do same as MySQL for sqlite3, including column names with table names</li>
+      <li>XML: read file, execute XPATH queries, process each row returned, bind item names and values</li>
+    </ul>
+</ul>
+<p>
+  To my way of thinking, this rules out C. I would have to basically reinvent Perl. We have Perl already.
+</p>
+
+<h4>Python</h4>
+<p>
+  In 2016, I tried porting <span class="cmd">expandfile</span> to Python 2.7, as an experiment; the code had more lines and execution was a little slower.
+  Much of the size increase came from the need to check if a Python variable was defined;
+  in Perl, an undefined value in an associative array is equal to an empty string, and <span class="cmd">expandfile</span> code assumes this.
+  Converting to Python did find a few latent bugs. I did not try to port XML or MySQL features.
+  I later rewrote <span class="cmd">expandfile</span> to use internal <span class="cmd">getter</span> and <span class="cmd">setter</span> functions, partly to make future ports easier.
+</p>
+<p>
+  Python has some of the same issues as Perl, including
+  managing language level, OS integration, deployment on user machines, and library integration.
+  I would have to find equivalents for all the functions I now get from CPAN.
+  In the early 00s, Macs came with both Perl and Python, but Apple is removing this support.
+</p>
+<p>
+  In a superficial examination of the Python MySQL connector interface,
+  I did not see the feature of returning column names including table name for a JOIN.
+  This would be a functional regression from the Perl version.
+  I'd have to rewrite my code that depends on this feature.
+</p>
+<p>
+  I have not considered Python 3. It is up to 3.12 already.
+  Expandfile has changed a lot since 2016, and porting to Python 3 would be a whole new project.
+</p>
+
+<h4>Go</h4>
+<p>
+  In Oct 2021, I began porting <span class="cmd">expandfile</span> to the <b>Go></b> language, version 1.7.2, on a Mac.
+  As of Jan 2022, it worked, except for the XML library.
+  All tests completed without crashing: most tests pass, except for minor cosmetic problems. 
+  The Golang implementation is <b>slower</b> than the Perl version (looking into this).
+  Go has now advanced to version 1.24.2 and I will have to redo the port.
+  My observations are in <a href="expandfile-go.html">a separate page</a>.
+</p>
+
+<h4>Ruby</h4>
+<p>
+  In Jul 2022, I tried porting <span class="cmd">expandfile</span> to the <b>Ruby</b> language, version 3.1.2, on a Mac.
+  Regular expressions in Ruby are slightly different from those in Perl:
+  it is not clear whether existing <span class="cmd">expandfile</span> programs that depend on regular expressions can be compatible. 
+</p>
+<p>
+  All tests complete without crashing as of 27 Aug 2022.
+  Basic expansion and builtin tests pass.
+  CSV parsing works.
+  SQL access works, but the Ruby "mysql2" module does not provide table names in reflection data,
+  so table names are not used in variable bindings of query results.
+  A few tests of Multics expansions are failing.
+  Some <span class="cmd">*callv</span> macros return an extraneous NL character at the end of their result.
+  XML access is not finished yet.
+  I am looking at using <span class="cmd">rexml</span> and its XPATH support.
+  My tests compile and run but get wrong answers.
+</p>
+
+<hr>
+
+<h4>Rust</h4>
+<p>
+  I tried  porting <span class="cmd">expandfile</span> to the <b>Rust</b> language.
+  I hope the result will be faster than Go and Perl.
+  I have started preliminary explorations.
+  The language keeps changing under me.
+</p>
+
+<h4>JavaScript</h4>
+<p>
+  How about re-implementing <span class="cmd">expandfile</span> in JavaScript?
+  It looks possible but I have not started on it.
+</p>
+<ul>
+  <li>
+    JavaScript is available for modern operating systems.
+    <span class="cmd">Node.js</span> can be installed easily and allows one to invoke a JavaScript program from the command line.
+  </li>
+  <li>Should be possible to create an <span class="cmd">expandfile</span>-like program that does not require the installation of features you don't use, e.g. MySQL, XML. </li>
+  <li>JavaScript can support
+    <ul>
+      <li>Values that are strings</li>
+      <li>File system access</li>
+      <li>XML and CSV access</li>
+      <li>MySQL access</li>
+      <li>URL fetching</li>
+      <li>Regular expression matching and substitution</li>
+      <li>Map datatype</li>
+      <li>Invocation of command programs and capture of their output</li>
+    </ul>
+  </li>
+  <li>In addition, a JavaScript version of <span class="cmd">expandfile</span> could add new features:
+    <ul>
+      <li>Allow loading of builtins at runtime .. invocation patterns for iterators, file accessors, etc</li>
+      <li>Static typing for variables.. numbers, arrays, stacks</li>
+    </ul>
+  </li>
+</ul>
+
+<h4>Perl 6 (Raku)</h4>
+<p>
+  Perl 6 is still in its early development: it was first available in 2017.
+  I considered re-implementing <span class="cmd">expandfile</span> in Perl 6, tried a few experiments, gave up.
+</p>
+<p>
+  I looked at Raku again in 2025: it has improved a lot.
+  The documentation is much more useful.
+  There is a "Perl to Raku" web page.
+  There are a lot of nice features in the language.
+</p>
+<p>
+  One major task for me would be translating all the Perl regexps in <span class="cmd">expandfile</span> into Raku regexps:
+  Raku regexps are much easier to use and more powerful, but translating Perl REs to Raku would be tedious work.
+</p>
+<p>
+  Costs: learn a new language, major recoding of everything.
+  Because the language is still developing, it might change under me: I adapted to Perl changes, but found keeping up with Go and Rust daunting.
+  If I went with Raku, I think it would be harder to involve other programmers.
+</p>
+<p>
+  Unchanged from Perl: I would still have to install external modules for all the functions that <span class="cmd">expandfile</span> uses.
+  It appears that moving to each new release of the language would involve me in the same tedious rebuild and integration that I see with Perl.
+</p>
+<p>
+  Seemed like the best way to get Perl6 on a Mac is to visit https://rakudo.org/downloads/star and download rakudo-star-whatever-macos-x86_64.dmg.
+  I did.
+</p>
+<p>
+  Early experiments: I made Perl v6 versions of <span class="cmd">expandfile</span> and <span class="cmd">expandfile.pm</span> and hammered on them till they compiled in Raku.
+  (I commented out parts that depended on CPAN, such as <span class="cmd">*sqlloop</span>.)
+  Documentation and compiler diagnostic messages after minor errors were often very hard to understand.
+  (For example, unbalanced constructs produce a cryptic error message complaining about the last line of the program.
+  I have not seen such unhelpful messages since using AED-0 in 1965.)
+  I gave up.
+</p>
+<p>
+  If I want to continue with Raku, I'll have to start over: the language ha changed a lot since my last try.
+  Now I am on Apple Silicon.
+  There are supposedly ways to use CPAN modules with Raku.
+  Installing these would be at similar to Perl.
+  It looks like a daunting amount of work.. is there any upside?
+</p>
+
+<h4>LISP</h4>
+<p>
+  Just a thought.
+  Bernie went through similar implementation choice considerations when designing Emacs in 1978, and chose LISP.
+  It's fast, widely available, and has a compiler with integration between interpretation and compilation.
+  It can call externally compiled routines in other languages.
+  Lotta different kinds of LISP: clisp, clojure, gcl, ecl, scheme.. which would I use?
+  LISP is available for Mac, Windows, Linux, but not standard on any.
+</p>
+
+<h4>C++</h4>
+<p>
+  How bout rewriting the Perl in C++ using <span class="cmd">std::string</span> and <span class="cmd">&lt;cctype&gt;</span> and <span class="cmd">boost_regex</span>?
+  Would have to learn a lot of fine points: ownership, views, const.
+  My experience with C++ at Taligent was that it's a powerful and efficient language with many pitfalls.
+  Library support for SQL and XML would probably require me to learn a lot about Makefile generation and packaging,
+  and then again I would have to solve the problem of installing all the libraries.
+</p>
+
+<h4>Other</h4>
+<p>Need a language that is freely available and easy to install.</p>
+
+<h2>Other Improvement Ideas</h2>
+<pre>  
+  # the filenames in expandfile are relative to the wdir, not to the calling file path.
+  # maybe this should be changed. certainly it should be documented.
+  #
+  # 01/11/05 6 AM ideas
+  # 2) really I want <span class="cmd">%[*if,(predicate),cmd]%</span>  and access to a full language.. LISP
+  # 3) notion of arrays -- SSVs are a weak substitute
+  # 4) variables as push down lists or stacks
+  #
+  # there are limits to sizes. document.
+  #
+  # here is another idea.. %[*pipe,&amp;outputvar,inputvar,command]%
+  # .. say I build up a variable that has a lot of mysql input, and feed it to <span class="cmd">mysql</span> shell command.
+  # .. doing this in Perl with both input and output is tricky
+  # .. right now I can do this by generating the var, writing into a temp file, and running the cmd .. litters wdir, has restart and nesting issues
+  # .. Perl6 Proc.async could do this
+  #
+  # my address book reader does complicated parsing and could be a third loop if I can 
+  # .. figure out a callback scheme.  That is really the wanted breakthrough.  I guess I could
+  # .. do something like a Perl "exec" %[*exec,perl]% -- is this too powerful??
+  #
+ </pre>
+
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+<div id="otherinfo">
+  <span class="toc">
+    <a href="expandfile.html">Expandfile</a> |
+    <a href="expandfile-tutorial.html">Tutorial</a> |
+    <a href="expandfile-multics.html">Multics Args</a> |
+    <a href="expandfile-wrappers.html">Wrappers</a> |
+    <a href="expandfile-macros.html">Macros</a> |
+    <a href="expandfile-unix.html">Using Unix Tools</a> |
+    <a href="expandfile-history.html">History</a> |
+    <a href="expandfile-internal.html">Internals</a>
+    <br>
+    PDFs: 
+    <a href="quad.pdf">Quad chart</a> |
+    <a href="mx-website-features.pdf">Multics Website Features</a> |
+    <a href="swt.pdf">SWT</a>
+  </span> 
+</div>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+	  <span class="copyright">Copyright (c) 2018-2025, Tom Van Vleck</span>
+        </div> <!-- tail -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="vvmft.txt"><input type="hidden" name="name" value="Tom Van Vleck"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail Tom Van Vleck" title="send mail to Tom Van Vleck" class="mfaddr"></address></form>
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

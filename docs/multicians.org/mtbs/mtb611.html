@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-611</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-611: Data Management File Commands.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-611
+DM File Commands
+
+To:  Distribution
+
+From:  Andre Bensoussan
+
+Date:  02/04/83
+
+Subject:  Data Management File Commands
+
+1 ABSTRACT
+
+     In the  new Data Management architecture,  a new object, the
+"Data Management File", has been introduced.  Commands to create,
+delete, rename, copy, set ACL, etc..., need to be implemented for
+Data  Management  Files.   These operations  represent  a generic
+function that is  meaningful for all kinds of  objects, but which
+may  require variations  in the implementation,  depending on the
+kind of object  they are applied to.  The  Multics command system
+already recognizes that fact; in many instances, the same command
+can  be used  regardless of  whether the  object is  a segment, a
+directory or a multi-segment file.   This MTB describes how these
+commands  could  also  be  extended  to  perform  the appropriate
+operation on a Data Management  File, instead of having a special
+command for it.
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project.
+
+
+MTB-611                                Multics Technical Bulletin
+                                                 DM File Commands
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Bensoussan.Multics on System M.
+
+via US Mail:
+   Andr&eacute; Bensoussan
+   Honeywell Information Systems, inc.
+   575 Tech Square
+   Cambridge, Massachusetts 02139
+
+via telephone:
+   (HVN) 261-9334, or
+   (617) 492-9334
+
+
+
+                             CONTENTS
+
+                                                         Page
+
+                 1 ABSTRACT . . . . . . . . . . . . . .     i
+                 2 INTRODUCTION . . . . . . . . . . . .     1
+                 3 RATIONALE FOR PUTTING DM FILES IN
+                  RING 2. . . . . . . . . . . . . . . .     1
+                 4 HOW CAN A COMMAND DETERMINE IF AN
+                  OBJECT IS A dm_file?  . . . . . . . .     2
+                 5 COMMANDS TO BE EXTENDED TO DEAL WITH
+                  dm_files  . . . . . . . . . . . . . .     2
+
+Multics Technical Bulletin                                MTB-611
+DM File Commands
+
+2 INTRODUCTION
+
+In  MR10,  Data Management  Files  (dm_files) are  implemented as
+inner ring multi segment files (MSF's), with ring brackets of [2,
+2, 2] for all components and [2, user, user] for the directory.
+
+For most  commands that distinguish  between segments, directoies
+and MSF's (such  as list, copy, set_acl, etc..),  it is desirable
+to  extend  them  so that  they  also recognize  dm_files  and do
+whatever is appropriate for them.
+
+This implies (a) that these commands be changed, (b) that they be
+able to  determine if an object  is a dm_file and  (c) that there
+exist ring 2 gates to perform operations the command could not do
+from the user ring.
+
+This memo explains  why it is desirable to  implement dm_files as
+ring 2  MSF's as opposed to  user ring MSF's.  Then  it gives the
+list  of  the  commands  that should  be  extended  to understand
+dm_files, and describes how the extension is to be implemented.
+
+3 RATIONALE FOR PUTTING DM FILES IN RING 2.
+
+Ring 2 has been chosen as  an inner ring for dm_files because the
+File Manager runs in ring 2.  There are various reasons why it is
+desirable to put dm_files in ring 2:
+
+o The File  Manager maintains a  header at the  beginning of each
+  control interval (CI), with the  CI number, the dm_file uid and
+  the time the CI was last modified.  It also maintains a trailer
+  at  the  end  of  each  CI  to detect  some  disk  error  or CI
+  inconsistency.  If components were directly accessible from the
+  user  ring,  user  errors  could  cause  the  File  Manager  to
+  malfunction.
+
+o The time stored  in the header of each CI  is also used by page
+  control to determine if the CI can safely be written to disk or
+  if it must  be hold in main memory until  its "before image" is
+  safe  on  disk.  Since  page  control uses  some  non-ring zero
+  information,  it  has  to  gard  itself  against  incorrect  or
+  malicious  programs  that  manufacture  this  information.   By
+  putting  dm_files  in ring  2,  page control  can trust  ring 2
+  programs to be, at least non-malicious programs.
+
+
+MTB-611                                Multics Technical Bulletin
+                                                 DM File Commands
+
+o Journalization  and locking:   The File  Manager is responsible
+  for enforcing  a journalization and locking  policy each time a
+  CI  of a  dm_file is  accessed.  If  dm_files were  in the user
+  ring, user programs could bypass  this protocol.  Of course, it
+  is clear that  even if dm_files are in ring  2 a malicious user
+  could always ask the File Manager to write garbage in all CI's.
+  However, this could not happen by mistake, and the mechanism to
+  enforce the  locking and journalization  protocols is garanteed
+  to be only in the File Manager.
+
+o In  the near  future, MRDS will  probably be moved  in an inner
+  ring  in  order to  provide  "attribute level  secutity".  This
+  capability will require having dm_files in an inner ring.
+
+o The MSF directory has to be an a ring 2 directory because if it
+  was  a  user ring  directory, user  ring programs  could create
+  segments  in it.   The File  Manager expects  to find  only MSF
+  components in  the directory and could  be made to malfunction.
+  In particular, if a user creates a ring 4 segment with the name
+  of a component, when the File  Manager needs to create the ring
+  2  component with  that name  it would  get a  name duplication
+  error.  There  is nothing wrong in  allowing user ring programs
+  to request  status information on  the directory.  It  might be
+  convenient  to  effectively  allow  it; that  is  why  the ring
+  brackets  for  dm_file  directories  will  be  [2,  user, user]
+  instead of [2, 2, 2].
+
+4 HOW CAN A COMMAND DETERMINE IF AN OBJECT IS A DM_FILE?
+
+o First, the object has to be an MSF.
+
+o Second,  the MSF  directory and all  MSF components  have to be
+  ring 2 objects.
+
+o Third, if additional identity checking  is felt to be necessary
+  by a command, it could call a  ring 2 gate provided by the File
+  Manager, which would return a yes or no answer.
+
+
+Multics Technical Bulletin                                MTB-611
+DM File Commands
+
+5 COMMANDS TO BE EXTENDED TO DEAL WITH DM_FILES
+
+A  new  command  to create  a  dm_file will  be  implemented.  In
+addition, the  following commands will be  extended to understand
+how to identify dm_files and what to do for them.
+
+o delete
+
+  The delete command is already  special cased for MSF's.  If the
+  MSF  is  also a  dm_file,  the command  calls  the ring  2 gate
+  provided by the File Manager to delete a dm_file.
+
+o list
+
+  The list  command is already  special cased for  MSF's.  If the
+  MSF is also a dm_file,  the command prints the same information
+  as it does for a regular MSF, with the exception of the heading
+  which  should be  "DM Files"  instead of  "Multisegment Files".
+  Since the  status information for the  dm_file directory can be
+  requested from user ring programs, the command does not need to
+  call any special ring 2 gate to do its job.
+
+o status
+
+  The status command is already  special cased for MSF's.  If the
+  MSF  is  also  a  dm_file, the  command  will  return  the same
+  information as it  does for a regular MSF, but  with type = "dm
+  file".  In addition, it will return the dm_file attributes that
+  it  can get  by calling  the ring 2  gate provided  by the File
+  Manager  to get  dm_file attributes.   These attributes include
+  protected  or  unprotected,   locking,  before  journal,  after
+  journal, last time dumped and other such items.
+
+o copy
+
+  The copy  command is already  special cased for  MSF's.  If the
+  MSF  is  also  a  dm_file,  the  command  calls  the  user ring
+  subroutine copy_dm_file which copies the  file into a new file,
+  using the  standard File Manager  primitives to create  the new
+  dm_file, to open  the old and the new dm_files,  to get each CI
+  from  the old  dm_file and  put it in  the new  dm_file, and to
+  close  the  old  and  the new  dm_files.   The  new  dm_file is
+  identical to the old one, with  the exception of the header and
+  trailer  in each  CI, containing the  dm_file uid  and the time
+  last modified.  The 2 dm_files will have different uid's.
+
+o copy_dir
+
+
+MTB-611                                Multics Technical Bulletin
+                                                 DM File Commands
+
+  The copy_dir  command is already  special cased for  MSF's.  If
+  the  MSF is  also a dm_file,  the command will  do whatever the
+  copy command does for dm_files.
+
+o move
+
+  The move  command is already  special cased for  MSF's.  If the
+  MSF is  also a dm_file,  the command copies the  dm_file as the
+  copy command  would do, and then  deletes the original dm_file,
+  as the delete command would do.
+
+o move_dir
+
+  The move_dir  command is already  special cased for  MSF's.  If
+  the MSF is  also a dm_file, the command  does whatever the move
+  command would for a dm_file.
+
+o renaming commands
+
+  The commands to manipulate  names are add_name, delete_name and
+  rename.  These commands are not  special cased for MSF's.  They
+  will have to be special cased for dm_files.  When the object to
+  rename  is not  a dm_file,  the command  calls the  ring 0 gate
+  hcs_$chname to do  the job.  When it is  a dm_file, the command
+  will  call  a  ring  2  gate  provided  by  the  File  Manager,
+  file_manager_$chname,  which has  the same  calling sequence as
+  hcs_$chname, and which will issue a call to ring 0 from ring 2.
+  If ring 0 was called by the  command from the user ring, ring 0
+  would  reject  the request  because  the ring  brackets  of the
+  dm_file directory are [2, user, user].
+
+o ACL commands
+
+  The  commands  to  manipulate   ACL's  are  list_acl,  set_acl,
+  delete_acl  and copy_acl.   These commands  are already special
+  cased for MSF's.  When the object  is an MSF, the command calls
+  one  of  the  msf_manager_  entry  points  $acl_list, $acl_add,
+  $acl_replace  or $acl_delete,  which in turn  calls its homolog
+  hcs_$entry_point.  For a dm_file, the list command can continue
+  to  work like  for a regular  MSF; however,  the other commands
+  modify the ACL and cannot call hcs from the user ring.  Instead
+  of  calling  msf_manager_$entry_point  they  have  to  call the
+  homolog   ring   2   gate   provided  by   the   File  Manager,
+  file_manager_$entry_point.   The  file_manager_$entry_point can
+  now call its homolog entry_point  in the msf_manager_ since the
+  process is in ring 2.
+
+o Some other commands
+
+
+Multics Technical Bulletin                                MTB-611
+DM File Commands
+
+  One  may consider  extending some  other commands  later.  Some
+  candidats  are set_bit_count  and set_safety_switch.   They are
+  not needed  for the moment,  but whenever they are,  it will be
+  trivial to extend  them using the same method  as described for
+  ACL operations or renaming operations.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

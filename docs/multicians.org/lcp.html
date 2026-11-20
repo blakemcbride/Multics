@@ -1,0 +1,860 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<html>
+<head>
+<title>Multics MACLISP Compiler</title>
+<meta name="description" content="Paper describing the internals
+     of the Multics MACLISP compiler.">
+<meta name="keywords" content="Multics, operating system, timesharing, time sharing, 
+     MIT, Project MAC, GE, Honeywell, Bell Laboratories, 
+     LISP, MACLISP, compiler, Bernie Greenberg,
+     computer, software, mainframe">
+    <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+    <link rel="stylesheet" type="text/css" href="mxstyle.css">
+</head>
+
+<body bgcolor="#ffffff" text="#000000">
+<h1>The Multics MACLISP Compiler</h1>
+<h2> The Basic Hackery -- a Tutorial</h2>
+
+<h3> By <a href="multicians.html#GreenbergBS">Bernard S. Greenberg</a>, December, 1977</h3>
+<h3> Copyright &copy; 1977, 1988, 1996, Bernard S. Greenberg</h3>
+<hr>
+<h4>13 February 1996</h4>
+<p>Every decade this unpublished but nonetheless popular 1977 paper of mine on the Multics Lisp Compiler (<b>lcp</b>) seems to require upgrade to a new text-representation technology. First written in <a href="mgr.html#runoff">Multics <b>runoff</b></a> and printed out in 80-column format justified by padding with spaces, converted in 1988 to the then-reasonable TJ-Pigsnout (a SCRIBE&reg;-like laserwriting text-justifier of my own), "The LCP Paper" now reappears in the clothes of the 90's, HTML, but hopefully, this time, it will publish itself via the miracle of the World Wide Web as part of the <a href="multics.html">Multics Web Site</a> and remain unpublished no more.</p>
+
+<p>Although this document is littered with references to obsolete programs, impossible-to-obtain listings and sources, references to people since widely scattered, and the pretentious rantings of the 27-year old who wrote it, once it gets going, it has something wonderful to explain (<b>lcp</b>'s value management scheme) which is as relevant to compiler-writing today as ever--it is worth slogging through.  I have not altered the document text or content in any way except to convert it to HTML and add the <a href="#TOC">table of contents</a> at the front, and a small fix to a PL/I example in a footnote.</p>
+
+<p>The icon <a name="herehere"></a><a href="#herehere"><img src="mulimg/foot.gif" alt="" width=19 height=10></a> represents a footnote.  Click on occurrences of it in the text to see the footnote.</p>
+
+<p><b>NB:</b> The acronym <b>MAC</b> in the term <i>MACLISP</i> refers not to the <a href="index.html" target="_blank">Apple&reg;</a> Macintosh&reg; computer, but to "Project MAC", which was the name of the <a href="index.html" target="_blank">MIT Laboratory for Computer Science</a> at the time MACLISP was developed.</p>
+
+<p><span class="disclaimer">This material is presented to ensure timely dissemination of
+scholarly and technical work. Copyright and all rights therein are
+retained by the 
+    <a href="multicians.html#GreenbergBS">author</a>.
+All persons copying this information are expected to adhere to the terms
+and constraints invoked by the author's copyright.  In most cases,
+these works may not be reposted or republished without the explicit
+permission of the 
+    <a href="multicians.html#GreenbergBS">copyright holder</a>.
+</span></p>
+
+<h2><a name="TOC"></a>Table of Contents</h2>
+<dl>
+<dd> <dl>
+<dt><a href="#CH0">Exordium</a></dt>
+<dt><a href="#CHI">Great Overview</a></dt>
+<dt><a href="#CHII">Basic Passes and Recursions</a></dt>
+<dt><a href="#CHIII">Pass 1</a></dt>
+<dt><a href="#CHIV">Multics Lisp Execution Environment</a></dt>
+<dt><a href="#CHV">Pass 2</a></dt>
+<dt><a href="#CHVI">Value Management:  An Example</a></dt>
+<dt><a href="#CHVII">Value Management:  In Summary</a></dt>
+<dt><a href="#CHVIII">Object Code List</a></dt>
+<dt><a href="#CHIX">Branching and Tags</a></dt>
+<dt><a href="#CHX">Branching and Value Management</a></dt>
+<dt><a href="#CHXI">PDL Height Management</a></dt>
+<dt><a href="#CHXII">Compilation for Predicate</a></dt>
+<dt><a href="#CHXIII">Object Type Strategy</a></dt>
+<dt><a href="#AppendixA">Appendix A  -- Value tag forms</a></dt>
+<dt><a href="#AppendixB">Appendix B -- NCOMPLR and LCP</a></dt>
+<dt><a href="#AppendixC">Appendix C -- Relevant Humor</a></dt>
+</dl></dd></dl>
+
+<hr>
+<h4>29 February 1988</h4>
+<p>This paper is a reprint, an upgrade to "modern" computer typography and printing technology, of my unpublished, "bootleg" paper written ten years ago.  In this age of marketed Lisp-based architectures, this paper still presents one of very few accounts of powerful compilation techniques for Lisp on so-called "stock architectures," and I have received in the interim many requests for it.  The best of the techniques described herein flower a dozenfold in ITS' <i>NCOMPLR</i>, and are brought to their documented fulfillment (albeit for BLISS, not Lisp) in Wulf, Johnsson, <i>et al.</i>'s <i>The Design of an Optimizing Compiler</i> (Elsevier 1975).
+</p><p>
+Other than for the addition of the new <a href="#AppendixB">appendices B and C</a>, this reprint represents <i>only</i> a reprint and upgrading of typography.  I have not attempted to rewrite it in any way, nor altered at all the <i>potpourri</i> of at times gratingly informal, at times <i>erhoben</i>, jargon-laden, and ostentatiously anthropomorphic and overtly sexist language, which is as much a reflection of the circumstances of origin as is the compiler technology described.</p>
+<hr>
+<h1>The Multics MACLISP Compiler</h1>
+<h2> The Basic Hackery -- a Tutorial</h2>
+<h3>December 1977</h3>
+<h2><a name="CH0"></a>Exordium</h2>
+<blockquote><i>
+<b>To those LISPmen</b> who have achieved proficiency in this our chosen language, and who have wondered about the strategies of the MACLISP compilers, I offer this tutorial, wherein I divulge the basic hacks of the Multics Compiler (lcp).  Many of these hacks, including the entire first pass, were derived from the ITS Compiler (COMPLR, now NCOMPLR (or NCOMPL)), a much, much, hairier beast of which I have not yet achieved mastery.  By learning that which I offer herein, the ambitious LISPman might not only acquire sufficient knowledge to modify or debug the Multics Compiler, but undertake the serious study of NCOMPLR.  In fact, the state management hacks presented herein are of great interest in comparison to those of other modern compilers, e.g., Multics PL/I.  He who comprehends this will also glean generally powerful knowledge of compiler-writing techniques in general, and will have interesting and useful knowledge under his belt.
+</i></blockquote>
+
+<p>If you are not already familiar with LISP, in some detail, including the traditional implementations and value/object issues, you probably should not be reading this. </p>
+
+<p>Pass 1 of lcp was obscurely derived by Moon from COMPLR.264, which was a product of White, Rosen, Golden, Diffie, Nelson, and Greenblatt.  Pass 2 of lcp was written by Reed, after study of COMPLR.  Both passes were maintained for years by Daves Moon and Reed.  I myself have added some of the recent optimizations.</p>
+
+<h2><a name="CHI"></a>I.  Great Overview</h2>
+
+<p>lcp is a lisp program itself, usually compiled by itself, although it was bootstrapped via the interpreter during its childhood.  The Multics <b>lcp</b> or <b>lisp_compiler</b> commands enter a PL/I program which figures out what directory it is in, and calls <b>lisp</b> (the lisp interpreter) with the pathname of the saved environment <b>compiler.sv.lisp</b> and the arguments to the <b>lcp</b> command.  Thus,</p>
+<pre><b>    lcp abfuns -list -long</b></pre>
+<p>results in a call as though the command</p>
+<pre><b>    lisp &gt;am&gt;compiler abfuns -list -long</b></pre>
+<p>had been issued.  This tells the interpreter to load up the saved environment, and execute the <b>errlist</b> (<b>^g</b> handler) of the compiler, which then accesses its Multics arguments via <b>(status arg n)</b>.</p>
+
+<p>lcp produces a standard Multics object segment; there is no LAP involved with it<a href="lcp-fnfile.html#fn1"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>1</sup></a>.  A PL/I utility (<b>lisp_cg_utility_</b>) is called at the absolute end of compilation to take a list of binary words, fixnums, representing the object program, and build a standard object segment out of them.  This PL/I program deals only with construction of the object segment, including the building of LISP and Multics linkage.  All code generation issues have already been addressed by the lcp code generator at the time <b>lisp_cg_utility_</b> is invoked<a href="lcp-fnfile.html#fn2"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>2</sup></a>.</p>
+
+<p>Other than the PL/I program, lcp comes in three source files (and a couple of include files, which we will skip over):</p>
+<pre><b>    lcp_init_(.lisp)</b>, an obarray hack
+<b>    lcp_semant_(.lisp)</b>, Pass 1
+<b>    lcp_cg_(.lisp)</b>, Pass 2</pre>
+<p><b>lcp_init_</b> is a trivial program used at the time the compiler saved environment is built.  It is loaded by the exec_com which builds the compiler saved environment, and loads the two main files of lcp after saving a copy of the interpreter's obarray.  This obarray, which is known as the "working" obarray, will be used by lcp to read user source code over, so that the functions and variables of the compiler are inaccessible to user macros and compile-time functions<a href="lcp-fnfile.html#fn3"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>3</sup></a>.  Another copy of the obarray (the "compiler" obarray) is used to read <b>lcp_cg_</b> and <b>lcp_semant_</b> over.  Load-time calls in the two main files to the fexpr <b>global</b> in <b>lcp_init_</b> request the explicit interning of compiler symbols (e.g., <b>special</b>, <b>*lexpr</b>, etc.) on the working obarray.</p>
+
+<p>The basic flow of lcp is two-pass, function by function.  The command interface (<b>command-interface</b> in <b>lcp_semant_</b>) is invoked by the errlist upon environment startup.  It interprets Multics control arguments, and remains in control, and executes <b>(quit)</b> out of lisp at the end of compilation.  The function cf (in <b>lcp_semant_</b>) is called by <b>command-interface</b> to compile a file into an object segment:  its single argument is a file name<a href="lcp-fnfile.html#fn4"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>4</sup></a>.  It deals with accessing the source file and metering and printing various meters of compilation CPU time and paging.  At the center of this function is a call to <b>cmp1</b> (in <b>lcp_semant_</b>) which is the implementation of the compiler top-level.</p>
+
+<p>The compiler top-level (<b>cmp1</b> in <b>lcp_semant_</b>) implements the documented, well-known manifestations of the compiler, specifically:
+<ul>
+<li>Expanding/reconsidering top level macro forms.</li>
+<li>Mapping eval over the cdr of <b>(declare ..)</b> forms.</li>
+<li>Evalling <b>%include</b> at compile time.</li>
+<li>Putting "random forms" at top-level in the output list.</li>
+<li>Considering <b>(progn 'compile)</b> results of top-level macro forms.</li>
+<li>Putting macro definitions in the output list in <b>(macros t)</b> mode.</li>
+<li>Canonicalizing <b>(defun expr ....)</b> and <b>(defprop ...  ...  expr)</b> (into the defprop form, as it happens.)</li>
+<li>Declaring arrays seen as <b>(array foo ...)</b> at top level.</li>
+</ul>
+
+<p>Anything that comes through the above as</p>
+<pre>          <b>(defprop </b>FUNNAME
+                 <b> (lambda...) </b>PROP<b>)</b></pre>
+<p>where PROP is one of <b>expr</b>, <b>fexpr</b>, or <b>lexpr</b>, gets handed to <b>compile</b> (in <b>lcp_semant_</b>) for the two-pass compilation process.</p>
+
+<p>Macro definitions are evaluated in simulation to avoid putting <b>macro</b> properties on system functions at the time the compiler is used interpretively.  In the case that the symbol on which a <b>macro</b> property is supposed to be hung has an explicit or declared (i.e., <b>*fexpr</b>, etc.) functional property, the macro lambda expression is hung off of <b>*macro</b> instead of <b>macro</b>.  It goes without saying that compile-time user code cannot hope to invoke such macros:  the user can only compile code using them.<a href="lcp-fnfile.html#fn5"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>5</sup></a></p>
+
+<p>The function <b>compile</b> in <b>lcp_semant_</b> compiles, i.e., applies the two-pass compilation process to the function definition arrived at at top level.  It is called like this:</p>
+
+<pre><b>    (compile 'foobar 'expr 
+     '(lambda (x) (* x 2)) nil)</b></pre>
+
+<p>The <b>nil</b> is a cheat to bind the global special <b>rnl</b> (rename list, to be discussed) to <b>nil</b> at the time <b>compile</b> is invoked.  compile checks for redefinition, declares the function being defined (i.e., gives it a <b>*expr</b> property as its second argument is <b>expr</b>), invokes "pass1 processing" (via a call to <b>p1glm</b>, a point about 2 functions into pass-1 lambda-expression processing) on the lambda expression, and if no errors occurred, invokes pass 2 (<b>pass2</b>, in <b>lcp_cg_</b>) upon the result produced by pass 1.</p>
+
+
+<h2><a name="CHII"></a>II.  Basic Passes and Recursions</h2>
+
+<p>It is quite simple to develop a lisp compiler that makes one pass over its source code, i.e., sees the sequence of forms in a function only once through<a href="lcp-fnfile.html#fn6"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>6</sup></a>.  However, certain optimizations and code-producing techniques in both MACLISP compilers require a prepass over the source code for each function before correct and efficient object code can be generated for each function.  Knowledge about certain forms which could have only been gleaned from preanalyzing that form entirely is necessary for these techniques to operate.  This knowledge is:
+<ul>
+<li><p>For all PROG tags:  are there backward-branches to this tag?  If so, the code generator must invalidate its assumptions about the content of dynamic registers and stack locations as compilation of that PROG proceeds past this tag.</p></li>
+
+<li><p>For each local variable:  what is the last form in which it is used? This knowledge allows storage for lambda variables (at the function and internal levels) to be reused when this form has been passed.</p></li>
+
+<li><p>For each conditionally-branching form (COND, AND, OR, PROG):  what variables are setqed, or potentially setqed (via calls to arbitrary functions) in this form?  Fairly obscure, the need for this will be motivated in our description of branching.</p></li>
+</ul>
+<p>Since two passes are necessary anyway, certain responsibilities have been given to pass 1 in order to simplify pass 2.  These responsibilities are:</p>
+<ul>
+<li><p>Almost all error checking.  Checking the number of arguments to known system functions, and functions already compiled.  Checking the type of arguments where appropriate.  Checking fexprish forms for legal format and content.  Substituting good forms in the output for bad ones.<p></li>
+
+<li><p>Canonicalization.  All constants which appear in expr and lexpr forms unquoted (e.g., <b>2</b> in <b>(+ a 2)</b>) are quoted.  Stylistically, people have tended not to quote <b>t</b>, <b>nil</b>, and numeric constants.  This quoting makes it trivial for pass 2 to tell if an argument of a form is a constant:  if so, its car is <b>quote</b>.</p></li>
+
+<li><p>Local and implicit declaration.  Local declarations appearing in PROGs are processed.  References to variables not in any regnant lambda list are implicitly declared special.<p></li>
+
+<li><p>Semantication and machine-independent optimization.</p></li>
+</ul>
+<p>The contract<a href="lcp-fnfile.html#fn7"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>7</sup></a> of a lisp compiler is to produce a machine-language program which, when executed, will have the same effect on the lisp environment, and return the same value, as having applied <b>eval</b> to the forms it was given to compile.  This involves a great deal of knowledge of <b>eval</b> on the compiler's part.  The only viable technique for fulfilling this contract, especially given that the compiler is a lisp program, is to consider source functions recursively, as <b>eval</b> does, considering arguments and sub-forms in the exact same order that <b>eval</b> would, for the order of evaluation of sub-forms is specified by the language as being from first to last<a href="lcp-fnfile.html#fn8"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>8</sup></a>.  Thus, both passes center around a "simulated-evaluator" function, which considers the source function recursively.  The two functions, one for each pass, are</p>
+<dl>
+<dt><b>p1</b></dt>
+<dd>for pass 1, which given a form, performs all pass 1 checking and transformation on it, producing as a
+<dl>
+<dt><b>VALUE:</b></dt>
+<dd>the pass-1 transmogrified (canonicalized and semanticated) form.</dd>
+
+<dd>and as an</dd>
+
+<dt><b>EFFECT:</b></dt>
+<dd>changes upon pass 1's global data about this function.</dd>
+</dl>
+<dt><b>comp</b></dt>
+<dd>for pass 2, which given a form performs all pass 2 code generation functions on it producing as a
+<dl>
+<dt><b>VALUE:</b></dt>
+<dd>a "value tag," a name for the result of this form used by pass 2 state management.</dd>
+
+<dd>and as an</dd>
+
+<dt><b>EFFECT:</b></dt>
+<dd>Additions to the list of machine-code instructions which is the object code for this program, and changes to pass 2's model of the runtime machine state.</dd>
+</dl>
+</dd>
+</dl>
+
+<p>Both <b>p1</b> and <b>comp</b> perform trivial manipulations when the form on which they are invoked is a variable or a constant.  For other forms, i.e., function calls, they dispatch their work to more specialized routines which know how to <b>p1</b> or <b>comp</b> calls to specific subrs, fsubrs, or lsubrs, or lambda expressions, etc.  In both cases, these more specific routines, perhaps through other intermediate routines, almost<a href="lcp-fnfile.html#fn9"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>9</sup></a> always wind up calling <b>p1</b> or <b>comp</b> respectively on the elements of the cdr (i.e., the argument forms) of the form they were handed, and doing something with the result.  These recursive calls <i>must</i> be performed on the argument forms in the language-defined order:  first to last for subrs/exprs, functional lambda expressions after their arguments, and as fits each fsubr.  These two functions are the heart of their respective passes.</p>
+
+<p>Both basic recursions are cognizant of compiling for <i>value</i> versus compiling for <i>effect</i>.  Compiling for value is the normal default:  a form is being compiled for value when it is known that its value will not be thrown away at runtime.  A form is being compiled for effect when it is known that its value will not be used in any case at runtime.  For example, all clauses of a <b>progn</b> except the last are compiled for effect.  Similarly all forms at the top level of a <b>prog</b>, and all forms except the second of a <b>prog2</b>.  In the case of Pass 2, this is very important, for even though all Lisp forms are defined as returning a result, the lisp code generator (pass 2) need not worry about preserving the result of a form (e.g., a <b>setq</b>) that is being compiled for effect.  Pass 2 does not save, nor ever call for the results of computations that are compiled for effect.  Constants and variables compiled for effect may be simply ignored by the compiler.</p>
+
+<p>Both passes maintain a variable, <b>effs</b>, normally bound <b>nil</b>, but <b>t</b> when a recursion for effect is in progress.  Both basic recursions normally bind it <b>nil</b>; <b>compe</b> is used instead of <b>comp</b> when it must be bound <b>t</b>, and returns no meaningful result.  <b>p1e</b> is used instead of <b>p1v</b> in pass 1.  The functions <b>p1</b> and <b>comp0</b> are interfaces which preserve the current value of <b>effs</b>:  in the compilation of <b>progn</b>, for instance, the last form is for value if the <b>progn</b> is being compiled for value, but for effect if the <b>progn</b> is being compiled for effect.  Pass 1 rarely worries about value or effects, i.e., uses the value of the flag <b>effs</b>, but in pass 2 it is quite important.</p>
+
+<p>Pass 2 also has a notion of compiling "for predicate," which will be described at the appropriate time.</p>
+
+<h2><a name="CHIII"></a>III.  Pass 1</h2>
+
+<p>The basic idea of pass 1 is to take the source-code function, and produce a "transmogrified version," upon which all pass 1 optimizations, semantications, and other transformations have been performed.  The output of pass 1 is not a strange internal list structure:  it is still lisp code, modulo two orthree new arguments at the head of <b>COND</b>, <b>AND</b>, <b>OR</b>, and <b>PROG</b> forms.  A form handed<a href="lcp-fnfile.html#fn10"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>10</sup></a> to pass 1 as</p>
+<pre><b>    (cons (cdr x)(+ a '3))</b></pre>
+<p>will come out unchanged (although reconsed, i.e., not EQ to the original form, <b>p1</b> having been called on each sub-form).</p>
+
+<p>A service performed by pass 1 for pass 2 is to rename all lambda variables that have the same name as currently regnant lambda variables.  A list called <b>rnl</b> is bound to its previous value each time a lambda expression is <b>p1</b>'ed, and an "<b>assq</b> pair" (e.g., <b>(old . new)</b>) is pushed onto <b>rnl</b> each time a lambda list of a lambda expression contains a variable already in a regnant lambda list.  The "old" is the symbol in the source code:  the "new" is a gensym created by <b>p1rename</b> in <b>lcp_semant</b>_.  The gensym is given a <b>rename</b> property of the old symbol so that error diagnostic printers, upon seeing this, will print the "old" symbol.  Thus, <b>p1</b>'s result for a variable will be <b>(cdr (assq </b><i>var</i> <b>rnl))</b> if <b>(assq </b><i>var</i><b> rnl)</b> is non-<b>nil</b> at all.</p>
+
+<p>This rename hack is a feature of the lexical scoping of compiled lisp local variables:</p>
+<pre><b>    (defun foo (x)
+       ((lambda (x)(bar x 3)))
+        (mung x 5)))
+</b></pre>
+<p>the outer <b>x</b> has nothing at all to do with the inner <b>x</b>:  the outer <b>x</b> cannot even be referred to inside the lambda expression.  It is a different variable.  By removing name conflicts in this way, pass 2 can use <b>eq</b>  test for two variables being the same, and put properties on the symbols which represent variables for whatever purposes it needs.</p>
+
+<p>Pass 1 also performs macro reduction/expansion.  By expansion, we mean that <b>p1</b>, upon being given a form whose car is a symbol with a <b>macro</b> or <b>*macro</b> property, applies that property to the input form, as is specified in the MACLISP semantics of macros, and reconsidering the result (iteratively) as though that were the original input.  By <i>reduction,</i> we mean beating on the form in this way until its car is no longer a macro.  Thus, inductively, we may prove that the input to pass 2 contains no macro forms whatsoever.  Macro expansion is delegated by <b>p1</b> to <b>macro-expand</b> in <b>lcp_semant_</b>, which errsets this fearsome task, to protect lcp against random user macro lossages, and diagnose the latter if they occur.</p>
+
+<p>Several very critical mechanisms in pass 1 depend upon lists that have their current head designated by a special variable that is bound (<i>not</i> <b>setq</b>ed) to its current value at the start of some processing, and rebound to that value at the end of that processing, thus popping all that was pushed on to the list since its head was saved.  The best example of this is <b>rnl</b>, the rename-list, which has rename-pairs pushed onto it by the lambda-list processor (<b>p1lmbify</b>), after its value has been saved by <b>compile</b> or <b>p1lam</b> (the <b>p1</b>er of lambda <i>applications</i>), to be popped by which either of the latter pushed it.  Thus, during the <b>p1</b>'ing of any given lambda expression, <b>rnl</b> appears as a list of rename pairs of all regnant lambda variables.  The list <b>bvars</b> is similarly managed to always be a list of all regnant lambda variables, after renaming, managed by those same functions.  We will call such a list a "stack-bound list."</p>
+
+<p>Pass 1 inserts as the first two elements of AND, OR, COND and PROG forms two quantities known as the setq-list and call-out flag, respectively.  The setq-list is a list of all local variables <b>setq</b>ed anywhere within that AND, OR, COND, or PROG.  Since local variables can only be named, in compiled lisp, in their own function, no code outside of this function can setq any of these variables.  The call-out flag is set <b>t</b> if any external function which the compiler knows can setq special variables, or any random user function, is called, within that AND, OR, COND, or PROG.  If this flag is on, in effect, all of the special variables in the world may be considered to be on the setq-list for this form, because one of these external functions might, for all we know, setq that variable.  Pass 2 must know what variables are setqed in a form which has more than one path through it before compiling that form (PROG qualifies because GO and RETURN can get you out of it without executing all of it).  This will be motivated in the discussion on branching.</p>
+
+<p>Suffice it to say that each conditional form (we will use this to mean COND, AND, OR, or PROG) which contains internal conditional forms has the setq-list of the internal form as a subset of its own setq-list, and has a call-out flag of <b>t</b> if any internal conditional form has a call-out flag of <b>t</b>, for what is setqed in some form is by virtue of containment setqed in the form that contains it.</p>
+
+<p>Three lists of setqed variables are maintained, one by the regnant COND, AND, or OR (<b>p1csq</b>), one by the regnant PROG (<b>p1psq</b>), and one by the regnant lambda expression (<b>p1lsq</b>), with the flags <b>condp</b>, <b>progp</b>, and <b>lmbp</b> saying if there are any of the above at all.  Each time the setq of a non-special variable is <b>p1</b>'ed, <b>p1sqv</b> is called to add that variable to whichever of the above lists are valid (conceivably they all might be).  A utility function (<b>add</b>) is used to add a symbol to a list if and only if
+it is not already on it.  When the completion of the <b>p1</b>'ing of the conditional form or lambda expression is complete, the contents of the appropriate setq-list is made the setq-list of the output form, and that list merged into all regnant lists after the previous binding of the particular list-head is restored<a href="lcp-fnfile.html#fn11"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>11</sup></a>.  This is done by <b>p1setqex</b>, the "setq expander."  The reason that multiple kinds of lists are maintained, even though the function is seemingly identical, is so that setq's of lambda variables may be deleted out of the setq-list (or PROG variables out of PROG's setq list) before it is either made the setq-list of the form, or merged to the higher regnant setq lists.  Note that lambda expressions are NOT conditional forms, but must participate in this hack as though they were, in order to delete their lambda variables out of their setq-list before propagating it.</p>
+
+<p>The call-out flag is handled similarly:  it is bound to <b>nil</b> at the start of the <b>p1</b>'ing of each conditional form or lambda expression, and setqed <b>t</b> if a setq of a special variable or call to a random function is ever <b>p1</b>'ed.  <b>p1setqex</b> propagates it downward at the time that setq-lists are merged (his argument is a list of setq-list and call-out flag).  The name of the call-out flag is <b>p1cof</b>.</p>
+
+<p>Pass 1 also renames prog-tags for the same reasons as it renames variables, and puts in a prog, as the fourth element, the rename list.  As a prog is processed, renamed tags are given a <b>defined</b> property.  <b>p1fsubr</b>, upon hitting a <b>go</b> to a constant tag, checks (after renaming) for <b>defined</b> property:  if there is one, this tag is the target of a "backward jump," a fact which pass 2 must know at the time it encounters the tag, and it is given a <b>back-reference</b> property.  If an expression is gone to, all tags must get the <b>back-reference</b> property.</p>
+
+<p>Pass 1 maintains a variable, <b>cnt</b>, during the <b>p1</b>'ing of each function.  It is zeroed at the start of <b>p1</b>'ing of a function.  It is incremented by one each time a variable is <b>p1</b>'ed.  It is incremented by two every time a setq of a variable is <b>p1</b>'ed, and by one at several other random points.  Pass 2 maintains an identical variable, also called <b>cnt</b>, which is of utmost importance to the operation of pass 2, and increments it at exactly the same points of <b>comp'</b>ing as in <b>p1</b>'ing.  If the <b>cnt</b> produced by pass 1 is not equal to the <b>cnt</b> produced by pass 2 at the end of the function, the compiler is in error.  This counter is used to mark the passage of time in simulated evaluation in pass 2:  this will become clearer in our discussion of pass 2.  However, the fact that pass 1 maintains it identically allows pass 1 to give to pass 2 critical hints about the usage of variables.  Specifically, a list of all local variables ever defined during a function (either function or internal lambdas, after renaming, of course), called <b>locvars</b> is made by pass 1 for pass 2.  Each element of this list is a cons of the variable and a fixnum.  This fixnum is rplaced to the current value of <b>cnt</b> every time that variable is <b>p1</b>'ed or a setq of that variable is <b>p1</b>'ed (<b>p1</b> and <b>p1sqv</b> do these things).  Thus, when <b>p1</b>'ing of the function is complete, pass 2 knows, by asking <b>(cdr (assq </b><i>var</i> <b>locvars))</b> the latest time at which this variable is ever used, thus allowing its storage to be reused for other things.  More on this later.  Let us also mention in this context that the obscurely-named function <b>p1bug</b> is used every time a conditional form is finished being <b>p1</b>'ed or a label is hit, and it (being passed the value of <b>cnt</b> at which the difficult form was first starting to be <b>p1</b>'ed) sets the <b>last-use-cnt</b> of all variables in <b>locvars</b> at that time to "now" (the current <b>cnt</b>) if it appears that they have been used (<b>p1</b>'ed) since then (cdr of locvars element is greater than saved <b>cnt</b>).  This is to say that such storage may not be reused, because the object code might branch back to a place where that variable was expected to be there, but the storage was reused! More on this later too.</p>
+
+<p>Pass 1 semanticates:  this is to say, constructs whose semantics may be expressed, at the source-language level, in terms of simpler constructs are so expressed.  For example, <b>do</b> is given a <b>*macro</b> property (as though the source programmer had defined a macro called <b>do</b>!) of an internal compiler function, <b>doexpander</b> in <b>lcp_semant_</b>.  Like any macro, this function is "out of the domain of the compiler:"  it gets its entire source form as its single argument, and produces valid lisp code as its value.  In the case of <b>do</b>, a bunch of <b>setq</b>s, <b>cond</b>s, etc., in a <b>prog</b> are created by <b>doexpander</b> to represent the <b>do</b>-loop<a href="lcp-fnfile.html#fn12"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>12</sup></a>.</p>
+
+<p>The bulk of pass 1 consists of semantication, i.e., rendering complex lisp constructs into simpler ones which express their meanings.  As <b>p1</b> encounters calls to subrs, lsubrs, or fsubrs, respectively, it hands the form down to <b>p1subr</b>, <b>p1lsubr</b>, and <b>p1fsubr</b>, respectively (all in <b>lcp_semant_</b>) to perform semantication and checking on specific functions.  Many of these semantications are random<a href="lcp-fnfile.html#fn13"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>13</sup></a> and gratuitous in nature, and optimizations of constructs that no sane programmer or macro would ever produce.  For example,</p>
+
+<pre><b>    (set (quote a) b)</b></pre>
+<p>becomes</p>
+<pre><b>    (setq a b)</b></pre>
+
+<p>or</p>
+
+<pre><b>    (eval (cons 'random-fsubr .....))</b></pre>
+<p>becomes</p>
+<pre><b>    (random-fsubr ....)</b></pre>
+
+<p>or <b>(list)</b> becomes <b>'nil</b>.</p>
+
+<p>More useful semantications include transforming the map functions (<b>map</b>, <b>mapc</b>, <b>mapcan</b>, etc.) into <b>do</b>s, themselves but a macro.  One profound effect of this is to transform the functional argument of the mapping function into inline code.  This has the effect of achieving the desired lexical scoping of variables in the map-function's functional argument.  <b>p1lsubr</b> calls <b>p1map</b> to produce this <b>do</b>, and calls <b>p1</b> on the result before handing it back to <b>p1</b> as an answer.  This has the effect of the map-functions acting like macros, i.e., their answer is Lisp, not <b>p1</b> output, in pass 1.  The actual function returned is not <b>do</b>, but a magic uninterned symbol named <b>map-do</b>, which also has a <b>*macro</b> property of the same <b>doexpander</b> function in pass 1.</p>
+
+<p>A peculiar feature resulting from the transformation of map-functions into <b>do</b>s, with their resulting PROGs, is that GOs and RETURNs inside map-functions inside source <b>do</b>/<b>prog</b> constructs would refer to the compiler-generated <b>do</b>/<b>prog</b> instead of the source programmer's unless special action were taken!  For instance,</p>
+<pre><b>    (prog (y)
+      (return
+         (mapc
+          '(lambda (x)
+             (and (car x)(return (cdr x))))
+           y) 3)))</b></pre>
+<p>which is supposed to return <b>(cdr x)</b> when an <b>x</b> with non-<b>nil</b> car is found, will always return 3.  This must not be allowed to happen-- thus, pass 1 keeps track of whether any PROG it is compiling was produced by a map function or not--- this is encoded in a flag, <b>mapf</b>, <b>t</b> for <b>p1</b>ing the internal function of a map-function (<i>bound</i> this way by <b>p1</b>, not <b>setq</b>ed), <b>nil</b> otherwise, and a counter, <b>p1mapcnt</b>, rebound at each <b>p1</b>ing of a PROG, to 1+ its old value if this is a "phony" PROG (e.g., compiler-generated for map function) or to 0 at each "legitimate" PROG.  This allows the <b>p1</b>er of <b>go</b>s and <b>return</b>s (<b>p1sqg</b> in <b>lcp_semant_</b>) to put as the caddr of <b>go</b>s and <b>return</b>s the value <b>p1mapcnt</b>, which is how many PROGs (legitimate or otherwise) we are being asked to return out of.  Pass 2 will need to know this--- note that this is not an optimization, but a consequence of generating <b>prog</b>s non-transparently.  The <b>prog</b>s and <b>function</b>s generated by <b>p1map</b> are magic uninterned atoms named <b>map-prog</b> and <b>map-funarg</b>, with <b>*macro</b> properties of <b>t</b>.  This causes <b>p1</b> to catch them, and bind <b>mapf</b> and <b>p1mapcnt</b> appropriately before calling the <b>p1</b>ers of <b>prog</b>s expressions, respectively.</p>
+
+<p>Functional expressions appearing in calls to functions with known functional arguments, e.g., the second argument to the sort functions, are compiled by recursive call to <b>compile</b> from <b>p1gfy</b> in <b>lcp_semant_</b>.  <b>p1fcnarg</b> is called on all forms which are expected to be functions:  if not quoted, they are <b>p1</b>'ed as any other form, otherwise, the result is either the symbol (of gensym-name, generated by <b>gen-fcn-name</b>, called by <b>p1gfy</b>) representing the function compiled (both passes!) on the spot, when <b>p1gfy</b> called <b>compile</b> recursively.  Note that if a symbol (e.g., <b>alphalessp</b>) appears instead of a lambda expression behind the quote, that symbol gets returned.  Note also that <b>p1fsubr</b>, upon being handed a <b>(function ...)</b> form that <b>p1</b> got, converts it to <b>(quote ...)</b> and hands it to <b>p1fcnarg</b>.  Note that for things where functions are <i>expected</i> (e.g., sort calls) opposed to <i>hit</i> (e.g., <b>(setq x (function (lambda....))))</b> <b>p1</b> will never encounter the lambda expression, but it will be given to <b>compile</b> to compile as a separate function.</p>
+
+<p>Other lesser pass 1 semantications:</p>
+
+<p>All BOOLE's of known constant first argument are converted into compoundings of logical AND, OR, and XOR and NOT, because these are the only ones that pass 2 can generate.  <b>p1boole</b> does this.  Specific (e.g., <b>+</b>, <b>+$</b>) arithmetic functions are substituted for generic (e.g., <b>plus</b>) arithmetic functions where all argument typings let this be done:  <b>p1</b> and <b>p1arithsubst</b> do this.  Similarly, generic arithmetic expressions all of whose numeric types are known are converted (by <b>convert-mixed-to-float</b>) to floating computations by wrapping <b>(float ...)</b> around the known fixnums.  The <b>sassoc</b> and <b>sassq</b> functions are changed by <b>p1subr</b> into COND's and APPLY's with <b>assoc</b> and <b>assq</b>.  NOT gets changed by <b>p1subr</b> into NULL.  Winning cases of DELETE, ASSOC, and MEMBER become DELQ, ASSQ, and MEMQ where possible (in <b>p1subr</b>).  MEMQ's and ASSQ's of sufficiently small constant second arguments get expanded by <b>p1subr</b> into nested COND's of EQ's.</p>
+
+<p>Reducible arithmetic expressions get their constants collected and evaluated at compile time by <b>p1ctev</b> (compile-time eval, in <b>lcp_semant_</b>).  <b>p1ctevq</b> returns the same quoted, which is generally useful, given <b>p1</b>'s output contract.  <b>p1ctev</b> errsets possibly-losing user computations:  Source-code <b>*reducible</b>'s are also reduced by him.  Multiple-form lambda expressions and multiple-form COND consequents are converted into PROGN's to reduce the amount of checking and processing in pass 2.</p>
+
+<h2><a name="CHIV"></a>IV.  Multics Lisp Execution Environment</h2>
+
+<p>Herein I state all the things you have to know about the execution environment of Multics Lisp to understand the code generation aspects of the Pass 2 discussion.  They are not many.</p>
+
+<p>Multics Lisp objects live in Multics segments.  Multics Lisp values are doubleword ITS<a href="lcp-fnfile.html#fn14"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>14</sup></a> pointers to the objects, with type bits stored in unused bits of the pointer format.  Cons values have zero type bits, because the pointer registers of the machine can hold an address:  a store pointer instruction stores the pointer with the type bits zero.</p>
+
+<p>Fixnums and flonums are entirely encoded within the doubleword value format, the first word containing, in addition to the type bits stating that this is a fixnum or a flonum, a quantity which causes a hardware error if an attempt is made to indirect through it.</p>
+
+<p>Symbols have their bound values stored in a "shallow binding cell" at the first word of the symbol.  Thus, and indirect load through a LISP value corresponding to a symbol loads its binding.  Conses are stored car-cdr:  the first doubleword of the cons, loadable indirect through a value corresponding to the cons, is the value which is its car.</p>
+
+<p>There exists an A register and a Q register, in both of which arithmetic can be done, although only the A can be negated.  The A and Q can also be considered as a double-length AQ register, which can hold a doubleword.  Instructions exist to load and store the AQ from and to doublewords in storage.  The AQ is basically the only register in Multics LISP which can hold a lisp value, although the pointer registers can hold the lisp value corresponding to a cons, because the type bits would be stored as zero, which is correct for a cons.</p>
+
+<p>There are eight pointer registers, each of which can hold a Multics address.  Two are reserved for the system (Multics, #6 and #7).  One (#0, "AP") is reserved by the lisp runtime environment to maintain a stack of lisp values, the "marked PDL"<a href="lcp-fnfile.html#fn15"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>15</sup></a>, AP pointing to the next available location.  All saving of values of lisp variables is done on the marked PDL.  Pointer register #1 ("AB") is reserved by the lisp runtime to point to a transfer vector of "lisp operators," assembler-coded routines to perform quick and basic functions (e.g., function return, function call, cons allocation, variable binding (for specials)) in the runtime environment.  These routines must always be addressable by compiled code.  Pointer register #2 ("BP") may be used at the discretion of the compiler, as may pointer register #3 ("BB").  BB, however, is also used by the cons-allocation operator to return its result, and this is known and used to great advantage<a href="lcp-fnfile.html#fn16"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>16</sup></a> so that BB might be stored with a hardware pointer-store to move the lisp value it contains around.  Pointer register #4 ("LP"), during the running of compiled functions, is loaded by the function call operator<a href="lcp-fnfile.html#fn17"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>17</sup></a> with the address of the <i>lisp linkage section</i> of the object program.  This is a block into which the function (<b>load</b>) which loads lisp object programs into the lisp environment places lisp values corresponding to all of the constants and special variables referenced by the source code.  The compiler provides, in the object segment, information about what lisp value it has built the object program to assume will be stored in each slot of the lisp linkage section<a href="lcp-fnfile.html#fn18"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>18</sup></a>.  Pointer register #5 ("LB") can be used freely by the compiled code, but rarely is.</p>
+
+<p>The contents of the pointer registers and the AQ are not subject to garbage collector scrutiny.  At the time the garbage collector is invoked by the cons allocator, no active registers contain lisp values, all having been saved on the marked PDL.</p>
+
+<p>Functions are called by placing the arguments to the function (i.e., the lisp values representing them) on the marked PDL:  the first argument at the lowest address, the next 2 locations beyond, etc.  AP will point to the location beyond the last argument (first available PDL location).  A tspbp (transfer, leaving return address in BP) instruction is used to transfer to the function being called, transferring indirectly through the lisp linkage section.  This will initially cause a transfer to an operator which finds the machine code for the function being called (if compiled or builtin), "snapping" the link<a href="lcp-fnfile.html#fn19"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>19</sup></a> by placing the runtime code address of the function<a href="lcp-fnfile.html#fn20"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>20</sup></a> in that link, and transferring there.  Thus, future calls branch to the function directly<a href="lcp-fnfile.html#fn21"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>21</sup></a>  It is the responsibility of a called function to pop all of its arguments off of the marked PDL before returning; compiled code will assume that this has been done, and will do it.  Functions return their result in the AQ, as a fully typed lisp value.</p>
+
+<p>The garbage collector does not protect the marked PDL above AP.</p>
+
+<p>There exists an "unmarked PDL," usable for storing values other than lisp values.  It is addressed by the pair of AB and index (not pointer) register 7<a href="lcp-fnfile.html#fn22"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>22</sup></a>.  </p>
+
+<h2><a name="CHV"></a>V.  Pass 2</h2>
+
+<p>Pass 2 is that part of lcp which actually compiles LISP:  what it is given by Pass 1 is a subset of LISP with a few quantities added here and there which are necessary to be able to compile LISP in this way.</p>
+
+<p>The goal of compilation is twofold:  the first goal is to remove all of the overhead of the evaluator which is spent in figuring out what to do next and in what order to do it by figuring it out once and for all for every execution of this program.  The second goal is to recognize calls to functions which can be compiled <i>inline</i>, i.e., code can be generated to carry out the semantics of these functions in a very small number of machine instructions.  Good examples of such functions are <b>+</b>, <b>rplaca</b>, <b>setq</b>, <b>cddar</b>, and <b>cadadr</b>.  When a function call can be compiled as inline code, all of the overhead associated with setting up its arguments on the marked PDL and performing the actual transfer can be eliminated.  Now for functions like <b>sortcar</b>, although a persistent questioner might pose that inline code could be generated for this function, the relative overhead of argument list preparation is negligible compared to the actual work done by this function.  Thus, a Multics LISP function call is generated for calls to such functions, as is for calls to arbitrary non-system functions.</p>
+
+<p>A secondary goal of compilation is to create and manage the beings known as compiled local variables, the lexically-scoped value holders so akin to variables in "normal" programming languages.  Basically, "slots" (fixed locations during function execution) on the marked PDL are allocated to such variables.  This slot is known as the "home" of the variable.  This is a definition of a home; this must be kept in mind during the confusion which is to follow.  When this variable is setqed, its value is stored into this "home."</p>
+
+<p>Another goal is to implement the semantics of fexprs:  CONDs, PROGs, ANDs/ORs etc.  appearing in the source code may be viewed as compiler directives to construct control-flow code; to generate conditional branches, executing code conditionally.  SETQs map into the notion of assignment in compiled languages:  a SETQ appearing in the source code is a directive to the compiler to construct code which stores a value in a local variable or in the value cell of a special variable.  Each fexpr is like this:  a special case for the compiler.</p>
+
+<p>Compiling LISP source code also means identifying the <i>constants:</i>  Quoted lists and atoms tell the evaluator to return what is behind the quote:  the compiler calls this whole construct a "constant," and can compile code to use this constant value at the corresponding point of the compiled program.</p>
+
+<p>It has been posed that it is not even clear what it means to compile an interpreted language like LISP:  let us reiterate therefore what it means.  To compile a LISP program is to produce an object program, which, when executed by the processor, will produce the lisp value which corresponds to the object that the interpretation of the source program is supposed to produce, and produce the same effect upon the lisp environment.  With this in hand, let us develop inductively what it is that the compiler does.</p>
+
+<p>The process of evaluation of a form has a direct analog in the notion of execution of code which produces the value of that form:  As evaluation of a non-atomic form involves evaluation of the argument sub-forms, in argument order, execution of code producing the value of a non-atomic form involves execution of code producing the values of the argument sub-forms, in argument order.</p>
+
+<p>Since machine<a href="lcp-fnfile.html#fn23"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>23</sup></a> code executes in linear order, the compiler must produce code to develop the value of that form, by, at least in part, recursively considering the code to get code for all argument sub-forms at every level generated first.  This is so for the same reason that <b>eval</b> must evaluate lowest-level sub-forms first:  it needs the argument values before it can apply the function.</p>
+
+<p>Thus, producing code to be the object code of a function consists of compiling code to develop the value of the lambda-body of the function<a href="lcp-fnfile.html#fn24"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>24</sup></a> in the AQ, and pop the function arguments off the marked PDL.  If the simplest approach to building a LISP compiler were to be taken, compiling a form consisting of a variable alone would consist of compiling code to load its value into the AQ.  Compiling a form for a function call would consist of:</p>
+
+<ol>
+<li>Reserving some PDL slots for the function arguments, compiling code to bump the PDL pointer if necessary</li>
+
+<li>For each argument,
+<ol>
+<li>Compiling code recursively to develop its value (into the AQ), and</li>
+
+<li>Compiling code to store that in the appropriate PDL slot.</li>
+
+<li>Compiling a transfer-and-set-bp to the function.</li>
+</ol></li></ol>
+
+<p>This is not actually a half-bad approach.  Several less hirsute lisp compilers do precisely this, with the help of stack-oriented hardware<a href="lcp-fnfile.html#fn25"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>25</sup></a> in some cases.  There are several cases, however, where this is less than optimal.  One such case is where function code is to be compiled inline, as opposed to via a function call with arguments on the marked<a href="lcp-fnfile.html#fn26"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>26</sup></a> PDL.  Doing a little injustice to the Multics instruction set, our proposed "simpleton" compiler might generate for (+ a b)</p>
+<pre>
+          up-pdl   2slots
+          load-aq  a
+          store-aq pdl-slot-1
+          load-aq  b
+          store-aq pdl-slot-2
+          tspbp    +_function
+</pre>
+<p>If <b>+</b> were a non-inline-compileable function, this is about as good as we could expect to do.  Or if we were dealing in hardware that did "load and push on pdl" in one operation, and had operators in the hardware that dealt with the top <i>n</i> values on the PDL<a href="lcp-fnfile.html#fn27"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>27</sup></a> this would again be as good as we could do.  Thus, the lisp machine compiler is pretty simple.</p>
+
+<p>The next approximation would be to change the function-call compiling algorithm to compile code to perform the function instead of to call it if it knew how.  Given the typical single-address arithmetic instructions available on Multics and the PDP10, we would then have</p>
+<pre>
+          up-pdl   2slots
+          load-aq  a
+          store-aq pdl-slot-1
+          load-aq  b
+          store-aq pdl-slot-2
+          load-aq  pdl-slot-1
+          add      pdl-slot-2 + 1
+           ;number in second word.
+</pre>
+<p>This is insane.  What we clearly want to do is get rid of all of the PDLing around and argument preparation.  What we want to get is clearly</p>
+<pre>
+          load-aq  a
+          add      b + 1
+</pre>
+<p><i>and that's it.</i></p>
+
+<p>Another case where the simple minded approach loses is in LISPs<a href="lcp-fnfile.html#fn28"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>28</sup></a> where the argument passing convention is to pass arguments in registers instead of on a PDL.  If we change "place it in the appropriate PDL slot" in our simple algorithm to "place it in the right argument register," the algorithm does not even work, because later argument calculations are almost guaranteed to destroy the value of that register.  Even if they attempted to save it, a tremendous amount of useless data movement would result.  This is a much more serious problem than the previous.  The creators of NCOMPLR developed a technique to solve this problem which turns out adequate to solve the other problem, too.  It is this "value management technique" which is the major arcanum of both lcp and NCOMPLR.</p>
+
+<p>The technique of covering the source-code recursively in a manner identical to the evaluator is mandated by the definition of the evaluator that the object code is to simulate.  The basic recursive flow of the simple-minded algorithm cannot be abandoned:  where it is Losing, it must be fixed.  The central function of pass 2, <b>comp</b>, previously mentioned in relation to <b>p1</b>, is that function which considers the source code<a href="lcp-fnfile.html#fn29"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>29</sup></a> recursively.  When a call to a function is to be <b>comp</b>'ed, the outputting of object code for that function will almost<a href="lcp-fnfile.html#fn30"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>30</sup></a> always result in code terminating with a call or performing of that function.  Some study will show that almost all object code inefficiencies of the simple-minded approach result from the loading and copying of values into PDL slots (and other places) when the object code for an in line function could have equally well used them in their homes.  Now of course, if we have a call to an external function, we can still use the simple-minded algorithm, at least at this level of call, because we determined we had to do that anyway, and we couldn't do any better.  But we can now say, "If we are compiling code for an inline function, only allocate PDL temporaries for argument values whose arguments weren't variables.  When time comes to use the values for the machine operations, we will find them somehow, and get variables out of their homes."</p>
+
+<p>At first inspection, this may not seem like a bad approach.  In fact, many languages do just this.  But this is no good at all for LISP.  Consider the form
+<pre>
+          (+ a (setq a b) a)
+</pre>
+<p>Our not-so-simple-minded approach now generates</p>
+<pre>
+          up-pdl    1slot
+          load-aq   b
+          store-aq  a ;inline code 
+                      ;for setq
+          store-aq  pdl-slot-1
+          load-aq   a
+          add       pdl-slot-1 + 1
+          add       a
+</pre>
+<p>This is out-and-out wrong.  The "add a" line adds <b>a</b> correctly but the "load-aq a" line is out and out wrong! The value of <b>a</b> which the <b>+</b> form wants is that before the setq of <b>a</b> changed the value of <b>a</b>.  Thus, in order for this to work properly either</p>
+<ol>
+<li><p>Before we attempted to avoid loading and storing <b>a</b>, we checked through all of the arguments of the form, recursively, to see what variables were setqed, to see if we needed to do this and did it if so.  For this to work, either we spend a gigantic amount of time rescanning forms for possible side effects<a href="lcp-fnfile.html#fn31"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>31</sup></a>, or have pass 1 build a "setq list" into every form<a href="lcp-fnfile.html#fn32"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>32</sup></a>.  In either case, we would have to know how to "locate the variable value," i.e., find out where a "good value" of <b>a</b> for each reference to <b>a</b> was at the time we generated code for the application of the inline function.</p></li>
+
+<li><p>We could have the part of the compiler which <b>comp</b>'ed setq's recognize that someone was depending on the value of <b>a</b> before he generated code to setq it, and have him generate code to save the current value of <b>a</b> somewhere.  In order for this to work, we need</p>
+<ol>
+<li>A globally addressable list of variables which people have <b>comp</b>'ed but not actually used, that we will look through if we intend to setq some variable.</li>
+
+<li>A way of finding out that this happened when we need the variable value after all the arguments have been <b>comp</b>'ed.</li>
+
+<li>A way of finding out exactly where it was that this  clever hack put the damned thing<a href="lcp-fnfile.html#fn33"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>33</sup></a>.</li>
+</ol></li></ol>
+
+<p>lcp and NCOMPLR implement the second approach.  The "globally addressable list" of comped-but-unused results is called the <i>loadlist:</i>  it is the binding of the variable of the same name.
+
+<p>To make this methodology consistent, rather than just being a "save the values of variables hack," the function (<b>iloc</b>, in <b>lcp_cg_</b><a href="lcp-fnfile.html#fn34"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>34</sup></a>, one of the most critical actors in the whole compiler) which locates values, i.e., finds out "exactly where the thing is," and returns answers like</p>
+<pre>
+    <b>BB</b>
+    <b>AQ</b>
+    <b>(temp 6)</b> ;i.e., PDL slot at 6, #3
+    <b>(special x)</b> ;i.e., special var named "x"
+    <b>(quote 5)</b> ;i.e., the fixnum constant 5
+</pre><p>
+can find <i>any</i> value which we somehow guaranteed had code compiled to produce it, not just variables.  Well, what is it exactly that we give this thing to identify exactly what it is whose value we want to find, and how do we guarantee to it that indeed we <b>comp</b>'ed it?
+</p><p>
+Well, these questions answer each other, and dig this closely.  Calling <b>comp</b>, like any lisp function, returns a value to the function, which called it.  What <b>comp</b> returns is a type of lisp laundry ticket called a <i>value tag.</i>  It is this value-tag that we hand to <b>iloc</b>.
+</p><p>
+These characters maintain a <i>model</i> of the runtime PDL and registers called the <i>slotlist</i> in which they keep value-tags representing what is currently assumed to be in each PDL slot or register.  When we hand iloc a value tag, it searches the slotlist (and the variables <b>AQ</b> and <b>BB</b>, we will use the term "extended slotlist") to locate the register or PDL slot where the compiled code "stored"<a href="lcp-fnfile.html#fn35"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>35</sup></a> or "left" that result.  Note how elegantly the notion of "result" maps into "value-tag returned by <b>comp</b>."  The latter is the compile-time implementation of the former.
+</p><p>
+<b>comp</b> always<a href="lcp-fnfile.html#fn36"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>36</sup></a> conses the value-tag he is about to return onto the loadlist<a href="lcp-fnfile.html#fn37"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>37</sup></a> so that people will look there before attempting to destroy its loadability.  When we <b>comp</b> any kind of function call, in-line or external<a href="lcp-fnfile.html#fn38"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>38</sup></a>, <b>comp</b>, or he whom he calls, returns a "gensym" result for a value tag, i.e., the ncons of a new gensym.  The fact that the cdr of this value-tag is <b>nil</b> identifies it as such.  When we comp a variable, we return as a value tag a cons of the symbol representing that variable with the current value of <b>cnt</b>, the simulated-evaluation time counter incremented every time a variable is comped or a setq is comped, and other times.  Thus, the result of handing <b>s</b> to comp might return <b>(s.264)</b> and set <b>cnt</b> to 265.  This is the implementation of "<b>x</b> now" or "<b>x</b> then" or "<b>x</b> before that happened."  Thus, the loadlist does not contain requests for the value of <b>x</b> as "<b>x</b> needed by somebody," but "<b>x</b> at time 264 needed by somebody."  These "<b>x</b> needed by somebody"'s are called "unrealized demands on <b>x</b>," or "unrealized loads" or "outstanding demands," etc., on <b>x</b>.  Managing outstanding loads is the better part of what lcp does for a living.
+</p><p>
+          Thus, the the general algorithm for comping an inline function is FIRST to get the <b>comp</b> results of all of the arguments, and THEN call iloc on these value-tags to find out where the results "are"<a href="lcp-fnfile.html#fn39"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>39</sup></a> and generate hand-tailored machine code to operate upon these quantities optimally from these locations<a href="lcp-fnfile.html#fn40"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>40</sup></a>.  Finally, construct a "gensym" value tag, and before returning it, place it in the correct slot in the slotlist (or in <b>BB</b> or <b>AQ</b>) so that iloc can later find <i>our</i> result.  <b>comp</b> (who called this specific routine) will cons this gensym result on to the loadlist.
+</p><p>
+          Wait.  Stop.  What is the meaning of this? Why is <b>comp</b> putting gensym (function) results on the loadlist? We understand that we put unrealized variable loads on the loadlist so that the setq-comper (<b>compsetq</b>) can notice them before it setq's a variable and<a href="lcp-fnfile.html#fn41"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>41</sup></a> causes its value to be saved.  But no-one is in danger of setqing a function result.  Why that's as silly as <b>(setq (cos x) 22)</b>! Or is it?  Where does that function result live? In whatever register the compiler claimed it left it when it compiled the call.  What is to prevent the next code sequence from clobbering that register? There's only one BB and an even<i></i> scarcer AQ to go around, and most function results are left there.  If every inline function saved the AQ before it executed, we would generate a lot of useless code and soon run out of places to uselessly save the AQ.  We <i>know</i> that at some times the AQ has something useless, something duplicated elsewhere, or nothing known in it<a href="lcp-fnfile.html#fn42"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>42</sup></a>, and the rest of the time has something critical in it.  How can a part of the compiler which is going to clobber the AQ know whether it has to be saved or not? Simply by checking the loadlist to see if there is an unrealized demand on that result.  For a gensym result, it's easy:  if it's on the loadlist, but not elsewhere on the extended slotlist, we'd better find a slot in the slotlist, and save it.  For a variable, it is a little more complex.  For a constant (see earlier footnote), we need never save it.  Thus, we have the concept of <i>damnability</i> result.  A result is <i>damnable</i><a href="lcp-fnfile.html#fn43"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>43</sup></a> if no unrealized load depends on it.  A register that contains a damnable result may be used for something else; a register that contains a non-damnable result must be saved before it is reused<a href="lcp-fnfile.html#fn44"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>44</sup></a>.   The predicates <b>storeaq?</b> and <b>savebb?</b> are used to test the damnability of the values of AQ and BB in lcp, and save them if needed.</p>
+
+<p>A list of all possible forms of value tags is given in <a href="#AppendixA">Appendix A</a>.</p>
+
+<p>When PDL temporaries are needed, the damnability test is applied (by <b>freeable</b>) to the contents of each slot on the current PDL map (slotlist) to see if that temporary can be reused.  Note that those PDL slots which are the "homes" of local variables become reusable after <b>cnt</b> passes the last <b>cnt</b> of a use of this variable as recorded in the <b>locvars</b> list by pass 1.  Already-used function results (which therefore don't appear on the loadlist) are always damnable, and PDL temps or registers containing them can freely be reused.</p>
+
+<p>The damnability and ilocing of variables is a complex issue because variable values, unlike function values, are not unique<a href="lcp-fnfile.html#fn45"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>45</sup></a>.  All compings of the same variable between two setq's refer to the same lisp value at runtime, and can be made into references to the same value (usually the home of the variable) at compile time.  In the most trivial case, let us consider the form:</p>
+<pre>
+      (+ x x (- y z) x)
+</pre>
+<p>After all arguments have been comped, the loadlist will look like this:</p>
+<pre>
+      ((x.347)(z.346)(y.345)(x.344)(x.343))
+</pre>
+<p>When <b>iloc</b> is called to realize the demand, i.e., come flat out and say where the value can be found, of <b>(x.343)</b>,<b> (x.344)</b>, or <b>(x.347)</b>, having no reason to believe otherwise, all of these demands can be realized from the home of <b>x</b> (which we denote as <b>(x.home)</b> for this is the not-really-value-tag which appears in the slotlist position for <b>x</b>'s home).  And thus they will be.</p>
+
+<p>Clearly, the function that is about to compile code to setq must put something somewhere to cause <b>iloc</b> to realize that <b>(x.home)</b> won't do, if it is about to setq <b>x</b>.  The "somewhere" is the extended slotlist, and the "something" is a value-tag for a later or contemporary <b>x</b>, i.e., <b>(x.</b><i>now</i><b>)</b> where "<i>now</i>" is the current <b>cnt</b> equal or greater to the cdrs of outstanding demands on the loadlist.  When <b>iloc</b> is asked to realize a demand on a dotted-fixnum (variable) value-tag, it calls <b>locvalue</b> to find if there are <b>x</b>'s on the extended slotlist (with corresponding values in runtime registers, of course) <i>later</i> or contemporary (higher or equal <b>cnt</b>) than the cdr of the input value-tag.  The earliest such value on the extended slotlist was stored there so that we might realize our demand on <b>x</b> from it.  That value is the right <b>x</b>.</p>
+
+<p>To "get something onto the extended slotlist" all we must do is load it into a register (e.g., the AQ), and indicate that we have done so by placing a value-tag for it in that extended-slotlist position (e.g., the variable <b>AQ</b>).  That value may be shoved around, but never lost, because the unrealized demand on an <b>x</b>, on the loadlist, justifies this value's existence.  When <b>iloc</b> finally calls for it, it is guaranteed that it will be somewhere on the extended slotlist, i.e., somewhere on the runtime PDL or in some register.  It is not damnable.</p>
+
+<h2><a name="CHVI"></a>VI.  Value Management:  An Example</h2>
+
+<p>Consider the compilation of the following form:</p>
+<pre>
+          (+ x (setq x '7) x)
+</pre>
+<p>Assume an initial <b>cnt</b> of 0.  Assume <b>x</b>'s home is PDL temp 1, and thus slotlist position 1 contains <b>(x.home)</b>.</p>
+
+<p><b>comp</b> is given <b>(+ x (setq x '7) x)</b>.</p>
+
+<p><b>comp</b> passes the buck to <b>comparith</b>, who knows how to compile arithmetic functions.  He calls <b>comp</b> on the first <b>x</b> recursively.  <b>comp</b> generates the value-tag <b>(x.1)</b>, conses it onto the loadlist, and returns it to <b>comparith</b>.  <b>comparith</b> remembers this value.</p>
+
+<p>The current state of the world:  the loadlist has <b>(x.1)</b> on it, <b>cnt</b> is at 1, the slotlist has <b>(x.home)</b> in position 1, and <b>comparith</b> has <b>(x.1)</b> in hand.</p>
+
+<p><b>comparith</b> now invokes <b>comp</b> recursively on <b>(setq x '7)</b>.  <b>compsetq</b> gets the buck.  The second operand is comped, obtaining a value tag of <b>'7</b><a href="lcp-fnfile.html#fn46"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>46</sup></a> which is retained by <b>compsetq</b>.  Knowing that <b>x </b>is about to be setqed, <b>compsetq</b> calls <b>cleanup-var-load</b> on <b>x</b> to see if there are unrealized demands on <b>x</b> on the loadlist that do not already have <b>x</b>-value-tags on the extended slotlist to satisfy them.  In other words, it asks "Are there compilations in progress which need the current value of <b>x</b>, and thus should I save it?"  <b>cleanup-var-load</b> does this by asking the predicate <b>gotvalue</b> on each unrealized demand on <b>x</b> in the loadlist.  <b>gotvalue</b>, given a specific <b>x</b>-value-tag from the <i>load</i>list, walks over the entire extended <i>slot</i>list, looking for any <b>x</b>-value (except, obviously, <b>(x.home)</b>, because that's gonna change right now) from which this particular demand on <b>x</b> (i.e., <b>(x.1)</b>) might be realized.  <b>gotvalue</b> calls the predicate <b>goodval</b> on the contents of each element of the extended slotlist, to see if it is such a value.</p>
+
+<p>When <b>cleanup-var-load</b> obtains <b>nil</b> from an answer from <b>gotvalue</b> on <b>(x.1)</b>, it concludes that the current value of <b>x</b> must be saved, and calls <b>savevalue</b> on <b>(x.1)</b>.  <b>savevalue</b> locates <b>x</b>'s home, and (assuming the current value of <b>x</b> is not already in the AQ), generates a Load AQ instruction to load that home into the AQ<a href="lcp-fnfile.html#fn47"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>47</sup></a>.  The AQ position of the extended slotlist (the variable <b>AQ</b>) is set to <b>(x.idup)</b>, indicating that it contains "an idup of <b>x</b>," a copy of the home made for this purpose.  <b>goodval</b> and <b>locvalue</b> (the former used at setq time, the latter at <b>iloc</b> time) and the damnability predicates all consider an idup to be as recent as can be, i.e., as recent as <b>x.home</b>.  At the end of processing the loadlist, <b>fixidups</b> is called to actually rplacd all idups (and dups, which we will meet below) to the current <b>cnt</b><a href="lcp-fnfile.html#fn48"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>48</sup></a>.</p>
+
+<p>The current state of the world:  <b>cnt</b> stands at 1.  <b>comparith</b> has <b>(x.1)</b> in its hand.  <b>compsetq</b> has a <b>'7</b> in its hand.  The loadlist contains <b>(x.1)</b>.  The slotlist has <b>(x.home)</b> in position 1.  <b>AQ</b> has the idup <b>(x.1)</b> in it.</p>
+
+<p><b>compsetq</b> now increments <b>cnt</b> to 3, as convention is to increment it by 2, and calls <b>get-in-aq</b> on the value-tag <b>'7</b> (NOT the<i> form</i> <b>'7</b>) as previously returned.  <b>get-in-aq</b> realizes that it is going to load something into the AQ that it has determined is not there already (recall that <b>(x.1)</b> is there now), and thus calls clearaq to call <b>storeaq?</b> to see if AQ must be saved.  Indeed, <b>storeaq?</b> finds that <b>AQ</b> contains this variable value, and calls <b>damned-variable</b> on it to see if it is damnable.  <b>damned-variable</b> searches the slotlist and finds no other value for <b>x</b> (it will not look in <b>x.home</b>, because that might be stored into later).  Thus, <b>(x.1)</b> must be the most recent <b>x</b> around.  It then searches the loadlist for unrealized demands on <b>x</b>, asking the following question of each:  "If the <b>x</b>-value whose tag I was passed as an argument were to be damned, i.e., not kept around, would there still be some <b>x</b>-value somewhere on the extended slotlist from which this unrealized demand might be realized?" Since there were <i>no</i> other <b>x</b>'s (other than <b>(x.home)</b>, of course) on the extended slotlist, the answer here must be "no, there would not," or "you'd better save the value you asked me about."  <b>storeaq?</b>, being told this by damned-variable, decides that indeed, it must save the AQ, and it generates code to store the AQ at, say, <b>(temp 4)</b>, i.e., the second PDL location.  To indicate that it has done this, the second element of the slotlist is rplacaed to <b>(x.1)</b>, by copying what is in <b>AQ</b>.
+</p><p>
+          Current state of world:  <b>cnt</b> stands at 3.  The slotlist has <b>(x.home)</b> in its first position, and <b>(x.1)</b> in its second.  The loadlist has <b>(x.1)</b> on it, and <b>AQ</b> has <b>(x.1)</b> in it too.  (These are not <b>eq</b>, by the way.)
+</p><p>
+          <b>get-in-aq</b> proceeds to load the constant <b>7</b> into the AQ, setting the variable <b>AQ</b> to the value-tag <b>'7</b> to indicate this.  <b>compsetq</b> generates code to store the AQ at <b>(x.home)</b>, i.e., the PDL temporary which is the home for <b>x</b>, because this is what it means to compile a setq.  <b>compsetq</b> sets the variable <b>AQ</b> to <b>(x.dup)</b>, meaning "a duplicate of the home value of <b>x</b>, because I either just loaded it from there or (as in this case) just stored it from here."  This "dup" of <b>x</b>, is considered to be as recent a value of <b>x</b> as can be had by locvalue (at <b>iloc</b> time), the damnability predicates (at register-re-use time) and by <b>goodval</b> (at setq time).  The reason we use <b>(x.dup)</b> instead of <b>(x.3)</b> is so that later demands on <b>x</b> might be satisfied from this same value; As more and more demands on <b>x</b> are made from this point on, <b>(x.dup)</b> in the AQ can say "Yeah, we can take care of all of you." That is to say, were our form</p>
+<pre>
+     (list x (setq x '7) x x x x x)
+</pre>
+<p>the last 5 <b>x</b>'s can all be found by <b>iloc</b> in the AQ, which is a good place.</p>
+
+<p>Now to make this "dup" hack work, this "dup" better know when it starts to become invalid, and had better take its philanthropic <b>x</b>-satisfier out of business.  That time is such time that we are about to setq <b>x</b>:  <b>fixidups</b>, which we met earlier, rplacds all dups of <b>x</b> to the current <b>cnt</b> as well as idups.  From that point on, <b>(x.dup)</b> is <b>(x.</b><i>number</i><b>)</b>, and that number is the upper limit on his validity.</p>
+
+<p>Dups have the property that they are always damnable, from the moment they are created.  As long as they are dups (i.e., not rplacded to <b>(x.</b><i>number</i><b>)</b>), they are guaranteed to be a copy of that is in <b>(x.home)</b>, and thus can always be dispensed with.  The damnability predicates know this.  Idups, on the other hand (made by <b>savevalue</b>) are <i>never</i> damnable at the moment they are created:  <b>savevalue</b> put them there because <b>gotvalue</b> saw that an unrealized demand on <b>x</b> <i>needed </i>this to happen.  Idups <i>become</i> damnable when all unrealized demands on <b>x</b> that had been depending on that saved value are realized, i.e., removed from the loadlist.</p>
+
+<p><b>compsetq</b>, while putting <b>(x.dup)</b> in <b>AQ</b>, returns <b>(x.3)</b> (3 is the current <b>cnt</b>) to its caller, <b>comp</b>, who conses it onto the loadlist, and returns it to <b>comparith</b>.  <b>(x.3)</b> is a representation of the value of <b>x</b> representing the value of the <b>setq</b> form, not necessarily the current contents of the AQ.  To return a dup as a value would be meaningless.</p>
+
+<p>Current state of world:  The loadlist has <b>(x.1)</b> and <b>(x.3)</b> on it.  <b>comparith</b> has an <b>(x.1)</b> and an <b>(x.3)</b> in its hand.  The AQ has <b>(x.dup)</b> in it.  The slotlist has <b>(x.home)</b> in position 1, and <b>(x.1)</b> in position 2.  The <b>cnt</b> stands at 3.</p>
+
+<p><b>comparith</b> now has two values (i.e., two value-tags as laundry tickets for compiled results), and can start adding stuff.  A clever little subroutine called <b>get-fixnum-commu</b> is called with the value tags <b>(x.1)</b> and <b>(x.3)</b>.  Knowing that it is being invoked on behalf of a commutative operation, <b>get-fixnum-commu</b> tries to see if either is in the AQ, by calling the predicate <b>in-aq</b> on both.  Acting as a kind of <b>iloc</b>, <b>in-aq</b> sees that it is being asked about a variable in both cases (i.e., <b>(x.</b><i>number</i><b>)</b>, and asks <b>iloc</b>'s helper <b>locvalue</b> (see above) if the AQ can satisfy the demand on hand.  <b>locvalue</b> sees that there is no <b>x</b> (other than <b>(x.home)</b>) on the extended slotlist later than <b>(x.3)</b>, and thus <b>(x.home)</b>, or <b>(x.dup)</b>, which is as good as right now, can indeed satisfy this demand.  The <b>(x.dup)</b> in the AQ can be used as <b>(x.3)</b>.  <b>get-fixnum-commu</b> thus removes <b>(x.3)</b> from the loadlist, realizing the demand on that value of <b>x</b>, and returns the other argument, <b>(x.1)</b> to <b>comparith</b>, having "gobbled" the <b>(x.3)</b> by indeed fulfilling its contract that one of its arguments is in the AQ and the other returned.
+</p><p>
+          <b>comparith</b> now contemplates generating code to add the <b>(x.1)</b> into the Q register (the number part of the AQ when it contains a lisp object).  Since it is going to change what is in the AQ, it calls <b>storeaq?</b> first to see if what happens to be in the AQ is some idup or something like that (even though it is <i> also,</i> by coincidence a good value for our variable) and has to be stored<a href="lcp-fnfile.html#fn49"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>49</sup></a>.
+</p><p>
+          <b>comparith</b> calls <b>ilocs</b>, a version of <b>iloc</b> which refuses to see things in the AQ (or BB), storing them if necessary<a href="lcp-fnfile.html#fn50"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>50</sup></a>.  <b>iloc</b> is given <b>(x.1)</b>:  seeing that it is a variable (i.e., <b>(x.1)</b> not <b>(</b><i>gensym</i><b>)</b>) it calls <b>locvalue</b>.  <b>locvalue</b> searches the extended slotlist and finds that there is indeed a value on it, <b>(x.1)</b> in temp 2, which is <i>not</i> earlier than our <b>(x.1)</b>, and that is the earliest (and in this case only) <b>x</b> of which that is true.  Thus, <b>iloc</b> returns (temp 4) to <b>comparith</b>.  <b>comparith</b> compiles an instruction to add the second word of temp 2 to the Q-register.
+</p><p>
+          <b>comparith</b> has now changed the entire state of the world.  It must make this apparent.  It has used the result <b>(x.1)</b> that it was given by <b>comp</b>:  thus it removes <b>(x.1)</b> (by a call to <b>remove</b>) from the loadlist.  Note that this implicitly renders the <b>(x.1)</b> in temp 2 on the slotlist damnable.  The AQ no longer contains <b>(x.dup)</b>, but a new result.  So <b>comparith</b> sets <b>AQ</b> to the ncons of a gensym (function value representation).  <b>comparith</b> now conses this value onto the loadlist to make sure that it does not get damned, i.e., the AQ reused while the remaining argument(s) are comped.
+</p><p>
+          Current state of world:  <b>comparith</b> has the value tag <b>(g0005)</b> in its hand.  <b>AQ</b> has <b>(g0005)</b> in it.  The slotlist has <b>(x.home)</b> in position 1 and <b>(x.1)</b> in position 2.  The loadlist has <b>(g0005)</b> on it.  The first addition has been compiled.
+</p><p>
+          <b>comparith</b> now loops around its potentially-endless form and comps the final <b>x</b> in the form.  <b>comp</b>, invoked recursively, increments <b>cnt</b> by 1, creates the value tag <b>(x.4)</b>, conses it on to the loadlist, and returns it to <b>comparith.</b>
+</p><p>
+          Current state of world:  <b>comparith</b> has the value tags <b>(x.4)</b> and <b>(g0005)</b> in its hand.  <b>AQ</b> has <b>(g0005)</b> in it.  The loadlist has <b>(g0005)</b> and <b>(x.4)</b> of it.  The slotlist has <b>(x.home)</b> in position 1 and <b>(x.1)</b> in position 2.  The <b>cnt</b> stands at 4.
+</p><p>
+          <b>comparith</b> calls <b>get-fixnum-commu</b> on <b>(x.4)</b> and <b>(g0005)</b>.  <b>get-fixnum-commu</b> asks <b>in-aq</b> on <b>g0005</b>, and being a gensym result, it is the only good value for itself, and yes, it is in the AQ.  So <b>get-fixnum-commu</b> removes it from the loadlist and returns <b>(x.4)</b> to <b>comparith</b>.  <b>comparith</b> calls <b>ilocs</b> on that <b>(x.4)</b>.  There are no saved <b>x</b>'s on the slotlist, so <b>(x.home)</b> (or any dup or idup of <b>x</b>, but, in this case, there are none) will do.  It returns <b>(temp 2)</b>, or whatever temp <b>(x.home)</b> lives in.  (The slotlist contains <b>(x.home)</b> for <b>(x.home)</b>, not <b>(x.</b><i>number</i><b>)</b> or the locator <b>(temp 2)</b>, which is not even a value tag.) So <b>comparith</b> generates code to add <b>x</b>'s home to the Q-register.
+</p><p>
+          Again, the state of the world has been changed.  The result corresponding to <b>(g0005)</b> is no longer in the AQ.  What is more, <b>(g0005)</b> has been used.  <b>comparith</b> deletes <b>(g0005)</b> from the loadlist, and sets the variable <b>AQ</b> to <b>(g0006)</b>, a new gensym result.  <b>comparith</b> notices that it finished all its arguments, and returns <b>(g0006)</b> to <b>comp</b> to cons onto the loadlist, and return to its caller.
+</p><p>
+          The compilation of <b>(+ x (setq x '7) x)</b> is complete.  The state of the world is as follows:  The loadlist contains <b>(g0006)</b>.  The slotlist still has <b>(x.home)</b> in position 1, and the damnable variable <b>(x.1)</b> in position 3.  The <b>cnt</b> stands at 4.  The AQ contains <b>(g0006)</b>.  <b>comparith</b> is off the stack.  The caller of <b>comp</b> on the <b>+</b> form has been given a value-tag for a non-damnable value now in the AQ.  He can <b>iloc</b> it as he sees fit whenever he so chooses.
+</p>
+<h2><a name="CHVII"></a>VII.  Value Management:  In Summary</h2>
+
+<p>We see that Pass 2 value management is an interaction of four sets of primitives, keeping track of the location of results, the damnability of results, and the naming of results:
+</p>
+<ol>
+<li><p><b>comp</b>, the producer of results, who leaves them in registers or PDL locations, and conses their tags on to the loadlist.  comping produces object code, and changes variable values and register contents.</p></li>
+
+<li><p><b>iloc</b>, (and his friends like <b>in-aq</b>, <b>in-bb</b>, <b>get-in-aq</b>, etc.), who finds results in the registers and PDL locations, and calls locvalue to find savings of variables to realize demands on them.  ilocing may produce object code, which might even change the contents of registers, but will never have side effects like changing the values of variables.</p></li>
+
+<li><p><b>cleanup-var-load</b>, called at the time that a variable is about to be setqed, to see if there are unrealized demands on this variable by searching the loadlist.</p></li>
+
+<li><p>The damning predicates, <b>storeaq?</b>, <b>savebb?</b>, <b>freeable</b>, and <b>damned-variable</b>, which, looking at a result, see if that result is destructible or must be saved.  These primitives are called when code is generated to put new results in registers or PDL locations, or usable PDL locations must be found.</p></li>
+</ol>
+<p><b>comp</b> returns a result to a specific-function compiler having put it on the loadlist, guaranteeing that iloc will be able to find it, or something that will satisfy the demand for it, <i>some</i>place.  When a specific-function compiler calls <b>remove</b> on a result, to remove it from the loadlist, it becomes damnable.  The damning predicates determine if the result in a specific register or PDL location must be saved or stored, because some demand for a value will not be able to be satisfied without it.  <b>cleanup-var-load</b> exists because demands for variables are generally realized from the home of the variable, and the old value in the home must be saved if an unrealized demand on the variable exists at the time it is to be setqed.
+</p>
+<p>Local variables can only be setqed in the function in which they are defined:  they are lexically scoped, like PL/I or Algol variables.  Thus, the compiler, while compiling a function, knows to create idups (i.e., perform a <b>savevalue</b>) upon them when an unrealized demand on them exists when a <b>setq</b> is about to be compiled.  For the case of a special variable, this is not so.  They are dynamically scoped:  any lisp function can freely (so to speak) change the value of any special variable.  Thus, pass 2 must consider any call to a function whose behavior is not known (i.e., non-builtin function) to be potentially a <b>setq</b> of all special variables that exist.  Thus, when such a call is comp'ed (by <b>make-call</b>) a <b>cleanup-var-load</b> is done for all special variables on the loadlist (i.e., all unrealized demands on special variables).  This is performed by <b>cleanup-special-var-loads</b>.
+</p>
+<p>Among the functions that the compiler knows about, it is capable of determining which can potentially setq special variables and which cannot.  For instance, <b>cons</b> cannot, but <b>set</b> (<i>not</i> <b>setq</b>) certainly can.  <b>break</b>, or other random user-interaction functions can.  Those functions which can potentially setq special variables are defined in the include file <b>compiler-badfns.incl.lisp</b>, and are returned as the list value of the macro <b>badfns</b> defined therein.  Thus, <b>make-call</b> can check all system functions against <b>(badfns)</b> to see if a <b>cleanup-special-var-loads</b> is required.  Pass 1 also checks this list when <b>p1</b>'ing to see if the call-out flag<b></b>, <b>p1cof</b>, should be set.  This is used to set the downward-propagating call-out flags in conditional forms, already discussed, but not yet motivated.
+</p>
+<p>There are times when it is necessary to perform a <b>cleanup-var-load</b> on all demands on the loadlist.  This is basically for <b>catch</b> and <b>errset</b>, which can receive control from arbitrary code not compiled in this function, invoked by an unpredictable point in this function.  When the throw or error occurs, the catch or errset receives control.  Let us consider the following form:</p>
+<pre>
+   (foo x (errset
+             (progn
+                 (bar)
+                 (setq x 5)
+                 (quux))))
+</pre>
+<p>Upon comping the <b>errset</b>, an unrealized demand exists for the <b>x</b>, the first argument to <b>foo</b>.  While compiling the <b>progn</b>, the <b>setq</b> of <b>x</b> to <b>5</b> would perform a <b>cleanup-var-load</b> on <b>x</b>, in preparation for the <b>setq</b>, storing an idup of <b>x</b> into some PDL temp.  <b>x</b> not being special, the external calls to <b>bar</b> and <b>quux</b> do not cause a <b>cleanup-var-load</b> on <b>x</b>.  At the completion of the comping of the <b>errset</b> form, the value-tag for the first <b>x</b> would presumably be ilocable at this PDL temp, for the <b>setq</b> caused code to load it and probably code to store it before the <b>5</b> was loaded.  However, if a lisp error occurred while <b>bar</b> was executing, control returns to the <b>errset</b> without the code for saving <b>x</b> ever having been executed.  The code that loads <b>x</b> for the call to <b>foo</b> would load garbage, for iloc has clearly lied.
+</p><p>
+          The solution to this dilemma is that the comping of any form which can receive control from an unpredictable arbitrary depth within it must cleanup all variable loads.  <b>cleanup-var-loads</b> does this.
+</p><p>
+          A little thought here leads us to consideration of conditional forms, where the problem is somewhat simpler.  The clever reader can begin to motivate the setq list and call-out flags in such forms.  I, however, cannot discuss this until I have explained the compilation of branches.
+</p>
+<hr>
+
+<p>It is worthwhile stating the precise algorithm of <b>locvalue</b>, which given a value-tag for a variable, finds that value, guaranteed by the damning-predicates and <b>savevalue</b> to be there, that can satisfy this demand.  Recall that locvalue is called by iloc and those like him:</p>
+<blockquote>
+Among all the extended slotlist, i.e., the PDL, BB, and AQ, with dups, idups, and home being considered as <b>(x.</b><i>now</i><b>)</b>, the <i>earliest</i> <b>x</b> on the extended slotlist which is <i>not </i><i>earlier</i> than what we're looking for, satisfies this demand.
+</blockquote>
+<p>Example:</p>
+
+<pre>
+ loadlist 1 2 3 5 6 7 9 10 11 12 14
+ slotlist     3     7 9       12    home
+</pre>
+where all the above are cdr's of <b>(x.</b>---<b>)</b>.
+<p>
+<b>(x.1)</b>, <b>(x.2)</b>, and <b>(x.3)</b> demands all can be satisfied from the <b>(x.3)</b> on the PDL.  Clearly, at time <b>cnt</b> = 3, a <b>savevalue</b> of <b>x</b> was done by one of the cleanup-var-load'er's, either because of an imminent <b>setq</b>, a random-function call if <b>x</b> is special, etc., as just discussed.  <b>(x.5)</b>, <b>(x.6)</b>, and <b>(x.7)</b> can be satisfied similarly from the <b>(x.7)</b> on the PDL, and <b>(x.10)</b>, <b>(x.11)</b>, and <b>(x.12)</b> from the <b>(x.12)</b> saved there for this reason.  The reference to <b>(x.14)</b> has no later <b>x</b>'s saved:  the current value of <b>x</b> can be used, e.g., <b>(x.home)</b> or a dup of <b>x</b> in the AQ or BB.
+</p><p>
+          A similar consideration of the damnability predicate on the value-tag of a variable is worthwhile:</p>
+<blockquote>
+A value-tag for a variable (and thus the register it is in) is damnable if there are <i>no</i> demands for that variable on the loadlist for which iloc would <i>have to</i> return this value.
+</blockquote>
+<p>Thus, in the above example, there are no damnable quantities on the slotlist, because we gave a case above where each one of them would be found by <b>iloc</b>.  Were, however, the <b>(x.9)</b> to be used, and thus <b>(x.9)</b> removed from the loadlist, the <b>(x.9)</b> on the slotlist would be damnable.  Picture:</p>
+
+<pre>
+ loadlist 1 2 3 5 6 7  10 11 12 14
+ slotlist     3     7 9      12    home
+</pre>
+
+<p>Another way of stating this is that a variable value is damnable if there are no earlier demands on the loadlist for which there is not a value of this variable earlier than us, but later than or contemporary to the demand.
+</p><p>
+Similarly, we must state in entirety the algorithm of the var-load-cleaner-uppers, which determine if an idup must be made of a variable (i.e., a <b>savevalue</b> done) when a <b>setq</b> is about to be done.  This is implemented by <b>goodval</b>:</p>
+<blockquote>
+An idup must be made at <b>cleanup-var-load</b>-time if there are outstanding demands on the loadlist for which <b>iloc</b> would find <b>(x.</b><i>now</i><b>)</b> if it were there.
+</blockquote>
+<p>Another way of stating this is that an idup must be made if there exists at least one unrealized demand for this variable on the loadlist for which no contemporary or later value other than the home exists on the extended slotlist.  Examples:</p>
+
+<p><b>x</b> needs to be saved:</p>
+<pre>
+loadlist 1 2 3 5 6 7 9 11
+slotlist     3     7     home
+</pre>
+<p><b>x</b> need not be saved:</p>
+<pre>
+loadlist 1 2 3 5 6 7 9 11
+slotlist     3     7     12 home
+</pre>
+<p>The damnability of a variable-home is the "and" of the damnability of <b>(x.</b><i>now</i><b>)</b> and <b>cnt</b> being greater than what is stored in <b>locvars</b> (<b>last-use-cnt</b>) for this variable.  The damnability of a slot containing a function-result is the inverse of whether that result is on the loadlist.
+</p>
+
+<h2><a name="CHVIII"></a>VIII.  Object Code List</h2>
+
+<p>lcp produces machine-language output, not LAP.  Instructions produced are most often 36-bit fixnums representing a full Multics instruction.  A list of such fixnums, i.e., a chain of conses with fixnums in their cars, is maintained by <b>outwrd</b>.  The variable <b>pc</b> represents the simulated program-counter (instruction counter); the variable <b>codelist</b> keeps the head (highest address, place where things are being added) of this chain.
+</p><p>
+Most instructions, those which call operators, increment or decrement the PDL pointer, load constants, or branch backwards, are completely-determined constants at the time they are consed onto the codelist.  Others, such as references to the PDL, references to functions, references to constants, and forward jumps are not.  It is the function <b>outinst</b>, given a fixnum opcode and a representation of a runtime address, almost always an iloc answer, which must deal with this.
+</p><p>
+PDL references are not known at the time they are consed onto the codelist because the size of the PDL frame for a function is not known until the compilation of the function is finished, and PDL references are made as negative off of the AP.  There is only one PDL pointer, and it points to the location beyond the top of the PDL region for this function.  Thus, (temp.<i>inst-2N</i>), where <i>inst-2N</i> is a machine-language instruction whose address-field specifies twice (for 2 words per PDL slot) the PDL slot number, is consed onto codelist.  At the completion of function compilation, <b>pass2</b> scans the portion of the codelist for this function, rplacaing all conses with caars of <b>temp</b> with their cdars with the known PDL-frame size subtracted from the offset.
+</p><p>
+Instructions which need to reference numeric constants can often be compiled into "immediate" instructions by <b>outarith</b>, which will wind up in the codelist as normal fixnum instructions.  But often, full doubleword lisp-value typed pointer constants must be referenced.  These are compiled into the text of the object segment following the function.  Thus, their locations cannot be known until compilation of the function is complete.  Therefore, <b>outinst</b> places a cons similar to that for PDL references, but with a car of <b>literal</b> instead of <b>temp</b> in the codelist.  <b>get-literal-addr</b> keeps track of pooling these literals, via a hash table of all constants referenced maintained by <b>make-const</b>.  Thus, <b>pass2</b> rplacas all conses containing this appropriately, adding in the base of the literal pool after the function to their cdars.
+</p><p>
+Similarly for array references and function references in the object program, where conses with <b>array</b> and <b>function</b> are put on the codelist.  Since these snappable pointers<a href="lcp-fnfile.html#fn51"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>51</sup></a> are pooled, and will appear in the LISP linkage section, the final instruction cannot be known until the layout of the whole LISP linkage section is known at the end of the entire compilation of the source file.  Thus, conses with <b>array</b> and <b>function</b> as their cars are consed onto the codelist, with the template instruction containing the <i>relative</i> offset into the particular pool (which <i>is</i> known at the time the instruction is encountered).  When all compilation is complete, <b>finish-code</b> is called, which lays out the LISP linkage section, knowing how many of each of these things there are, and scans the total code list to rplaca conses having these things in their cars with their cdars with the correct pool offset added.
+</p><p>
+Constants, e.g., list structure, symbols, bignums, and strings referenced by the compiled code also are referenced via pointers in the LISP linkage section.  However, since the constant pointers (which, by the way, are garbage-collectable lisp values) are placed <i>first</i> in the LISP linkage, the linkage offset of constants (once uniquized by <b>make-const</b>) is known at the time instructions referencing them are compiled, and thus, these instructions can be consed into codelist as fixnums.</p>
+<p>References by the object code to itself are always made in instruction-counter relative format; the object code contains no object-code addresses.  Thus, when the compilation of a given function is finished, there are no instructions in it which make any assumptions about the value of the program-counter at runtime.  This allows <b>pass2</b> to insert code at the <i>beginning </i>of the function, i.e., rplacding a deep point in the codelist, with new code<a href="lcp-fnfile.html#fn52"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>52</sup></a> <i>after</i> function compilation without upsetting any code.
+</p>
+<p>The entire codelist is nreversed by <b>finish-code</b>, to put location 0 at the top, before handing it to <b>lisp_cg_utility_</b>.</p>
+
+<h2><a name="CHIX"></a>IX.  Branching and Tags</h2>
+
+<p> Divergences from the standard order of evaluation are implied in the LISP language by the use of COND, AND, OR, GO, RETURN, and other hairier dynamic constructs (e.g., THROW, ERRSET, etc.).  All of these constructs imply conditional evaluation or explicitly-controlled evaluation in the interpreter; in compiled code, these map into the conditional execution of code, and explicit transfer of machine control within a compiled program.</p>
+
+<p>The standard technique in most compilers, which is used by lcp, is the generation of <i>tags</i>, or compiler-generated labels, which reduce all cases of control flow constructs to go-to's.  Thus, a construct like
+</p>
+<pre>
+       (cond (predicate (do-this))
+             (t (do-that)))
+</pre>
+<p>generates code something like this:</p>
+<pre>
+      (code for predicate)
+      conditional-transfer middle-tag
+      code-to-do-this
+      transfer end-tag
+middle-tag:
+      code-to-do-that
+end-tag:
+</pre><p>
+ The notion of tags is an extension of the tags in PROGs:  PROG tags are a special case of tags in general.  By reducing all internally-generated and implicit control transfer to the simple case of the go-to, the ultimate run-time control construct, all cases can be handled.  Thus, we consider the operation of the simple tag mechanism<a href="lcp-fnfile.html#fn53"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>53</sup></a>.
+</p>
+<p>The compiler generates tags for PROG labels, middles and ends of conditional forms, etc.  In cases of conditional forms<a href="lcp-fnfile.html#fn54"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>54</sup></a> the compiler generates branches to these tags, conditional or unconditional, as part of rendering the semantics of these forms.  The compilation of an actual GO or RETURN, however, even if it appears in a conditional form, is a more complex deal, involving issues of PDL management, which will be described in a subsequent section.  The compilation of a GO or RETURN, however, always culminates in the compiler generating a conditional or unconditional transfer to the PROG label (or bottom-of-PROG internally-generated label.</p>
+
+<p>When the compiler (<b>comp</b>) is asked to compile a form like <b>(go g0006)</b>, a primitive called <b>outjump</b> is called with an opcode and the tag <b>g0006</b>.  If earlier processing has not already passed the definition of the tag <b>g0006</b> (at PROG top level in <b>comp-prog</b>), <b>outjump</b> passes the symbol <b>g0006</b> to <b>outinst</b>.  But if the location of <b>g0006</b> is already known, i.e., the runtime program-counter to which it corresponds, the difference of the program counter from the current one is computed, and an instruction-counter-relative<a href="lcp-fnfile.html#fn55"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>55</sup></a> and an appropriate transfer constructed.  The instruction-counter value corresponding to a tag is hung off its <b>lvalue</b> property; if it has none, its definition is not yet known.
+</p><p>
+If an attempt is made to output an instruction which references a tag which has not yet been defined, <b>outinst</b> senses that this symbol has no <b>lvalue</b> property.  It outputs an instruction with the negative value of the current program-counter, and pushes the cons of the codelist into which it did so onto the <b>references</b> property of the symbol operand it was given.  Thus, when a tag is finally defined, the symbol which represents it has off of its <b>references</b> property a list of conses of the codelist, whose cars are instructions whose address fields must have the location counter at this time added to them<a href="lcp-fnfile.html#fn56"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>56</sup></a>.  At that time, the symbol gets its <b>lvalue</b> property as well, and all future references reduce to the previous case.
+</p><p>
+It should be clear that references to tags can be processed by <b>outjump</b> whether or not that tag has been defined, assuming that at some time it gets defined.  Thus, the compiler can generate a symbol any time it desires, representing a tag it will define later, and put it in an instruction being handed to <b>outjump</b>.  When the time comes to define that tag, a call to <b>define-tag</b> on it will do all the right things.
+</p><p>
+When a tag, regardless of whether it was user-generated or compiler-generated, is to be defined, it is given as an argument to <b>define-tag</b>.  <b>define-tag</b> conses it onto a list of tags to be defined at the next instruction.  First thought leads us to believe that this is foolish, that since the location counter of the next instruction is a certainty, we could define it right now, and go back and fix all references (done by <b>fix-refs</b>) at this time.  However, the actual defining of the tag, being the putting of the <b>lvalue</b> property and the rplacaing of the forward references, is delayed until it is ascertained that the next instruction is not itself an unconditional transfer.  If the next instruction is an unconditional transfer, then all references to the tags about-to-be-defined should be made into references to the target of the unconditional transfer, to avoid transfering to transfers and so on<a href="lcp-fnfile.html#fn57"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>57</sup></a>.  Thus, <b>outjump</b>, when about to output an unconditional jump, checks to see if there are labels that were supposed to be defined as this instruction.  If so, a <b>fix-refs</b> is done to all forward (already-encountered) references to these labels, giving the target of <i>our</i> instruction (assuming that it has already been defined, i.e., has an <b>lvalue</b> property) as a definition for each of those labels.  If our target has not yet itself been defined, then all of these "tags to be defined" are hung off of the <b>synonyms</b> property of our target tag.  When a <b>fix-refs</b> is finally done on our target tag, either by the normal (label is defined) mechanism or the transfer-tensioning mechanism, <b>fix-refs</b> will process references to these synonyms as well as references to our target tag, including our instruction.  Examples:
+</p><p>
+Source construct:
+<pre>
+          (prog ()
+           c
+           (cond ((p1) (do-this))
+                 (t (do-that)))
+           (go c))
+</pre>
+          The tag <b>c</b> is first encountered.  It is handed to <b>define-tag</b>, which conses it onto <b>labels-to-define</b>.  The code for the first predicate is compiled.  When the first attempt is made to output a word, by <b>outwrd</b>, he sees that there are labels to define, and defines <b>c</b> as "here," giving it an <b>lvalue</b> property of the current location counter.  The code for the first predicate is then output:
+<pre>
+c:
+          code-for-predicate
+          conditional-transfer g0053
+</pre>
+where <b>g0053</b> is a compiler-generated gensym being the tag for the "middle-of-the-cond" place which hasn't been defined yet.  <b>g0053</b> gets a references property of a list containing the cons containing that last conditional-transfer instruction in the codelist.  Object code for the first consequent is generated.
+<pre>
+          code-for-do-this
+          transfer g0054
+</pre>
+<p><b>g0054</b> is another compiler-generated tag, this time representing the as-yet-undefined "end-of-the-cond" place.  It gets a references property of the list of the codelist cons containing this transfer instruction.  The second clause is now compiled:  The middle-of-the-cond label, <b>g0053</b>, is now defined (<b>compcond</b> kept it on hand) by passing it to <b>define-tag</b>, who conses it on to <b>labels-to-define</b>.  The code for the second-consequent<a href="lcp-fnfile.html#fn58"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>58</sup></a> is now generated:</p>
+
+<p>When an attempt is made to output the first word of <b>code-for-do-that</b>, <b>outwrd</b> sees that there are labels to define, and defines <b>g0053</b> as "here," fixing the previous conditional transfer by changing its address field.  It found it from <b>g0053</b>'s property list.:</p>
+<pre>
+g0053:  code-for-do-that
+</pre>
+A transfer is not generated by <b>compcond</b> for the last clause; the object code drops through to the end-of-the-cond tag.  <b>compcond</b> now defines the end-of-the-cond tag by passing <b>g0054</b> to <b>define-tag</b>.  It gets consed onto <b>labels-to-define</b>, which had been <b>nil</b>.  We now attempt to compile the <b>(go c)</b>:  <b>outjump</b> is handed <b>c</b>, with an opcode of "unconditional transfer."  <b>outjump</b> sees that there are labels to define, namely <b>g0054</b>, and sees that <b>c</b> is already defined, from its <b>lvalue</b> property.  So a <b>fix-refs</b> is done on <b>g0054</b>, with the location of <b>c</b>.  The conditional transfer to <b>g0054</b> which had been generated is found from the <b>references</b> property of <b>g0054</b>, and is changed to a transfer to <b>c</b>.  The unconditional transfer is now generated anyway for the benefit of the second cond clause.
+<pre>
+          transfer c
+</pre>
+          The case of <b>synonyms</b> is much harder to get from reasonable source constructs, although constructs like
+<pre>
+         (cond ((this)(that))
+               ((otherwise)(maybe)))
+         (go a)
+</pre>
+<p>where <b>a</b> is further down the PROG, and has not been defined yet, will give a <b>synonyms</b> property of the end-of-the-cond tag when an attempt is made to define that.</p>
+
+<p>There is also a fairly recent hairy hack to condense conditional transfers around transfer instructions into transfers in the opposite sense to the unconditional transfer's target.  This also includes eliminating transfers to "the next location."  Both of these constructs are generated naturally by the compiler because of the interactions of compilations of control-transfer and conditional constructs at different level.  These peephole optimizations are performed by <b>tra-adjust</b>.  Whenever an unconditional transfer is compiled, the next attempt to output a word calls <b>tra-adjust</b>, which inspects any labels to be defined to see if they are referenced by the penultimate instruction.  Since that unconditional transfer cannot have any labels on it (branches to it; they would have been tensioned out) it is eliminated, and the conditional transfer 2 instructions back gets its sense inverted, and gets redirected as a reference to the unconditional transfer's target.</p>
+
+<p>Example:</p>
+<pre>
+          transfer-zero x
+          transfer y
+</pre>
+<p>becomes</p>
+<pre>
+          transfer-nonzero y
+</pre>
+<p>when an attempt is made to define <b>x</b> as the next location.  The function <b>tra-adjust</b> takes care of moving around the <b>references</b> property between <b>x</b> and <b>y</b>, etc.</p>
+
+<h2><a name="CHX"></a>X.  Branching and Value Management</h2>
+
+<p>Transfer of control within the object code produced by the compiler has widespread and deep implications upon the value management scheme described in a previous section.  Code for conditional forms is compiled linearly, one edge<a href="lcp-fnfile.html#fn59"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>59</sup></a> at a time.  The model of the runtime PDL and registers maintained by the extended slotlist, as described up until now, assumes that their contents at the beginning of each instruction are the same as at the end of the previous instruction.  In the case of an instruction with a tag on it, i.e., the target of any kind of branch, this is not so.  The compiler must be able to model the contents of the runtime registers at all times:  thus, when a referenced label is encountered (and defined, thus <b>define-tag</b> concerns itself with this), the extended slotlist must be reconstructed from the contents of the extended slotlist at each point which branches to this tag.  Therefore, unless a given value is in the same position in the extended slotlist whenever a (conditional or unconditional) branch to a given tag is compiled, that value may not be assumed to be in that position of the extended slotlist when the code at that tag is compiled.  The extended slotlist at a tag may be described as the <i>intersections</i> of the extended slotlists at its forward references.  If a tag has <i>backward</i> references<a href="lcp-fnfile.html#fn60"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>60</sup></a> nothing may be assumed to be in <i>any</i> position of the extended slotlist, except the homes of all variables defined in all regnant lambdas and progs.  This is because we have not compiled the code yet that branches here, and we have no way of telling<a href="lcp-fnfile.html#fn61"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>61</sup></a> what will be in the runtime registers and PDL when it branches here<a href="lcp-fnfile.html#fn62"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>62</sup></a>.
+</p><p>
+The compiler therefore <i>merges</i> extended slotlists to form the extended slotlist at a tag.  The bulk of this work is done by the function <b>level-tag</b>, which is used by the compiler every time it wants to call <b>outjump</b> on a symbol representing a tag.  <b>level-tag</b> is thus called when a branch to a tag is about to be generated.  <b>level-tag</b> maintains off of the <b>level</b>, <b>AQ</b>, and <b>BB</b> properties of the tag a copy of the extended slotlist which will be merged with the to-be-current slotlist at the time the tag was defined.  The first time a tag is referenced (<b>level-tag</b> is called each time), the current extended slotlist is copied, and hung off these properties of that tag.  Each succeeding time, until the tag is defined, the extended slotlist at that time is merged into the copy hung off these properties, setting to <b>nil</b> (empty) those locations in the copy that are not common in both.</p>
+
+<p>When the tag is finally defined, by <b>define-tag</b>, he merges the saved, merged slotlist with the current slotlist.  If the previous instruction was an unconditional transfer, (as indicated by the variable <b>useless-code</b>), there is no current extended slotlist---the saved image becomes the real one.</p>
+
+<p>The extended slotlist at a referenced tag is therefore the intersection of the final extended slotlists over all edges that lead to that point.</p>
+
+<p>The situation is complicated further by the existence of unrealized variable loads.  Consider the form</p>
+<pre>
+  (foo x (cond ((what)(setq x 5))))
+</pre>
+<p>When time comes to comp this form, <b>comp</b> returns, say <b>(x.356)</b> for the first <b>x</b>, consing this on to the loadlist.  The <b>cond</b> form is now comped, by <b>make-call</b>, who is sequentially comping arguments to the <b>foo</b> form.  At the time the <b>setq</b> form is comped, <b>cleanup-var-load</b>, invoked by <b>compsetq</b> on <b>x</b>, notices that <b>x</b> is about to be setqed, and that there is a demand on <b>x</b> on the loadlist that depends upon the current <b>x</b>.  So, as we have seen, the value of <b>x</b> is saved, and winds up in a slotlist position, as an idup, at the time the comping of the <b>cond</b> form is finished.  But what happens when the "end-of-the-cond" tag is defined by the code after the <b>cond</b>? The merging of slotlists with the code that branched here if <b>(</b><b>what)</b> were <b>nil</b> insists that that idup not be in the slotlist, for surely, it was not there when the conditional transfer after the predicate was compiled.  What this is saying is that dependent upon the object-time value of the <b>(what)</b> result, <b>x</b> either got saved in some slotlist position or didn't.  Well, one might argue that that's reasonable, in one case <b>x</b> got clobbered, and in one case it didn't.  But the compiler will have a jolly hard time ilocing <b>x</b> when the arguments to <b>foo</b> are to be prepared, because it cannot know how the object code arrived here<a href="lcp-fnfile.html#fn63"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>63</sup></a>.  Thus, the compiler must <i>ensure</i> that <b>(x.356)</b> will be ilocable at the merge point of all edges emanating from the point where the demand on <b>(x.356)</b> was placed on the loadlist.  There is never any problem (i.e., the previous explanations hold) as long as there are no conditional branches.  But at the point where a form which can conditionally branch is encountered, idups must be made of all unrealized variable demands for which idups would have to be made along any edge of the <b>cond</b>.  This must be done at the furthest point in the program where you "have to go through" to get to the point where the demand on <b>(x.356)</b> is realized<a href="lcp-fnfile.html#fn64"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>64</sup></a>.  Therefore, at the time a conditional form is encountered, we must know precisely what variables are setqed anyplace within it, so that we might make idups of them at this point, the back dominator of the demand-realization-point, so that each path to the demand-realization point will have a usable value for that variable at the same point in the slotlist.  Once a non-damnable variable is in the slotlist (<i>not</i> the extended slotlist---this is <i>not</i> so of the AQ and BB) it will stay <i>there.</i>  A non-damnable value in the AQ or BB is guaranteed to be saved <i>some</i>where, so it is ilocable, but is not guaranteed to stay in the AQ or BB.  Thus, the code at the back-dominator of a delayed variable load<a href="lcp-fnfile.html#fn65"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>65</sup></a> before a conditional form must do a <b>cleanup-var-load</b> on each variable setqed in that conditional form, to be sure that an idup is made, and then do a <b>storeaq?</b> and a <b>savebb</b> to make sure that these idups will be in the <i>same</i> place at the target of all of the conditional transfers.</p>
+
+<p>This is precisely the long-awaited reason why pass 1 goes through all this hair to maintain lists of setqed variables and call-out flags in all conditional forms.  If any external function or "badfn" function is called in the conditional form, a <b>cleanup-special-var-loads</b> must be done as well.</p>
+
+<p>Note that we already encountered something related to this in the handling of ERRSETs and CATCHes in an earlier section.
+</p>
+<h2><a name="CHXI"></a>XI.  PDL Height Management</h2>
+
+<p>Each lisp function, as it begins execution, raises the marked PDL pointer, AP, up above its arguments, to cover its <i>frame</i>, the first <i>n</i> positions of which are the homes of its <i>n</i> arguments.  The PDL frame includes enough locations to cover the maximum number of regnant lambda variables at any point in the function body, and enough (multiplexed) temporary locations to hold all intermediate results and idups that need be stored.  The size of the frame is determined by the end of function compilation, after the slotlist has been grown to its maximum length.  The slotlist grows when a temporary is needed (usually because the AQ must be saved because the AQ is needed and its contents are non-damnable) and no current temporaries have damnable contents.  Thus, quantities are not "pushed" onto the PDL<a href="lcp-fnfile.html#fn66"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>66</sup></a> but are stored in fixed locations relative to the PDL pointer.</p>
+
+<p>However, when a function calls another function, the first function must place the arguments for the second function <i>above</i> its own frame on the PDL, for the slots containing those arguments will become the first slots of the PDL frame of the second function, and be popped by it.  The "arg temps" of function calls are not managed by the slotlist mechanism:  when another function is about to be called, AP is bumped up to cover all of the arg temps<a href="lcp-fnfile.html#fn67"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>67</sup></a> and the function arguments are loaded into the AQ and stored into those temps (by <b>storearg</b>), one by one, although an attempt is made to group together the loading of results with identical iloc'ings.</p>
+
+<p>The AP can be bumped before the comp'ing of the arguments to the function, or after.  It will be popped by the function itself on return from the call.  The variable <b>arg-height</b> indicates by how many arg temps the PDL frame is extended; note that the addressing of arg temps is a constant off of AP regardless of the frame size, as they are above the frame no matter how large the frame is.  This allows instructions which refer to them to be output as constants immediately, without the patching-back described above for other PDL references (see <b>storearg</b>).</p>
+
+<p>The compiler tries to avoid bumping <b>arg-height</b> (and thus AP at runtime) until after the comp'ing of all the arguments.  This is to save AP-pushing instructions.  For instance, if the form</p>
+<pre>
+    (f1 (f2 (f3 (f4 ...) ...  )))
+</pre>
+<p>were being compiled, the first step of compilation of <b>f1</b>'s form would be to push AP to cover <b>f1</b>'s args.  The next step would be to compile <b>f2</b>'s form, which would start by pushing AP to cover <b>f2</b>'s args as well, etc.  If we avoid moving AP at all until somebody actually wants to store something there, we can push AP all at once.</p>
+
+<p>In order to carry this out, a variable called <b>bump-arg-height</b>, normally zero, is set before the comping of any arguments to how high the PDL ought be bumped.  When any attempt is actually made to store into an arg temp, which normally occurs after all the args have been comp'ed, <b>storearg</b> (or <b>storearg-bb</b>) calls a function called <b>force-arg-height</b>, which bumps AP by <b>bump-arg-height</b>, and sets the latter to zero.
+</p>
+
+<p>There are several other circumstances that can cause the <b>arg-height</b> to be forced, i.e., the arg temps that are going to have to be there made to appear.  The compiling of any kind of transfer (as seen by a reference to a tag by <b>level-tag</b>) implies that there must be some agreed-upon arg height at any tag.  That is to say, we must know what <b>arg-height</b> the compiler will assume to be in effect at the tag to which we are transferring.  If the tag is an internally generated one, let us say from a COND, AND, or OR, then the convention is that the arg height <i>there</i> (i.e., at the forward tag) is the same as it <i>should</i> be <i>here</i> (i.e., the current arg height after it has been forced).  Thus, when a (conditional or unconditional) transfer is compiled, the arg height is forced, so that if we branch, AP is right, and if we don't, AP is what it had to be set sooner or later to anyway.  The end or middle of the COND, AND, or OR must be part of the same argument to the same function as the beginning, i.e., the place where the transfer was encountered.  Thus, there cannot be fewer or more arg-temps on the PDL at that place.  This is why this convention is possible.
+</p><p>
+If the transfer is that to a user-defined (i.e., PROG) tag, which can only occur via the <b>go</b> fexpr, the situation is more complex.  Consider the form</p>
+<pre>
+    (prog ()
+       (foo a b
+          (bar (cond ((p1) 
+                      (go a)......
+       (....)
+     a (.....
+</pre>
+<p>At the time the GO is compiled, the arg height for the calls to <b>foo</b> and <b>bar</b> will already have been forced by the call to <b>p1</b> to include the arg-temps of <b>foo</b> and <b>bar</b>.  At the tag <b>a</b>, there are no arg-temps<a href="lcp-fnfile.html#fn68"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>68</sup></a> on the PDL.  If the (GO A) branch is taken, the compiler must pop AP down to the level at <b>a</b>.  Therefore, when a GO is to be compiled, the compiler must know the arg-height at the tag which is being gone to, and generate code to pop AP.  Note that the arg-height at the top-level of any PROG is the same throughout the PROG; this is because it <i>is</i> top level:  PROG tags may only exist at top level.  Thus, <b>compprog</b> maintains a list called <b>framel</b> of arg-heights associated with PROGs.  When a GO is about to be compiled, <b>unwindgoret</b> goes down as many levels into this stack as the PROG depth that Pass 1 put in GO<a href="lcp-fnfile.html#fn69"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>69</sup></a> forms to find the arg height of top-level of the PROG whose label<a href="lcp-fnfile.html#fn70"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>70</sup></a> is being GOne to.  <b>unwindgoret</b> calls <b>popap</b> enough times to generate code to unwind as many PROG frames and their arg heights as necessary.</p>
+
+<p>The compiler forces <b>arg-height</b> when compiling function arguments, if it finds that one of the argument comp'ings left a result in the AQ.  In this case, the one instruction needed to bump the AP now to store the result now more than makes up for the multiple instructions necessary to save this result and load it back after the arg height had been forced after all arguments had been compiled.</p>
+
+<p>The compiler also forces <b>arg-height</b> at other random times, such as during the bindings of special variables (when the bindings will be above the args, the args must appear), and at PROG labels (to validate the assumptions about transfers to PROG labels.) CATCH and ERRSETs, to validate assumptions about transfers to these forms from within.</p>
+
+<h2><a name="CHXII"></a>XII.  Compilation for Predicate</h2>
+
+<p>In addition to the two notions of compilation for value and effects<a href="lcp-fnfile.html#fn71"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>71</sup></a> there exists in Pass 2 a notion of compilation "for predicate," meaning that a form is being compiled so that its value's nilness or non-nilness will be used to determine if a runtime conditional transfer will indeed transfer.
+</p><p>
+Consider the form:</p>
+<pre>
+   (cond ((eq x y) (setq z 3)))
+</pre>
+<p>The obvious compilation of this code would look something like this:</p>
+<pre>
+   (code-to-load-(eq x y)-into-AQ)
+   compare-aq nil
+   transfer-equal end-tag
+   (code-for-setq)
+end_tag:
+</pre>
+<p>Now the code to compute the <b>eq</b> form is going to do something like load the value of <b>x</b>, compare it with the value of <b>y</b>, and execute code to load either <b>t</b> or <b>nil</b> as a result.  If the form we were dealing with were</p>
+<pre>
+          (setq b (eq x y))
+</pre>
+<p>that would be reasonable.  But it is not, and the conditional loading of <b>t</b> or <b>nil</b>, only to test it again to see which one it was and branch on that, is wasteful and inefficient.
+</p><p>
+If the compiler of the <b>cond</b> could tell the compiler of the <b>eq</b> "Look, <b>eq</b>, you're one of these guys who makes a decision and loads <b>t</b> or <b>nil</b> (i.e., a <i>predicate</i>), so you know and I know that among your object code is going to be a conditional transfer to load one or the other.  Why don't you avoid loading it, I'll avoid testing it, and we'll both save a lot of useless work.  I'll give you a tag to which to generate your conditional transfer in case of runtime <b>nil</b>, and everybody will be happier."
+</p><p>
+Of course, I would not be telling you this if this were not what is in fact done.  It is, however, a little more subtle than this.  The compiler is optimized to handle the case of predicates being used as predicates:  the case of predicates being used for value is seen by <b>compsubr</b> who proceeds to call the other case, which is called "compilation for predicate," handing it a tag, and loading <b>t</b> or <b>nil</b> based upon whether or not this tag is transferred to.
+</p><p>
+The function which compiles predicates is <b>compred</b>.  It is called by <b>compcond</b>, <b>compandor</b>, and similar, and itself recursively, as would be expected.  These functions call compred with any form which is to be compiled for predicate:  if the form is not that of a lisp predicate, <b>compred</b> compiles it for value, and (via <b>testnil</b>) generates code to load <b>t</b> or <b>nil</b> based on the outcome.  The critical arguments to compred are thus a predicate form and a tag to which a conditional transfer is to be generated.  <b>compred</b> need not hand back a value-tag, just as compilation for effects need not hand back a value tag.  Compilation for predicate does not result in any value.
+</p><p>
+There are several other tricks fundamental to compilation for predicate.  Another argument to compred says whether the supplied tag is to be transferred to for <b>nil</b> or non-<b>nil</b> outcome.  Thus, the compilation of <b>not</b> (or <b>null</b>) is simply a recursive call on <b>compred</b> with this flag inverted: <b>not</b> generates no code at all.  The remaining argument to <b>compred</b> tells <b>compred</b>, if non-<b>nil</b>, that the value of the predicate form should be in the AQ when the conditional branch is taken.  This is used, for example, in the compilation of AND and OR, where the value of the form is defined to be the value of the winning (or losing) form.  Each form would be compiled internally with a <b>load</b> flag of <b>t</b>.
+</p><p>
+Now compilation for predicate can get awfully clever if conditional forms like AND are compiled for predicate<a href="lcp-fnfile.html#fn72"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>72</sup></a> the tags of the outer conditional can be passed down to the compilation of the inner conditional, and loading of conditional results can be avoided.  <b>compred</b> is particularly clever about compiling CONDs for predicate in this way.
+</p>
+
+<h2><a name="CHXIII"></a>XIII.  Object Type Strategy</h2>
+
+<p>Because Multics Lisp objects carry type information in their values, there is no overhead in storing a fixnum or flonum in storage as compared to implementations where space in a reserved area of the address space must be allocated.  Temporary fixnum or flonum results may be stored in temporaries on the PDL as Lisp objects.  If a numerical calculation is performed in the Q register, on fixnums, all that is needed to develop a LISP object is to load the type-bits word for a fixnum, which is a constant, into the A register.  The AQ may now be stored as a LISP object.
+</p><p>
+The compiler maintains only one lisp object in the A, Q, or AQ at once.  The variable AQ contains the value-tag for that object at all times, or <b>nil</b> if nothing or garbage is known to be in the AQ<a href="lcp-fnfile.html#fn73"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>73</sup></a>.  The variable <b>AQ-state</b> tells whether or not a typed LISP object is in the AQ:  if its value is <b>nil</b>, it is so.  Otherwise, either there is a fixnum computation in the A (and <b>AQ</b> is the symbol <b>A</b>), or in the Q (and it is the symbol <b>Q</b>), or there is a flonum computation in the E and AQ registers<a href="lcp-fnfile.html#fn74"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>74</sup></a>.
+</p><p>
+When code is generated to load any LISP value, from the PDL or LISP linkage, or a function call has just been compiled, it is known that the AQ contains a typed object, so <b>AQ-state</b> is set <b>nil</b>.  When fixnum or flonum constants are loaded from immediate operands of machine instructions, the AQ will not contain a LISP object.  Before the AQ can be stored in an arg temp or in a PDL slot, it must be typed (by <b>put-type-in-aq</b>).  Because there is only one PDL, and it is subject to garbage collection, only typed results may be stored there.
+</p><p>
+Local declaration allows the compiler to generate code to store fixnum and flonum results in the second words of PDL temporaries, knowing that the first word (the type bits) will be valid (those of an ungarbage-collectable fixnum or flonum).  The programmer declares variables fixnum or flonum to promise this to the compiler.  Thus, the compiler generates code at the beginning of each function to place valid fixnums and flonums in these slots (of value 0 or 0.0)<a href="lcp-fnfile.html#fn75"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>75</sup></a> which are so declared.
+</p><p>
+The compiler also allocates temporaries on a typed basis.  When the AQ has to be stored, and contains numbers, without type bits, <b>saveaq</b> attempts to find a typed temporary, such that the A or Q can be stored without loading the type bits<a href="lcp-fnfile.html#fn76"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>76</sup></a>.  If there is no such temporary available, <b>findtemp</b> simply declares that the PDL frame of this function is one larger than it had been, and grows the slotlist, returning the iloc of the new temporary.  The list <b>slot-types</b> maintains the type of each slot.
+</p><p>
+The compiler can get away with this because of the feature described under "Object Code List," whereby it goes back and patches the object code list for the beginning of the function to include code to initialize the type fields (<b>initialize-slot-types</b> does this) of these temporaries.  The fact that all text references in the compiled function are instruction-counter relative allows code to be so patched in without disturbing that which was already compiled.</p>
+<hr>
+
+<h1>Appendices</h1>
+
+<h2><a name="AppendixA"></a>Appendix A  -- Value tag forms</h2>
+The following is a table of the various forms value tags can take:
+<dl>
+<dt><b>(quote (a b c))</b></dt>
+  <dd>Value tag for comping of a constant, '(a b c)</dd>
+<dt><b>(g0006)</b></dt>
+  <dd>Value tag for comping of a function call:  Has a nil cdr.</dd>
+<dt><b>(x . 357)</b></dt>
+  <dd>Value tag for comping of a variable:  Has a numeric cdr.</dd>
+<dt><b>(x . home)</b></dt>
+  <dd>The value tag in the home of x; i.e., the PDL slot where x lives.</dd>
+<dt><b>(x . dup)</b></dt>
+  <dd>A copy of (x .  home) by loading, or from just having stored.</dd>
+<dt><b>(x . idup)</b></dt>
+  <dd>A copy made of (x .  home) to save a previous value for an unrealized demand.</dd>
+<dt><b>nil</b></dt>
+  <dd>No meaningful value in this register.</dd>
+</dl>
+<p>The following is a table of all of the various forms that "iloc" answers can take:</p>
+<dl>
+<dt><b>(quote xxx)</b></dt>
+  <dd>A constant, usually to be put in constant table.</dd>
+<dt><b>(special y)</b></dt>
+  <dd>The value cell of the special variable y</dd>
+<dt><b>(temp 6)</b></dt>
+  <dd>PDL slot 3 (2 words each), arg height will be subtracted.  Arg temps not returned by iloc, can never designate an arg temp.</dd>
+<dt><b>AQ</b></dt>
+  <dd>The AQ register</dd>
+<dt><b>BB</b></dt>
+  <dd>The BB register.</dd>
+</dl>
+<hr>
+<h2><a name="AppendixB"></a>Appendix B -- NCOMPLR and LCP</h2>
+
+<h3>Written February, 1988</h3>
+<p>So infrequently has the above strategy of compilation been explored in print, that the above paper has acquired a reputation of actually explaining NCOMPLR, the hoary spiritual parent of LCP.  In fact, as stated in the preface, some of the important strategies of NCOMPLR are reproduced in the Multics Compiler, and explained in this paper.
+</p><p>
+As a gesture towards those attempting to understand what can be understood of NCOMPLR through this paper, and in recognition of the fact that no similar paper, published or not, has ever been written about the '10 compiler, I will enumerate here those notable differences in strategies and capabilities between the two compilers that are known to me.
+<ul>
+<li><p>The PDP-10's runtime architecture is far more suited to Lisp than is Multics'.   A thirty-six bit PDP-10 register (there are 16 general purpose registers) can contain two Lisp pointers (in fact, the implied limitation on address space was one of the reason that a Lisp was built on Multics.)  There are no type bits:  address space is divided up by data type (the "BIBOP" ("BIg Bag Of Pages") scheme), and consequently, 18 bits is a full Lisp pointer.  Thus, each register could potentially hold not just one, but two full Lisp pointers.</p>
+
+<p>In fact, PDP-10 MacLisp divides the register space into registers that are allowed to, and restricted to, contain valid Lisp pointers (only one), and registers that are not permitted to contain valid Lisp pointers.  The pointer-bearing registers are subject to garbage-collector scrutiny.
+</p></li>
+<li><p>Like LCP, NCOMPLR can compile purely numeric computations without creating "official" Lisp pointers.  But while LCP has one AQ to work with,  NCOMPLR has multiple registers devoted to fixnum and flonum computation, and can iloc non-typed results in them.
+</p><p>Function arguments are passed in registers, when there are five or fewer, as opposed to being pushed on a stack.  They are pushed on the stack if there are more than five, or a LEXPR is being called.  This capability engenders far more efficient code than Multics Lisp can generate.  It also allows, encourages, the compiler to "target" results into these registers.  That is, when there is a choice, as there is for most inline operations, of in which register a computation will be performed and leave its result, the compiler prefers, and chooses, if free or freeable, that register where the result is expected by a function whose call is being compiled (for instance, register 3 if it is to be third argument).  This is effectively an argument to <b>comp.</b>
+</p><p>In comparison, all fixnum arithmetic in Multics is done in the Q, all car/cdr-type indirection and most other operations that develop Lisp pointers leave results in the AQ, etc.  (that is, there is no choice).  This "targeting" in NCOMPLR adds great power, flexibility, and complexity.
+</p></li>
+<li><p>ITS MacLisp, and NCOMPLR in particular, implement a very complex but ultimately very efficient strategy of arithmetic compilation.  Since words do not bear type bits, fixnums and flonums in storage have to be allocated, and pointed to by Lisp pointers.  This gives rise to the desire for arithmetic without need to allocate intermediate results.  Toward this end, there are two entire PDLs for intermediate fixnum results and intermediate flonum results.
+</p><p>
+Some operations, such as storing a number in a special variable, or RPLAC'ing it into a cons, clearly require permanent allocation of the number.  However, in order to allow allocation-free numeric computation, PDP-10 Lisp allows the passing of "intermediate" numeric results between functions without allocating them.  Because of this, a function receiving any argument which cannot be positively verified at compile time as not being a pointer to a "temporary" number ("PDL number") must be extremely circumspect about what it does with that argument, in fact, calling a runtime routine named PDLNMK whenever a result of "unknown parentage" is stored into a permanent place.  The routine checks to see if the result being stored is in fact a pointer to a PDL number, and allocates it permanently if so.
+</p><p>
+The necessity to call PDLNMK on a result which may not even be a number is a massive inelegancy, and a loss of efficiency.  To fight fire with gasoline, NCOMPLR indulges in massive flow-analysis, keeping track of the "might be a PDL number status" of nearly every value passed around, while seeking every opportunity to strip a result of such status.  The incremental amount of complexity added to the compiler for this strategy is substantial.</p></li>
+
+<li><p>("The CAR/CDR hack.")  Because indirection through general registers is possible and utterly standard on the PDP-10, NCOMPLR considers the computation of CAR's and CDR's so trivial that it is not considered a computation at all, but rather part of loading a value once it has been iloc'ed.  This follows upon the heels of the reality that CAR/CDR chasing can be performed without destroying any register except the one attempting to be loaded.  Because of this, value descriptions and slotlists, as well as the descriptions of unrealized demands, must record "delayed car-cdr'ing," and <b>iloc</b>-time operations must cause the pointer chasing to be realized.  It also implies that not only setq's, but RPLACA's and RPLACD's must force the saving of some values needed for unrealized demands.  This, of course, adds significant complexity to the value-management primitives.</p>
+
+<p>One effect of this "optimization" is to cause common subexpressions, for instance as in</p>
+<pre>
+(+ (CADDR X) (CADDDR X))
+</pre>
+<p>to have their common pointer chasing shared.  While this is extremely ingenious, it is clear that a general common-subexpression sharing strategy (such as in Multics PL/I) would accomplish not only this latter advantage, but more.  It is also not clear whether good programming style, the use of DEFSTRUCT, a clever implementation of the latter, or more sophisticated complex-object-representation techniques, or all of above, lessen the advantage of many of these gains.</p>
+
+<li><p>("<b>Home</b>less compilation.")  LCP compiles a <b>setq</b> by storing the result in the <b>home</b> of the variable, as discussed at length, even though a copy of the result is left in one of the two possible registers (AQ or BB) in which it could have been generated.  Having many registers to work with, NCOMPLR does <i>not</i> store results into local variables at <b>setq</b> time, but simply leaves them ilocable wherever they were computed, and that becomes the new home.  The "old home" becomes <b>ohome</b><a href="lcp-fnfile.html#fn77"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>77</sup></a><p>
+This "store avoidance" technique looks towards "data flow" compilation, that is, completely abandoning the notion of a "variable" representing a "storage location," interpreting it instead as a user-level tool for specifying the flow of results, and thereby wholly engulfing the concept of "variable" into the value-managment scheme.  Wulf's BLISS compiler (see the Preface) operates on this latter principle.  (Note that this strategy makes the task of run-time "debuggers," which can ask "what is the value of x at this point," very difficult or impossible.)  The natural evolution of this potent strategy out of the LCP/NCOMPLR value management strategy is one of the main reasons for studying the latter.
+</p><p>
+This notion of variable value assignment as data-flow specification is also taken up productively by the <i>Lambda, the Ultimate {Imperative, Declarative, Go-to}</i> sequence of MIT AI Lab Memos (353, 379, etc.) by Steele and sometimes Sussman.  This work culminates in Steele's monumental SCHEME compiler, RABBIT, described in MIT AI TR-474 (May, 1978).
+</p>
+<li>NCOMPLR does not produce machine code, but symbolic, LAP code, which is subsequently fed through a LAP.  While not truly significant, this strategy allows for simple inspection, for study, of object code.  The Multics Compiler, on the other hand, involves an ingenious and complex little program, <b>make_lisp_listing</b>, which reconstructs the compiler's arg-height and PDL management from the object code in order to produce a coherent assembly-like listing.</li>
+</ul>
+<p>The ITS data representation strategy is described excellently at length in MIT AI Lab Memo 420, <i>Data Representation in PDP-10 MacLisp,</i> by Guy Steele, dating from September 1977.  His companion paper of the same date, Memo 421, <i>Fast Arithmetic in MacLisp,</i> describes the number and PDLNMK strategy in detail.  (Neither deals with the details of the compiler, however.)</p>
+
+<p>NCOMPLR is (was, in 1978, version 712) about one-and-a-half times as long as LCP.  Functions seem to have many more arguments, many of which cover obscure cases.  The implications of the complex strategies described above pervade the basic organs of the compiler.  By the time I encountered NCOMPLR in 1977, the program had acquired a reputation of monstrous, convoluted complexity, to the point where no living person claimed to understand it, and no person could deterministically modify it, for new features or bug fixes, without fear of damaging it in a way he or she would not be able to undo:  it had become a metaphor for complexity and opacity gone berserk.  This inspired me to study and attempt to understand the code of NCOMPLR, and was largely borne out.  Although a good piece of this complexity arises out of Lisp pointers not large enough to encode numbers (a difficulty present on neither Multics nor dedicated Lisp architectures), much of it, however, comes from the flexibility of many general-purpose registers, which is not present on Multics, if compensated for by the use of stack caches in more modern architectures.</p>
+<p>At this point--</p>
+<hr>
+<h2><a name="AppendixC"></a>Appendix C -- Relevant Humor</h2>
+
+<h3>Written February, 1988</h3>
+<p>In January 1978, while preparing for the annual teaching of the MIT IAP (January) Lisp Course, Daniel Weinreb and the author ran the above paper through "Dissociated Press," a toy program at the MIT AI Lab, that scrambles text while preserving strings of words, keeping joining words in common.  Some remarkable wisdom passed its innocent lips, which soon acquired a reputation of its own.  The output is reproduced here:</p>
+<blockquote>
+<p>,can get you out of the home value of x, because I either just loaded by the function call operator (2) with the address of the of the object program.  This is a block into which the function ("load it back after the arg height had been forced after all arguments had been compiled.  When the first attempt is made of all unrealized variable demands for which we denote as "(x.home)", for this variable value, and calls damned thing. (3)"</p>
+
+<p>lcp and NCOMPLR implement the second approach.  The "globally addressable list" of comped-but-unused results is (x.&lt;number&gt;), and that number in second word.</p>
+
+<p><b><i>This is insane.  What we clearly want to do is not exactly clear, and is rooted in NCOMPLR.</i></b><a href="lcp-fnfile.html#fn78"><img src="mulimg/foot.gif" alt="" width=19 height=10><sup>78</sup></a>  Experiment and consultation have shown that indeed this alternative works.  Bear in mind that this is not the concept of (x.---).</p>
+
+<p>(x.1), (x.2), (x.3) is so that later demands on x might be satisfied from this same value;  As more and more on this later.  Let us also mention in this context that the obscurely-named function p1bug is used every time a conditional form as it happens.)
+Declaring arrays seen as (array foo ... the saved image becomes the real one.</p>
+
+<p>The extended slotlist at a referenced tag is therefore the intersection of the final extended slotlists over all edges that list merged into all regnant lists after the previous binding of the particular list-head is restored (1).  This is done by the</p>
+</blockquote>
+<p>The pair of sentences indicated as bold above is found uproariously funny by many, on account of NCOMPLR's widespread, deserved notoriety as a program grown to stupendous complexity, well past the limits of human comprehension, let alone its own maintainabilty.  The fact that "What we clearly want to do is not exactly clear" is rooted in NCOMPLR makes more than a little sense.  The phrase "rooted in NCOMPLR" subsequently became current, and the two sentences above were incorporated by Weinreb at the head of the Symbolics (3600 Series) Lisp Compiler.</p>
+<p>
+        <form method="post" action="http://www.multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="Greenberg, Bernard"><input type="hidden" name="sortkey" value="greenberg,bernards"><input name="send" type="submit" value="mail to author" title="send mail to site editor" class="mfaddr"></address></form>
+<br>
+        <form method="post" action="http://www.multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+	<font face="helvetica,arial,swiss" size="1">
+	<a href="multics.html">Home</a> |
+	<a href="changes.html">Changes</a> |
+	<a href="multicians.html">Multicians</a> |
+	<a href="history.html">History</a> |
+	<a href="features.html">Features</a> |
+	<a href="biblio.html">Bibliography</a> |
+	<a href="sites.html">Sites</a> |
+	<a href="chrono.html">Chronology</a> 
+	<br>
+	<a href="multics-stories.html">Stories</a> |
+	<a href="mgloss.html">Glossary</a> |
+	<a href="papers.html">Papers</a> |
+	<a href="multics-humor.html">Humor</a> |
+	<a href="devdoc.html">Documents</a> |
+        <a href="multics-source.html">Source</a> |
+	<a href="mult-links.html">Links</a> |
+	<a href="about-multics.html">About</a>
+	</font>
+</body>
+</html>

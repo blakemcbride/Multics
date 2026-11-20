@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : Dipper T&amp;D on Multics.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+MULTICS TECHNICAL BULLETIN                                MTB-630
+
+To:       MTB Distribution
+
+From:     Richard Fakoury
+
+Date:     July 28, 1983
+
+Subject:  Dipper T&amp;D on Multics
+
+This  MTB  describes the  Dipper  T&amp;D interface  on  Multics.  It
+discuss  the  communication  that  takes place  between  the user
+running Tolts  on Multics and  the Maintenance Channel  Adapter (
+MCA  )  which  is  the hardware  module  that  actually  does the
+testing.   This paper  will discuss  the MCA  in its  role of T&amp;D
+processor and how  it fits into the general  T&amp;D scheme of things
+in  the  Multics  environment.   It  will  attempt  to  make some
+correlation to the way things are currently done and the way they
+will be done in Dipper.  This paper will also discuss some of the
+security  issues  that  have  been  raised  and  offers  possible
+solutions to these issues.  This MTB will describe a test session
+and attempt  to highlight areas  of interest as  the test session
+progresses.
+
+Comments on this MTB may be made:
+
+via Forum:
+    &gt;udd&gt;m&gt;clj&gt;mtgs&gt;DIPPER_Development (nio)
+
+via Multics Mail:
+    Fakoury.Tandd on System M
+
+via telephone:
+    Richard Fakoury
+    HVN:  357-6545
+    DDD:  602-862-6545
+
+_________________________________________________________________
+
+Multics  Project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics Project.
+
+
+
+                            CONTENTS
+
+                                                         Page
+
+    1.0 Background  . . . . . . . . . . . . . . . . . .     1
+    2.0 Dipper User Interface . . . . . . . . . . . . .     2
+    3.0 A Basic Session . . . . . . . . . . . . . . . .     4
+       3.1 MCA Attachment . . . . . . . . . . . . . . .     4
+       3.2 MCA Communication  . . . . . . . . . . . . .     5
+       3.3 Command Line Validation  . . . . . . . . . .     5
+       3.4 Device Allocation  . . . . . . . . . . . . .     6
+       3.5 Begin Testing  . . . . . . . . . . . . . . .     6
+       3.6 Load Test Overlay  . . . . . . . . . . . . .     6
+       3.7 Test completion  . . . . . . . . . . . . . .     7
+          3.7.1 Normal Termination  . . . . . . . . . .     7
+          3.7.2 User Requested Termination  . . . . . .     7
+          3.7.3 Subsystem Fault . . . . . . . . . . . .     8
+    4.0 Security  . . . . . . . . . . . . . . . . . . .     9
+
+
+Multics Dipper T&amp;D                                        MTB-630
+
+1.0 BACKGROUND
+
+Dipper is the result of a dramatic change in large systems design
+and packaging approach to controllers, device interfaces, and I/O
+central  subsystems.  These  changes were  caused by  a number of
+factors and  requirements that affects  Honeywell's marketability
+in the future.  One of these  requirements is that the I/O module
+( IMU ),  the IOM replacement, be capable  of diagnosing problems
+internally  down to  a board level.   This must  be achievable in
+both  an online  and offline  environment and  the user interface
+must be the same for  both.  To accomplish these requirements, it
+was  decided to  include a micro  processor in the  design of the
+IMU.  This  micro processor is the  Maintenance Channel Adapter (
+MCA ).  The  MCA is a dedicated maintenance  processor within the
+IMU,  which drives  a serial  maintenance interface  connected to
+each  of the  Dipper subsystem  components.  It  has a  number of
+tasks which include:
+
+  1.  It is used to maintain a subsystem configuration which will
+     reflect the current state of the subsystem components.
+
+ 2.  It  will boot  the system  as is  now done  by the  IOM boot
+     channel.
+
+ 3.  It is used in the maintenance environment to run and control
+     tests and diagnostics for all of the Dipper components.
+
+Some   of   these   functions  are   replacements   for  existing
+functionalities  and some  are new  and unique.   This paper will
+discuss the MCA in its role of T&amp;D processor and how it fits into
+the general T&amp;D scheme of  things in the Multics environment.  It
+will  attempt  to make  some  correlation to  the way  things are
+currently done and the way they will be done in Dipper.
+
+Dipper on Multics will resemble in  many ways the current mode of
+operation.   There are  some areas  where the  current and Dipper
+diverge but the  basic precepts will remain the  same.  This will
+be an attempt  to document the interface between  Multics and the
+MCA  as perceived  by the  writer at the  time of  writing and is
+subject to change as the development cycle continues.
+
+
+MTB-630                                        Multics Dipper T&amp;D
+
+2.0 DIPPER USER INTERFACE
+
+The  most  notable  user difference  is  in the  command  line to
+initiate  testing.  Previously  a test  request was  initiated by
+entering ' test PICCDD ' where P =  type of test to run, I = IOM,
+CC =  channel number, and  DD = device number.   For Dipper, this
+was replaced by " a more user friendly interface " where the user
+enters up to  an 80 character command line  which is identical to
+the offline environment.  The test  line will be of the following
+format:
+
+test &lt; target &gt; via &lt; path &gt; using &lt; technique &gt; [options]
+
+Where target consists of one of the following:
+
+ 1.  IMU - used to run diagnostics on the IMU central.
+
+ 2.  PS -  port select to  designate the port  select function of
+     the IMU.
+
+ 3.  PA X - select port adapter ' X '.
+
+ 4.  IPC XX - integrated peripheral controller designated by ' XX
+     '.
+
+ 5.  PUNCH X - run diagnostics on a card punch device type ' X '.
+
+ 6.  INTERFACE - run diagnostics on the IMU internal bus.
+
+ 7.  HELP - request assistance with format.
+
+Where path is one of the following:
+
+ 1.  IMU X - designates which IMU subsystem ' X ' to use.
+
+ 2.  IMU X  IPC XX - designates  the IMU subsystem '  X ' and the
+     IPC ' XX '.
+
+ 3.  IMU X  IPC XX PORT  XX - designates  the complete path  to a
+     unit record device.
+
+ 4.  HELP - request help with format.
+
+
+Multics Dipper T&amp;D                                        MTB-630
+
+The  technique  field specifies  the type  of diagnostic  to run.
+These include:
+
+ 1.  DIAG - a technique to  comprehensively test the target using
+     a variety of tests methods.
+
+ 2.  DISP -  invokes the Native  Fault Tests (  NFT ) maintenance
+     panel functions.
+
+ 3.  DPM  -  ( Diagnostic  Procedure  Module )  a  manually coded
+     diagnostic tool that uses the shift register paths as a test
+     vehicle.
+
+ 4.  QRY - a technique to invoke microprocessor based maintenance
+     panel functions.
+
+ 5.  NFT - use only NFT testing.
+
+ 6.  SELF - the MCA runs internal tests.
+
+ 7.  HELP - assist in formatting.
+
+
+MTB-630                                        Multics Dipper T&amp;D
+
+3.0 A BASIC SESSION
+
+The  session begins  with the  user either  logging in  under the
+Tolts project or invoking  Tolts by calling ' bound_tolts_$tolts_
+'.  Either way the user enters  the Tolts environment at the same
+place.   It is  here the user's  access to system  gates and data
+segments  is   verified.   If  for   any  reason  the   user  has
+insufficient access, Tolts will  terminate with an error message.
+If the person is logged in under the tolts_overseer_ he is logged
+out.   After  these  checks,  the  user  has  at  least  passed a
+rudimentary  security check,  and should  be allowed  to proceed.
+These gates and data segments that are checked are:
+
+ 1.  &gt;sl1&gt;phcs_
+
+ 2.  &gt;sl1&gt;tandd_
+
+ 3.  &gt;sc1&gt;opr_query_data
+
+ 4.  &gt;sc1&gt;cdt
+
+ 5.  &gt;sc1&gt;rcp&gt;tandd.acs
+
+Next  the user  is prompted  for what type  of exec  he wishes to
+invoke.  In this discussion, he will  select Molts as this is the
+only subexec that will run the MCA tests.
+
+3.1 MCA Attachment
+
+Molts will be  loaded as is done now  and brought into execution.
+The first thing  Molts does is request input from  the user as to
+what  activity is  to be  performed by printing  ' ???   ' on the
+user's  terminal.  The  user will then  reply with '  test nioI '
+(where '  I ' is  an IMU number).  If  ' I ' is  not given, Molts
+will terminate the request.
+
+Molts will verify  the accessibility of the MCA  by attempting to
+allocate the  MCA though Tolts.  When  Tolts receives the request
+to  attach the  MCA, a  validity check  will be  made against the
+configuration deck.   If the requested IMU  number corresponds to
+valid Dipper  subsystem, a request  will be made  of the operator
+via  an opr_query_  request requesting  permission to  run an MCA
+test.  If granted, Tolts will  then do an rcp_priv_$attach of the
+MCA.
+
+3.2 MCA Communication
+
+When the  MCA is attached  to the requesting  process, Molts will
+load and put into execution the  MCA Driver (MCAD), which will do
+
+
+Multics Dipper T&amp;D                                        MTB-630
+
+the  actual communicating  with the MCA.   Communication with the
+MCA is accomplished via three idcws.  These idcws are:
+
+ 1.  write text  - idcw command (B0  - B5) = 13  with B22 (c bit)
+     set.  This idcw is the only one  that can be used to start a
+     test session and must be chained to an idcw type 03.
+
+ 2.  write data -  idcw command = 15 with B22  set.  This idcw is
+     used to transfer  data to the MCA and must  be chained to an
+     idcw type 03.
+
+ 3.  request  MCA response  - idcw  command =  03 and  B22 reset.
+     This idcw requests a response from the MCA.
+
+3.3 Command Line Validation
+
+MCAD will request from the user a command line with a prompt of '
+enter nio request ', which will be  sent as data to the MCA using
+an  idcw 15.   The MCA  exec will  recognize the  data as  a test
+request and request that the Maintenance Executive be loaded into
+the MCA overlay area where it  will be placed in execution.  MCAD
+will  perform  a MME  CATA  followed by  a  MME DATA  to  get the
+Maintenance  Executive   from  the  deckfile.    MCAD  will  send
+Maintenance Executive via channel 3 to the MCA using an idcw with
+a command of 15.
+
+The Maintenance Executive will parse  and attempt to validate the
+test  request.   If  the request  is  invalid for  any  number of
+reasons, ie.   format, invalid device,  or a field with  ' help '
+request  inserted.   The  Maintenance Executive  will  attempt to
+assist the user in formatting  a valid test request by responding
+to  the  outstanding read  with  the appropriate  action  that it
+requires MCAD  to take.  This  could be a write/read  to the user
+terminal, reading a help file from the deckfile, or whatever else
+that  is required  to obtain a  valid test request.   When a test
+request is  determined by the Maintenance  Executive to be valid,
+the Maintenance  Executive will "echo"  the test request  back to
+MCAD, with the  message header block containing a  code that MCAD
+will recognize  as a valid  test request is  available.  The user
+will then  be queried by MCAD  as to the correctness  of the test
+request by  reprinting the test request  followed by the question
+"Correct (y  or n)".  If the  response is ' n '  , then MCAD will
+terminate the  test request and wrapup.   If the reply is  ' y ',
+MCAD  will  reply with  a  negative response  to  the Maintenance
+Executive which  will cause the Maintenance  Executive to wrapup.
+The  reason  this is  done  is to  allow  the MCA  to  handle the
+upcoming  request  to read  the  configuration deck  initiated by
+Molts.
+
+
+MTB-630                                        Multics Dipper T&amp;D
+
+3.4 Device Allocation
+
+MCAD will perform  an as yet unnamed MME that  will pass to Molts
+the  valid   test  request.   Molts   will  then  read   the  MCA
+configuration deck using an idcw 15 to determine what devices are
+required to  execute the test  request and then  request Tolts to
+allocate the devices for testing.   Each device requested will be
+validated  against   the  Multics  configuration   deck  and  the
+associated devices will be  attached using rcp_priv_$attach as it
+is  done today.   If all requested  devices can  not be attached,
+Molts will close out the request  and wrapup.  If all devices are
+attached, Molts will notify MCAD of the successful attachments.
+
+3.5 Begin Testing
+
+MCAD will  send the command line  to the MCA using  an idcw of 13
+(write  text  command).   This  is   the  only  time  during  the
+maintenance  session that  the idcw 13  will be  used.  All other
+idcw  requests will  utilize the idcw  15 chained to  an idcw 03.
+This  will  allow  ioi  an  opportunity  to  also  read  the  MCA
+configuration and  validate the test request.   If the request is
+valid, it  will be sent to  the MCA where the  MCA Executive will
+detect the  presents of a '  test ' request and  request that the
+Maintenance  Executive  be loaded  and  placed into  execution as
+previously  described.   The  MCA  Executive will  then  pass the
+command   request  to   the  Maintenance   Executive  which  will
+revalidate it as  a valid request and echo this  back to MCAD who
+will then  reply with an affirmative  response to the Maintenance
+Executive.
+
+3.6 Load Test Overlay
+
+The  Maintenance Executive  will then interpret  the command line
+and request that the appropriate Test  Driver be sent to the MCA,
+where  it  will  be loaded  in  the overlay  area  overlaying the
+Maintenance  Executive.  The  Test Driver will  then request that
+each test  case be loaded  and executed individually.   Each test
+case will be sent using an idcw  15 which will send the test case
+to  the  MCA  followed  by an  idcw  03  which will  keep  the IO
+outstanding to  the host and provide  a means for the  MCA ( Test
+Driver  )  to  reply  with  the  results  of  the  test.   When a
+particular test  is completed, the Test  Driver will request that
+the  Maintenance Executive  be loaded  into the  overlay area and
+placed  back  into  execution.   The  Maintenance  Executive will
+determine  the  mode it  is  running, ie.   if  only one  test or
+multiple test mode.
+
+
+Multics Dipper T&amp;D                                        MTB-630
+
+3.7 Test completion
+
+Testing  will continue  until one  of three  events occur.  These
+events are:
+
+ 1.  normal test termination.
+
+ 2.  user elected termination.
+
+ 3.  subsystem fault.
+
+3.7.1 NORMAL TERMINATION
+
+Normal  termination  will  occur when  the  Maintenance Executive
+determines that all test that are  scheduled to run have been run
+to  completion.   The  Maintenance  Executive will  then  do some
+housekeeping and wrapup by sending a normal terminate to MCAD and
+returning control  to the MCA Executive.   MCAD seeing the normal
+terminate will also  wrapup to Molts, who will  then read the MCA
+configuration  to determine  the state  of the  hardware that was
+tested.  This state  is reflected to Tolts when  Molts does a MME
+RELEASE.    Tolts   will  then   verify   the  users   access  to
+&gt;sc1&gt;rcp&gt;mca_mp.acs.   If  the  user  does  not  have  sufficient
+access, Tolts will do a  normal rcp_$detach.  Multics will verify
+the state of  the resource by reading the  MCA configuration.  If
+the flag  ' F/W load required  ' in the MCA  configuration is set
+Multics  can  have  MCA reload  the  firmware.  If  the  user has
+sufficient access,  Tolts will query the  user if firmware should
+be reloaded.  If  the user replies "yes", Tolts  will do a normal
+rcp_$detach as above and the  sequence is the same.  If, however,
+the     user     replies     "no",     Tolts     will     do    a
+rcp_$detach_no_firmware_load.   RCP will  verify user  access and
+release  the  resource and  notify the  system operator  that the
+resource has been released with no firmware reload.
+
+3.7.2 USER REQUESTED TERMINATION
+
+The user  will request termination  by depressing the  break key,
+which will cause a  prompt of ' ???  ' to be  printed on the user
+terminal.  The user will then input a ' test neio ' request which
+will then  be passed to  Molt where it  will be interrupted  as a
+termination  request.   Molts  will  notify MCAD  that  it  has a
+termination request  which will be  passed to the  overlay module
+currently running  in the MCA.   If the Maintenance  Executive is
+not in operation  at this time, it will be  reloaded and put into
+execution after the module that  was currently running cleans up.
+The remaining sequence is the same as for a normal termination.
+
+
+MTB-630                                        Multics Dipper T&amp;D
+
+3.7.3 SUBSYSTEM FAULT
+
+If  a  subsystem  fault occurs  while  T&amp;D is  in  operation, the
+overlay in  operation is terminated  and a status  is returned to
+MCAD  stating  abnormal  termination  system  fault.   The  fault
+handling overlay  will then be  loaded into the  overlay area and
+placed  into execution  by the  MCA.  MCAD  will then  cleanup as
+previously stated.
+
+
+Multics Dipper T&amp;D                                        MTB-630
+
+4.0 SECURITY
+
+There has been a lot of discussion on permitting Tolts to run T&amp;D
+through the MCA.   The major complaint has been  the feeling that
+security has been  compromised by allowing the MCA  run the test.
+It is  felt that Multics loses  control once it passes  the MCA a
+command line.  I am of the  opinion that although the actual test
+pages that are run  in the MCA do not meet the  all levels of the
+Multics design specifications, it is not much different than what
+is done today when running with the MPC.  The only guarantee that
+these devices perform as specified  is that all operating systems
+run the same firmware and test pages and therefore are thoroughly
+exposed.  Also  on Multics, access  can be restricted  to the MCA
+and its associated  test pages to any degree  that a site elects.
+I  will attempt  to discuss some  of the ideas  I have concerning
+this matter.
+
+ 1.  Access to the MCA can be  controlled by Multics as disks are
+     controlled now.  The  device can be attached by  rcp at boot
+     time  and for  a user  to use  the MCA,  the system operator
+     would  be required  to use  the set_device_usage  command to
+     allow a user to attach it.
+
+ 2.  Access to  the MCA can also  be controlled by an  acs seg in
+     &gt;sc1&gt;rcp which will be checked by rcp during attachment.
+
+ 3.   The firmware, which is read from a diskette attached to the
+     MCA should only be loaded by Multics.  This will ensure that
+     only  firmware  that  was  used  by  the  MCA,  initially at
+     bootload will  be reloaded.  Multics will  be able to verify
+     the  state  of  the  resource in  question  as  well  as the
+     validity   of   the  firmware   diskette.    Having  Multics
+     controlling the  firmware reload will place  the final state
+     of the device back into the Multics security kernel.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

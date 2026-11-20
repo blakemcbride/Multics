@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics </title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo : The View Manager Facility.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+MULTICS TECHNICAL BULLETIN                                MTB-641
+
+To:       MTB Distribution
+
+From:     Paul W. Benjamin &lt;Benjamin @ System-M&gt;,
+          Ronald B. Harvey &lt;Harvey @ System-M&gt;,
+          L. A. Dupuis &lt;Dupuis @ System-M&gt;
+
+Date:     12/20/83
+
+Subject:  The View Manager Facility
+
+Forum Meeting:  &gt;udd&gt;m&gt;mtgs&gt;End_User_Data_Access (euda)
+
+ABSTRACT
+
+This paper  describes the View Manager  Facility, a comprehensive
+new package  for information management.  It  was first discussed
+in MTB-621, An  Architecture for End User Data  Access.  It is an
+overview, supported by 4 more detailed papers:
+
+    MTB-642 The View Manager Facility:  Subroutine Interfaces
+    MTB-643 The View Manager Facility:  View Master Subsystem
+    MTB-644 The View Manager Facility:  SQL Parser
+    MTB-645 The View Manager Facility:  Data Dictionary Interface
+
+This set of papers represents a major portion of the workplan for
+the End User Support Unit for the  next 2 years, with MR12 as the
+target release.
+
+_________________________________________________________________
+
+Multics  Project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics Project.
+
+
+MTB-641                                              View Manager
+
+Background
+
+This  proposal  emerged in  early to  mid-1983 from  a discussion
+initiated  by  Roger  Lackey   about  something  called  a  'join
+manager'.  The  idea was that  an intermediary could  sit between
+MRDS  and the  user that could  request retrievals  and do joins.
+The  retrievals  could be  from separate  databases or  even from
+non-MRDS  tables.  An  informal group was  established to discuss
+the idea  further.  That group  soon determined that  another key
+idea in the design should be  the replacement of LINUS with a new
+end-user facility, and that a  new selection languange more along
+the  lines  of  the  IBM (and  potential  industry  standard) SQL
+language  should be  used.  Those discussions  continued and were
+expanded  to  include  several  more  people.   The  project  was
+internally  dubbed PITS,  an acronym for  "Pie in  the Sky".  The
+result  of those  meetings was  MTB-621, An  Architecture for End
+User  Data Access,  a crude manifesto  that listed  9 authors and
+detailed the concept  as it existed at that  time.  That paper is
+recommended to the reader.  The  information therein that has not
+been  substantially altered  is not  reproduced here  and it will
+provide an historical perspective on this topic.
+
+After the publication of that  early paper, PITS development went
+on the  back burner in  favor of MR10.2  activities (MRDS, LINUS,
+GES),  but  weekly  discussion  sessions  were  held  to progress
+towards a more concrete design and  to keep the idea alive.  Much
+evolved during that  period, as will become apparent  as you read
+these  papers.   When MR10.2  was  in place,  full  attention was
+turned to  the PITS implementation,  and a lot  more changes took
+place.
+
+Introduction
+
+These MTBs are the result of  the effort discussed above and will
+serve as  a basis for  the development work to  follow.  They are
+intended  as  living  documents,  will evolve  first  into design
+specifications for  the planned prototype effort,  then serve the
+same purpose  for the actual implementation,  and then finally be
+kept  up  to  date  as  the  product  goes  into  production  and
+maintenance.  It should be  understood, therefore, that these are
+the first  versions of many, that  there are unanswered questions
+and inconsistencies,  but that they are  being published in hopes
+of obtaining feedback from the Multics development community.
+
+As  this  is  a  complex  subject,  introducing  many  terms  and
+concepts, 3 appendices are supplied to the reader, that may be of
+use throughout  the reading of these  papers:  Appendix A, Module
+Organization; Appendix B, View  Manager Terminology; and Appendix
+C, Permissions on View Manager  Objects.  They are located at the
+end of this document.
+
+
+View Manager                                              MTB-641
+
+The SQL Language
+
+The language  used to do  relational operations (both  in the end
+user  facility  and via  the programming  interfaces) is  SQL, as
+defined  by  IBM  literature,  followed as  closely  as possible.
+There  was lengthy  discussion within the  group on  how close to
+follow  the  language,  whether  or  not  to  multicize  it.  The
+consensus was not to be tempted  to "improve" on an language that
+is  a)  commercially  successful  and  b)  close  to  becoming an
+industry  standard.   The  language  is  described  in exhausting
+detail in MTB-644.
+
+The parser  for these statements will  be implemented using LALR.
+This  raises  some  concerns  about  LALR  being  an  unsupported
+product.  It  is a given in  this proposal that it  will become a
+supported product, although the questions of who and when are not
+resolved.
+
+MTB-621  discussed  the  "uniform translator  proposal".   We had
+proposed  a  common parser  that  could accept  not only  SQL but
+existing LINUS and MRDS selection  language as well.  We have now
+backed  off  from that  aspect  of it,  for reasons  discussed in
+MTB-644.
+
+The  parser  will produce  what is  being called  Canonical Query
+Language.  MTB-621 discussed CQL in some detail, particularly the
+Honeywell  efforts to  produce a  common language  across various
+product  lines.   As  of this  writing  there is  no  such common
+language.  An investigation of the GCOS  CQL proved it to be less
+than optimal for  these purposes.  The option is  still left open
+however,  to   converting  to  such  standards   should  they  be
+established.
+
+The View Master Subsystem
+
+The proposed end user facility is called View Master.  It will be
+an interactive subsystem  using ssu_.  There are 2  ways to enter
+SQL  statements,  either at  request  level or  via  an input_sql
+request.  The former approach  involves the command processor and
+may  require quoting,  while the latter  allows the  user to type
+into an input buffer.  The  standard ssu_ requests are available,
+as are the  requests associated with the LINUS  Report Writer.  A
+useful by-product  of excising the  the Report Writer  from LINUS
+and making  it available to View  Master will be that  it will be
+made  generally  available  as  a  standalone  offering.   It  is
+described in detail in MTB-643.
+
+
+MTB-641                                              View Manager
+
+View Manager Subroutine Interfaces
+
+At the  core of things  lives the view manager  itself (vm_).  It
+accepts input in  the form of CQL and returns  data.  To do this,
+it communicates with the various file managers (MRDS, Lister, the
+"native  file" manager)  through Table  Interface Modules (TIMs).
+These TIMs are a veneer that have a standard calling sequence and
+communicate with the appropriate  specialized interfaces that the
+file managers use.  In some cases (MRDS for example) the TIM will
+likely  be  a  separate  module  that  calls  the  file manager's
+standard  subroutine interface  (dsl_ in  this case).   In others
+(native files, perhaps  Lister), the TIM may be  an integral part
+of the package and the  only available subroutine interface.  The
+vm_ module also does a great  deal of communicating with the data
+dictionary  interface,  described  below.    The  vm_  module  is
+described in MTB-642.
+
+While the parser may be identified as a vm_ entrypoint, it should
+be stressed that it is not an integral part of vm_.  It shares no
+data  structures,  other than  those  passed (or  pointed  to) as
+parameters,  with  vm_.  It  is  a primary  design goal  that any
+parser or  other program capable  of producing CQL  is sufficient
+for the View Manager's purposes.   The SQL parser just happens to
+be the one that is being provided, for now.
+
+Data Dictionary Interface
+
+The term "Data Dictionary" is  much abused.  Everybody wants one.
+Many  systems  claim  to  have one.   One  approach  to  the term
+revolves around  the "meta-data" that describes  a data structure
+or  database.   In that  sense, the  MRDS model  is a  crude data
+dictionary.  On the other end of the spectrum is the "active data
+dictionary",  an all  encompassing facility  that keeps  track of
+databases, programs, data items,  etc., anything the site chooses
+to  add, and  adjusts everything  involved when  something listed
+therein changes.  The latter is  a hot button with customers.  It
+is also far beyond our resources  to provide.  Our goal, then, is
+to  provide the  facility needed for  meta-data handling, without
+precluding  the   ultimate  implementation  of   such  an  active
+facility.   Again, the  IBM implementation  is taken  as a model.
+The meta-data is treated as  relational data, organized in tables
+and manipulated  by the View  Manager software.  See  MTB-645 for
+details.
+
+Native Files, Integrity, Security
+
+This is  an area that  was not addressed in  MTB-621.  No thought
+was given to  a native file type.  The  original design goals for
+the  product  included cross-database  retrievals, a  better EUF,
+support  of non-MRDS  tables, etc.,  but nothing  on integrity or
+
+
+View Manager                                              MTB-641
+
+security.  There was a spirited  debate among the group about the
+issues of integrity and security.   The end result was that there
+was a requirement  for a level of integrity  and security no less
+than that currently  offered with MRDS, and that,  as a desirable
+item, much more was needed.
+
+It soon became apparent that something must be chosen as a native
+file  type.  What  would be created  when the  user typed "create
+table"?  If  temporary tables were handled,  what form would they
+take?   Should it  use MRDS?   This seemed  unfortunate from many
+standpoints, not  the least of  which was that  a single relation
+MRDS database seemed overkill for  such purposes.  Lister was out
+of the  question.  How about something  new?  The discussion soon
+turned to  the relation manager interface.   FAMIS was determined
+to be the  vehicle of choice.  This is an  attractive route as it
+deals with the integrity issue.  It also provides transaction and
+rollback   capabilities,   an   integral    part   of   the   IBM
+implementation.     Further,    it   is    plug-compatible   with
+vfile_relmgr_ which  can be used,  as needed, in  the development
+effort.
+
+Note that this  decision about native files was  a turning point.
+After starting  out to create  a package that  would tie together
+MRDS, Lister,  etc., what was  under discussion had  become a new
+database manager, more or less.
+
+What  of security,  though?  Even  though FAMIS  files are ring-2
+entities, if you know  the calling sequence of relation_manager_,
+you can  do what you  please, disregarding any  security that was
+built into the  view manager.  This is essentially  what is wrong
+with MRDS today, even with  secure submodels.  The IBM model that
+is  being emulated  exists in  a very  different environment, one
+that   would   require  domains   to  be   implemented  properly.
+Discussion of  domains with Olin Sibert  and others has convinced
+the group that domains are  not something easily or appropriately
+implemented on Multics.   So, what else?  What is  desired is the
+ability to control access through  a data dictionary, to restrict
+users  to looking  at data through  views, views  that might hide
+portions of a physical file from a user while allowing the update
+of  other  parts of  it.  This  has  to be  enforced by  the view
+manager  software itself,  cannot be accomplished  via acls.  The
+answer lies in FAMIS pseudo-rings.   Stored in the FAMIS file are
+pseudo-rings.   That portion  of the  view manager  that controls
+access resides in  ring-2.  FAMIS compares the rings  in the file
+to the validation level of the calling program.  The view manager
+files will  require the caller  to be executing  in ring-2.  Only
+view  manager,  therefore,  will  be able  to  modify  the files.
+Knowing  the calling  sequence of  relation_manager_ will  not be
+enough.
+
+
+MTB-641                                              View Manager
+
+Security and Usage Considerations
+
+One of the goals of the view_manager design is to be able to have
+data content security for any given (native) table.  At least the
+same `security' offered by MRDS is  also a goal.  This is thought
+to be most easily accomplished  with views.  Properly used, views
+can provide data content security and column (MRDS submodel-type)
+security.  Consider the following view definitions:
+
+          CREATE VIEW DEPT_512 AS
+               SELECT * FROM EMPLOYEES WHERE DEPT_NO = 512
+
+          CREATE VIEW EMP_VACATION AS
+               SELECT NAME, DEPT_NO, MAIL_STATION, HIRE_DATE,
+               VACATION_DAYS_USED FROM EMPLOYEES
+
+If a user (say, the manager  of department 512) were given access
+to the table EMPLOYEES and to the view DEPT_512, then there would
+be  no way  to keep the  data in EMPLOYEES  secure.  If, however,
+access is not GRANTed to the table EMPLOYEES for the manager, but
+only to the view DEPT_512, then the manager can only see the data
+selected by  the view.  The  access to a  given table or  view is
+only relevant  when that table/view  name is specified  in a FROM
+clause.  Similarly, a user given  access to only the EMP_VACATION
+view would not be able to determine salary data.
+
+To this  end, the permissions on  a view are kept  with the view,
+and the  permissions on the  built-upon tables are  only relevant
+when  the  view  is  created  and  when  the  permissions  on the
+built-upon  tables  are  changed  to modify  the  access  for the
+creator of the view.  In this way, a user does not need access to
+a  table (cannot  say `FROM  FOO') in  order to  use a  view that
+references it.
+
+As  mentioned previously,  when a  view is  created the creator's
+permissions on  the tables referenced  in the FROM  clause of the
+definition are used to form the  permissions on the view for that
+user.   No one  is then allowed  to put more  permissions on that
+view than  already exist.  That  is, the user could  not change a
+SELECT permission on a given column to SELECT, UPDATE permission.
+Also, if the  user does not have GRANT access  to all of the base
+tables involved, no permissions for other users will be permitted
+on the view.  In this way,  the view actually has the permissions
+on the lower  level tables.  Users have access  only if they have
+access  to  the view.   If  the creator  of  the view  ever loses
+permissions on  one or more  of the tables built  upon, then that
+change  in   permission  should  "ripple"  and   cause  the  view
+permissions to either change (as in the case of removing UPDATE),
+or cause  the view to be  deleted (as when all  access to a table
+disappears).  Where more permissions  are given (adding UPDATE to
+a  column),  nothing  automatic  should happen.   This  will keep
+accidents  from happening.   The GRANT  request will  probably be
+
+
+View Manager                                              MTB-641
+
+able  to  be  used  on the  view  to  add the  permission  if the
+appropriate permission is available on the built-upon table.
+
+Data Security and Multics Security
+
+While  all of  this automagical access  determination sounds very
+nice (and is similar to  competitors' offerings), it places a big
+burden on  the view manager  and data dictionary  software.  In a
+Multics  environment,  a  user  needs modify  permissions  on the
+containing directory of  a file system object in  order to change
+an acl  on that object.   Also, the user  must have access  to an
+object  in order  to use it  - even  if, as in  the DEPT_512 case
+above, the user may not know  the object (the EMPLOYEES table) is
+being  used.   These Multics  realities  can cause  problems when
+views,  assertions  and triggers  are  created in  an environment
+where not  all users have  permissions on all of  the base tables
+involved.  Also,  a user (other  than the creator)  attempting to
+GRANT permissions  to other users  may be limited by  the lack of
+modify permission on the containing directory of the object.
+
+There  are  several  considerations  involved  in  determing  how
+security and Multics  acls should be handled in  this product.  A
+goal  is  that  it  should  be   as  close  as  possible  to  the
+competitors' products.   The easiest way to  assure that this can
+happen would be to put all objects in ring 2 with regular Multics
+acls of (rw  sma) *.*.* and enforce the  security by checking the
+appropriate data  dictionary (which would also  have similar real
+Multics acls).   While this is  the easiest, it  also leaves open
+the door to more accidents (any  code in ring 2 going amuck could
+cause damage) or misuse of ring  2 access by users not associated
+in any manner with the data involved.
+
+In order to  limit this possibility, the current  plan is to have
+tablespaces for  storing native tables.  A  tablespace would be a
+ring 2 directory (ring brackets of  2,2) and an acl entry of `sma
+*.*.*'.   This  will  allow  any  user  authorized  by  the  data
+dictionary  to create  tables, delete  tables and  change acls on
+tables.   Although it  may take some  work to  determine what acl
+should  be on  a given table  for a  given user at  any time, the
+problem  is  thought  to  be solvable.   This  is  still  open to
+problems, however.  Today, there is a  bug in v1 forum which will
+allow a user to create a meeting  in a ring 2 directory - such as
+a tablespace.
+
+Another argument against the `rw  *.*.*' scheme is that one whole
+dimension of Multics  security (in fact, the one  most visible to
+normal  users) would  disappear.  There  is precedence  for this,
+however, as mailboxes and message segments (where daemon requests
+are  placed) are  implemented in this  fashion.  It  would be the
+complete  and total  responsibility of  the view  manager and the
+data dictionary to always be right about who is allowed to access
+
+
+MTB-641                                              View Manager
+
+what.   This could  open the  door in  the database  software for
+security holes  which don't exist  in the Multics  acl mechanism.
+These holes may be difficult to detect.  Hopefully, they will not
+be difficult to plug.
+
+Another  consideration  is  that   unless  you  know  which  data
+dictionary owns a file system object, it would not be possible to
+determine what set of users had access (or even owns) the object.
+There is a  similar concern even with specific  acls.  Given that
+views (and  links to other  data dictionaries) can  place acls on
+file system objects, the owner of a  table may be able to see who
+has an acl entry.  But it may be impossible for a normal query of
+the  owning data  dictionary to  determine WHY  those people have
+access (or even differences between INSERT and UPDATE).
+
+It  is possible  that the  view_manager should  not get  into the
+business  of automagically  setting acls  at all  and that native
+tables  should be  created with acl  terms for  the creator only.
+Unfortunately, this would mean that  special code (or cql!)  will
+have to be created to set acls on native tables, since they would
+be in ring  2 (and have pseudo-acls of ring  2 as well).  This is
+also  pretty  far  away  from the  competitors'  world  of access
+control   and  table   management  because  the   user  would  be
+responsible  for doing  everything by  hand -  including removing
+acls after permissions have been revoked.
+
+Ripples: Their Meaning and Some Implications
+
+Ripples  are actions  that are  performed by  the data dictionary
+and/or  the view  manager as a  result of some  other action.  An
+example would  be that DROPping  a base table would  cause a view
+that referenced  it to be  DROPped as well.  Of  course, if there
+were a view built upon this  first view, then it would be dropped
+as well.  With the exception of dropping a tablespace, all of the
+`drop type' ripples are controlled by and completely performed by
+the data  dictionary software.  In the  tablespace case, the view
+manager will  probably have to drop  each table individually, and
+then drop the tablespace.
+
+A second type of ripple (and  one which can cause more headaches)
+is one  in which Multics  acls need to  be changed on  an object.
+These can be caused by permissions being granted on views, by the
+creation of  assertions and triggers, and,  possibly, by dropping
+views, triggers or views, as  well as, of course, simply revoking
+permission  on  a  base table.   If  a  Multics acl  needs  to be
+changed, the data dictionary will have to inform the view manager
+so that it can do the deed.
+
+There is a possiblity that synonyms will not be involved in `drop
+type' ripples.  This  would allow base tables to  be switched out
+from underneath  them so that a  production data dictionary could
+
+
+View Manager                                              MTB-641
+
+be switched  into `test mode'  for a period  of time.  If  a base
+table looked  different from the  one that was  previously in its
+place,  many   problems  could  result.   This   is  still  under
+investigation.
+
+With the concept of links  being used to enable data dictionaries
+to share  tables and views,  rippling can get  very complex.  The
+data   dictionary  software   may  have  to   lock  several  data
+dictionaries in order to do a simple task like adding a column to
+a base table.   It is thought that this can  be a potential cause
+of  deadlocks.  Also,  with links and  automatic updating through
+them,  a  user must  have some  way of  modifying the  other data
+dictionaries (under data dictionary control, of course) that have
+links  to  the data  dictionary being  used.  This  is especially
+important in the case where a view on a table in the current data
+dictionary is  defined in some other  data dictionary.  Since the
+access  on a  view is  kept with  a view,  access changes  on the
+underlying tables MUST be able to trickle to all views.
+
+Application Programmer's Interface
+
+The  vm_   interface  is  designed   specifically  for  subsystem
+programming in a PL/1 environment.   One of its biggest customers
+will be the View Master subsystem.   There will be no pains taken
+to  accomodate  the  applications   programmer  or  the  non-PL/1
+programmer.  There may be arguments  required that use data types
+(pointers, for  example) unavailable outside of  PL/1.  There may
+be  approaches  taken  that  are  confusing  or  awkward  for the
+applications  programmer.  For  example, in  order to  have a SQL
+statement executed via  the vm_ interface, you must,  at the very
+least, call convert_sql_to_cql_  and then vm_$execute_cql.  There
+are  very good  reasons for  having 2  distinct calls  here, very
+necessary to the subsystems programmer,  but from a human factors
+standpoint, this is less than deluxe.
+
+It  is  recognized that  the  optimal interface  for applications
+programming  is  via a  compile-time  preprocessor.  It  would be
+necessary to  write such interfaces for  COBOL, Fortran, PL/1 and
+perhaps Pascal.  There are simply not enough resources for this.
+
+So, proposed, but not described in any detail in these papers, is
+the  Applications Programmer's  Interface (API).   In the example
+above, a single call,  for sake of argument, vm_api_$execute_sql,
+would be made.  No pointers would be used, to accomodate users of
+COBOL or Fortran.
+
+Other End User Interfaces
+
+One  of  the original  goals of  this project  was to  provide an
+architecture that would facilitate the creation of additional end
+
+
+MTB-641                                              View Manager
+
+user  interfaces.   The design  is  such that  a Query-by-Example
+package  that produced  CQL could  be implemented  with "relative
+ease".   The information  management market  is evolving rapidly,
+and  with  it, the  demand  for menu-  and  forms-driven packages
+increases.  Further, the latest intelligence out of IBM indicates
+that they are  going in the direction of  integrating SQL and QBE
+into a single package.  It  is recognized that, to be competitive
+in  the marketplace,  a foray into  the video  arena is critical.
+However, given the ambitious nature of the overall design and the
+resources available, a complete answer to this problem may not be
+available.  Further,  the lack of a  generalized forms package on
+Multics  would   make  any  forms-oriented   implementation  very
+difficult.  There  will, therefore, be no  attempt to implement a
+separate  QBE-style  forms  interface   in  the  MR12  timeframe.
+However, the View Master  subsystem will provide a menu/prompting
+video-oriented   interface   in  addition   to   the  traditional
+request-oriented  interface.   This  interface   is  taken  as  a
+desirable feature  or "stretch goal" and  will be investigated in
+the prototype effort.
+
+Risks, Benefits and Conclusions
+
+The proposed implementation of the View Manager represents one of
+the  largest  single undertakings  the  Multics project  has ever
+attempted.   While  once  a  pioneer of  sorts  in  the  field of
+relational database  technology, we have fallen  behind.  This is
+an  attempt to  make a quantum  leap into the  next generation of
+software, from database management to information management.  It
+represents a  large and costly  investment in the  future and can
+only succeed if  we are willing to commit  ourselves fully to it.
+It should, therefore, not be entered lightly.
+
+To start with the negatives, what are the risks?
+
+     1) Chasing IBM,  in any area, can  be a risky business.
+        Halfway  through  the early  planning stage  of this
+        project, they announced DB2 and QMF, a departure, on
+        some  levels,   from  the  earlier   things  we  had
+        analyzed.   There  was much  scrambling to  make the
+        design reflect the changes discovered.  It will take
+        a  couple  of years  to get  this product  out.  The
+        competition will not stand  still.  Perhaps a better
+        approach  is to  mimic the  Japanese and  attempt an
+        end-run  around  the   competition  and  investigate
+        knowledge-based systems.
+
+     2) FAMIS.   We are  relying on FAMIS  for integrity and
+        for  transaction capabilities.   As of  this writing
+        FAMIS  has  significant  performance  problems.   As
+        FAMIS is not yet a product, our reliance on it could
+        be  considered a  risk.  Further,  this design calls
+
+
+View Manager                                              MTB-641
+
+        for rollbacks  to checkpoints within  a transaction,
+        something currently not implemented (albeit planned)
+        in FAMIS.
+
+     3) Effect  on  other  products.  Part  of  the scenario
+        presented  is that  MRDS and  LINUS development will
+        effectively be  frozen during the  MR11/MR12 period,
+        except  for  those  changes necessary  for  the View
+        Manager.  Our customers are not likely to appreciate
+        this.
+
+     4) Overall  complexity.   This is  a very  big project.
+        MDC's track record with big projects is subpar.
+
+Having typed  in 1) so  convincingly, it might  be appropriate to
+attempt to speak to the  arguments presented.  The intent here is
+not to compete  head-on with Big Blue.  The  intent is to conform
+to what appears to be an  industry standard, and therein open up,
+to some  extent, the arenas in  which we can compete.   So far as
+still being  behind once the implementation  is complete, this is
+true  to  some extent,  but  the alternative  is  standing still.
+Looking  at  what  is or  may  be the  competition  (DEC, INGRES,
+Oracle, et  al) rather than  IBM, the comparison might  not be so
+unflattering.   The  bottom  line  is that  we  must  go  in this
+direction to survive.
+
+So, on to the benefits.
+
+      1) Users   will   be    presented   with   a   single,
+         industry-standard  selection language,  SQL, usable
+         at both the end  user and programming levels.  This
+         language  will offer  many capabilities  beyond the
+         current  MRDS repertoire,  including cross-database
+         retrievals,   outer   joins,   sorting,   triggers,
+         assertions, etc.
+      2) There will  be a single end-user  facility that can
+         access various types of  tables, including, but not
+         restricted to, MRDS databases, Lister files, native
+         View Manager files and flat files.
+      3) Native  files  will  be  truly secure  in  that you
+         cannot circumvent the  access mechanisms by calling
+         the underlying file manipulation routines directly.
+      4) Checkpoint/rollback services will be available.
+      5) A  platform  for   building  alternative  end  user
+         facilities will be in place.
+      6) By  putting  our development  resources into  a new
+         product  rather  than   continually  enhancing  and
+         maintaining MRDS,  we can end  up in a  much better
+         posture from a maintenance standpoint.  Maintenance
+         is a resource sink, and it is proven that the older
+         a  product is  and the more  it is enhanced/"fixed"
+
+
+MTB-641                                              View Manager
+
+         the   incidence   of   bugs   and   expenditure  of
+         maintenance dollars increase.
+
+To summarize, the View Manager, while not an attempt to boldly go
+where no man has gone before, is an attempt to bring Multics into
+the 1980s in  the field of relational technology.   It is a lofty
+proposal, one that  should be given the closest  degree of review
+by all parties involved.  I strongly  urge the reader to read the
+accompanying documents.
+
+
+View Manager                                              MTB-641
+
+                           Appendix A.
+
+                       Module Organization
+
+        _________________   _________________   __________
+        |               |   |               |   |        |
+        | Report Writer |&lt;--|  View Master  |--&gt;| parser |
+        |_______________|   |_______________|   |________|
+                                   |   |______      ^
+                                   |  ________|_____|
+                                   | |        |
+                                   v v        v
+                                _______    _______
+                                |     |    |     |
+                                | vm_ |&lt;--&gt;| DDI |
+                                |_____|    |_____|
+                         ________| | |__________
+                        |          |            |
+                        |          |            |
+                        v          v            v
+                     _______    _______      _______
+                     |     |    |     |      |     |
+                     | TIM |    | TIM |      | TIM |
+                     |_____|    |_____|      |_____|
+                        |          |            |
+                        v          v            v
+                    ________  ____________  __________
+                    |      |  |          |  |        |
+                    | MRDS |  | Relation |  | Lister |
+                    |______|  | Manager  |  |        |
+                              |__________|  |________|
+
+
+View Manager                                              MTB-641
+
+                           Appendix B.
+
+                    View Manager Terminology
+
+API
+       See Application Programmer's Interface.
+
+Application Programmer's Interface
+       The standard interface to  the View Manager Facility (more
+       specifically to vm_, the SQL parser and the DDI), designed
+       for usage by applications programmers of languages such as
+       PL/1, COBOL and Fortran.
+
+assertion
+       A  condition  defined on  a  table or  set of  tables that
+       provides  for  data   integrity  rule  enforcement  during
+       delete, insert, and update operations.
+
+base table
+       A table that exists as  a real, physical entity, i.e.  not
+       a view.   A base table can  be either a native  table or a
+       non-native table.
+
+Canonical Query Language.
+       The   translated   internal  representation   of   an  SQL
+       statement.  Other translators can  produce CQL from inputs
+       other than SQL.
+
+checkpoint
+       A  point within  a transaction  where all  changes made to
+       tables since the last checkpoint,  or the beginning of the
+       transaction if  there is no last  checkpoint, are applied.
+       The  SQL save  statement is  used to  create a checkpoint.
+       The  SQL  restore  statement  is  used  to  rollback  to a
+       checkpoint.   The SQL  rollback work statement  is used to
+       rollback  past   checkpoints  to  the   beginning  of  the
+       transaction.
+
+column
+       the  set  of like  data  elements that  comprise  that Nth
+       element of each row of a table.
+
+commit
+       The  final point  within a  transaction where  all changes
+       made  to tables  are applied  and made  permanent, and the
+       transaction is complete.
+
+CQL
+       See Canonical Query Language.
+
+data dictionary
+
+
+MTB-641                                              View Manager
+
+       The collection of system tables.  (MTB-645)
+
+Data Dictionary Interface
+       That   portion   of   the  View   Manager   Facility  that
+       specifically  handles and  manipulates the  system tables.
+       (MTB-645)
+
+DDI
+       See Data Dictionary Interface.
+
+link
+       An entry  in a data  dictionary that refers to  an item in
+       the table namespace of another data dictionary.  (MTB-645)
+
+native table
+       A table that was created by the View Manager Facility.
+
+non-native table
+       A table created outside of  the View Manager Facility, for
+       example, a  Lister database or  a MRDS relation,  that has
+       been 'registered' for use with the View Manager Facility.
+
+parser
+       A  software program  that accepts  some sort  of input and
+       produces CQL  as output.  Often  used to refer  to the SQL
+       Parser.
+
+permissions
+       The allowed actions that an  individual or group of people
+       can  perform  on  various  objects.   The  objects include
+       tables, views, links,  tablespaces, and data dictionaries.
+       The actions  are the SQL statements  that manipulate these
+       objects, and  permissions are expressed in  terms of these
+       statements.
+
+privileges
+       See "permissions".
+
+request
+       A  View  Master  character  string read  by  the subsystem
+       utilities  listener which  results in  the execution  of a
+       procedure to perform some pre-defined operation.
+
+ripple
+       One or more actions that  happen as a result of performing
+       some relational operation.  The  deletion of a table would
+       have the ripple affect  of deleting all indexes associated
+       with that table, all views which reference that table, all
+       links  which  link to  that  table, and  all  synonyms and
+       permissions defined on that table.
+
+rollback
+
+
+View Manager                                              MTB-641
+
+       The  final point  within a  transaction where  all changes
+       made to tables since the  beginning of the transaction are
+       backed out and the tables return to the same state as when
+       the transaction began.
+
+row
+       The collection of  one or more column values  that make up
+       one record of a table.
+
+SQL
+       See Structured Query Language.
+
+SQL Parser
+       That portion of the View Manager Facility that accepts SQL
+       statements as input and produces CQL as output.  (MTB-644)
+
+statement
+       An  SQL   character  string  which   specifies  that  some
+       relational operation be performed on behalf of a user.
+
+Structured Query Language.
+       A collection of statements which permit data manipulation,
+       data definition, and data control.  (MTB-644)
+
+synonym
+       An alternate name for a table or view.
+
+system provided keys
+       A key provided by the system to uniquely identify a row in
+       a table.  This key is not user-visible.
+
+system table
+       A  table  that contains  specific  data pertaining  to the
+       characteristics  of  one  or   more  tablespaces  and  its
+       contents  (meta-data), that  is used  by the  View Manager
+       Facility  through  the  Data  Dictionary  Interface (DDI).
+       (MTB-645)
+
+table
+       A  set of  rows defined  as being made  up of  one or more
+       columns, where each  row in the table has  the same number
+       and type of columns.  The term  may be applied to either a
+       base table or a view.
+
+Table Interface Module
+       A  standard  interface that  is called  by vm_  to perform
+       various  relational operations  on different  table types.
+       There will  be, for example,  a MRDS TIM, a  Lister TIM, a
+       TIM for native tables, etc.  (MTB-642)
+
+table namespace
+
+
+MTB-641                                              View Manager
+
+       The set of names of tables (native and non-native), views,
+       synonyms and links in the data dictionary.  All names must
+       be unique within this set of names.
+
+tablespace
+       A Multics  storage system directory  which contains tables
+       created by the View Manager.  Native tables must reside in
+       a tablespace.
+
+TIM
+       See Table Interface Module.
+
+transaction
+       The basic unit  of work with a well  defined beginning and
+       end.   At  the  end  of  the  transaction  all  relational
+       operations  which  resulted  in tables  being  changed are
+       either made permanent or removed.
+
+trigger
+       A  method for  specifying the  automatic execution  of SQL
+       statements upon occurence of a specified action.
+
+view
+       A virtual  table generated from  one or more  tables by an
+       SQL select statement.  As a  view is a specialized form of
+       table, the term table may often refer to a view.
+
+View Manager
+       Used  to  refer  to  the  set  of  software  programs that
+       includes:   vm_,  View Master,  the  SQL parser,  the Data
+       Dictionary  Interface,  and  the  TIM  for  native tables.
+       Could conceivably  be used to include  other TIMs supplied
+       by Honeywell as standard offerings.
+
+View Master
+       The  end  user  facility  to  the  View  Manager Facility.
+       (MTB-643)
+
+vm_
+       That portion of the View Manager Facility that accepts CQL
+       as  input  and  invokes   TIMs  to  do  relational  tasks,
+       performing  relational tasks  itself, where  necessary, on
+       the data returned by the TIMS.  The vm_ subroutine entries
+       will  be  called  primarily  by  the  View  Master  and by
+       programs requiring a more  sophisticated interface than is
+       provided by the API.  (MTB-642)
+
+unique index
+       An index defined on a table that allows only unique values
+       to  be  stored  in  the column  or  columns  the  index is
+       composed of.
+
+
+View Manager                                              MTB-641
+
+                           Appendix C.
+
+               Permissions on View Manager Objects
+
+Permissions         Tables    Views
+
+select                X         X
+insert                X         X
+delete                X         X
+update                X         X
+link                  X         X
+null                  X         X
+index                 X
+alter                 X
+
+Permissions         Dictionaries
+
+access                   X
+administrator            X
+create_synonym           X
+create_tablespace        X
+create_view              X
+deregister_link          X
+deregister_table         X
+drop_synonym             X
+drop_tablespace          X
+drop_view                X
+register_link            X
+register_table           X
+null                     X
+
+Permissions         Tablespaces
+
+alter_tablespace         X
+create_table             X
+drop_table               X
+null                     X
+
+Statement                     Permissions         Permission Type
+
+alter table . . . . . . . . . alter               table
+alter tablespace  . . . . . . alter_tablespace    tablespace
+comment . . . . . . . . . . . alter               table
+commit work . . . . . . . . .
+create assertion  . . . . . . alter (1)           table
+create index  . . . . . . . . index               table
+create synonym  . . . . . . . create_synonym      dictionary
+create table  . . . . . . . . create_table        tablespace
+create tablespace . . . . . . create_tablespace   dictionary
+create trigger  . . . . . . . alter (2)           table
+create view . . . . . . . . . create_view,        dictionary,
+
+
+MTB-641                                              View Manager
+
+                              select              table
+delete  . . . . . . . . . . . delete              table
+deregister link . . . . . . . deregister_link,    dictionary,
+                              link                table, view
+deregister table  . . . . . . deregister_table    dictionary
+drop assertion  . . . . . . . alter (1)           table
+drop index  . . . . . . . . . index               table
+drop synonym  . . . . . . . . drop_synonym        dictionary
+drop table  . . . . . . . . . drop_table          tablespace
+drop tablespace . . . . . . . drop_tablespace     dictionary
+drop trigger  . . . . . . . . alter               table
+drop view . . . . . . . . . . drop_view           dictionary
+grant . . . . . . . . . . . . (3)                 dictionary,
+                                                  tablespace,
+                                                  table, view
+insert  . . . . . . . . . . . insert              table, view
+lock table  . . . . . . . . . (4)                 table
+register link . . . . . . . . register_link       dictionary
+                              link                table, view
+register table  . . . . . . . register_table      dictionary
+restore . . . . . . . . . . .
+revoke  . . . . . . . . . . . (5)                 dictionary,
+                                                  tablespace,
+                                                  table, view
+rollback work . . . . . . . .
+save  . . . . . . . . . . . .
+select  . . . . . . . . . . . select              table, view
+update  . . . . . . . . . . . update              column,
+                                                  table, view
+
+(1)  Alter permission  on the  table or  tables the  assertion is
+being  made  on,  and at  least  select on  the  other referenced
+tables.
+
+(2) Necessary access to the referenced tables or views to perform
+the requested operations.
+
+(3) Must have grant option for permission being granted.
+
+(4) Must have at least select permission on the table.
+
+(5) Can  only revoke permissions  that you have  granted, or have
+administrator permission.
+
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

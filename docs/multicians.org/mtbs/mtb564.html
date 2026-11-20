@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-564</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-564: Phasing Page Control and Before Journal.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-564
+
+To:  Distribution
+
+From:  Andr&eacute; Bensoussan
+
+Date:  02/04/83
+
+Subject:  Phasing Page Control and Before Journal
+
+ABSTRACT
+
+     This  MTB  describes how  Page  Control and  Data Management
+cooperate in implementing the protocol  known as the "Write Ahead
+Log" (WAL) protocol.
+
+     When a data management file is modified, a "Before Image" is
+logged  in a  Before Journal;  that is,  the portion  of the file
+about to be  modified is saved in the journal,  and used later to
+undo the modification  if a rollback is requested.   In order for
+the rollback to operate properly even after an emergency shutdown
+failure, it  is necessary to  hold the data  base modification in
+main  memory  until  its  associated  before  image  is  actually
+physically  written  to disk.   This  is the  essence of  the WAL
+protocol.
+
+     Since the first implementation of data management files will
+be done using Multi Segment Files,  whose pages are moved to disk
+by Page Control, the enforcement  of this protocol cannot be done
+without  Page  Control's participation.   This MTB  describes the
+respective  responsabilties  of  Page Control,  File  Manager and
+Before  Journal  Manager in  their  contract to  enforce  the WAL
+protocol.
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project.
+
+
+MTB-564                                Multics Technical Bulletin
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Bensoussan.Multics on System M.
+
+via US Mail:
+   Andr&eacute; Bensoussan
+   Honeywell Information Systems, inc.
+   575 Tech Square
+   Cambridge, Massachusetts 02139
+
+via telephone:
+   (HVN) 261-9334, or
+   (617) 492-9334
+
+
+
+                             CONTENTS
+
+                                                         Page
+
+                 Abstract . . . . . . . . . . . . . . .     i
+                 1 Introduction . . . . . . . . . . . .     1
+                 2 Abbreviations  . . . . . . . . . . .     1
+                 3 Background information . . . . . . .     2
+                 4 Description of the protocol  . . . .     3
+                    4.1 Before Journal Manager protocol     4
+                    4.2 File Manager protocol . . . . .     4
+                    4.3 Page Control protocol . . . . .     5
+                 5 Extension to several Before Journals     6
+
+Multics Technical Bulletin                                MTB-564
+
+1 INTRODUCTION
+
+     In the first release of  the new Data Management, files will
+still be implemented as MSF's and their pages will be written out
+at page control's discretion.
+
+     In order to be able to undo a set of modifications done by a
+transaction,  the  Data  Management  uses  the  "Before  Journal"
+technique:  Before modifying any portion  of a file, its original
+value is recorded in a so-called "Before Image" (BI), appended as
+a  logical  record  to  a  sequential  file  called  the  "Before
+Journal".  If a  modified page is written out  to disk before its
+before  image  is safe  on disk,  the rollback  mechanism becomes
+vulnerable to a system crash with ESD failure.
+
+     This  MTB describes  the methode  used to  make Page Control
+cooperate  with Data  Management in  such a  way as  to have Page
+Control  write out  data pages  to disk  only after  their before
+images are safe on disk.
+
+     If this can be achieved,  it gives the recovery mechanism of
+the Data  Management an enormous advantage:   it can rollback all
+unfinished  transactions  EVEN  AFTER  A  SYSTEM  CRASH  WITH ESD
+FAILURE.
+
+     If  it  could not  be achieved,  recovery after  ESD failure
+would require reloading  the files that were open  at the time of
+the crash, using their last  dumps, and applying all after images
+recorded  in  the after  journal(s).   This is  a  very expensive
+procedure compared to rolling back unfinished transactions.
+
+     A  different  proposal to  achieve  the same  goal  has been
+described  in  MTB-563:   "Data  Management:   Ordering  of  disk
+I/O's", but has not been  implemented.  The method implemented in
+the  Data Management  Sytem for MR10  is the  method explained in
+this memo.
+
+2 ABBREVIATIONS
+
+The following abbreviations are used in this document:
+
+     BJM = Before Journal Manager
+     BI  = Before Image
+     CI  = Control Interval
+     FM  = File Manager
+     ESD = Emergency Shut Down
+     MSF = Multi Segment File
+
+
+MTB-564                                Multics Technical Bulletin
+
+3 BACKGROUND INFORMATION
+
+     When the  before journal manager  is called to  journalize a
+before  image,  it enters  the  before image  information  in the
+current CI  of the journal, but  it does not write  the BI out to
+disk at the time it records it.  The CI is, in fact, a page of an
+MSF and it will be written out to disk by Page Control.  However,
+when a transaction commits, the before journal manager causes all
+CI's of the before journal to  be flushed (written to disk) up to
+the  CI  containing  the  last  BI  generated  by  the committing
+transaction, and waits for these I/O's to complete.
+
+     The BJM is not informed each  time a CI (page) of the before
+journal  has been  written on disk;  the interrupt  is handled by
+page  control.   But it  can  however keep  track  of up  to what
+control interval the journal is  completely on disk, each time it
+requests the journal to be flushed.
+
+
+Multics Technical Bulletin                                MTB-564
+
+4 DESCRIPTION OF THE PROTOCOL
+
+     Let us assume  that there is only one  before journal in the
+system;  the  extension  to  several journals  is  simple  and is
+discussed at the end of this document.
+
+     It is  convenient, for the  description of the  protocol, to
+use the following definitions:
+
+   o A BI is "safe" if it is completely on disk, and all previous
+     BI's are also safe.  A BI is "unsafe" if it is not safe.
+
+   o A CI of the before journal is " safe" if it is completely on
+     disk, and all previous CI's of the journal are also safe.  A
+     journal CI is "unsafe" if it is not safe.
+
+     Conceptually,the   journal  can   be  broken   up  into  two
+contiguous parts:  a safe part, which contains all the safe BI's,
+follwed  by an  unsafe part, which  contains all  the other BI's,
+still  unsafe.  The  line that separates  the two  parts may very
+well fall in the middle of a  safe CI, if it happens that this CI
+contains a portion of a still unsafe BI.
+
+     If each BI was time stamped at the time it is entered in the
+journal,  the  time stamp  of the  last safe  BI would  always be
+higher than the time stamp of any other safe BI, and always lower
+than the time stamp of any unsafe BI.  If, in addition, each data
+page modified and  in main memory had the time  stamp of the last
+BI  associated  with its  modification, it  would be  possible to
+determine if the data page could be  written out to disk or if it
+had to  be held in main  memory, until its BI  becomes safe.  The
+proposed method can be sketched as follows:
+
+  o The BJM  maintains the time  stamp of the  last safe BI  in a
+    wired down location available for Page Control to examine.
+
+  o The FM stores in the standard header of each file CI the time
+    stamp of the BI produced the last time the CI was modified.
+
+  o Page Control writes  out a file CI only if  the time stamp in
+    the CI header  is smaller than or equal to  the time stamp of
+    the last safe BI maintained by the BJM.
+
+
+MTB-564                                Multics Technical Bulletin
+
+4.1 Before Journal Manager protocol
+
+a.  When recording a BI:
+
+  o Record the BI, starting at the current position in the before
+    journal; the BI may span several CI's.
+
+  o Generate a time stamp for this BI (the time stamp need not be
+    recorded in the BI).
+
+  o For each unsafe  CI, the BJM remembers the  time stamp of the
+    last BI that  will become safe when the  CI becomes safe.  In
+    order to do so, the BJM  associates the time stamp of this BI
+    with the CI that happens to contain the end of the BI.
+
+  o Return the time stamp of the BI to the caller, i.e., the FM.
+
+b.  When committing:
+
+  o The BJM remembers the last safe  CI from the last commit.  It
+    knows  the CI  number n  in which  the committing transaction
+    produced its last BI.  It causes the journal to be flushed up
+    to  CI n,  and waits for  completion of all  I/O's.  When all
+    I/O's are completed,  CI n becomes safe, as  well as all BI's
+    entirely contained in the flushed CI's.
+
+  o The  BJM kept  track of  the time stamp  of the  last BI that
+    would  become safe  when CI n  would become  safe.  It stores
+    this  time  in the  wired down  location containing  the time
+    stamp of the last safe BI of  the journal, to be used by Page
+    Control.
+
+4.2 File Manager protocol
+
+  o Before modifying a  CI of a protected file,  the FM calls the
+    BJM to record the necessary  BI information and gets back the
+    time stamp of the BI generated by the BJM.
+
+  o It then stores this time stamp  in the standard header of the
+    CI about to be modified.
+
+  o Only then can it start modifying the control interval.
+
+Note -- The standard CI header  contains the time the CI was last
+modified.  The BI time stamp can be used to also be the time last
+modified.
+
+
+Multics Technical Bulletin                                MTB-564
+
+4.3 Page Control protocol
+
+     Page Control must be  able to know that a page is  a CI of a
+protected  file.  The  FM, when creating  an MSF  component for a
+protected  file,  will set  the  "protected file  switch"  (a new
+switch) in the VTOC entry.  At segment activation, this switch is
+moved in the ASTE.  With this assumption, Page Control would have
+to do the following:
+
+  o When Page Control decides to write  out a page, it should now
+    check in  the ASTE if the  page is part of  a protected file.
+    If not, it proceeds as if does today.
+
+  o If the page does belong to  a protected file, it compares the
+    time stamp stored in the CI with the highest safe time stamp.
+    If it  is greater, the  page must not be  written out because
+    its BI is not safe yet; if it is not greater, the page may be
+    written out, but first its PTW must be faulted to prevent any
+    new modification to  be done to the page  while it is written
+    out.
+
+This  protocol must  be followed by  all programs  that write out
+pages to disk, that is:
+
+   - by Page Control in the normal case
+   - by the ESD procedure, and
+   - by the program that flushes memory every 15 minutes.
+
+Since page control makes the decision to defer the writing out of
+a page using non ring zero information, it must rely on some kind
+of  safety valves  to prevent  the pressure  on main  memory from
+becoming too high.
+
+  o First, it could  validate time stamps found in  data pages as
+    well as  the time stamp  associated with the  before journal;
+    all time stamps must be smaller than the current time.
+
+  o Next, Page Control could inform BJM  each time it has to skip
+    a  page by  adding 1  to a  count associated  with the before
+    journal.  This causes  the BJM to flush the  journal when the
+    count  becomes  "too  high,"   instead  of  waiting  until  a
+    transaction commits to do it.
+
+  o Finally, if it happens that the  BJM has not been invoked for
+    a  long  time, the  count may  increase beyond  its threshold
+    value  without  triggering  any corrective  action.   In this
+    case, page control should have  a way to force the invocation
+    of the BJM to flush the journal.
+
+
+MTB-564                                Multics Technical Bulletin
+
+5 EXTENSION TO SEVERAL BEFORE JOURNALS
+
+     If there are  more than 1 before journal,  the BJM maintains
+an  array  of  safe  time stamps,  one  for  each  journal.  When
+returning the time stamp of the  BI, it also returns the index of
+the journal, which is stored in the CI header with the time stamp
+by  the  FM; Page  Control  then uses  this  index to  access the
+appropriate time stamp in the array.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

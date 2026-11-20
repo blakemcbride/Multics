@@ -1,0 +1,1249 @@
+/* Sample program #4 for Project Rosetta stone
+
+   Coded by Barry L. Wolman in June 1973 */
+
+mix: proc(arg);
+
+dcl  arg char(*);
+
+dcl  (symbol_start,literal_start,input_pt,
+     object_pt,list_pt) ptr init(null),
+     (symbol_pt,literal_pt,xref_pt,list_hold,object_hold) ptr,
+     (line_no,k,bitcnt,input_length,input_pos,list_pos,
+     cursor,err_count,token_type,lit_size,op_index,
+     a_value,i_value,f_value,c_value,ilc,code,
+     input_left,left,right,offset) fixed binary,
+     (end_hit,in_literal) bit(1),
+     error(36) bit(1),
+     token char(10) aligned,
+     input char(120) varying,
+     mix_area area(1024),
+     (wdir,dir) char(168),
+     (ent,sourcename,listname) char(32);
+
+dcl  get_wdir_ entry(char(168)),
+     expand_path_ entry(ptr,fixed bin,ptr,ptr,fixed bin),
+     hcs_$initiate_count entry(char(*),char(*),char(*),
+          fixed bin,fixed bin,ptr,fixed bin),
+     com_err_ options(variable),
+     tssi_$get_segment entry(char(*),char(*),ptr,ptr,fixed bin),
+     tssi_$finish_segment entry(ptr,fixed bin,bit(5),ptr,fixed bin),
+     hcs_$terminate_noname entry(ptr,fixed bin),
+     write_seg options(variable);
+
+dcl  bindec entry(fixed binary) returns(char(12)),
+     bindec$vs entry(fixed binary) returns(char(12) varying);
+
+dcl  (abs,addr,binary,bit,divide,empty,fixed,float,hbound,index,
+     lbound,length,min,null,search,size,string,substr,verify) builtin;
+
+%include mixhead;
+
+     /* This is the main section of the assembler.  The assembler
+        initializes itself and then reads and processes lines until
+        an end pseudo-op is found.  The assembler then processes
+        any undefined symbols that were previously encountered,
+        processes saved literals, prints some informatory messages,
+        and prints a cross-reference listing of the symbol table.
+        Finally, the segments used in the compilation are wrapped up
+        and the assembly is complete. */
+
+     call initialize;
+
+     if code ^= 0 then call com_err_(code,"mix",arg);
+     else do;
+
+          do while(^ end_hit);
+               call read_line;
+
+               if substr(input,1,1) = "*" then call print;
+               else call process_line;
+          end;
+
+          call process_undefineds;
+          call process_literals;
+
+          if err_count ^= 0 then call write_seg(list_pt,list_pos,
+               "^/^d ERROR^a FOUND IN THIS ASSEMBLY",err_count,
+               substr(" S",fixed(err_count > 0,1)+1,1));
+
+          call write_seg(list_pt,list_pos,"^/START ADDRESS IS ^d",
+               start_address);
+
+          call print_xref;
+          end;
+
+     if input_pt ^= null then call hcs_$terminate_noname(input_pt,code);
+     if object_pt ^= null then call tssi_$finish_segment(object_pt,
+      size(mix_segment)*36,"1010"b, object_hold, code);
+
+     if list_pt ^= null then call tssi_$finish_segment(list_pt,
+      list_pos*9, "1011"b, list_hold, code);
+
+          /* This procedure initializes the assembler.  It uses
+             standard Multics conventions and procedures for obtaining
+             pointers to the input, output, and listing segments.
+             It returns with the global variable "code" non-zero if
+             any errors are found.  Various other initialization tasks
+             are also done. */
+
+initialize: proc;
+
+          call expand_path_(addr(arg),length(arg),addr(dir),addr(ent),code);
+          if code ^= 0 then return;
+
+          k = index(ent," ");
+          if k = 0 then k = length(ent); else k = k - 1;
+
+          sourcename = ent;
+          substr(sourcename,k+1,6) = ".mixal";
+
+          call hcs_$initiate_count(dir,sourcename,"",bitcnt,1,input_pt,code);
+          if input_pt = null then return;
+
+          input_length = divide(bitcnt,9,24,0);
+          input_left = input_length;
+          input_pos = 0;
+
+          call get_wdir_(wdir);
+
+          call tssi_$get_segment(wdir,ent,object_pt,object_hold,code);
+          if code ^= 0 then return;
+
+          listname = ent;
+          substr(listname,k+1,5) = ".list";
+
+          call tssi_$get_segment(wdir,listname,list_pt,list_hold,code);
+          if code ^= 0 then return;
+
+          do k = lbound(mix_word,1) to hbound(mix_word,1);
+               string(mix_word(k)) = "0"b;
+               end;
+
+          list_pos = 0;
+          line_no = 0;
+          start_address, ilc, err_count = 0;
+
+          end_hit, in_literal = "0"b;
+
+          call write_list(
+           "LOCN  S  AAAA II FF CC LINE LOC        OP   ADDRESS
+");
+          end;
+
+          /* This procedure is called to read the next line from the 
+             input segment which is viewed as a structure consisting
+             of the characters already processed and the characters
+             remaining to be processed.  If an attempt is made to read
+             past the end of the input segment, an end psuedo-op line
+             is fabricated.  Since most Multics source files use
+             tab characters instead of fixed spacing, read_line will
+             expand an input line which contains any tab characters. */
+
+read_line: proc;
+
+dcl       (i,j,k,len) fixed binary;
+
+          string(error) = "0"b;
+          line_no = line_no + 1;
+
+          if input_left <= 0
+          then do;
+               error(14) = "1"b;
+               input = "           end  0 ";
+               end;
+          else do;
+               len = index(remainder,NL);
+               if len = 0 then len = length(remainder) + 1;
+
+               if index(substr(remainder,1,len),HT) = 0
+               then do;
+                    input = substr(remainder,1,len);
+                    substr(input,len,1) = BLANK;
+                    end;
+               else do;
+                    j = 1;
+                    input = "";
+
+                    do i = 1 to len - 1;
+                         if substr(remainder,i,1) ^= HT
+                         then input = input || substr(remainder,i,1);
+                         else do;
+                              k = tab(j) - length(input);
+                              if k < 0 then k = 1;
+                              input = input  || substr((16)" ",1,k);
+                              end;
+
+                         if length(input) >= tab(j)
+                         then j = min(j+1,hbound(tab,1));
+                         end;
+
+                    input = input || " ";
+                    end;
+
+               if length(input) < 17 then input = input || (16)" ";
+
+               input_pos = input_pos + len;
+               input_left = input_left - len;
+               end;
+
+          cursor = 17;
+          end;
+
+          /* The following 3 procedures deal with the internal
+             representation of a MIX word:
+
+             set_mix_word sets the output word specified by the
+             location counter to the temporary MIX value.
+
+             set_mix_field sets the specified field of the
+             temporary MIX value to the given value.
+
+             get_mix_field returns as its value the requested
+             field of the temporary MIX value. */
+
+set_mix_word: proc;
+
+          string(mix_word(ilc)) = string(mix_temp);
+
+          end;
+
+set_mix_field: proc(value,l,r);
+
+dcl       (value,l,r) fixed binary;
+
+dcl       (bytecnt,my_l) fixed binary;
+
+          my_l = l;
+          if my_l = 0
+          then do;
+               mix_temp.mix_sign = value < 0;
+               my_l = my_l + 1;
+               end;
+
+          bytecnt = r - my_l + 1;
+          if abs(value) > BYTE(bytecnt) then error(7) = "1"b;
+
+          bitcnt = bytecnt * BYTESIZE;
+          if bitcnt ^= 0 then substr(mix_temp.mix_value,6*my_l - 5,bitcnt)
+           = substr(bit(fixed(value,30),30),31 - bitcnt,bitcnt);
+          end;
+
+get_mix_field: proc(l,r) returns(fixed binary);
+
+dcl       (l,r) fixed binary;
+
+dcl       (temp,my_l) fixed binary;
+
+          my_l = l;
+          if my_l ^= 0 then temp = 1;
+          else do;
+               temp = SIGN(fixed(substr(mix_temp.mix_sign,1,1),1));
+               my_l = my_l + 1;
+               end;
+
+          bitcnt = (r - my_l + 1) * BYTESIZE;
+          if bitcnt ^= 0 then temp = temp *
+           fixed(substr(mix_temp.mix_value,6*my_l - 5,bitcnt));
+
+          return(temp);
+          end;
+
+          /* This routine prints comment-type lines followed by
+             any errors found in the line. */
+
+print:    proc;
+
+          call write_seg(list_pt,list_pos,"^23x^4d ^a",line_no,input);
+
+          if string(error) then call print_errors;
+          end;
+
+          /* This procedure prints and accumulates counts of
+             error messages. */
+
+print_errors: proc;
+
+dcl       i fixed bin;
+
+          do i = 1 to hbound(error,1);
+               if error(i)
+               then do;
+                    err_count = err_count + 1;
+                    call write_list(error_message(i));
+                    end;
+               end;
+          end;
+
+          /* This procedure prints a source line in instruction
+             format showing the generated A, I, F, and C fields. */
+
+print_instruction: proc;
+
+dcl       s char(1) aligned;
+
+          if a_value >= 0 then s = "+";
+          else do;
+               s = "-";
+               a_value = - a_value;
+               end;
+
+          call write_seg(list_pt,list_pos,
+           "^4d  ^a  ^4d ^2d ^2d ^2d ^4d ^a",
+           ilc,s,a_value,i_value,f_value,c_value,line_no,input);
+
+          if string(error) then call print_errors;
+          end;
+
+          /* This procedure prints a source line in data format
+             showing the values of bytes 0 thru 5. */
+
+print_data: proc;
+
+dcl       (i,mw(0:5)) fixed binary,
+          ln char(4);
+
+          if line_no <= 0 then ln = "    ";
+          else ln = substr(bindec(line_no),9,4);
+
+          do i = 0 to 5;
+               mw(i) = get_mix_field(i,i);
+               end;
+
+          call write_seg(list_pt,list_pos,
+           "^4d  ^a ^2d ^2d ^2d ^2d ^2d ^4a ^a",
+           ilc,substr("+-",fixed(mw(0) < 0,1)+1,1),mw(1),mw(2),mw(3),
+           mw(4),mw(5),ln,input);
+
+          if string(error) then call print_errors;
+          end;
+
+          /* print_xref prints a listing of the symbol table showing,
+             for all non-local symbols, the symbol name, symbol value,
+             and lines on which the symbol was referenced.  Multiple
+             references coming from the same line are shown as a single
+             reference; a reference from line 0 is shown as "lit". */
+
+print_xref: proc;
+
+dcl       last_line fixed binary,
+          put_heading bit(1),
+          buff char(132) varying;
+
+          put_heading = "1"b;
+
+          do symbol_pt = symbol_start repeat(symbol.next)
+           while(symbol_pt ^= null);
+
+               if ^ symbol.local
+               then do;
+                    if put_heading
+                    then do;
+                         call write_seg(list_pt,list_pos,
+                          "^|SYMB0L^12xVALUE^-REFERENCES^/");
+                         put_heading = "0"b;
+                         end;
+
+                    buff = symbol.name || " " ||
+                     bindec(symbol.value) || HT;
+
+                    last_line = 0;
+                    do xref_pt = symbol.first repeat(xref.next)
+                     while(xref_pt ^= null);
+
+                         if last_line ^= xref.line
+                         then do;
+                              if xref.line = 0
+                              then buff = buff || "lit";
+                              else buff = buff || bindec$vs(xref.line);
+
+                              if length(buff) < 120
+                              then buff = buff || "  ";
+                              else do;
+                                   call write_list(buff);
+                                   buff = HT3;
+                                   end;
+
+                              last_line = xref.line;
+                              end;
+                         end;
+
+                    if length(buff) > 3 then call write_list(buff);
+                    end;
+               end;
+
+          if put_heading then call write_list("
+NO SYMBOLS WERE DEFINED");
+          end;
+
+          /* This procedure walks through the symbol table looking
+             for undefined symbols with non-null usage strings.  If
+             it finds such a symbol, it fills in the usage string,
+             defines the symbol with current value of the location
+             counter, and generates a word of zeros.  The input line
+             is set up so an appropriate line will be put in listing. */
+
+process_undefineds: proc;
+
+          call set_mix_field(0,0,5);
+          line_no = 0;
+          input = "           con  0 ";
+
+          do symbol_pt = symbol_start repeat(symbol.next)
+           while(symbol_pt ^= null);
+               if ^ symbol.defined & symbol.usage ^= null
+               then do;
+                    substr(input,1,10) = symbol.name;
+
+                    if symbol.local
+                    then if substr(symbol.name,2,1) = "f"
+                         then do;
+                              substr(input,2,1) = "h";
+                              call define_label;
+                              end;
+                         else;
+                    else call define_label;
+                    end;
+               end;
+
+
+               /* This procedure actually does the work of defining
+                  the undefined symbol */
+
+define_label:  proc;
+
+               string(error) = "0"b;
+
+               call fill_usage(symbol.usage,ilc);
+               symbol.value = ilc;
+               symbol.defined = "1"b;
+
+               call set_mix_field(0,0,5);
+               call data_word;
+               end;
+
+          end;
+
+          /* This procedure processes the previously saved literal
+             strings.  For each element on the literal list, it
+             generates a "con" pseudo-op line using the saved
+             string;  it then fills in the usage string of the
+             literal using current value of the location counter,
+             evaluates the expected W-field, and stores the resulting
+             value in the output segment.  A flag is set which causes
+             the expression evaluator to issue an error if it
+             finds a local symbol in an expression in the literal--
+             this is probably an error (it is certainly risky). */
+
+process_literals: proc;
+
+          in_literal = "1"b;
+          line_no = 0;
+
+          do literal_pt = literal_start repeat(literal.next)
+           while(literal_pt ^= null);
+               input = "           con  " || literal.string || " ";
+               cursor = 17;
+
+               call fill_usage(literal.usage,ilc);
+
+               string(error) = "0"b;
+
+               call eval_word_field;
+               call data_word;
+               end;
+
+          end;
+
+          /* This procedure places a string into the listing segment
+             which it regards as a structure consisting of
+             the part already written and the line about to be
+             written. */
+
+write_list: proc(str);
+
+dcl       str char(*) varying;
+
+          substr(listing_segment.line,1,length(str)) = str;
+          substr(listing_segment.line,length(str)+1,1) = NL;
+          list_pos = list_pos + length(str) + 1;
+
+          end;
+
+          /* This procedure evaluates a W-field.  It clears the
+             temporary MIX value and returns if the W-field was
+             empty.  Otherwise, it loops looking for an expression
+             followed by an optional F-part (which must satisfy
+             0 <= L <= R <= 5);  the resulting expression is
+             packed into the specified field and the loop continues
+             until an expression (or expression and F_part) is not
+             followed by a comma. */
+
+eval_word_field: proc;
+
+dcl       val fixed bin;
+
+          call set_mix_field(0,0,5);
+
+          call next_token;
+          if token_type = SPACE then return;
+
+          do while("1"b);
+               val = expression();
+
+               if token_type = LEFT then call f_part(-2);
+               else do;
+                    left = 0;
+                    right = 5;
+                    end;
+
+               call set_mix_field(val,left,right);
+
+               if token_type ^= COMMA
+               then do;
+                    call check_ending;
+                    return;
+                    end;
+
+               call next_token;
+               end;
+
+          end;
+
+          /* If no other errors were found, this procedure checks
+             to see if the current token is a blank. */
+
+check_ending: proc;
+
+          if string(error) = "0"b
+          then if token_type ^= SPACE
+               then error(20) = "1"b;
+
+          end;
+
+          /* This procedure advances the location counter by 1
+             and resets it to zero if it reaches its maximum
+             value. */
+
+advance_ilc: proc;
+
+          ilc = ilc + 1;
+          if ilc = MAX_ILC then ilc =  0;
+          end;
+
+          /* This procedure is called to find a specified symbol
+             in the symbol table which it maintains as a list of
+             symbol nodes sorted alphabetically according to symbol
+             name.  This routine is called for both local and
+             non-local symbols.  If the specified symbol is not
+             found in the table, it is inserted in the appropriate
+             place.  A flag is set for each symbol as it is allocated
+             which indicates if it is local.  Whenever this routine
+             is called for a non-local symbol, a xref node is placed
+             at the end of the xref chain to remember the use of this
+             symbol in the current line.  find_symbol returns with
+             the global variable symbol_pt set. */
+
+find_symbol: proc(name) ;
+
+dcl       name char(10) aligned;
+
+dcl       prev ptr;
+
+          prev = null;
+
+          do symbol_pt = symbol_start repeat(symbol.next)
+           while(symbol_pt ^= null);
+
+               if name = symbol.name
+               then do;
+                    call make_xref;
+                    return;
+                    end;
+
+               if name < symbol.name
+               then do;
+                    call insert_symbol;
+                    call make_xref;
+                    return;
+                    end;
+
+               prev = symbol_pt;
+               end;
+
+          call insert_symbol;
+          call make_xref;
+
+          /* This procedure inserts the symbol name in the
+             symbol list after the symbol pointed at by prev
+             or at the beginning of the list if prev is null. */
+
+insert_symbol: proc;
+
+          allocate symbol in(mix_area);
+          symbol.name = name;
+
+          if prev = null
+          then do;
+               symbol.next = symbol_start;
+               symbol_start = symbol_pt;
+               end;
+          else do;
+               symbol.next = prev -> symbol.next;
+               prev -> symbol.next = symbol_pt;
+               end;
+
+          symbol.local = (verify(substr(symbol.name,1,1),DIGIT) = 0)
+           & (substr(symbol.name,3) = BLANK)
+           & (verify(substr(symbol.name,2,1),"bfh") = 0);
+          end;
+
+          /* make_xref allocates an xref node and chains it at
+             the end of the xref chain of the symbol node pointed
+             at by the global variable symbol_pt. */
+
+make_xref:     proc;
+
+          if ^ symbol.local
+          then do;
+               allocate xref in(mix_area);
+               xref.line = line_no;
+
+               if symbol.first = null then symbol.first = xref_pt;
+               else symbol.last -> xref.next = xref_pt;
+
+               symbol.last = xref_pt;
+               end;
+          end;
+
+     end find_symbol;
+
+          /* This procedure is called to process the label field;
+             its argument is the value that should be given to
+             the symbol in the label field.  PL/I character scanning
+             facilities are used to isolate the symbol (which must
+             start in column 1) and verify its legality.  If the
+             symbol is an H-type local symbol, the following
+             actions are performed:
+                    a.   The forward form of the symbol is located,
+                         its usage list (if any) is resolved, and
+                         the forward symbol is made undefined.
+                    b.   The backward form of the symbol is located
+                         in the symbol table and is defined with the
+                         specified value.
+             If the symbol is a B or F type local an error is
+             recorded;  if the symbol is non-local an error is
+             reported if the symbol was previously defined, otherwise
+             it has its usage list resolved and is defined with the
+             specified value. */
+
+label_field: proc(new_value);
+
+dcl       new_value fixed binary;
+
+dcl       label char(10) aligned,
+          k fixed binary;
+
+          if substr(input,1,11)  = BLANK then return;
+
+          k = index(substr(input,1,11),BLANK) - 1;
+
+          if k <= 0 | substr(input,k+1,11-k) ^= BLANK
+           | verify(substr(input,1,k),ALPHANUMERIC) ^= 0
+           | verify(substr(input,1,k),DIGIT) = 0
+          then do;
+               error(2) = "1"b;
+               return;
+               end;
+
+          label = substr(input,1,k);
+
+          if verify(substr(label,1,1),DIGIT) = 0
+          then do;
+
+               if substr(label,2) = "h"
+               then do;
+                    substr(label,2,1) = "f";
+                    call find_symbol(label);
+                    call fill_usage(symbol.usage,new_value);
+                    symbol.defined = "0"b;
+
+                    substr(label,2,1) = "b";
+                    call find_symbol(label);
+                    symbol.defined = "1"b;
+                    symbol.value = new_value;
+
+                    return;
+                    end;
+
+               if substr(label,2) = "b" | substr(label,2) = "f"
+               then do;
+                    error(2) = "1"b;
+                    return;
+                    end;
+               end;
+
+          call find_symbol(label);
+
+          if symbol.defined then error(1) = "1"b;
+          else do;
+               call fill_usage(symbol.usage,new_value);
+               symbol.value = new_value;
+               symbol.defined = "1"b;
+               end;
+
+          end;
+
+          /* This routine resolves the usage list of a symbol or
+             literal.  Each element in the usage list specifies a use
+             of the input value in the listing and object segment.  The
+             usage in the listing segment is filled by over-writing the
+             A-field previously written when the forward reference was
+             first processed;  the use in the object segment is filled
+             by setting the temporary MIX value to the old contents of
+             the word containing the forward reference, changing the
+             A-field, and then replacing the modified word.  After
+             each usage node is processed, it is returned to the free
+             storage pool. */
+
+fill_usage: proc(use,val);
+
+dcl       use pointer,
+          val fixed binary;
+
+dcl       next_use ptr,
+          af char(4);
+
+          if use = null then return;
+
+          af = substr(bindec(val),9,4);
+
+          do while(use ^= null);
+               next_use = use -> usage.next;
+
+               offset = use -> usage.list;
+               if val < 0 then usage_overlay.sign = "-";
+               usage_overlay.afield = af;
+
+               string(mix_temp) = string(mix_word(use -> usage.object));
+               call set_mix_field(val,0,2);
+               string(mix_word(use -> usage.object)) = string(mix_temp);
+
+               free use -> usage in(mix_area);
+               use = next_use;
+               end;
+
+          end;
+
+          /* This procedure extracts the OP field of the MIX input
+             line and does a binary search looking for the name in
+             the opcode table.  It returns the table index or 0 if
+             the opcode is not found. */
+
+op_field: proc returns(fixed binary);
+
+dcl       (i,k,left,right) fixed binary,
+          op char(4) aligned;
+
+          k = index(substr(input,12,5),BLANK) - 1;
+
+          if k <= 0 | substr(input,12+k,5-k) ^= BLANK
+          then return(0);
+
+          op = substr(input,12,k);
+
+          left = 1;
+          right = hbound(op_name,1);
+
+          do while(left <= right);
+               i = divide(left + right,2,17,0);
+
+               if op = op_name(i) then return(i);
+
+               if op < op_name(i)
+               then right = i - 1;
+               else left = i + 1;
+               end;
+
+          return(0);
+          end;
+
+          /* This procedure processes the input line.  It calls
+             op_field to extract and look up the opcode.  If
+             the opcode is not known, the tine is ignored.  If
+             the opcode is legal and is not the equ pseudo,
+             label_field is called to assign any label the value
+             of the location counter.  If the opcode index is
+             less than zero, the opcode is a pseudo-op,
+             otherwise it is a machine op. */
+
+process_line: proc;
+
+          op_index = op_field();
+
+          if op_index = 0
+          then do;
+               error(3) = "1"b;
+               call print;
+               end;
+          else do;
+               if op_code(op_index) ^= EQU then call label_field(ilc);
+
+               if op_code(op_index) > 0 then call machine_op;
+               else call pseudo_op;
+
+               end;
+          end;
+
+          /* This procedure is called to process MIX pseudo-ops. */
+
+pseudo_op: proc;
+
+dcl       (i,k) fixed binary;
+
+          goto pseudo(op_code(op_index));
+
+          /* ALF */
+
+pseudo(-1):
+          call set_mix_field(0,0,0);
+          do i = 1 to 5;
+               k = index(MIXALPHABET,substr(input,16+i,1));
+               if k = 0 then error(16) = "1"b; else k = k - 1;
+               call set_mix_field(k,i,i);
+               end;
+
+          call data_word;
+          return;
+
+          /* CON */
+
+pseudo(-2):
+          call eval_word_field;
+          call data_word;
+          return;
+
+          /* END */
+
+pseudo(-3):
+          call eval_word_field;
+          start_address = get_mix_field(4,5);
+          end_hit = "1"b;
+          call print;
+          return;
+
+          /* EQU */
+
+pseudo(-4):
+          call eval_word_field;
+          call label_field(get_mix_field(0,5));
+          call print;
+          return;
+
+          /* ORIG */
+
+pseudo(-5):
+          call eval_word_field;
+
+          i = get_mix_field(0,5);
+          if i < 0 | i > MAX_ILC then error(4) = "1"b;
+          else ilc = i;
+
+          call print;
+          end;
+
+          /* This procedure places a word of data into mix output,
+             prints the word in data format, and advances the
+             location counter. */
+
+data_word: proc;
+
+          call set_mix_word;
+          call print_data;
+          call advance_ilc;
+
+          end;
+
+          /* This procedure is called to save a literal found
+             in the address field.  It searchs the part of the input
+             line after the opening "=" looking for a blank or a closing
+             "=".  If it finds a blank, an error is reported.  The
+             list of previously processed literals is searched to see
+             if this literal string was used before.  If not previously
+             used, a new literal node is al located and inserted at the
+             head of the list.  make_usage is called to record a use
+             of the literal. */
+
+save_literal: proc;
+
+dcl       continue bit(1);
+
+          lit_size = search(substr(input,18),"= ") - 1;
+          if substr(input,18+lit_size,1) = BLANK
+          then do;
+               error(15) = "1"b;
+               cursor = length(input) + 1;
+               end;
+          else cursor = 19+lit_size;
+
+          continue = "1"b;
+          do literal_pt = literal_start repeat(literal.next)
+           while(continue & literal_pt ^= null);
+               if literal.size = lit_size
+               then if literal.string = substr(input,18,lit_size)
+                    then continue = "0"b;
+               end;
+
+          if continue
+          then do;
+               allocate literal in(mix_area);
+               literal.next = literal_start;
+               literal_start = literal_pt;
+               literal.string = substr(input,18,lit_size);
+               end;
+
+          call make_usage(literal.usage);
+          call next_token;
+          end;
+
+          /* make_usage allocates a usage node and fills in the
+             current position in the listing segment and the value
+             of the location counter. */
+
+make_usage: proc(use);
+
+dcl       use ptr;
+
+dcl       p ptr;
+
+          allocate usage set(p) in(mix_area);
+          p -> usage.next = use;
+          use = p;
+          p -> usage.list = list_pos;
+          p -> usage.object = ilc;
+          end;
+
+          /* This procedure is called to process a forward reference
+             in the address field.  make_usage is called to record
+             the usage; a check is made to see if the symbol
+             is followed by something other than a space, comma, or
+             left parentheses. */
+
+forward_reference: proc;
+
+          call make_usage(symbol.usage);
+
+          call next_token;
+          if index(" ,(",substr(token,1,1)) = 0
+          then error(13) = "1"b;
+          end;
+
+          /* This routine processes an input line in which the
+             opcode is a machine operation.   It gathers the A, I, F,
+             and C fields, packs these into the MIX word, and
+             prints the instruction line. */
+
+machine_op: proc;
+
+          call a_part;
+          call i_part;
+          call f_part(op_variant(op_index));
+          call check_ending;
+          c_value = op_code(op_index);
+
+          call set_mix_field(a_value,0,2);
+          call set_mix_field(i_value,3,3);
+          call set_mix_field(f_value,4,4);
+          call set_mix_field(c_value,5,5);
+
+          call set_mix_word;
+
+          call print_instruction;
+          call advance_ilc;
+          end;
+
+          /* This routine picks up the A field of an instruction
+             word.  If it finds an "=", it calls save_literal.  If
+             it finds a defined symbol it calls expression;  if it
+             finds an undefined symbol it either calls forward_reference
+             or issues one of several errors.  An error is recorded
+             if the resulting A value will not fit in two bytes. */
+
+a_part:   proc;
+
+          call next_token;
+          a_value =  0;
+
+          if token_type = EQUAL then call save_literal;
+          else if index(" ,(",substr(token,1,1)) ^= 0
+               then;
+               else if token_type = SYMBOL
+                    then do;
+                         call find_symbol(token);
+
+                         if symbol.defined then a_value = expression();
+                         else if symbol.local
+                              then if substr(token,2) = "f"
+                                   then call forward_reference;
+                                   else if substr(token,2) = "h"
+                                        then error(12) = "1"b;
+                                        else do;
+                                             error(21) = "1"b;
+                                             symbol.defined = "1"b;
+                                             symbol.value =  0;
+                                             end;
+                              else call forward_reference;
+                         end;
+                    else a_value = expression();
+
+          if abs(a_value) > BYTE(2)
+          then do;
+               error(17) = "1"b;
+               a_value = 0;
+               end;
+
+          end;
+
+          /* This routine picks up the I field of an instruction.
+             If the current token is not a comma, a zero value is
+             used;  otherwise, expression is called and the resulting
+             value checked to make sure it fits in one byte. */
+
+i_part:   proc;
+
+          if token_type ^= COMMA then i_value = 0;
+          else do;
+               call next_token;
+               i_value = expression();
+
+               if i_value < 0 |  i_value >= BYTE(1)
+               then do;
+                    error(18) = "1"b;
+                    i_value = 0;
+                    end;
+               end;
+          end;
+
+          /* This routine is called to obtain the F part of an
+             instruction or a W field specification.  Its argument
+             describes the type of F field allowed and the
+             default F value to use if F field is absent.
+             If the current token is not a "(", the appropriate
+             default F value is set;  if a "(" is present but not
+             allowed an error is recorded, otherwise an expression
+             is obtained and the closing ")" verified.  The global
+             variables left and right are set to indicate the
+             field. */
+
+f_part:   proc(variant);
+
+dcl       variant fixed binary;
+
+          if token_type ^= LEFT
+          then do;
+               f_value = variant;
+               if f_value < 0 then f_value = default_f_value(f_value);
+               end;
+          else if variant >= 0
+               then do;
+                    error(8) = "1"b;
+                    f_value = 0;
+                    end;
+               else do;
+                    call next_token;
+                    f_value = expression();
+
+                    if token_type ^= RIGHT then error(9) = "1"b;
+
+                    call next_token;
+
+                    if f_value < 0 | f_value >= BYTE(1)
+                    then do;
+                         error(10) = "1"b;
+                         f_value = 0;
+                         end;
+
+                    if variant < -1
+                    then do;
+                         left = divide(f_value,8,17,0);
+                         right = f_value - 8*left;
+
+                         if left < 0 | right > 5 | left > right
+                         then do;
+                              error(10) = "1"b;
+                              f_value, left =  0;
+                              right = 5;
+                              end;
+                         end;
+                    end;
+          end;
+
+          /* This prpcedure sets the global variables token and
+             token_type to specify the next token in the address
+             field.  PL/I string processing functions are used to
+             locate a string of alpnanumeric characters starting
+             at current position.  If such a string is found, an
+             error is reported if more than 10 characters were found.
+             If no alphanumeric characters were found, the token is
+             an operator or parenthesis. */
+
+next_token: proc;
+
+dcl       k fixed binary;
+
+          if cursor > length(input)
+          then do;
+               token = BLANK;
+               token_type = SPACE;
+               return;
+               end;
+
+          k = verify(substr(input,cursor),ALPHANUMERIC);
+          if k = 0 then k = length(input) - cursor; else k = k - 1;
+
+          if k > 0
+          then do;
+               if k > 10 then error(6) = "1"b;
+               token = substr(input,cursor,k);
+
+               if verify(substr(input,cursor,k),DIGIT) = 0
+               then token_type = NUMBER;
+               else token_type = SYMBOL;
+
+               cursor = cursor + k;
+               end;
+          else if substr(input,cursor,2) = "//"
+               then do;
+                    token = "//";
+                    token_type = FDIVIDE;
+                    cursor = cursor + 2;
+                    end;
+               else do;
+                    k = index("+-*//: ,()=",substr(input,cursor,1));
+
+                    if k = 0
+                    then do;
+                         error(5) = "1"b;
+                         token = BLANK;
+                         token_type = SPACE;
+                         end;
+                    else do;
+                         token = substr(input,cursor,1);
+                         token_type = k + 2;
+                         end;
+
+                    cursor = cursor + 1;
+                    end;
+
+          end;
+
+          /* This procedure evaluates an expression and returns
+             the value of the expression when it encounters a token
+             that cannot be part of the expression.  atomic_exprssion
+             is called to obtain the value of operands. */
+
+expression: proc returns(fixed binary);
+
+dcl       (op_num,t1,t2) fixed binary,
+          (no_error,continue) bit(1) aligned;
+
+          if token_type > TIMES then no_error = "0"b;
+          else do;
+
+               no_error = "1"b;
+               if token_type = PLUS | token_type = MINUS
+               then t1 = 0;
+               else do;
+                    t1 = atomic_expression();
+                    call next_token;
+                    end;
+
+               continue = "1"b;
+               do while(continue & no_error);
+
+                    if token_type < PLUS then no_error = "0"b;
+                    else if token_type > COLON then continue = "0"b;
+                         else do;
+                              op_num = token_type;
+                              call next_token;
+                              t2 = atomic_expression();
+                              call evaluate;
+                              call next_token;
+                              end;
+                    end;
+               end;
+
+          if no_error then return(t1);
+
+          error(11) = "1"b;
+          return(0);
+
+          /* This procedure returns the value of atomic operands.
+             A "*" yields the value of the location counter.  A
+             number is converted to binary and returned.  A variety
+             of error checking is done on symbols;  the value of
+             the symbol is returned when the symbol is defined. */
+
+atomic_expression: proc returns(fixed binary);
+
+          if token_type = TIMES then return(ilc);
+
+          if token_type = NUMBER then return(binary(token,17));
+
+          if token_type = SYMBOL
+          then if verify(substr(token,1,1),DIGIT) = 0
+                & substr(token,2) = "h"
+               then error(12) = "1"b;
+               else do;
+                    call find_symbol(token);
+
+                    if symbol.local & in_literal
+                    then error(22) = "1"b;
+
+                    if symbol.defined then return(symbol.value);
+
+                    if symbol.local
+                    then if substr(symbol.name,2,1) = "h"
+                         then error(12) = "1"b;
+                         else if substr(symbol.name,2,1) = "b"
+                              then do;
+                                   error(21) = "1"b;
+                                   symbol.defined = "1"b;
+                                   symbol.value = 0;
+                                   end;
+                              else error(13) = "1"b;
+                    else error(19) = "1"b;
+                    end;
+
+          no_error = "0"b;
+          return(0);
+          end;
+
+          /* This procedure is called to evaluate an expression
+             involving a binary operator. */
+
+evaluate:      proc;
+
+               goto op(op_num);
+
+op(3):         t1 = t1 + t2;
+               return;
+
+op(4):         t1 = t1 - t2;
+               return;
+
+op(5):         t1 = t1 * t2;
+               return;
+
+op(6):         t1 = divide(t1,t2,17,0);
+               return;
+
+op(7):         t1 = float(t1)/float(t2) * BYTE(5);
+               return;
+
+op(8):         t1 = 8 * t1 + t2;
+               end;
+
+          end expression;
+
+end mix;

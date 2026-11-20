@@ -1,0 +1,2083 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-547, Rev. 1</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-547, Rev. 1: Data Management: Record Manager Functional Specification.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  Multics Technical Bulletin                        MTB-547, Rev. 1
+  DM: Record Manager Functional Spec
+
+  To:       Distribution
+
+  From:     Lindsey Spratt and Matt Pierret
+
+  Date:     04/18/84
+
+  Subject:  Data Management: Record Manager Functional Specification
+
+  1 ABSTRACT
+
+       This document describes the operations of the record manager
+  which  will  be used  by  the relation  and index  managers.  The
+  record  manager  implements  a  collection  of  fixed-format (all
+  records having the same  set of fields), variable-length records.
+  Methods  of accessing  data are  described, including  the use of
+  search specifications, cursors and record identifiers.
+
+  Comments should be sent to the author:
+
+  via Multics Mail:
+     Spratt.Multics on either MIT Multics or System M.
+
+  via US Mail:
+     Lindsey Spratt
+     Honeywell Information Systems, inc.
+     4 Cambridge Center
+     Cambridge, Massachusetts 02142
+
+  via telephone:
+     (HVN) 261-9321, or
+     (617) 492-9321
+
+  _________________________________________________________________
+
+  Multics  project  internal  working  documentation.   Not  to  be
+  reproduced or distributed outside the Multics project without the
+  consent of the author or the author's management.
+
+
+
+                            CONTENTS
+
+                                                         Page
+
+                 1 Abstract . . . . . . . . . . . . . .     i
+                 2 Introduction . . . . . . . . . . . .     1
+                 3 Significant Changes Contained in
+                  Revision 1  . . . . . . . . . . . . .     1
+                 4 Storing Records  . . . . . . . . . .     2
+                 5 Cursors  . . . . . . . . . . . . . .     3
+                 6 Vectors  . . . . . . . . . . . . . .     3
+                 7 Description of the Operations  . . .     4
+                    record_manager_ . . . . . . . . . .     4
+                       $copy_cursor (unimplemented) . .     5
+                       $create_collection . . . . . . .     6
+                       $create_cursor . . . . . . . . .     7
+                       $delete_record_by_id . . . . . .     8
+                       $delete_records_by_id_list . . .     9
+                       $delete_records_by_spec  . . . .    10
+                       $destroy_collection  . . . . . .    11
+                       $destroy_cursor  . . . . . . . .    12
+                       $get_field_info  . . . . . . . .    13
+                       $get_record_by_id  . . . . . . .    14
+                       $get_record_ids_by_interval  . .    15
+                       $get_record_ids_by_spec  . . . .    16
+                       $get_record_count  . . . . . . .    17
+                       $get_record_count_by_interval  .    18
+                       $get_records_and_ids_by_spec . .    19
+                       $get_records_and_ids_by_interval    20
+                       $get_records_by_id_list  . . . .    22
+                       $get_records_by_interval . . . .    23
+                       $get_records_by_spec . . . . . .    25
+                       $modify_record_by_id . . . . . .    26
+                       $modify_records_by_id_list . . .    27
+                       $modify_records_by_spec  . . . .    28
+                       $position_cursor . . . . . . . .    29
+                       $put_record_by_id  . . . . . . .    30
+                       $put_records_by_id . . . . . . .    32
+                       $put_records_by_spec
+                        (unimplemented) . . . . . . . .    34
+                 Appendix A - Specification Structures     35
+                    The specification_head structure  .    35
+                    The subset_specification structure     35
+                    The search_specification structure     36
+                    The numeric_specification structure    39
+
+
+
+                         CONTENTS (cont)
+
+                                                         Page
+
+                 Appendix B - Information Structures  .    41
+                    The typed_vector structure  . . . .    41
+                    The typed_vector_array structure  .    42
+                    The element_id_list structure . . .    43
+                    The id_list structure . . . . . . .    43
+                    The interval_list structure . . . .    44
+
+  Multics Technical Bulletin                        MTB-547, Rev. 1
+  DM: Record Manager Functional Spec
+
+  2 INTRODUCTION
+
+       The record manager supports the organization of records in a
+  collection.    Records   are    multiple-field,   fixed   format,
+  varying-length  records.  That  is, many  fields are  allowed per
+  record, and the fields may be  of varying length, but all records
+  must  have the  same set  of fields  (fixed format).   The record
+  manager  may be  used with  an index  manager or  alone.  Records
+  which  are  related,  as  specified   by  the  caller,  are  kept
+  physically "close" together if possible.
+
+       Record identifiers are not  guaranteed to be unchanging from
+  transaction to transaction, but can  be guaranteed to be constant
+  for the  duration of a transaction.   Identifiers can change when
+  doing a cleanup of the record collection.
+
+       Records  are  threaded  together  in  an  explicitly defined
+  order,  making  it possible  to use  the record  manager directly
+  without the aid  of an index.  This should  save on call overhead
+  and I/Os  when walking through the  entire collection of records.
+  In general however,  it is expected that the  record manager will
+  be used in concert with an index.
+
+  3 SIGNIFICANT CHANGES CONTAINED IN REVISION 1                     |
+
+       Changes  made  to this  MTB  for Revision  1  are extensive. |
+  Therefore, no change bar indicators will appear.                  |
+
+       The name  of the subroutine interface  to the Record Manager |
+  has been changed from  rcdmgr_ to record_manager_.  The following |
+  entry points have been added:                                     |
+
+       delete_records_by_id_list                                    |
+       get_field_info                                               |
+       get_record_ids_by_interval                                   |
+       get_record_count_by_interval                                 |
+       get_records_and_ids_by_spec                                  |
+       get_records_and_ids_by_interval                              |
+       get_records_by_id_list                                       |
+       get_records_by_interval                                      |
+       modify_records_by_id_list                                    |
+       put_records_by_id                                            |
+
+      The following entry points have been renamed:                 |
+
+          old_name                   new_name                       |
+
+       delete_record_by_spec         delete_records_by_spec         |
+       get_id                        get_record_ids_by_spec         |
+
+
+  MTB-547, Rev. 1                        Multics Technical Bulletin
+                                 DM: Record Manager Functional Spec
+
+|      get_record_by_spec            get_records_by_spec
+|      modify_record_by_spec         modify_records_by_spec
+|      put_record_by_spec            put_records_by_spec
+
+|      The calculate_storage entry point has been deleted.
+
+|      The  argument  names have  been named  so that  entry points
+| which pass the same arguments now call them by the same names.
+
+|      The  descriptions   of  the  specification   structures  and
+| information  structures used  by this subroutine  have been moved
+| into Appendix  A, and their  descriptions updated to  reflect the
+| currently     installed     code.      Descriptions     of    the
+| simple_typed_vector, general_typed_vector, and typed_vector_array
+| structures have been provided.
+
+  4 STORING RECORDS
+
+       Records of  a collection are chained  together, allowing the
+  record manager to access the  records in some order.  When adding
+  a  record to  this chain  (i.e.  storing  a record)  the user may
+  specify  where  in the  chain  the record  should go.   With this
+  technique, the user can maintain a meaningful ordering of his/her
+  records.  The user also has the  option to not care about how the
+  records  are ordered,  and store them  randomly.  Whether records
+  are stored randomly or in some meaningful order, they are chained
+  together.
+
+       Records  which  are  chained  near  each  other  are  stored
+  physically  close  to  each   other,  if  possible.   Performance
+  enhancements  can  be  realised,  in  terms  of  number  of  I/Os
+  generated, under  certain common circumstances if  the user takes
+  advantage  this physical  closeness.  For  instance, if  the user
+  knows that the  records will very often be  searched according to
+  constraints over a particular field or set of fields, storing the
+  records in the order of the values of that field or set of fields
+  would make searching more  efficient.  Those searches, which were
+  already identified to be the  common case, would require only one
+  I/O  for several  records, rather  than the  likely I/O  for each
+  record if stored randomly.
+
+       An alternative gain would result  if the user could identify
+  sets  of records  within a collection  which would  very often be
+  accessed together, i.e.  if one of the records is accessed, there
+  is a high probability that the other records of the set will also
+  be accessed  very soon.  The  user could then  have those records
+  stored near each other, to reduce on the number of I/Os generated
+  in this type of search.
+
+
+  Multics Technical Bulletin                        MTB-547, Rev. 1
+  DM: Record Manager Functional Spec
+
+       As  keeping records  in some meaningful  order requires some
+  effort  on the  part of  the user, the  user can  opt for storing
+  records  without specifying  where the  records should  go.  With
+  this random storage, records are  still chained together to allow
+  for searches over  the collection, but all records  are stored at
+  the  end of  the collection both  physically and in  the chain of
+  records.
+
+  5 CURSORS
+
+       Cursors  are  used  to  maintain  a  position  in  a  record
+  collection.   Record manager  cursors contain  an indicaton  of a
+  position in a  collection, as well as such  needed information as
+  the  file  opening identifier  and the  identifier of  the record
+  collection.  Users of the record manager never manipulate or even
+  see cursors  directly.  Users pass pointers  to cursors to record
+  manager routines which are responsible for manipulating the value
+  of the cursor.  All operations which access the record collection
+  expect a cursor as an input argument, even if the position is not
+  used, because  the cursor determines the  file opening and record
+  collection identifiers.
+
+  6 VECTORS
+
+       The  record  and index  managers use  a common  structure to
+  return records and  keys.  Record and key values  are referred to
+  generically as  vectors.  Vectors are  returned to the  caller in
+  vector  arrays.  These  vector arrays  have built  in information
+  about the format  of the data, how to display  and sort the data,
+  and how to convert the  data into a character representation.  As
+  a  result,  tools for  displaying  and editing  vectors  need not
+  continually reference header information.
+
+       Just as a record is composed of fields, a vector is composed
+  of dimensions.  In  this paper, the terms vector  and record, and
+  dimension  and  field  are  used  interchangeably.   For  a  more
+  complete description  of vectors and vector  arrays and the tools
+  used to  manipulate them, see  "The Data Vector -  A General Data
+  Management Tool", MTB-999.
+
+
+  MTB-547, Rev. 1                        Multics Technical Bulletin
+                                 DM: Record Manager Functional Spec
+
+  7 DESCRIPTION OF THE OPERATIONS
+
+  Name:  record_manager_
+
+       The record_manager_  subroutine manages records  in a record
+  collection.   The  records may  have  multiple fields  of varying
+  length and mixed data types.  All  records must have the same set
+  of fields.
+
+       Positioning in  record collections is  done with the  aid of
+  search  specifications  -- structures  which describe  records or
+  record positions.  A specification  can be numeric positioning or
+  search on  values.  It can  be absolute, done by  starting at the
+  beginning or end of the index, or relative, done by starting at a
+  position specified by a cursor.
+
+       See  Appendix  A  for  a  description  of  the specification
+  structures.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$copy_cursor (unimplemented)
+
+       Makes  a  copy of  a cursor.   The new  cursor has  the same
+  position as the template cursor from which it was copied.
+
+  Usage
+
+       dcl record_manager_$copy_cursor (unimplemented) entry (ptr,
+            ptr, ptr, fixed bin(35));
+
+       call record_manager_$copy_cursor (unimplemented)
+            (input_cursor_ptr, work_area_ptr, output_cursor_ptr,
+            code);
+  where:
+
+         input_cursor_ptr             (Input)
+              is a pointer to the cursor to be copied.
+
+         work_area_ptr                (Input)
+              is a pointer  to the area in which  the new cursor is
+              to be allocated.
+
+         output_cursor_ptr            (Output)
+              is a pointer to the new cursor.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$create_collection
+
+       Creates an  empty record collection  in the given  file with
+  the specified fields.  An  identifier is assigned for referencing
+  this  collection, or  rather the  header of  the collection.  The
+  header is filled with information about the format of the records
+  and the location of the first control interval of the collection.
+
+  Usage
+
+       dcl record_manager_$create_collection entry (bit(36)
+            aligned, ptr, ptr, ptr, bit(36) aligned, fixed
+            bin(35));
+
+       call record_manager_$create_collection (file_opening_id,
+            typed_vector_array_ptr, cism_info_ptr, esm_info_ptr,
+            record_collection_id, code);
+  where:
+
+         file_opening_id              (Input)
+              is the opening identifier of the file of interest.
+
+         typed_vector_array_ptr       (Input)
+              is a  pointer to a  typed_vector_array structure, the
+              dimension table of which is used to define the fields
+              of  the colleciton.   In operations  where the fields
+              are referred to, either explicitly or implicitly, the
+              array index  of the field  in the dimension  table is
+              its identifier.
+
+         cism_info_ptr                (Input)
+              is a pointer to a structure which defines the Control
+              Interval   Storage   Method.   Currently,   only  the
+              Unblocked CISM  is supported.  The  structure used is
+              unblocked_cism_info,            declared           in
+              dm_cm_cism_info.incl.pl1.
+
+         esm_info_ptr                 (Input)
+              is a pointer to a structure which defines the Element
+              Storage  Method.   Currently, only  the Basic  ESM is
+              supported.   The  structure  used  is basic_esm_info,
+              declared in dm_cm_esm_info.incl.pl1.
+
+         record_collection_id         (Output)
+              is a record collection  identifier which serves as an
+              index to the record collection's header.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$create_cursor
+
+       Allocates  a  cursor structure  in  the provided  work area.
+  This cursor is  tailored for the record collection  with which it
+  is to be  used.  Its initial position is at  the beginning of the
+  collection.
+
+  Usage
+
+       dcl record_manager_$create_cursor entry (bit(36) aligned,
+            bit(36) aligned, ptr, ptr, fixed bin(35));
+
+       call record_manager_$create_cursor (file_opening_id,
+            record_collection_id, work_area_ptr, record_cursor_ptr,
+            code);
+  where:
+
+         file_opening_id              (Input)
+              is the  opening identifier of  the file in  which the
+              record collection resides.
+
+         record_collection_id         (Input)
+              is a record collection identifier.
+
+         work_area_ptr                (Input)
+              is a pl1 area defined by the caller.
+
+         record_cursor_ptr            (Output)
+              is a pointer  to a data structure used  to identify a
+              position  in  a  record_collection.   It  is  managed
+              entirely by the record  manager.  The cursor contains
+              the  file_opening_id,  the  record_collection_id, the
+              work_area_ptr (to  facilitate freeing), the  value of
+              the  record which  is the  current position,  and the
+              "address"  of   the  record  which   is  the  current
+              position.   The address  is to  provide swift access,
+              the  value  is to  verify that  the address  is still
+              valid.  The address and  value (the current position)
+              are  "undefined"  when  the  cursor  is  created.  It
+              becomes "defined" when given as input to any absolute
+              positioning     operation    (modify_records_by_spec,
+              delete_records_by_spec,          get_records_by_spec,
+              get_record_id, or position_cursor  with an "absolute"
+              specification).
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$delete_record_by_id
+
+       Deletes the record specified by record_id.
+
+  Usage
+
+       dcl record_manager_$delete_record_by_id entry (bit(36)
+            aligned, ptr, fixed bin(35));
+
+       call record_manager_$delete_record_by_id (record_id,
+            record_cursor_ptr, code);
+  where:
+
+         record_id                    (Input)
+              is the identifier of the record to delete.
+
+         record_cursor_ptr            (Input)
+              is a pointer to a record cursor.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$delete_records_by_id_list
+
+       Deletes  the records  specified by  the record_id_list.  The
+  cursor  is  positioned to  the record  following the  last record
+  deleted.
+
+  Usage
+
+       dcl record_manager_$delete_records_by_id_list entry (ptr,
+            ptr, fixed bin(35), fixed bin(35));
+
+       call record_manager_$delete_records_by_id_list
+            (element_id_list_ptr, record_cursor_ptr,
+            number_of_records_processed, code);
+  where:
+
+         element_id_list_ptr          (Input)
+              is   a  pointer   to  an   element_id_list  structure
+              containing the identifiers of the records to delete.
+
+         record_cursor_ptr            (Input)
+              is a pointer to a record cursor.
+
+         number_of_records_processed  (Output)
+              is the number of records deleted.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$delete_records_by_spec
+
+       Deletes the records identified by the search specification.
+
+  Usage
+
+       dcl record_manager_$delete_records_by_spec entry (ptr, ptr,
+            fixed bin(35), fixed bin(35));
+
+       call record_manager_$delete_records_by_spec
+            (specification_ptr, record_cursor_ptr,
+            number_of_records_processed, code);
+  where:
+
+         specification_ptr            (Input)
+              is   a   pointer   to   a   search_specification   or
+              numeric_specification structure.
+
+         record_cursor_ptr            (Input)
+              is a pointer to a record cursor.  After the deletion,
+              the  cursor is  set to the  position of  what was the
+              "next" record, or to  a special value indicating that
+              the end of the collection has been reached.
+
+         number_of_records_processed  (Output)
+              is the number of records which were deleted.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$destroy_collection
+
+       Destroys  a   record  collection,  freeing   its  associated
+  storage.   Record collection  identifiers may  be re-used  by the
+  "create_collection" operation.
+
+  Usage
+
+       dcl record_manager_$destroy_collection entry (bit(36)
+            aligned, bit(36) aligned, fixed bin(35));
+
+       call record_manager_$destroy_collection (file_opening_id,
+            record_collection_id, code);
+  where:
+
+         file_opening_id              (Input)
+              if the  opening identifier of  the file in  which the
+              record collection resides.
+
+         record_collection_id         (Input)
+              is  the  identifier of  the  record collection  to be
+              destroyed.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$destroy_cursor
+
+       Destroys a cursor, freeing its storage.
+
+  Usage
+
+       dcl record_manager_$destroy_cursor entry (ptr, fixed
+            bin(35));
+
+       call record_manager_$destroy_cursor (record_cursor_ptr,
+            code);
+  where:
+
+         record_cursor_ptr            (Input)
+              is a pointer to the record cursor to be destroyed.
+
+         code                         (Output)
+              is standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$get_field_info
+
+            Returns information  about the fields  of the specified
+  record.
+
+  Usage
+
+       dcl record_manager_$get_field_info entry (bit(36) aligned,
+            bit(36) aligned, ptr, ptr, fixed bin(35));
+
+       call record_manager_$get_field_info (file_opening_id,
+            record_collection_id, work_area_ptr,
+            typed_vector_array_ptr, code);
+  where:
+
+         file_opening_id              (Input)
+              is the  opening identifier of  the file in  which the
+              record collection resides.
+
+         record_collection_id         (Input)
+              is the identifier of the record collection.
+
+         work_area_ptr                (Input)
+              is a pointer  to a pl1 area defined  by the caller in
+              which to return the array of information.
+
+         typed_vector_array_ptr       (Output)
+              is a pointer to  a typed_vector_array structure which
+              contains the field information.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$get_record_by_id
+
+       Gets  the  desired  fields   of  the  record  identified  by
+  record_id.
+
+  Usage
+
+       dcl record_manager_$get_record_by_id entry (bit(36) aligned,
+            ptr, ptr, ptr, ptr, fixed bin(35));
+
+       call record_manager_$get_record_by_id (record_id,
+            id_list_ptr, work_area_ptr, record_cursor_ptr,
+            simple_typed_vector_ptr, code);
+  where:
+
+         record_id                    (Input)
+              is the identifier of the desired record.
+
+         id_list_ptr                  (Input)
+              is a  pointer to an id_list  structure containing the
+              identifiers of the fields to be retrieved.
+
+         work_area_ptr                (Input)
+              is a pointer  to a pl1 area defined  by the caller in
+              which to place the retrieved records.
+
+         record_cursor_ptr            (Input)
+              is a pointer to a record cursor.
+
+         simple_typed_vector_ptr      (Output)
+              is  a  pointer  to  a  simple_typed_vector  structure
+              containing the retrieved record.
+
+         code                         (Output)
+              is standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$get_record_ids_by_interval
+
+       This  entry returns  the record  identifiers of  the records
+  specified.  Selection is based on three things:  a list of record
+  identifiers,   a   search_specification,  and   an  interval_list
+  structure.
+
+  Usage
+
+       dcl record_manager_$get_record_ids_by_interval entry (ptr,
+            ptr, ptr, ptr, ptr, ptr, fixed bin(35));
+
+       call record_manager_$get_record_ids_by_interval
+            (input_element_id_list_ptr, search_specification_ptr,
+            interval_list_ptr, work_area_ptr, record_cursor_ptr,
+            output_element_id_list_ptr, code);
+  where:
+
+         input_element_id_list_ptr    (Input)
+              is   a  pointer   to  an   element_id_list  structure
+              containing  the  ids  of  the  records  to  which the
+              search_specification and interval are to be applied.
+
+         search_specification_ptr     (Input)
+              is a pointer to  a search_specification to be applied
+              to the  records listed in  the record element_id_list
+              structure.
+
+         interval_list_ptr            (Input)
+              is  a  pointer  to  an  interval_list  structure.  It
+              identifies records satisfying  the constraints in the
+              and_group which pertain to  the fields present in the
+              index.
+
+         work_area_ptr                (Input)
+              is a  pointer to a  freeing area in  which the output
+              typed_vector_array is to be allocated.
+
+         record_cursor_ptr            (Input)
+              is  a pointer  to a  record cursor.   The position is
+              left unchanged by this operation.
+
+         output_element_id_list_ptr   (Output)
+              is  a pointer  to an  element_id_list structure which
+              contains  the  record  identifiers  of  the  selected
+              records.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$get_record_ids_by_spec
+
+       Gets  the  identifiers  of  the  records  identified  by the
+  specification.
+
+  Usage
+
+       dcl record_manager_$get_record_ids_by_spec entry (ptr, ptr,
+            ptr, ptr, fixed bin(35));
+
+       call record_manager_$get_record_ids_by_spec
+            (specification_ptr, work_area_ptr, record_cursor_ptr,
+            element_id_list_ptr, code);
+  where:
+
+         specification_ptr            (Input)
+              is   a   pointer   to   a   search_specification   or
+              numeric_specification structure.
+
+         work_area_ptr                (Input)
+              is a pointer  to a pl1 area defined  by the caller in
+              which to place the returned identifiers.
+
+         record_cursor_ptr            (Input)
+              is  a   pointer  to  a  record   cursor.   After  the
+              operation, the  cursor is set to  the position of the
+              record corresponding to the last id retrieved.
+
+         element_id_list_ptr          (Output)
+              is   a  pointer   to  an   element_id_list  structure
+              containing the record identifiers selected.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$get_record_count
+
+       Returns the count of records  in the collection that satisfy
+  the search specification.
+
+  Usage
+
+       dcl record_manager_$get_record_count entry (ptr, ptr, fixed
+            bin(35), fixed bin(35));
+
+       call record_manager_$get_record_count (specification_ptr,
+            record_cursor_ptr, number_of_records_processed, code);
+  where:
+
+         specification_ptr            (Input)
+              is   a   pointer   to   a   search_specification   or
+              numeric_specification structure.
+
+         record_cursor_ptr            (Input)
+              is a pointer to a record cursor.  The position is not
+              changed.
+
+         number_of_records_processed  (Output)
+              is the number of records selected.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$get_record_count_by_interval
+
+       This  entry  returns  the  count  of  records  that  meet  a
+  selection  criteria  based on  a  list of  record  identifiers, a
+  search specification, and an interval list structure.
+
+  Usage
+
+       dcl record_manager_$get_record_count_by_interval entry (ptr,
+            ptr, ptr, ptr, ptr, fixed bin(35), fixed bin(35));
+
+       call record_manager_$get_record_count_by_interval
+            (input_elment_id_list_ptr, search_specification_ptr,
+            interval_list_ptr, work_area_ptr, record_cursor_ptr,
+            record_count, code);
+  where:
+
+         input_element_id_list_ptr    (Input)
+              is   a  pointer   to  an   element_id_list  structure
+              containing  the  ids  of  the  records  to  which the
+              search_specification and interval are to be applied.
+
+         search_specification_ptr     (Input)
+              is a pointer to  a search_specification to be applied
+              to   the  records   listed  in   the  element_id_list
+              structure.
+
+         interval_list_ptr            (Input)
+              is  a  pointer  to  an  interval_list  structure.  It
+              identifies records satisfying  the constraints in the
+              and_group which pertain to  the fields present in the
+              index.
+
+         work_area_ptr                (Input)
+              is a  pointer to a  freeing area in  which the output
+              typed_vector_array is to be allocated.
+
+         record_cursor_ptr            (Input)
+              is  a pointer  to a  record cursor.   The position is
+              left unchanged by this operation.
+
+         record_count                 (Output)
+              is  a count  of the number  of records  in the record
+              element_id_list  which  satisfied the  constraints of
+              the  search_specification  applied   in  the  fashion
+              specified by the interval_list.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$get_records_and_ids_by_spec
+
+       This entry  returns a set  of records and  their identifiers
+  that meet the search specification.
+
+  Usage
+
+       dcl record_manager_$get_records_and_ids_by_spec entry (ptr,
+            ptr, ptr, ptr, ptr, ptr, fixed bin(35));
+
+       call record_manager_$get_records_and_ids_by_spec
+            (specification_ptr, id_list_ptr, work_area_ptr,
+            record_cursor_ptr, element_id_list_ptr,
+            typed_vector_array_ptr, code);
+  where:
+
+         specification_ptr            (Input)
+              is   a   pointer   to   a   search_specification   or
+              numeric_specification structure.
+
+         id_list_ptr                  (Input)
+              is a  pointer to an id_list  structure containing the
+              field identifiers of the fields to be returned.
+
+         work_area_ptr                (Input)
+              is a  pointer to a  freeing area in  which the output
+              typed_vector_array is to be allocated.
+
+         record_cursor_ptr            (Input)
+              is  a pointer  to a  record cursor.   The position is
+              left unchanged by this operation.
+
+         element_id_list_ptr          (Output)
+              is  a pointer  to an  element_id_list structure which
+              contains  the  record  identifiers  of  the  selected
+              records.
+
+         typed_vector_array_ptr       (Output)
+              is a pointer to  a typed_vector_array structure which
+              contains the selected records.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$get_records_and_ids_by_interval
+
+       This entry  returns a set  of records and  their identifiers
+  that meet a selection criteria based  on three things:  a list of
+  record identifiers, a  search_specification, and an interval_list
+  structure.
+
+  Usage
+
+       dcl record_manager_$get_records_and_ids_by_interval entry
+            (ptr, ptr, ptr, ptr, ptr, fixed bin(35), ptr, ptr, ptr,
+            fixed bin(35));
+
+       call record_manager_$get_records_and_ids_by_interval
+            (input_element_id_list_ptr, id_list_ptr,
+            search_specification_ptr, interval_list_ptr,
+            work_area_ptr, typed_vector_array_version,
+            record_cursor_ptr, output_element_id_list_ptr,
+            typed_vector_array_ptr, code);
+  where:
+
+         input_element_id_list_ptr    (Input)
+              is   a  pointer   to  an   element_id_list  structure
+              containing  the  ids  of  the  records  to  which the
+              search_specification and interval are to be applied.
+
+         id_list_ptr                  (Input)
+              is a  pointer to an id_list  structure containing the
+              field identifiers of the fields to be returned.
+
+         search_specification_ptr     (Input)
+              is a pointer to  a search_specification to be applied
+              to  the records  listed in  the input_element_id_list
+              structure.
+
+         interval_list_ptr            (Input)
+              is  a  pointer  to  an  interval_list  structure.  It
+              identifies records satisfying  the constraints in the
+              and_group which pertain to  the fields present in the
+              index.
+
+         work_area_ptr                (Input)
+              is a  pointer to a  freeing area in  which the output
+              typed_vector_array is to be allocated.
+
+         typed_vector_array_version   (Input)
+              is the version of the typed_vector_array structure to
+              use.        The        current       version       is
+              TYPED_VERSION_ARRAY_VERSION_2.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+         record_cursor_ptr            (Input)
+              is  a pointer  to a  record cursor.   The position is
+              left unchanged by this operation.
+
+         output_element_id_list_ptr   (Output)
+              is  a pointer  to an  element_id_list structure which
+              contains  the  record  identifiers  of  the  selected
+              records.
+
+         typed_vector_array_ptr       (Output)
+              is a pointer to  a typed_vector_array structure which
+              contains the selected records.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$get_records_by_id_list
+
+       Gets the desired fields of  all of the records identified by
+  the record id list.
+
+  Usage
+
+       dcl record_manager_$get_records_by_id_list entry (ptr, ptr,
+            ptr, ptr, ptr, fixed bin(35));
+
+       call record_manager_$get_records_by_id_list
+            (element_id_list_ptr, id_list_ptr, work_area_ptr,
+            record_cursor_ptr, typed_vector_array_ptr, code);
+  where:
+
+         element_id_list_ptr          (Input)
+              is  a   pointer  to  an   element_id_list  structure,
+              containing the  record identifiers of  each record to
+              get.    A  scalar   can  be  provided;   it  will  be
+              interpreted as an array of one element.
+
+         id_list_ptr                  (Input)
+              is a  pointer to an id_list  structure containing the
+              identifiers of the fields to be retrieved.
+
+         work_area_ptr                (Input)
+              is a pointer  to a pl1 area defined  by the caller in
+              which to place the retrieved records.
+
+         record_cursor_ptr            (Input)
+              is a pointer to a record cursor.
+
+         typed_vector_array_ptr       (Output)
+              is  a  pointer   to  a  typed_vector_array  structure
+              containing the retrieved records.
+
+         code                         (Output)
+              is standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$get_records_by_interval
+
+       This entry  retrieves a set  of records identified  by three
+  things:   a list  of record  identifiers, a search_specification,
+  and an interval_list structure.   Each "interval" of the interval
+  list  identifies  a span  of  record identifiers  in the  list of
+  record   identifiers  and   one  or  more   and_groups  from  the
+  search_specification.   All of  the records in  an interval which
+  satisfy  one  or  more  of the  and_groups  associated  with that
+  interval  are  returned.   This  entry is  primarily  for  use in
+  conjunction with the index_manager_.
+
+  Usage
+
+       dcl record_manager_$get_records_by_interval entry (ptr, ptr,
+            ptr, ptr, ptr, fixed bin(35), ptr, ptr, fixed bin(35));
+
+       call record_manager_$get_records_by_interval
+            (element_id_list_ptr, id_list_ptr,
+            search_specification_ptr, interval_list_ptr,
+            work_area_ptr, typed_vector_array_version,
+            record_cursor_ptr, typed_vector_array_ptr, code);
+  where:
+
+         element_id_list_ptr          (Input)
+              is   a  pointer   to  an   element_id_list  structure
+              containing  the  ids  of  the  records  to  which the
+              search_specification and interval are to be applied.
+
+         id_list_ptr                  (Input)
+              is a  pointer to an id_list  structure containing the
+              field identifiers of the fields to be returned.
+
+         search_specification_ptr     (Input)
+              is a pointer to  a search_specification to be applied
+              to   the  records   listed  in   the  element_id_list
+              structure.
+
+         interval_list_ptr            (Input)
+              is  a  pointer  to  an  interval_list  structure.  It
+              identifies records satisfying  the constraints in the
+              and_group which pertain to  the fields present in the
+              index.
+
+         work_area_ptr                (Input)
+              is a  pointer to a  freeing area in  which the output
+              typed_vector_array is to be allocated.
+
+         typed_vector_array_version   (Input)
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+              is the version of the typed_vector_array structure to
+              use.        The        current       version       is
+              TYPED_VERSION_ARRAY_VERSION_2.
+
+         record_cursor_ptr            (Input)
+              is  a pointer  to a  record cursor.   The position is
+              left unchanged by this operation.
+
+         typed_vector_array_ptr       (Output)
+              is a  pointer to a  typed_vector_array which contains
+              the results of the search.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$get_records_by_spec
+
+       Gets  the desired  fields of  the records  identified by the
+  search specification.
+
+  Usage
+
+       dcl record_manager_$get_records_by_spec entry (ptr, ptr,
+            ptr, ptr, ptr, fixed bin(35));
+
+       call record_manager_$get_records_by_spec (specification_ptr,
+            id_list_ptr, work_area_ptr, record_cursor_ptr,
+            typed_vector_array_ptr, code);
+  where:
+
+         specification_ptr            (Input)
+              is   a   pointer   to   a   search_specification   or
+              numeric_specification structure.
+
+         id_list_ptr                  (Input)
+              is  a  pointer  to an  id_list  structure, containing
+              identifiers of the fields to be returned.
+
+         work_area_ptr                (Input)
+              is a pl1 area defined by the caller, in which storage
+              for the retrieved records is allocated.  The area can
+              be  of  any type,  but  if the  caller expects  to be
+              handling  large amounts  of data, the  area should be
+              extensible.   For  efficiency   reasons,  the  caller
+              should set  the zero_on_alloc and  zero_on_free flags
+              off if dealing with large amounts of data.
+
+         record_cursor_ptr            (Input)
+              is  a   pointer  to  a  record   cursor.   After  the
+              operation, the  cursor is set to  the position of the
+              last record retrieved.
+
+         typed_vector_array_ptr       (Output)
+              is a  pointer to a  structure containing an  array of
+              pointers  to simple_typed_vector  structures, each of
+              which holds  a record value retrieved,  now placed in
+              the storage allocated in work_area.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$modify_record_by_id
+
+       Modifies the  fields specified to  have the values  given in
+  the general_typed_vector, for the record identified by record_id.
+
+  Usage
+
+       dcl record_manager_$modify_record_by_id entry (bit(36)
+            aligned, ptr, ptr, fixed bin(35));
+
+       call record_manager_$modify_record_by_id (record_id,
+            general_typed_vector_ptr, record_cursor_ptr, code);
+  where:
+
+         record_id                    (Input)
+              is the identifier of the record to be modified.
+
+         general_typed_vector_ptr     (Input)
+              is  a  pointer  to  a  general_typed_vector structure
+              containing  the  new  values  of  the  fields  to  be
+              modified.
+
+         record_cursor_ptr            (Input)
+              is a pointer to a record cursor.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$modify_records_by_id_list
+
+       Modifies the  specified fields to  have the values  given in
+  the  general_typed_vector, for  all of the  records identified by
+  the record_id_list.
+
+  Usage
+
+       dcl record_manager_$modify_records_by_id_list entry (ptr,
+            ptr, ptr, fixed bin(35), fixed bin(35));
+
+       call record_manager_$modify_records_by_id_list
+            (element_id_list_ptr, general_typed_vector_ptr,
+            record_cursor_ptr, number_of_records_processed, code);
+  where:
+
+         element_id_list_ptr          (Input)
+              is  a   pointer  to  an   element_id_list  structure,
+              identifying each record to be modified.  A scalar may
+              be passed by value rather  than an array, and it will
+              be interpreted as an array of one element.
+
+         general_typed_vector_ptr     (Input)
+              is a pointer to a general_typed_vector containing the
+              new values of the fields to be modified.
+
+         record_cursor_ptr            (Input)
+              is  a  pointer to  a  record cursor.   The  cursor is
+              positioned to the last record modified.
+
+         number_of_records_processed  (Output)
+              is the number of records modified.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$modify_records_by_spec
+
+       Modifies the  specified fields to  have the values  given in
+  the  general_typed_vector  structure,  for  all  of  the  records
+  identified by the search specification.
+
+  Usage
+
+       dcl record_manager_$modify_records_by_spec entry (ptr, ptr,
+            ptr, fixed bin(35), fixed bin(35));
+
+       call record_manager_$modify_records_by_spec
+            (specification_ptr, general_typed_vector_ptr,
+            record_cursor_ptr, number_of_records_processed, code);
+  where:
+
+         specification_ptr            (Input)
+              is   a   pointer   to   a   search_specification   or
+              numeric_specification structure.
+
+         general_typed_vector_ptr     (Input)
+              is  a  pointer to  a  general_typed_vector structure.
+              The  dimension   id  identifies  the   fields  to  be
+              modified, and the dimension value is the value to set
+              the   field   to.   Modifications   must   involve  a
+              replacement of the entire field at this time.
+
+         record_cursor_ptr            (Input)
+              is  a   pointer  to  a  record   cursor.   After  the
+              modification,  the cursor  is set to  the position of
+              the last record modified.
+
+         number_of_records_modified   (Output)
+              is the number of records which were modified.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$position_cursor
+
+       Sets the value of the cursor to be the given position in the
+  specified collection.  If the  specification identifies more than
+  one record, the cursor points at the first of these.
+
+  Usage
+
+       dcl record_manager_$position_cursor entry (ptr, ptr, fixed
+            bin(35));
+
+       call record_manager_$position_cursor (specification_ptr,
+            record_cursor_ptr, code);
+  where:
+
+         specification_ptr            (Input)
+              is   a   pointer   to   a   search_specification   or
+              numeric_specification structure.
+
+         record_cursor_ptr            (Input)
+              is a pointer to the record cursor to be positioned.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$put_record_by_id
+
+       Puts a  record into the record  collection.  If possible, it
+  is  put  in  the  same control  interval  as  the  related record
+  specified by the caller.
+
+  Usage
+
+       dcl record_manager_$put_record_by_id entry (bit(36) aligned,
+            ptr, fixed bin(35), ptr, bit(36) aligned, fixed
+            bin(35));
+
+       call record_manager_$put_record_by_id (related_record_id,
+            simple_typed_vector_ptr, minimum_free_space,
+            record_cursor_ptr, record_id, code);
+  where:
+
+         related_record_id            (Input)
+              is  the  identifier  of  the record  which  is  to be
+              previous  to the  record being "put",  referred to as
+              the    related    record.     If    the    value   of
+              related_record_id  is  "0"b, the  new record  will be
+              inserted randomly.
+
+         simple_typed_vector_ptr      (Input)
+              is a pointer to a simple_typed_vector structure which
+              is used to represent the value of the record.
+
+         minimum_free_space           (Input)
+              is the minimum  amount of space in bits  that must be
+              left free in the control interval in which the record
+              is  put.  Normally  this value  is zero,  meaning the
+              control interval can be  packed full.  At times, such
+              as during  loading a file or  garbage collecting, the
+              caller may wish to leave some space free to allow for
+              growth of records and insertion of new records.
+
+         record_cursor_ptr            (Input)
+              is  a  pointer  to  a structure  which  maintains the
+              current position  in the record  collection.  It also
+              contains  the file  opening id  and record collection
+              id.   After  the  put  operation, it  is  set  to the
+              position of the newly put record.
+
+         record_id                    (Output)
+              is the identifier of the record that was put into the
+              collection.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$put_records_by_id
+
+       Puts  a  set  of  records into  the  record  collection.  If
+  possible,  they  are  put in  the  same control  interval  as the
+  related record specified by the caller.
+
+  Usage
+
+       dcl record_manager_$put_records_by_id entry (bit(36)
+            aligned, ptr, fixed bin(35), ptr, bit(36) aligned,
+            fixed bin(35));
+
+       call record_manager_$put_records_by_id (related_record_id,
+            typed_vector_array_ptr, minimum_free_space,
+            record_cursor_ptr, element_id_list_ptr, code);
+  where:
+
+         related_record_id            (Input)
+              is  the  identifier  of  the record  which  is  to be
+              previous to  the records being "put",  referred to as
+              the related record.  If the records are threaded, the
+              related record  is previous to  the first of  the new
+              records  in the  chain of records  in the collection,
+              and  the  record  manager  will try  to  put  the new
+              records in  the same control interval  as the related
+              record.  Otherwise,  in either the  following control
+              interval or  a newly allocated  control interval.  If
+              the  value  of  related_record_id  is  "0"b,  the new
+              records will be inserted randomly.
+
+         typed_vector_array_ptr       (Input)
+              is a pointer to  a typed_vector_array structure which
+              is used to represent the values of the records.
+
+         minimum_free_space           (Input)
+              is the minimum  amount of space in bits  that must be
+              left  free  in  each  control interval  in  which the
+              records  are  put.   Normally  this  value  is  zero,
+              meaning the control interval  can be packed full.  At
+              times,  such  as  during  loading a  file  or garbage
+              collecting, the  caller may wish to  leave some space
+              free to allow for growth  of records and insertion of
+              new records.
+
+         record_cursor_ptr            (Input)
+              is  a  pointer  to  a structure  which  maintains the
+              current position  in the record  collection.  It also
+              contains  the file  opening id  and record collection
+              id.   It is  set to the  position of  the last record
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+              put.
+
+         element_id_list_ptr          (Output)
+              is   a  pointer   to  an   element_id_list  structure
+              containing the record ids of the newly put records.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _______________                                   _______________
+
+  record_manager_                                   record_manager_
+  _______________                                   _______________
+
+  Entry:  record_manager_$put_records_by_spec (unimplemented)
+
+       Puts a  given set of  records into the  record collection at
+  the location indicated by the specification.
+
+  Usage
+
+       dcl record_manager_$put_records_by_spec (unimplemented)
+            entry (ptr, ptr, fixed bin(35), ptr, ptr, fixed
+            bin(35));
+
+       call record_manager_$put_records_by_spec (unimplemented)
+            (specification_ptr, typed_vector_array_ptr,
+            minimum_free_space, record_cursor_ptr,
+            element_id_list_ptr, code);
+  where:
+
+         specification_ptr            (Input)
+              is   a   pointer   to   a   search_specification   or
+              numeric_specification structure.
+
+         typed_vector_array_ptr       (Input)
+              is  a  pointer  to  a  typed_vector_array  structure,
+              containing     an     array     of     pointers    to
+              simple_typed_vectors  which  are  used  to  represent
+              record values.
+
+         minimum_free_space           (Input)
+              is the minimum amount of free space in bits that must
+              be left in each control interval in which records are
+              put.
+
+         record_cursor_ptr            (Input)
+              is  a  pointer  to  a structure  which  maintains the
+              current position  in the record  collection.  It also
+              contains  the file  opening id  and record collection
+              id.   After  the  put  operation, it  is  set  to the
+              position of  the newly put record.   If more than one
+              record is put, it is set  to the position of the last
+              record.
+
+         element_id_list_ptr          (Output)
+              is  a   pointer  to  an   element_id_list  structure,
+              containing an  array of identifiers of  the newly put
+              records.
+
+         code                         (Output)
+              is a standard system status code.
+
+
+
+                Appendix A - Specification Structures
+
+  The specification_head structure
+
+  The  following  structure  is  used in  specifying  keys.   It is
+  declared in the dm_specification_head.incl.pl1 include file:
+
+       dcl 1 specification_head         based (sh_ptr) aligned,
+             2 version                  fixed bin(35),
+             2 type                     fixed bin(17) unal,
+             2 pad                      bit(18) unal,
+             2 subset_specification_ptr ptr;
+
+  where:
+
+         version
+              is the version of the structure.  The current version
+              is a static variable named SPECIFICATION_VERSION_4.
+
+         type
+              is  the type  of the  specification.  There  are four
+              types    for   record_manager_;    absolute   numeric
+              positioning,  relative numeric  positioning, absolute
+              (from the  "root") searching, and  relative (from the
+              current  position indicated  by a  cursor) searching.
+              These       constants       are       defined      in
+              dm_specification_head.incl.pl1.
+
+         pad
+              must be "0"b.
+
+         subset_specification_ptr
+              is  a  pointer to  a  subset_specification structure.
+              This structure is used  to constrain selected keys to
+              either be members of a subset  or not be members of a
+              subset.   (See  below for  the documentation  of this
+              structure.)
+      Any of  the following structures  can be used  for specifying
+  positions, each of which use specification_head as a header.
+
+  The subset_specification structure
+
+      Following  is  the structure  to  specify subset  indices and
+  their  relation to  a specification of  keys.  It  is declared in
+  dm_subset_specification.incl.pl1.
+
+
+
+       dcl 1 subset_specification based (subset_specification_ptr),
+             2 version            char (8),
+             2 number_of_subsets  fixed bin,
+             2 subset             (ss_number_of_subsets refer
+                                  (subset_specification
+                                   .number_of_subsets)),
+                3 id_list_ptr      ptr,
+                3 is_member        bit(1) unaligned,
+                3 pad              bit(35) unaligned,
+                3 cursor_ptr       ptr;
+
+  where:
+
+         version
+              is  the  version of  the  structure.  The  version is
+              given    by    the     internal    static    constant
+              SUBSET_SPECIFICATION_VERSION_1.
+
+         number_of_subsets
+              is  the  number  of  subsets  used  in  defining  the
+              specification.  Subsets may be used in either numeric
+              or value, and absolute or relative positioning.
+
+         subset.id_list_ptr
+              is a pointer to a id_list structure which defines the
+              relationship of the fields of the subset index to the
+              index   being   searched.    id_list.id(I)   is   the
+              identifier of  the field in the  index being searched
+              which is associated with the I'th field of the subset
+              index.
+
+         subset.is_member
+              if on,  indicates that keys  which this specification
+              identifies  must  be  found  in this  subset.   For a
+              subset to have a (source  index) key as a member, the
+              subset index must contain as  a key the data which is
+              found  in  the attendant  data  fields of  the source
+              index  key.   This  is  a special  case  of  the more
+              general  subset "membership"  definition which allows
+              the caller to  define the way in which  data from the
+              source index  is to match  data in the  subset index.
+              This special case is useful for the relation manager.
+
+         subset.pad
+              must be "0"b.
+
+         subset.cursor_ptr
+              is a pointer to a cursor for the subset index.
+
+
+
+  The search_specification structure
+
+       This  structure  is  used  when   a  search  for  keys  with
+  particular   values   is  to   be  done.    It  is   declared  in
+  dm_specification.incl.pl1.
+
+       dcl 1 search_specification    based (ss_ptr),
+             2 head                  like specification_head,
+             2 maximum_number_of_constraints,
+                                     fixed bin(17) unal,
+             2 range,                unal,
+
+            3 type                   fixed bin(17),
+               3 size                fixed bin(17),
+             2 number_of_and_groups  fixed bin(17) unal,
+             2 and_group             (ss_number_of_and_groups refer
+                                     (search_specification
+                                      .number_of_and_groups)),
+             2 number_of_constraints fixed bin(17) unal,
+               3 constraint          (ss_maximum_number_of_constraints
+                                     (refer search_specification
+                                      .maximum_number_of_constraints)),
+                 4 field_id          fixed bin(17) unal,
+                 4 operator_code     fixed bin(17) unal,
+                 4 value_field_id    fixed bin(17) unal,
+                 4 pad               bit(18) unal,
+                 4 value_ptr         ptr unal;
+
+  where:
+
+         maximum_number_of_constraints
+              is the number of field specifications to be allocated
+              for each and_group.
+
+         range.type
+              is the type of range of the specified keys desired:
+                 0 - all
+                 1 - top
+                 2 - bottom
+              Constants   for   these   values   are   defined   in
+              dm_range_constants.incl.pl1.
+
+         range.size
+              is the size  of the range.  If the  type is "all" (or
+              0), then the  size is ignored.  If the  type is "top"
+              and the value  of size is N, then  the highest N keys
+              of the  keys selected are  returned.  In the  case of
+              "bottom", the lowest N keys  of the keys selected are
+              returned.
+
+         number_of_and_groups
+              is   the   number   of   and_groups   used   in   the
+              search_specification.  The elements satisfied by each
+
+
+
+              and_group are joined by  union to obtain the complete
+              set to satisfy the search_specification.
+
+         and_group.number_of_constraints
+              is the number of constraints actually in use for this
+              and_group.  Each constraint of  the and_group must be
+              satisfied in order  for an element to be  a member of
+              the and_group.
+
+         and_group.constraint.field_id
+              is the id for the field being constrained.
+
+         and_group.constraint.operator_code
+              is  the relationship  the value  of the  desired keys
+              must have to the  value specified in this constraint.
+              The operator codes can be  dealt with as either fixed
+              binary  number  or as  a  bit string  (which  must be
+              converted to a fixed binary number).  When considered
+              as a  bit string the  meaning of the  bits are "or"ed
+              together.    The  right-most   bits  are   given  the
+              following meaning:
+
+                 "00001"b - = (equals)
+                 "00010"b - &gt; (greater than)
+                 "00100"b - ^ (not)
+                 "01000"b - regular expression match
+                 "10000"b - field may be absent.
+
+              An "absent" field always compares to false for any of
+              the other  four comparisons.  If  this bit is  on, an
+              "absent"  field will  compare "true"  and a "present"
+              field will compare false.
+
+              Some combinations of operators "bits" are not defined
+              to have any meaning, e.g.  "regular expression match"
+              or'ed with  "greater than".  The  complete definition
+              of the meanings  of all of the combinations  of the 5
+              right-most operator bits follows:
+
+                 1 - "00001"b - =
+                 2 - "00010"b - &gt;
+                 3 - "00011"b - &gt;=
+                 4 - "00100"b - ^
+                 5 - "00101"b - ^= (&gt;&lt;)
+                 6 - "00110"b - ^&gt; (&lt;=)
+                 7 - "00111"b - ^&gt;= (&lt;)
+                 8 - "01000"b - regular expression match
+                 9 through 15 - undefined
+                 16 - "10000"b - field is absent from key
+                 17 - "10001"b - field is absent or =
+                 18 - "10010"b - field is absent or &gt;
+                 19 - "10011"b - field is absent or &gt;=
+                 20 - "10100"b - field is not absent
+
+
+
+                 21 - "10101"b - field is absent or ^&gt; (&lt;=)
+                 22 - "10110"b - field is absent or  ^=
+                 23 - "10111"b - undefined
+                 24 - "11000"b - if field is present, regular expression match
+                 25 through 31 - undefined
+
+         and_group.constraint.value_field_id
+              specifies intra-key/record compares.
+
+         and_group.constraint.pad
+              must be "0"b.
+
+         and_group.constraint.value_ptr
+              is  a pointer  to the value  to be  compared with the
+              values in the database.   The value must be allocated
+              according to the DM data types.
+
+  The numeric_specification structure
+
+       This  structure  is  used  when a  search  for  keys  with a
+  particular  numeric position  is to be  done.  It  is declared in
+  dm_specification.incl.pl1.
+
+       dcl 1 numeric_specification based (nss_ptr),
+             2 head                like specification_head,
+             2 range_size          fixed bin(35) aligned,
+             2 position_number     fixed bin(17) unal,
+             2 pad                 bit(18) unal;
+
+  where:
+
+         range_size
+              is the  number of keys  to be returned  including the
+              key  identified  by position_number,  below.   If the
+              range_size  is negative,  it indicates  that the keys
+              desired  precede   the  specified  key.    If  it  is
+              positive,  the keys  are to  be the  ones immediately
+              following the specified key.
+
+         position_number
+              is interpreted according to  the absolute or relative
+              nature of the specification.   If absolute, it is the
+              position_number'th  key  of  the index  to  which the
+              position is  moved.  If position_number  is negative,
+              the keys  are counted backwards  from the end  of the
+              index  for position_number  keys.  If position_number
+              is  positive, the  keys are counted  forward from the
+              beginning of the index.  If  the type is relative, it
+              is  the  position_number'th   key  from  the  current
+              position  to   which  the  position   is  moved.   If
+              position_number  is negative,  the position  is moved
+              backwards  from  the  current   position;  if  it  is
+
+
+
+              positive,  it  is  moved  forwards  from  the current
+              position.
+
+              If position_number moves the cursor beyond the index,
+              i.e.  it is  either too large or too  small, then the
+              cursor is moved to the  beginning or end of the index
+              as appropriate and error_table_$beginning_of_index or
+              error_table_$end_of_index is returned.
+
+         pad
+              must be "0"b.
+
+
+
+                 Appendix B - Information Structures
+
+  The typed_vector structure
+
+       There   are   two   formats   for   the   typed_vector,  the
+  simple_typed_vector  and  the   general_typed_vector.   Both  are
+  defined in vu_typed_vector.incl.pl1.   In the simple_typed_vector
+  there is  only a pointer  for each dimension  value, no dimension
+  identifier  is  provided.   It  can  be  used  when  all  of  the
+  dimensions   in   a   typed_vector_array  are   present   in  the
+  typed_vector.  The dimensions would be assumed to be in the order
+  defined by the dimension_table of the typed_vector_array.
+
+       In  the  general_typed_vector,  any  subset  of  the defined
+  dimensions  may  be  present, hence  the  dimension.identifier is
+  required.
+
+       dcl 1 simple_typed_vector    based (simple_typed_vector_ptr),
+             2 type                 fixed bin (17) unal,
+             2 number_of_dimensions fixed bin (17) unal,
+             2 dimension            (stv_number_of_dimensions refer
+                                    (simple_typed_vector
+                                    .number_of_dimensions)),
+               3 value_ptr          ptr unal;
+
+       dcl 1 general_typed_vector   based (general_typed_vector_ptr),
+             2 type                 fixed bin (17) unal,
+             2 number_of_dimensions fixed bin (17) unal,
+             2 dimension            (gtv_number_of_dimensions refer
+                                    (general_typed_vector
+                                    .number_of_dimensions)),
+               3 identifier         fixed bin (17) unal,
+               3 pad                bit (18) unal,
+               3 value_ptr          ptr unal;
+
+  where:
+
+         type
+              indicates  the  type  of  the  vector  structure.   2
+              indicates  the  general_typed_vector and  3 indicates
+              the simple_typed_vector structure.
+
+         number_of_dimensions
+              is the number of dimensions present in the vector.
+
+         dimension.identifier
+              is   the   index  in   the  dimension_table   of  the
+              typed_vector_array of the dimension.
+
+         dimension.pad
+              must be "0"b.
+
+
+
+         dimension.value_ptr
+              is a pointer to the value of the dimension.
+
+  The typed_vector_array structure
+
+       The         typed_vector_array         structure         (in
+  vu_typed_vector_array.incl.pl1) is:
+
+       dcl 1 typed_vector_array       based (typed_vector_array_ptr)
+                                      aligned,
+             2 version                fixed bin (35),
+             2 number_of_dimensions   fixed bin (17),
+             2 number_of_vectors      fixed bin (17),
+             2 number_of_vector_slots fixed bin (17),
+             2 maximum_dimension_name_length
+                                      fixed bin (17),
+             2 dimension_table        (tva_number_of_dimensions
+                                      refer (typed_vector_array
+                                      .number_of_dimensions)),
+               3 name                 char (
+                                      tva_maximum_dimension_name_length
+                                      refer (typed_vector_array
+                                      .maximum_dimension_name_length))
+                                      varying,
+               3 descriptor_ptr       ptr,
+               3 cv_to_print          entry (ptr, ptr, ptr, fixed bin(35),
+                                      char(*) varying, fixed bin(35)),
+               3 cv_to_typed          entry (ptr, ptr, ptr, ptr,
+                                      fixed bin(35)),
+             2 vector_slot            (tva_number_of_vector_slots
+                                      refer (typed_vector_array
+                                      .number_of_vector_slots)) ptr;
+
+  where:
+
+         version
+              is   the   version  of   this   structure,  currently
+              TYPED_VECTOR_ARRAY_VERSION_2.
+
+         number_of_dimensions
+              is the number of dimensions in the dimension table.
+
+         maximum_dimension_name_length
+              is the maximum length of  any of the dimensions named
+              in the dimension table.
+
+         number_of_vectors
+              is the number of vector  slots actually used to point
+              at vectors.
+
+         number_of_vector_slots
+              is the number of vector slots allocated.
+
+
+
+         dimension_table.name
+              is the name of the dimension.
+
+         dimension_table.descriptor_ptr
+              is   a   pointer  to   standard  Multics   data  type
+              descriptor.
+
+         dimension_table.cv_to_print
+              is an entry for converting  from typed format data to
+              print format.
+
+         dimension_table.cv_to_typed
+              is an entry for converting  from print format data to
+              typed.
+
+         vector_slot
+              is a pointer to a typed_vector structure.
+
+  The element_id_list structure
+
+       Contains  an array  of "bit(36)  aligned" identifiers  to be
+  used  as record  ids, tuple  ids, key  ids, or  element ids.  Its
+  declaration    follows,    and    it     can    be    found    in
+  dm_element_id_list.incl.pl1.
+
+       dcl 1 element_id_list    aligned based (element_id_list_ptr),
+             2 version          fixed bin(35),
+             2 number_of_ids    fixed bin(17),
+             2 id               (eil_number_of_ids refer
+                                (element_id_list.number_of_ids))
+                                bit(36) aligned;
+  where:
+
+         version
+              is   the   version   of   the   structure,  currently
+              ELEMENT_ID_LIST_VERSION_1.
+
+         number_of_ids
+              is the number of identifiers.
+
+         id
+              is an array of element identifiers.
+
+  The id_list structure
+
+       The id_list  structure contains an array  of "fixed bin(17)"
+  identifiers,  which are  used to identify  attributes and fields.
+  The declaration follows, and it is found in dm_id_list.incl.pl1.
+
+
+
+       dcl 1 id_list          aligned based (id_list_ptr),
+             2 version        fixed bin(35),
+             2 number_of_ids  fixed bin(17),
+             2 id             (il_number_of_ids refer
+                              (id_list.number_of_ids))
+                              fixed bin(17);
+
+  where:
+
+         version
+              is the version of the structure, ID_LIST_VERSION_1.
+
+         number_of_ids
+              is the number of identifiers.
+
+         id
+              is  an   array  of  identifiers,   used  to  identify
+              attributes and fields.
+
+  The interval_list structure
+
+       The      interval_list      structure,      declared      in
+  dm_interval_list.incl.pl1,   is  used   in  conjunction   with  a
+  search_specification  to identify  partially processed and_groups
+  with which records were found to satisfy those constraints in the
+  and_group  which  pertain to  the  fields present  in  the index.
+  Constraints for  fields not present  in the index  have field_ids
+  less than zero.
+
+       dcl 1 interval_list             based (interval_list_ptr),
+             2 version                 fixed bin(35),
+             2 number_of_intervals     fixed bin(17) unal,
+             2 pad                     bit(18) unal,
+             2 interval                (intl_number_of_intervals
+                                       refer (interval_list
+                                       .number_of_intervals)),
+               3 low_vector_idx        fixed bin(35),
+               3 high_vector_idx       fixed bin(35),
+               3 and_group_id_list_ptr ptr;
+
+  where:
+
+         version
+              is   the  current   version.   It  must   be  set  to
+              INTERVAL_LIST_VERSION_1.
+
+         number_of_intervals
+              is the number of intervals  in the interval list.  It
+              is set by the refer option at allocation time.
+
+         pad
+              must be "0"b.
+
+
+
+         interval.low_vector_idx
+              is the  index into the  associated typed_vector_array
+              of the first record of the interval.
+
+         interval.high_vector_idx
+              is the  index into the  associated typed_vector_array
+              of the last record of the interval.
+
+         and_group_id_list_ptr
+              is  a pointer  to an id_list  structure (declared int
+              dm_id_list.incl.pl1) which contains a  list of ids of
+              the  and_groups  to be  applied  to this  interval of
+              records.   These and_group  ids are  indices into the
+              and_group      array      of      the      associated
+              search_specification.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

@@ -1,0 +1,1398 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-679</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-679: Security Audit Trails.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-679
+Security Auditing
+
+To:       Distribution
+
+From:     Benson I. Margulies
+
+Date:     10/23/84
+
+Subject:  Security Audit Trails
+
+1 ABSTRACT
+
+     This MTB is a design specification of Security Auditing
+     for  Multics.  It  describes the  philosophy, strategy,
+     data  structures,  and interfaces  that  participate in
+     maintaining  records  of  security-related  events.  It
+     assumes  that  you are  familiar  with the  Orange Book
+     requirements for "Audit" at the B2 level.
+
+Comments should be sent to the author:
+
+via Multics Mail:
+   Margulies at either System-M, MIT, or CISL-SERVICE.
+
+via Forum:
+   &gt;udd&gt;m&gt;mtgs&gt;B2 on System-M
+
+via telephone:
+   (HVN) 261-9333, or
+   (617) 492-9333
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+MTB-679                                Multics Technical Bulletin
+                                                Security Auditing
+
+2 INTRODUCTION
+
+It  is not  enough for  a secure  computer system  to control the
+sharing of  information amongst users.   It is also  important to
+maintain records of interesting  security related events.  System
+security administrators use these records to:
+
+  *  Note attempts to circumvent security.
+
+  *  Note use of potential "covert channels."
+
+  *  Note successful access to important objects.
+
+This MTB specifies what events in Multics are "security-related,"
+what criteria will  be used to tell if  one is "interesting," and
+what mechanisms will be used  to construct and store access audit
+records.
+
+3 TERMINOLOGY
+
+The Criteria  use some terms that  are not in general  use in the
+Multics community.  Here are some important definitions:
+
+ADP system
+     Automated  Data  Processing system.   This  term is  used to
+     refer  to  whatever  collection  of  hardware  and  software
+     provides  computational services.   For Multics,  the system
+     includes all FNP's and MPC's.
+
+object
+     Anything that can be manipulated  by a Multics program is an
+     object.  Objects range from  segments and directories to PNT
+     entries.
+
+audit
+     As a  verb, to review  a stored record  of activities.  When
+     the Criteria  use the formulation:   "The administrator must
+     be able to  audit a particular user," it  does not imply the
+     common Multics usage of "actively collect data."
+
+marking(s)
+     An  access marking  is an  AIM classification.   The marking
+     identifies  an  object's sensitivity  level or  the system's
+     level of trust in a subject.
+
+TCB  Trusted computing base.  The  portion of a computer system's
+     hardware and  software that must be  trusted if the security
+     of the system is to be trusted.
+
+
+Multics Technical Bulletin                                MTB-679
+Security Auditing
+
+4 REQUIREMENTS
+
+The requirements for audit come from three sources:
+
+  *  The Criteria
+
+  *  Interpretation of the Criteria by the Evaluation Team
+
+  *  General Multics design requirements.
+
+This  section consists  of the Criteria's  requirements for audit
+followed  by a  discussion of  their specific  interpretation for
+Multics, both from the evaluation team  and on the basis of other
+design requirements.
+
+4.1 The Criteria's Requirements
+
+The following  is copied from  the Orange book,  section 3.2.2.2,
+"Audit."  I have broken the  paragraph up and assigned numbers to
+the  individual  requirements  to  facilitate  references  in the
+discussion that follows.
+
+ R1  The TCB shall be able  to create, maintain, and protect
+     from modification or unauthorized access or destruction
+     an audit  trail of access  to the objects  it protects.
+     The audit  data shall be  protected by the  TCB so that
+     read  access  to  it  is   limited  to  those  who  are
+     authorized for audit data.
+
+     The TCB shall be able  to record the following types of
+     events:
+
+ R2  use of identification and authentication mechanisms,
+
+ R3  introduction  of  objects into  a user's  address space
+     (e.g.  file open, program initiation),
+
+ R4  deletion of objects,
+
+ R5  and any actions taken  by computer operators and system
+     administrators and/or system security officers.
+
+ R6  The  TCB shall  also be able  to audit  any override of
+     human-readable output markings.
+
+ R7  For  each  recorded  event,   the  audit  record  shall
+     identify:
+       * date and time of the event,
+       * user,
+
+
+MTB-679                                Multics Technical Bulletin
+                                                Security Auditing
+
+       * type of event,
+       * and success or failure of the event.
+
+     For identification/authentication events  the origin of
+     request  (e.g., terminal  ID) shall be  included in the
+     audit record.  For events that introduce an object into
+     a user's  address space and for  object deletion events
+     the audit  record shall include the  name of the object
+     and the object's security level.
+
+ R8  The   ADP  system   administrator  shall   be  able  to
+     selectively audit the actions of  any one or more users
+     based  on individual  identity and/or  object security.
+     level.
+
+ R9  The TCB  shall be able  to audit the  identified events
+     that  may  be  used   in  the  exploitation  of  covert
+     channels.
+
+4.2 Meeting the requirements:  an overview
+
+     This section examines the current system in the light of the
+nine   requirements,  and   briefly  characterizes   the  changes
+necessary to meet them.
+
+4.2.1 R1 -- MAINTAIN AN AUDIT TRAIL
+
+     Today, we lack mechanisms for reliable logging in all of the
+TCB's programming environments.  MTB-666 describes the design for
+new logging mechanisms.  The design described here depends on the
+mechanisms  described   there.   In  this  design   we  will  not
+centralize the collection of all  audit trails into a single log.
+The log processing utilities will permit an auditor to generate a
+single, time-ordered report of all security audit trails.
+
+4.2.2 R2 -- IDENTIFICATION AND AUTHENTICATION AUDITING
+
+     The Answering Service must meet  the requirements of R2 when
+logging events.   Currently, it neither logs  all of the relevant
+events nor stores enough information in audit trails.
+
+4.2.3 R3 -- ADDING OBJECTS TO THE ADDRESS SPACE
+
+     Ring zero and ring one currently keep audit trails of access
+control denials.   To meet this  requirement, we must  also audit
+
+
+Multics Technical Bulletin                                MTB-679
+Security Auditing
+
+successful accesses  to segments, directories,  message segments,
+and resources.
+
+4.2.4 R4 -- DELETIONS
+
+     Currently, no audit trails of object deletion are kept.
+
+4.2.5 R5 -- OPERATORS AND ADMINISTRATORS
+
+     Operator  actions  are  logged,  but  the  operator  is  not
+identified and authenticated.  Thus it is impossible to associate
+an  individual person  with an audit  trail.  Many administrative
+operations are not audited.
+
+4.2.6 R6 -- OVER-RIDE OF MARKINGS
+
+     The I/O Daemon permits users  to override the marking of the
+top  and bottom  of each page  of printed output  with the access
+class  of the  segment printed.  No  audit trail is  kept of this
+event.
+
+4.2.7 R7 -- AUDIT RECORD CONTENTS
+
+     These requirements are straightforward.   For Multics, it is
+also important  to record the  user's ring of  execution, so that
+messages  resulting  from  the  actions of  trusted  code  can be
+distinguished from actions of users.
+
+4.2.8 R8 -- AUDIT SELECTIVITY
+
+     This mimimally  requires us to provide  audit analysis tools
+that  can  extract  information  from  the  logs  based  on these
+criteria.   However,  the system  overhead burden  of maintaining
+audit  trails   for  all  of   the  events  specified   in  these
+requirements for all  users all of the time  would be very large.
+Therefore, we must meet an  additional requirement to allow sites
+some control on who and what is audited.
+
+4.2.9 R9 -- COVERT CHANNELS
+
+     The  system  already  audits  several  known  covert channel
+events.  We must expand this to include all channels found in the
+covert channel analysis.
+
+
+MTB-679                                Multics Technical Bulletin
+                                                Security Auditing
+
+5 STRATEGIES
+
+     This section describes the basic design theory.
+
+5.1 Functions and Modularization
+
+     Situations  that  generate  security audits  share  a common
+series  of  events.  Our  basic design  goal is  to make  as many
+access  control  and  auditing  decisions  in  a  common  set  of
+primitives as possible.
+
+     Many  existing programs  have a modularization  in which the
+program which  provides the interface to  users (i.e., everything
+except the TCB) proceed something like this:
+
+  *  Call a utility to find the object.
+
+  *  Call a  utility to retrieve  the user's effective  access to
+     the object.
+
+  *  Decide whether or not to permit the operation.
+
+  *  Check the audit flags to see if an audit trail is needed.
+
+  *  Call a utility to generate the audit trail.
+
+     This  modularization  is not  a  good design  for  a trusted
+security  implementation.    The  system's  access   control  and
+auditing  decisions are  scattered amongst all  the programs that
+provide interfaces  to the TCB.  To  convince yourself that there
+are no bugs, you must independently convince yourself that all of
+these interfaces are correctly implemented.  A better alternative
+is to centralize all access  decisions and logging into a kernal,
+so that each interface that does work makes a single, atomic call
+for both.  Ideally, all subsystems of the TCB would call the same
+access control kernal.  This  would require a major restructuring
+of  the  hardcore, ring  one,  and the  answering  service.  More
+practically, we can restructure each  of those subsystems to have
+its own access control kernal.
+
+     This  modularization  has  been  implemented  for  directory
+control.   The  following pseudo-program  describes it.   We will
+change each subsystem of the TCB to have an organization based on
+its model.
+
+
+Multics Technical Bulletin                                MTB-679
+Security Auditing
+
+user_request: procedure;
+
+declare operation {the operation to be performed};
+declare user_name {the user on behalf of whom it is to be
+                   performed};
+declare user_state {the user ring of validation, authorization,
+                    and max authorization};
+declare object_name {identify the object to be operated on};
+declare result_code {the result to be returned};
+
+        call system_interface (operation, user_name, user_state,
+             object_name, result_code);
+
+        end;
+
+system_interface:
+         procedure ({as above});
+
+         call find_object_check_access (operation, user_name,
+         user_state, object_name, result_code);
+         if result_code ^= 0 then return;
+
+         call do_the_work ({.....});
+         return;
+         end system_interface;
+
+find_object_check_access:
+        procedure ({as above});
+
+        call find_object (..., result_code);
+        if result_code ^= 0 then call abort_error;
+        call check_access (..., result_code);
+        if result_code ^= 0 then call abort_error;
+        if ^never_log_operation (operation)
+           then call log_success;
+       return;
+
+
+MTB-679                                Multics Technical Bulletin
+                                                Security Auditing
+
+abort_error:
+        procedure;
+
+        call censor_code ();
+        call log_failure ();
+        return;
+end abort_error;
+log_success:
+        procedure;
+
+        if should_log_success (operation, user, object)
+        then log;
+        return;
+        end log_success;
+
+log_failure:
+        procedure;
+        if should_log_failure (operation, user, object)
+        then log;
+        end log_failure;
+        end find_object_check_access;
+
+      This pseudo-program  is a model  of a TCB  subsystem.  Each
+subsystem should consist of:
+
+  *  Many  programs that  provide interfaces  to the  rest of the
+     system.
+
+  *  One program that locates  objects, checks access, and leaves
+     behind audit trails.
+
+     By  "finding an  object," I mean  the translation  of a user
+name for an object to a system name.  Usually, a system name is a
+pointer   to  the   data  structure  that   defines  the  object.
+Sometimes,  this  translation is  unecessary.   The object  of an
+operation may be implicit.  For example, a user logging in over a
+communications channel  does not "name" the  channel.  The system
+already knows precisely what CDT entry describes the channel over
+which  we received  the login  command line.   In these  cases, a
+common procedure can still evaluate the user's access and perform
+appropriate access audit logging.
+
+     A crucial feature of this modularization is that the program
+that finds and checks access must be told what operation the user
+is trying to  perform.  This permits the program  to be the final
+and only  arbiter of the system's  security policy.  The security
+policy  lists  all  the  operations defined  on  the  system, and
+specifies  the  access  required  for  each.   The  program  that
+implements the  policy, then, must  be passed the  operation, the
+user, and the object.
+
+
+Multics Technical Bulletin                                MTB-679
+Security Auditing
+
+     Another important feature of this  is the handling of access
+checks  for  searches.  There  are  several TCB  interfaces whose
+contract  is to  search for an  object that is  accessible to the
+user.  An example is the linker, searching for an object segment.
+It  is  not  appropriate to  log  a security  violation  for each
+inaccessible  segment that  the linker visits  on the  way to the
+right  one.   To implement  this,  directory control's  "find and
+check  access"  primitive  supports  a  special  operation  which
+disables all access audits for the unsuccessful cases.
+
+5.2 Data Structures
+
+     All  audit   records  make  up  a   family  of  binary  data
+structures, sharing a common header structure.  This will allow a
+single log message formatting  subroutine (see MTB-666) to handle
+all audit records.  We will use  a binary data structure to allow
+sophisticated analysis  procedures to efficiently  scan the audit
+trail.
+
+     We will divide up information  between the ASCII text of the
+message and the associated binary.  Little or no information will
+be  duplicated  between  the  two.   This  will  improve  storage
+efficiency.   The  cost is  some  extra character  searching when
+looking for particular messages.  The following gives the pattern
+for the ASCII text:
+
+     OPERATION_DESCRIPTION on OBJECT_ASCII_NAME by USER_NAME
+
+For  file  system  objects,  the  OBJECT_ASCII_NAME  will  be the
+pathname.  Neither the pathname nor  the UID pathname will appear
+in  the  binary portion.   All other  information about  the user
+(ring number, authorization) and the operation will be carried in
+the binary  message.  The binary  data structure is  described in
+more detail below.
+
+5.3 Auditing Filters
+
+     Currently, Multics filters audit records with a set of audit
+flags.   All the  data structures  and interfaces  provide a full
+word of flags, though only a  few are defined.  Each flag enables
+audit  trails  for a  particular  class of  operations.   We must
+extend the audit flags to cover the new auditing areas.
+
+5.3.1 CLASSIFYING AUDIT EVENTS
+
+    The existing design suffers from  a conceptual muddle.  Is an
+audit  flag  supposed  to  control  all  of  the  auditing  for a
+
+
+MTB-679                                Multics Technical Bulletin
+                                                Security Auditing
+
+particular  class  of  operations?    For  all  operations  of  a
+particular subsystem?  Some of their names suggest the first, and
+others the  second.  This problem is  exacerbated by the auditing
+of successful operations.
+
+     The  audit  control  flags  should  allow  administrators to
+express reasonable  distinctions between candidate  events.  They
+will define  classes of events that  reflect the events' relative
+importance to system security.
+
+     It  is  not practical  to allow  the arbitrary  selection of
+events  to  be audited.   For  any given  event,  selection could
+depend on:
+
+          * the type of object
+          * the type of operation
+          * whether access was granted
+          * whether privileged access was used
+
+     To  allow  administrators  to  specify  auditing  of  an any
+arbitrary  subset of  all events would  require a  very large and
+complex data structure.  This would be both hard to implement and
+difficult to administer.
+
+     To  simplify  this  problem,  we will  classify  events into
+groups  of  different  sizes,  and then  allow  administrators to
+selectively  enable auditing  of each group.   Events that happen
+frequently will be classified  finely.  Events that happen rarely
+will be classified grossly.
+
+     The  classification  begins with  the object  and operation.
+Both  objects  and  operations  are  roughly  grouped  into  four
+categories.   These  categories are  briefly described  here, and
+then described in more detail below.
+
+USER     An operation or  object is in the USER  group if a user
+         with  no  special  access  rights  can  manipulate that
+         object  or  perform that  operation.   USER is  in turn
+         subdivided into the finer categories DIR, SEG, RCP, and
+         OTHER-USER.
+
+ADMIN    An  operation  or  object  is  in  the  ADMIN  group if
+         administrative access rights are required to manipulate
+         that object or  perform that operation.  Administrative
+         access  rights  allow control  of  objects that  is not
+         permitted  for users,  but does  not violate  the basic
+         system access control model.
+
+PRIV     An  operation  or  object  is  in  the  PRIV  group  if
+         privileged  access  rights are  required  to manipulate
+
+
+Multics Technical Bulletin                                MTB-679
+Security Auditing
+
+         that  object  or  perform  that  operation.  Privileged
+         access  rights circumvent  some or all  of the controls
+         specified by the basic system access control model.
+
+SPECIAL  An operation or object is in the SPECIAL group if it is
+         always required  to audit operations on  that object or
+         occurences of that operation.  SPECIAL objects would be
+         ADMIN  or PRIV,  but they especially  important and are
+         therefore always audited.
+
+MISC     The MISC  group is reserved  for system events  that do
+         not fit neatly into the rest of the classification.
+
+Within  the  USER  and  ADMIN  groups,  the  events  are  further
+classified  by their  importance to  system security.   There are
+three  kinds  of events:   events that  read, events  that modify
+attributes that  are not used  for access control  decisions, and
+events  that modify  attributes that  are used  in access control
+decisions.  Administrators specify which events should be audited
+by  specifying  the  least  important  type  to  be  logged.  For
+example, auditing  of grants of  access to segments  is specified
+(in    printed     representation)    by    a     string    like:
+"seg_grant=modify_access".   This  is encoded  in the  audit flag
+word  by a  two bit string  specifying one of  the following four
+values:
+
+    none                 A filter  value of none  specifies that
+                         no auditing  will be done  of events of
+                         this type.
+
+    modify_access        A filter value of modify_access selects
+                         events    that   change    the   access
+                         attributes  (acs pathname,  acl or ring
+                         brackets) of an object.  Identification
+                         and      Authentication       is      a
+                         user_modify_access operation,  since an
+                         authenticated  user  is presumed  to be
+                         granted access to change access of some
+                         object.
+
+    modify               A filter value of modify selects events
+                         that  change  any attribute  other than
+                         the  access  attributes  of  an object.
+                         Creation  and  deletion of  objects are
+                         considered  modify  operations,  as are
+                         changes to the contents of segments.
+
+    read                 A filter  value of read  selects events
+                         that   extracts  information   from  an
+                         object.
+
+
+MTB-679                                Multics Technical Bulletin
+                                                Security Auditing
+
+The following is the complete list of audit flags, by group.
+
+USER     User events are events  that concern objects accessible
+         to normal  processes:  the basic  objects controlled by
+         the TCB.   User events also  include Identification and
+         Authentication.  The objects  considered "user" objects
+         are:   segments, directories,  logical volumes, logical
+         volume   quota  accounts,   message  segments,  message
+         segment  headers,  message segment  messages, processes
+         (from  the  point  of  view  of  IPC),  RCP  resources,
+         communications  channels, and  dial id's.   User events
+         are  subdivided  into  seg,  dir,  rcp,  and other-user
+         subgroups.   The  subgroups are  then divided  into the
+         grant and deny cases.
+
+    seg_grant=TYPE       This  audit flag  controls the auditing
+                         of access grants  to segments.  TYPE is
+                         chosen  from  the list  of  type filter
+                         values above.
+
+    seg_deny=TYPE        This  audit flag  controls the auditing
+                         of access denials to segments.  TYPE is
+                         chosen  from  the list  of  type filter
+                         values above.
+
+    dir_grant=TYPE       This  audit flag  controls the auditing
+                         of access grants  to directories.  TYPE
+                         is chosen from the  list of type filter
+                         values above.
+
+    dir_deny=TYPE        This  audit flag  controls the auditing
+                         of access denials to directories.  TYPE
+                         is chosen from the  list of type filter
+                         values above.
+
+    rcp_grant=TYPE       This  audit flag  controls the auditing
+                         of  access  grants  to  RCP  resources.
+                         TYPE  is chosen  from the  list of type
+                         filter values above.
+
+    rcp_deny=TYPE        This  audit flag  controls the auditing
+                         of  access  denials  to  RCP resources.
+                         TYPE  is chosen  from the  list of type
+                         filter values above.
+
+    other_user_grant=TYPE This audit flag  controls the auditing
+                         of  access  grants  to  all  other user
+                         resources.   TYPE  is  chosen  from the
+                         list of type filter values above.
+
+
+Multics Technical Bulletin                                MTB-679
+Security Auditing
+
+    other_user_deny=TYPE This  audit flag  controls the auditing
+                         of  access  denials to  all  other user
+                         resources.   TYPE  is  chosen  from the
+                         list of type filter values above.
+
+ADMIN    Admin   events   are  either:    (1)   operations  that
+         manipulate  TCB objects  that are  primarily accessable
+         only  to  administrators,  or  (2)  operations  on user
+         objects  that  are only  permitted  for administrators.
+         All admin operations respect the normal rules of access
+         for user and admin  objects; no admin operations permit
+         direct write-down, for example.  "Primarily" under case
+         (1)   above   refers   to   the   existence   of   some
+         user-accessable interfaces  that allow users  to obtain
+         information  about administrative  objects that concern
+         them.
+
+         The  administrative objects  are all  the system tables
+         and (in some cases) their entries, processes, and other
+         special "objects" like the work class definitions.  The
+         administrative tables are the SAT, PDT, RTDT, MGT, PNT,
+         CDT, TTT, iod_tables,  and installation_parms.  Of this
+         list, the  tables whose entries are  treated as objects
+         are the  SAT, PDT, PNT, CDT,  RTDT, and iod_tables.  In
+         each   case,   the   entries  in   the   table  include
+         authorization or access class information.
+
+         Examples  of  the  second case  are  all communications
+         channel administration, RCP  resource registration, and
+         logical volume creation and deletion.
+
+    admin_grant=TYPE     This   flag    controls   auditing   of
+                         succesful administrative  events.  TYPE
+                         is  chosen  from  the  list  of  filter
+                         values above.
+
+    admin_deny=TYPE      This  flag controls  auditing of denied
+                         administrative  operations.    TYPE  is
+                         chosen from  the list of  filter values
+                         above.
+
+PRIV     Priv  event  are operations  that circumvent  the basic
+         access  model,  and  are  not  important  enough  to be
+         classified  as  SPECIAL.  Most  privileged  events that
+         modify  information  are expected  to be  classified as
+         SPECIAL, and always audited.
+
+    priv                 A priv event is  an operation that uses
+                         privileges  to  access  anything within
+                         the  TCB.  patch_ring_zero  an example,
+
+
+MTB-679                                Multics Technical Bulletin
+                                                Security Auditing
+
+                         as is process  creation and destruction
+                         via hphcs_.
+
+MISC     There are a  few other kinds of events  that do not fit
+         into any of the above categories.
+
+    cc_1_10              All event auditing  to report potential
+                         covert channels of  bandwidth between 1
+                         and 10 bits per second is controlled by
+                         this flag.
+
+    cc_10_100            All event auditing  to report potential
+                         covert channels of bandwidth between 10
+                         and 100  bits per second  is controlled
+                         by this flag.
+
+    faults               Attempted   execution   of   privileged
+                         instructions  and a  few other hardware
+                         faults (other than  ring bracket errors
+                         and    no_permissions,     which    are
+                         classified  as  user audit  events) are
+                         logged.    This   flag   controls  that
+                         logging.
+
+5.3.2 ADMINISTRATIVE CONTROL OF AUDITING
+
+     System  administrators  are  the only  individuals  that can
+control  auditing.  They  exercise this  control in  the existing
+design by  setting the audit flags  for a user or  a project.  An
+event is  audited if the  appropriate flas is set  for either the
+user or the  project.  No provisions exist for  a user to request
+that  her  object be  audited,  and no  provisions exist  to make
+auditing information  available automatically to the  owner of an
+object.   We will  not remove this  restriction at  this time.  A
+user controlled audit  facility would have to solve  a variety of
+hard  problems  of  storage  allocation, denial  of  service, and
+covert channel pathways.
+
+     To  reduce  the  system   overhead  associated  with  useful
+auditing, we will add  per-system thresholds to control auditing.
+These values will be kept in installation_parms and passed to the
+hardcore  in  system  initialization.   They  will  be  stored in
+sys_info   during   system  operation.    There  will   be  three
+thresholds:
+
+  *  The minimum object access class for successful access audit.
+     If the  situation is a  successful access, and  the object's
+     access class is "less than" this, then no audit is recorded.
+  *  The  minimum  object  access class  for  unsuccessful access
+
+
+Multics Technical Bulletin                                MTB-679
+Security Auditing
+
+     audit.  If the situation is  an unsuccessful access, and the
+     object's access  class is "less  than" this, then  no access
+     audit is recorded.
+  *  The  minimum user  authorization worth  auditing a potential
+     covert channel reference.   Covert channel auditing consists
+     of  audit  trails  of  operations  which  high-authorization
+     processes  can  use  to  pass signals  to  low authorization
+     processes.    If   the  (potentially)   signalling  process'
+     authorization is "less than"  this threshold, then no access
+     audit is recorded.
+
+     Note that user and object  AIM marking cannot be compared to
+these thresholds  with aim_check_.  A  user's authorization might
+be disjoint (neither greater nor  less nor equal) with respect to
+the threshold.  Instead, we will use the following algorithm:
+
+     Given a threshold_access_class, and a test_access_class,
+     Determine if test_access_class passes the
+                threshold.
+
+     If level(test) &gt;= level (threshold)
+OR   intersection(categories(threshold),categories(test))^=null
+
+THEN the test_access_class passes the threshold_access_class.
+
+     Eventually,  though  not as  part of  this project,  we will
+implement per-entry  audit control.  The  directory entry already
+has a bit reserved to  specify audit.  There are several problems
+with it.  First, you need more bits in order to encode all of the
+following possibilites:
+
+  *  Audit regardless of audit flags and thresholds.
+
+  *  Never audit regardless of audit flags and thresholds.
+
+  *  Audit according to flags and thresholds.
+
+Second, the hierarchy dumper would have to be changed to dump and
+reload these bits, as it does  not currently even dump and reload
+the single branch audit bit.
+
+6 SPECIFICATION
+
+     Eventually, all TCB subsystems should  be changed to use the
+model described above to control  access and audit the results of
+that control.   We are not  required to change  all subsystems in
+MR11.  We are required to log all the situations described above.
+Therefore,  this section  specifies two things:   the programs in
+the  system  that  make decisions  that  need to  be  logged, and
+
+
+MTB-679                                Multics Technical Bulletin
+                                                Security Auditing
+
+interfaces  that can  be called  to log  messages in  each of the
+three TCB environments.
+
+6.1 Ring Zero
+
+6.1.1 PROGRAMS THAT MUST AUDIT
+
+     All of  the interfaces to  the ring zero portion  of the TCB
+can  be divided  into three  groups:  the  file system,  IPC, and
+gate-controlled operations.
+
+     All  file  system  access  decisions are  made  by directory
+control.  The directory control subsystem is being reorganized to
+use the  modularization described above  for MR11, so  no further
+discussion is needed.
+
+     IPC  must be  changed to  audit successful  and unsuccessful
+wakeups.  Wakeups within a process do not need to be audited.
+
+     The  remaining operations  are controlled only  by access to
+gates.   Thus,  unsuccessful  accesses  are  already  audited  as
+attempts  to call  the gate.   Furthermore, many  of them  do not
+manipulate objects for which access  is controlled by the TCB.(1)
+We   will  not   attempt  to   add  per-gate-entry   auditing  of
+unsuccessful accesses.   All success operations  will be audited.
+For  example, process  creation and destruction  will be audited.
+Currently,  no  ring  zero  audit  trail  is  kept  of  a process
+creation.   Were some  SysDaemon other  than Initializer  to call
+hphcs_$create_process, there would be no audit trail whatsoever.
+
+6.1.2 INTERFACE FOR AUDITING
+
+     The program protection_audit_ is the ring zero interface for
+access audit  logging.  Its current interface  is deficient.  The
+implementor assumed  that protection_audit_ would  only be called
+to   record  an   unsuccessful  attempt   to  access   a  branch.
+Protection_audit_, therefore,  includes the service  of unlocking
+the  directory lock  that protects the  entry pointer  that it is
+passed.   This  both  saves  the caller  the  trouble  and allows
+
+_________________________________________________________________
+
+(1) For example, unsuccessful accesses to the gate that is called
+    by  set_work_class  (hphcs_)  will   be  audited  via  normal
+    mechanisms, while successful accesses to the individual entry
+    will not be.
+
+
+Multics Technical Bulletin                                MTB-679
+Security Auditing
+
+protection_audit_ to  call the get_pathname_ subroutine  to get a
+pathname for the log message.
+
+     In the case of a successful access it is not permissible for
+protection_audit_ to unlock the  directory, since the caller will
+undoubtedly  need  it  later.   Thus,  protection_audit_  must be
+changed to complete its work without unlocking the directory.
+
+     Protection_audit_  currently  logs an  ascii message  in the
+syserr  log.   It  must be  changed  to create  a  binary message
+acceptable to the new logging interfaces described in MTB-666.
+
+6.2 Ring One
+
+6.2.1 PROGRAMS THAT MUST AUDIT
+
+     None   of  the   ring  one  subsystems   meet  the  auditing
+requirements.  RCP logs only  successful accesses, and those only
+fitfully.  The message segment primitives log some covert channel
+situations, but do not log success or failure of manipulations of
+the  message segments  or the  messages in  the message segments.
+The  ring  one  portion  of  the  logical  volume  administration
+software does not log unsuccessful attempts to attach demountable
+volumes,  or successful  or unsuccessful  manipulations of master
+directories.   The  ring  one  PNT  management  software  must be
+enhanced  to  log  changes  to PNT  entries.   The  ring  one ttt
+installation  mechanism must  log installations  and installation
+attempts.
+
+6.2.2 INTERFACES FOR AUDITING
+
+     There is  no ring one  interface for access  auditing.  What
+access   auditing   is  done   today   is  done   via   calls  to
+admin_gate_$syserr.  A new program, r1_protection_audit_, must be
+created.    Its   interface   will   be  similiar   to   that  of
+protection_audit_,  but  will  use  pathnames  instead  of branch
+pointers.  This interface must  make provisions for the situation
+where a user has called a privileged gate to perform an operation
+on behalf of another user.  In  this case, the relevant user name
+for the  audit trail is that  of the "proxy" user,  which must be
+explicitly passed to r1_protection_audit_.
+
+
+MTB-679                                Multics Technical Bulletin
+                                                Security Auditing
+
+6.3 Answering Service
+
+6.3.1 PROGRAMS THAT MUST AUDIT
+
+     There  are  four subsystems  of  the Answering  Service that
+manage objects for the TCB:
+
+  *  User Control
+  *  Dial Control
+  *  AS Request
+  *  Table Installation Control
+
+These  areas  are  dealt   with  individually  in  the  following
+sections.
+
+6.3.1.1 User Control
+
+     The  user managers  (interactive, absentee,  and daemon) are
+responsable  for  identification   and  authentication  of  their
+respective types of users.  Further, the interactive user manager
+(dialup_)  checks  user's access  to the  communications channels
+over which they login.
+
+     Each   user  manager   is  responsable   for  obtaining  the
+information (user name, password, options) from the user.  All of
+them pass  that information to  the program lg_ctl_,  which makes
+the  "go-no-go"  decisions.   Lg_ctl_ currently  logs  all logins
+(successful or unsuccessful), logouts, and new_proc's.  The audit
+records are  ASCII strings recorded in  the Answering Service log
+via the  sys_log_ mechanism.  These  programs must be  changed to
+use standard format audit records  for their audit traces, and to
+always note the communications channel involved.
+
+6.3.1.2 Dial Control
+
+     Dial  control  is  the  TCB  manager  of  all communications
+channels  that  are available  for  non-login attachment  by user
+processes.  Dial_ctl_ also manages "dial servers."  A process may
+become  a dial  server by establishing  a "dial  id," a character
+string  handle  which it  provides  to dial  control.   Users may
+connect login terminals to the  process via the pre-access "dial"
+command, which takes the handle as an argument.
+
+     Dial_ctl_  logs most  of the  decisions that  it makes about
+channels and server handlers, but  not all of them.  Further, not
+all of  its messages carry enough  information.  Like lg_ctl_, it
+uses sys_log_  to log messages.  Like  user control, dial control
+
+
+Multics Technical Bulletin                                MTB-679
+Security Auditing
+
+must  be  upgraded to  log  all the  relevent  events and  to use
+standard binary audit messages.
+
+6.3.1.3 AS Request
+
+     The  Answering  Service  request  mechanism  is  the  modern
+interface  by  which  processes  communicate  with  the Answering
+Service  TCB   subsystems.   Originally,  each   service  in  the
+Answering  Service  listened for  wakeup's  on an  event channel.
+Now, only  the user managers  and installation control  still use
+their  own event  channels.  All  the other  services use  the AS
+request mechanism.   If we converted the  user managers and table
+installation, it  would bring the Answering  Service more in line
+with  the  prototype modularization,  since  it would  reduce the
+number  of  paths  into  the  trusted  process.   The  AS request
+mechanism  consists of  an event  channel and  a message segment.
+User processes put  a data structure with a  standard header into
+the message segment  and send a wakeup over  the event channel to
+attract the Answering Service's attention.
+
+     The program as_request_server_  receives the wakeup's, reads
+out the messages, and parcels them out to the appropriate server.
+As_request_server_  does  no logging.   The complex  servers like
+dial_ctl_  do  log.   The  simpler cases,  which  are implemented
+internally to as_request_server_, don't.  As_request_server_ must
+audit these in-line operations.
+
+6.3.1.4 Table Installation
+
+     Table installation  control installs new live  copies of the
+Master Group Table (mgt),  Channel Definition Table (cdt), System
+Administration  Table  (sat),   Resource  Type  Definition  Table
+(rtdt), and  Project Definition Tables  (pdt's).  Administrator's
+place new  version of these  tables into &gt;sc1&gt;update,  and send a
+wakeup.  The program up_sysctl_ handles  the wakeup, looks at the
+segment, and calls one of up_mgt_, up_cdt_, up_sat_, up_rtdt_, or
+up_pdt_ to install the table.   Each of these programs merges the
+old and new segments, checking the new version for validity.  The
+up_*  programs generally  log AIM-related changes  to the tables,
+such as  changes in access  class or creation  and destruction of
+objects.  These programs  will be changed to log  all events that
+meet one of the following criteria:
+
+  *  Create or destroy an object
+
+  *  Change the AIM attributes of an object
+
+
+MTB-679                                Multics Technical Bulletin
+                                                Security Auditing
+
+6.3.1.5 Interfaces for auditing
+
+     All Answering  Service access audit messages  will be logged
+via the  new program as_protection_audit_.  This  program will be
+specified in a future MTB.
+
+6.3.2 OTHER PRIVILEGED APPLICATIONS
+
+     Other privileged  applications are programs that  are not in
+ring zero, ring one, or the Answering Service that use privileged
+access  to  circumvent  normal  access  control.   The  important
+privileged applications  are those that  act on behalf  of users,
+making  interpretive  access   control  decisions.   The  typical
+feature    of    such   an    application    is   the    use   of
+hcs_$get_user_access_modes  to  find out  what some  other user's
+access is  to some object.  The  hierarchy and volume retrievers,
+and  I/O Daemon  are the  important examples.   Eventually, these
+subsystems must be changed to  conform to the B2 requirements for
+audit (and everything else).  For  MR11, the only requirements is
+to  insure  that the  I/O  Daemon audits  users who  override the
+labeling of the top and bottom of each page with the access class
+of the  file printed, and  that the I/O Daemon  audits the access
+control  decisions that  it makes  as to  whether or  not request
+submitted has access to print a  file.  For this release, the I/O
+Daemon will fill in an audit  record structure "by hand" and call
+hphcs_$syserr_binary.
+
+6.4 Format of an audit record
+
+Audit  records  consist  of  a text  message  and  a  binary data
+structure.   Each binary  data structure  is one  of a  family of
+standard PL/I data structures with a common header.  There is one
+such structure for each type of object in the system.  The header
+identifies the user performing the operation, the type of object,
+and the operation.
+
+The data structures are provided below under "Specifications."
+
+6.5 Identifying TCB operations
+
+In order to record a unique  code for each TCB operation, we have
+to maintain  a list of  all the operations performed  by the TCB.
+This list is  contained in a CDS program, so  that changes do not
+necessitate   extensive  recompilation.    The  cds   program  is
+organized so as to provide both  an array of all operations and a
+definition per operation.
+
+
+Multics Technical Bulletin                                MTB-679
+Security Auditing
+
+The operations are encoded as  36 bit strings.  Internally, these
+strings  encode  the  general  type of  operation.   This permits
+analysis of an operation without looking the operation code up in
+the complete array.
+
+The  CDS   program  uses  internal  procedures   to  set  up  the
+information  for  the  entrypoints.    The  declarations  of  the
+external variables  in the cds  program are provided  below under
+"Specifications."
+
+7 SPECIFICATIONS
+
+7.1 Audit Record Header
+
+declare audit_record_ptr       pointer;
+
+declare 1 audit_record_header  aligned based (audit_record_ptr),
+     2 version                 fixed bin (9) unsigned unaligned,
+     2 proxy_flag              fixed bin (9) unsigned unaligned,
+     2 flags                   aligned,
+       3 (subject_is_process,
+          object_is_valid),    bit (1) unaligned,
+       3 event_flags           bit (16) unaligned,
+     2 operation_code          bit (36) aligned,
+     2 subjects                (arh_n_subjects
+                               refer (audit_record_header.
+                               proxy_flag)) aligned,
+      3 person                 char (22) unal,
+      3 project                char (9) unal,
+      3 tag                    char (1) unal,
+      3 ring                   fixed bin (3) uns unal,
+      3 anonymous              bit (1) unal,
+      3 pad                    bit (32) unaligned,
+      3 process_id             bit (36) aligned,
+      3 authorization          bit (72) aligned,
+      3 max_authorization      bit (72) aligned;
+
+declare  arh_n_subjects        fixed bin;
+declare ARH_NO_PROXY           fixed bin init (1)
+                               int static options (constant);
+declare ARH_PROXY              fixed bin init (2)
+                               int static options (constant);
+
+where:
+
+version  is  the version  of this  header.  It  should be  set to
+   ACCESS_AUDIT_RECORD_VERSION_1.   Super-structures  using  this
+
+
+MTB-679                                Multics Technical Bulletin
+                                                Security Auditing
+
+   header   may   carry  their   own   version  numbers   in  the
+   per-object-type portion of the structure.
+
+proxy_flag  This  flag  will  be  set to  one  of  the  two named
+   constants ARH_PROXY or ARH_NO_PROXY.  ARH_PROXY indicates that
+   this  operation is  performed by a  trusted user  on behalf of
+   some other user.
+
+subject_is_process is a flag.  If equal  to "1"b, then all of the
+   data in the "subject" substructure of this structure is valid.
+   If  equal to  "0"b, then only  the "person"  and "project" are
+   valid.  This  will be zero,  for example, for  an unsuccessful
+   login.
+
+object_is_valid  is a  flag.  If equal  to "1"b, then  this is an
+   object associated  with this audit  event.  If equal  to "0"b,
+   then there is not.  Any login-related audit, for example, will
+   have this flag set to "0"b.
+
+event_flags is a set of bit flags.  There will be set to indicate
+   special characteristics of the individual event.
+
+proxy_flag  This  flag  will  be  set to  one  of  the  two named
+   constants ARH_PROXY or ARH_NO_PROXY.  ARH_PROXY indicates that
+   this  operation is  performed by a  trusted user  on behalf of
+   some other user.
+
+operation_code  is  a  bit  string that  uniquely  identifies the
+   operation  performed.  The  CDS program access_operations_.cds
+   provides one  external definition for  each defined operation.
+   The  structure encoded_access_operation  allows information to
+   be extracted from this string.
+
+subjects is  an array of substructures  describing the user whose
+   action is audited  by this audit record.  The  array may be of
+   dimension one or  two.  The first element of  the array always
+   describes  the process  performing the  operation.  The second
+   element, if present, describes the process on whose behalf the
+   operation is  performed.  If the  flag "subject_is_process" is
+   equal  to "0"b,  then only  the person  and project  items are
+   valid.  This flag may never be  equal to "1"b if the operation
+   was performed on behalf of another process.
+
+person is the person ID of the user audited.  Note that it is not
+   neccessarily the  person ID of  the process that  created this
+   record.   If  a  trusted  process acts  on  behalf  of another
+   process it will record the other process in audit records.
+
+project  is the  project ID  of the  user audited.   For the case
+
+
+Multics Technical Bulletin                                MTB-679
+Security Auditing
+
+   where  subject_is_valid  is equal  to  "0"b, this  may contain
+   blanks.
+
+tag is the process tag of the user audited.
+
+ring is the effective ring of reference of the user audited.  For
+   hardware-detected access violations, this  will be the ring of
+   execution.   For  software-defined  events, this  will  be the
+   caller validation level.
+
+anonymous  is a  flag.  If  equal to  "1"b, then  the user  is an
+   anonymous user.
+
+process_id  is  the hardcore  process ID  of the  user's process.
+   This  will  be  zero  if  the  process  ID  of  the  user  was
+   unavailable.
+
+authorization is the current authorization, including privileges,
+   of the user at the time of the audit.
+
+max_authorization is the maximum authorization of the user.
+
+7.2 Operation Codes
+
+declare access_operations_ptr  pointer;
+dcl access_operations_$table   bit (36) aligned external static;
+
+declare 1 access_operations    aligned
+                               based (access_operations_ptr),
+     2 version                 char (8) aligned,
+     2 n_operations            fixed bin,
+     2 operations              (0 refer (access_operations.
+                               n_operations))
+       3 code                  bit (36) aligned,
+       3 name                  char (50) unaligned;
+
+dcl 1 encoded_access_op        aligned
+                               based (encoded_access_op_ptr),
+      2 audit_type             fixed bin (9) unsigned unaligned,
+      2 operation_type         fixed bin (9) unsigned unaligned,
+      2 unique_index           fixed bin (18) unsigned unaligned;
+
+/* An example of a single operation
+
+dcl access_operations_$delete_segment
+     external bit (36) aligned;
+  */
+
+
+MTB-679                                Multics Technical Bulletin
+                                                Security Auditing
+
+ /* OPERATION_TYPES */
+ dcl (AA_CREATE                 init (1),
+      AA_DELETE                 init (2),
+      AA_READ                   init (3),
+      AA_WRITE                  init (4)) int static fixed bin
+                                options (constant);
+
+where:
+
+access_operations_$operations This external definition is used to
+   locate  the "access_operations"  structure.  PL/1 restrictions
+   on refer-extent  structures preclude their use  in an external
+   structure.  The pointer access_operations_ptr should be set to
+   the address of this variable.
+
+version is  the version of  this structure.  It should  be set to
+   ACCESS_OPERATIONS_VERSION_1.
+
+n_operations  is  the  number  of  operations  described  by this
+   structure.
+
+operations  is an  array of  structures, one  per operation.  The
+   order of operations within this  array is by bit comparison of
+   the operations codes.
+
+op_code  is the  encoded unique  code for  this access operation.
+   The structure "encoded_access_op may be overlaid on this value
+   to extract the encoded data.
+
+name is the printable name of this operation.
+
+encoded_access_op  This  structure  defines  the  contents  of an
+   encoded  access operations  code.  It  may be  overlaid on the
+   op_code element  of the "operations"  structure or one  of the
+   per-operation external variables.
+
+audit_type is the class of this operations from the point of view
+   of  access  auditing.  This  element will  contain one  of the
+   named  constants from  access_audit_flags.incl.pl1.  The audit
+   flag  corresponding to  this value controls  auditing of these
+   operations.
+
+operation_type  is the  general class  of this  operation.  These
+   classes group operations by similiarity of function, while the
+   audit_type groups operations by  access control severity.  All
+   operations  that  create  objects  are  classed  on  the  same
+   operation type, while their audit_type depends on whether they
+   create administrative or user objects.
+
+
+Multics Technical Bulletin                                MTB-679
+Security Auditing
+
+unique_index This index is unique  to the operation, and will not
+   change in subsequent versions of the system.
+
+8 WORK PLAN
+
+   A list of major milestones  is appended.  A detailed task list
+   is maintained seperately.
+
+   MILESTONE -- Title                                      Planned
+    Description                                            Actual
+
+   MILESTONES     () = projected, * = changed
+
+   M1 -- New Logging Phase 1                          24 Sep 1984
+     Complete the new logging code to the point that  08 Oct 1984  *
+   it can be placed in exposure on CISL service to
+   support other projects.
+
+   M2 -- New Logging Phase 2                          12 Nov 1984
+     Complete the new logging code to the point of   (12 Nov 1984)
+   submission to system M.
+
+   M3 -- Ring zero auditing changes                   12 Nov 1984
+     New ring zero interfaces for auditing,          (12 Nov 1984)
+   including audit thresholds and new audit flags.
+
+   M4 -- Ring 1 auditing changes                      26 Nov 1984
+     Changes to audit in ring 1.  Re-modularization  (26 Nov 1984)
+   of RCP and the message segment primitives to
+   permit reliable auditing.  Audit of other ring
+   one subsystems.
+
+   M5 -- Answering Service auditing changes           26 Nov 1984
+     All changes needed to audit in the Answering    (26 Nov 1984) *
+   Service.
+
+   M6 -- I/O Daemon auditing                          26 Nov 1984
+     Audit access control failures and banner        (26 Nov 1984)
+   overrides in the I/O daemon.
+
+   M7 -- Complete Design Documentation                10 Dec 1984
+     We are required to update design documents      (10 Dec 1984)
+
+
+MTB-679                                Multics Technical Bulletin
+                                                Security Auditing
+
+   (MTB's) to reflect the real implementation.  We
+   need not complete this before the release.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

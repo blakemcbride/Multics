@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-552</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-552: Data Management: Collection Manager Design..">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+Multics Technical Bulletin                                MTB-552
+DM: collection_manager_ design
+
+To:       Distribution
+
+From:     Lindsey L. Spratt and Matthew C. Pierret
+
+Date:     02/24/83
+
+Subject:  Data Management: Collection Manager Design.
+
+1 ABSTRACT
+
+     This MTB presents some of the  major items of the design and
+implementation  of  the collection_manager_  module.   The reader
+should  be familiar  with MTB-551,  "Data Management:  Collection
+Manager Functional Specification."
+
+Comments should be sent to the author:
+
+via Forum:
+   &gt;udd&gt;m&gt;lls&gt;mtgs&gt;DMS_Development.
+
+via Multics Mail:
+   Pierret.Multics on either MIT Multics or System M.
+
+via telephone:
+   (HVN) 261-9338 or (617) 492-9338
+
+_________________________________________________________________
+
+Multics  project  internal  working  documentation.   Not  to  be
+reproduced or distributed outside the Multics project without the
+consent of the author or the author's management.
+
+
+
+                             CONTENTS
+
+                                                         Page
+
+                 1 Abstract . . . . . . . . . . . . . .     i
+                 2 Introduction . . . . . . . . . . . .     1
+                 3 Control interval structure . . . . .     1
+                 4 Element storage management . . . . .     4
+                    4.1 Storing elements as datums  . .     5
+                    4.2 Allocating a new element  . . .     5
+                    4.3 Modifying the value of an
+                     existing element.  . . . . . . . .     6
+                 5 Control interval storage management      7
+                    5.1 Allocating a CI . . . . . . . .     8
+                    5.2 Freeing a CI  . . . . . . . . .     8
+                    5.3 Supporting control structures .     9
+                 6 Datum structures . . . . . . . . . .    10
+                 7 The header collection  . . . . . . .    11
+                 8 collection_manager_ use of
+                  collection_manager_ . . . . . . . . .    13
+
+Multics Technical Bulletin                                MTB-552
+DM: collection_manager_ design
+
+2 INTRODUCTION
+
+     The  collection_manager_  does low-level  storage management
+within  a  Data  Management  file (hereafter  called  file).  The
+primary clients  for its services  are the index  manager and the
+record  manager.   Collection_manager_  implements  the following
+model  of  storage:   Within  a  file  there  are  any  number of
+"collections"  of "control  intervals".  The  unit of  storage of
+data  for  the caller  of  collection_manager_ is  the "element".
+Under  certain   circumstances,  an  element   may  span  control
+intervals.   An  element  is  wholely contained  within  a single
+collection, thus  for elements which span  control intervals, all
+of the  control intervals which  an element spans  must belong to
+the same  collection.  An element is  stored in control intervals
+in units called  "datums".  If an element fits  entirely within a
+single control interval, it is allocated in the control intervals
+as  a  single  datum.   If  it  spans  control  intervals,  it is
+allocated in a single datum per control interval.
+
+     The storage  management provided by  collection_manager_ has
+two levels  of organization, control  interval storage management
+and element  storage management.  On the  coarser level, the file
+as a whole is viewed as  being composed of units of storage which
+are  control  intervals.   Collection_manager_  reserves  control
+intervals in  the file for specific  collections, and manages the
+allocation  and freeing  of reserved  control intervals  within a
+collection.
+
+     The finer level of storage  management is the allocation and
+freeing of  elements.  Element storage management  deals with the
+allocation and  freeing of space  inside of control  intervals in
+which  to store  elements and  the organization  of elements into
+datums.
+
+3 CONTROL INTERVAL STRUCTURE
+
+     Control   intervals   managed  by   collection_manager_  are
+currently a Multics page formatted in a canonical "basic layout".
+At some point in the  future, collection_manager_ will be able to
+support a variety  of control interval sizes formatted  in one of
+several layouts.  The entire contents of the control interval are
+not accessible  to collection_manger_, as  file_manager_ reserves
+some space at  the beginning and end.  The  portion in between is
+referred to  as the addressable portion  of the control interval.
+As  collection_manager_  is only  concerned with  the addressable
+portion,  future references  to control  interval or  CI mean the
+addressable portion only.
+
+     Using the  basic control interval layout,  datums are stored
+
+
+MTB-552                                Multics Technical Bulletin
+                                   DM: collection_manager_ design
+
+adjacently from the highest offset in the control interval toward
+the lowest,  or bottom up.   The offset of the  beginning of each
+datum is stored in an array  of slots which grows from the lowest
+offset of the  control interval toward the highest,  or top down.
+Between the end of the array and the beginning of the "uppermost"
+datum  is  a pool  of free  space  in which  other datums  can be
+allocated.   The  array of  slots is  at the  end of  the control
+interval's header, which follows:
+
+     dcl     1 basic_control_interval
+                                    aligned based (
+                                    basic_control_interval_ptr),
+               2 header             unaligned,
+                 3 layout_type      char (4) aligned,
+                 3 collection_id    bit (36) aligned,
+                 3 next_control_interval
+                                    fixed bin (24) uns unal,
+                 3 previous_control_interval
+                                    fixed bin (24) uns unal,
+                 3 flags            unaligned,
+                   4 continuation_datum_is_present
+                                    bit (1) unal,
+                   4 free_slot_is_present
+                                    bit (1) unal,
+                   4 must_be_zero   bit (4) unal,
+                 3 scattered_free_space
+                                    fixed bin (17) unal,
+                 3 start_of_used_space
+                                    fixed bin (17) unal,
+                 3 number_of_datums fixed bin (17) unal,
+               2 datum_position_table
+                                    (0 refer (
+                                    basic_control_interval
+                                    .number_of_datums)),
+                 3 flags            unal,
+                   4 special_format_datum
+                                    bit (1) unal,
+                   4 is_continued   bit (1) unal,
+                   4 is_continuation
+                                    bit (1) unal,
+                   4 mbz            bit (1) unal,
+                 3 offset_in_bytes  fixed bin (15) uns unal,
+                 3 length_in_bits   fixed bin (17) uns unal;
+
+where:
+
+       version
+            is   the    type   of   control    interval   layout,
+            BASIC_CI_LAYOUT_1.
+
+
+Multics Technical Bulletin                                MTB-552
+DM: collection_manager_ design
+
+       collection_id
+            is  the identifier  of the  collection to  which this
+            control interval belongs.
+
+       next_control_interval
+            is  the number  of the  next control  interval in the
+            same collection.   A value of zero  means this is the
+            last control interval.
+
+       previous_control_interval
+            is the number of the previous control interval in the
+            same collection.   A value of zero  means this is the
+            first control interval.
+
+       flags.continuation_datum_is_present
+            is  a flag  which, if on,  indicates that  there is a
+            datum in the control interval  which is used to store
+            part of an element which begins in another datum.
+
+       flags.free_slot_is_present
+            is a flag  which, if on, indicates that  at least one
+            of the slots in the datum_position_table is free.  In
+            this case, allocation of a  new element would use one
+            of the free slots instead of extending the table.  If
+            the flag is  off, the table need not  be searched for
+            the free slot.
+
+       flags.must_be_zero
+            is a pad field containing all zeroes.
+
+       scattered_free_space
+            is the amount of free  space in the control interval,
+            excluding    the   space    between   the    end   of
+            datum_position_table     and     start_of_used_space.
+            Scattered free space is  cause by freeing datums that
+            do not start at start_of_used_space.  This free space
+            can  only  be recovered  by "compacting"  the control
+            interval;  basically,  doing  a logical  copy  of the
+            allocated  datums into  a temporary  control interval
+            then  copying  back  from   the  temporary  into  the
+            original.
+
+       start_of_used_space
+            is the lowest offset used in the control interval for
+            the  value  of  an  allocated datum.   All  values of
+            datums are  allocated from the highest  offset in the
+            control      interval,      down.       Since     the
+            datum_position_table  grows from  the low  end of the
+            control  interval  "up", the  pool of  available free
+
+
+MTB-552                                Multics Technical Bulletin
+                                   DM: collection_manager_ design
+
+            space  in the  control interval  is between  the last
+            datum_position_table   array   datum    up   to   the
+            start_of_used_space.
+
+       number_of_datums
+            is  the   number  of  the  last   used  slot  in  the
+            datum_position_table.
+
+       datum_position_table.special_format_datum
+            is not  currently used and  must be "0"b.   It can be
+            used  in the  future if very  large control intervals
+            are supported and the  offset_in_bytes fields must be
+            extended.
+
+       datum_position_table.is_continued
+            is a flag indicating, if on, that this datum does not
+            represent an entire element,  and that the element is
+            continued  in  another   datum  (in  another  control
+            interval).  Continued datums  have headers; this flag
+            allows  collection_manager_  to get  directly  at the
+            contents of the datum.
+
+       datum_position_table.is_continuation
+            is  a flag  which indicates,  if on,  that this datum
+            does not  represent an entire element,  and that this
+            datum  is  the  continuation  of  another  datum  (in
+            another control interval).
+
+       datum_position_table.offset_in_bytes
+            is  the  offset of  the datum  in bytes.   Datums are
+            stored on byte boundaries.
+
+       datum_position_table.length_in_bits
+            is the  length of the  datum in bits.   This includes
+            any  header  information associated  with  the datum.
+            Keeping the length in bits instead of bytes frees the
+            caller from having to keep track of the actual length
+            of her elements.
+
+4 ELEMENT STORAGE MANAGEMENT
+
+     Elements  are  stored  as  one  or  more  datums  in control
+intervals.  There  are two methods of  element storage, the Basic
+Element  Storage Method  (BESM) and  the Ordered  Element Storage
+Method (OESM).
+
+
+Multics Technical Bulletin                                MTB-552
+DM: collection_manager_ design
+
+4.1 Storing elements as datums
+
+     A datum is the unit of storage inside of a control interval.
+A datum is a bit string of  any arbitrary size that will fit in a
+single control interval.  An element is  made up of one datum for
+each  control interval  in which the  element is  stored.  So, an
+element which is  stored in a single control  interval is made up
+of exactly one datum; in fact,  the element and the datum are the
+same  string.   An  element  which  is  stored  in  five  control
+intervals is divided up into five  pieces, each a datum stored in
+a single control interval.
+
+     A datum  can be one of  four types:  datum, continued_datum,
+continuation_datum  and continued_continuation_datum.   The first
+is used to  store an entire element in  a single control interval
+and  is no  more than  a bit  string.  A  multi-datum element (an
+element  composed   of  more  than  one   datum)  consists  of  a
+continued_datum  which  holds  the  beginning of  the  element, a
+continuation_datum which holds the end, and some number, possibly
+zero, of continued_continuation_datums in  the middle.  The types
+of datums are discussed in the section titled "DATUM STRUCTURES".
+
+4.2 Allocating a new element
+
+     Allocating  a  new  element  actually  entails  two  things,
+allocating space for  the element and storing the  element in the
+newly  found space.   Regardless of the  ESM, the  new element is
+first checked to  see if it can be stored  in a single datum.  If
+it cannot, meaning  that its length in bytes  is greater than the
+value         of         MAXIMUM_DATUM_LENGTH_IN_BYTES         in
+dm_cm_datum_constants.incl.pl1,  the  "overlength  tail"  of  the
+element  is first  allocated.  The  element is  divided into some
+number   of   maximum-sized   datums   and  no   more   than  one
+less-than-maximum-sized datum.   The latter is  a continued_datum
+holding  the  beginning  of  the   element;  the  former  is  the
+overlength   tail   of    continued_continuation_datums   and   a
+continuation_datum.   For  each datum  of  the overlength  tail a
+control interval is allocated, and  the datum is allocated in the
+new  control  interval.  The  remaining  datum is  then allocated
+according to the rules of the ESM the collection employs.
+
+     A BESM collection allocates a datum holding either an entire
+element  or  the first  portion  of an  element by  searching the
+following control intervals for sufficient space:
+   o If the caller supplied the  identifier of a related element,
+     the control interval in which the related element is stored;
+   o The last control interval of the collection;
+   o A newly allocated control interval.
+These control intervals  are checked, in the given  order, to see
+
+
+MTB-552                                Multics Technical Bulletin
+                                   DM: collection_manager_ design
+
+if   the  amount   of  space   in  the   free  pool   bounded  by
+start_of_used_space and the end of the datum_position_table, plus
+the  amount  of scattered_free_space  is  sufficient to  hold the
+datum.  Note that the last alternative, a newly allocated control
+interval,  will always  be able to  hold the datum.   When one is
+found, the slot  number assigned to the datum  will be the lowest
+numbered  unused  slot in  the  control interval.   The  datum is
+stored in the free pool.  This may mean that the control interval
+must  be compacted  to recover scattered  free space  if the free
+pool is not large enough by itself to hold the datum.
+
+     An OESM collection requires  the caller to explicitly supply
+the control  interval and slot  to be used in  allocating the new
+element.   If the  control interval  is not  already reserved and
+allocated  by this  collection, the call  is in  error.  Only the
+given  control interval  is checked for  space.  If  there is not
+sufficient free space to store  the datum containing the element,
+or the  beginning of the element,  collection_manager_ returns an
+error to the caller along with the amount of free space over what
+the  control interval  already has  that would  have to  exist in
+order  for  the allocation  to be  successful.  It  is up  to the
+caller to move  datums out of the control  interval to make space
+on a subsequent attempt.
+
+     The slot used  is the one specified by  the caller.  If that
+slot is already  in use, it and all higher  slots are shifted one
+slot  up.   If  the  specified  slot is  beyond  the  end  of the
+datum_position_table, all slots between the previous last slot of
+the table  and the new slot  are initialized to be  free slots by
+zeroing them out.   If the specified slot was a  free slot, it is
+used and no slots are shifted.
+
+4.3 Modifying the value of an existing element.
+
+     An  element is  modified by  storing a  new value  in an old
+element.   For a  BESM collection, if  the existing  element is a
+single datum, the following steps are taken:
+
+  1) Divide the  new value into  a datum the size  of modulo (new
+     value length,  maximum datum size)  and, if this  is not the
+     entire value, the remaining overlength tail;
+  2) Allocate  each  datum in  the overlength  tail just  as when
+     allocating a new element;
+  3) Store the  remaining datum.  If  the remaining datum  is not
+     larger than the old value, re-use the space in which the old
+     value was stored  and free any excess space  by adding it to
+     the scattered free space.  If  the remaining datum is larger
+     than the old value, but there is enough space in the control
+     interval for the remaining  datum (including the space taken
+
+
+Multics Technical Bulletin                                MTB-552
+DM: collection_manager_ design
+
+     up by  the old datum),  free the space  taken up by  the old
+     datum and allocate new space  for the remaining datum.  This
+     may  require  compacting  the  control  interval  to recover
+     scattered free  space.  If there  is not enough  room in the
+     control interval to store  the remaining datum, allocate the
+     remaining datum  in another control interval  and re-use the
+     space taken up by the  old datum to store a continued_datum.
+     This continued_datum  has a header pointing  to wherever the
+     remaining datum was allocated and no contents.
+
+     Using an OESM collection, there are a couple of differences.
+After step 1, check to see if  the remaining datum can fit in the
+control interval in which the old datum is stored.  If it cannot,
+return immediately  with an error.   Step 3 is  simplified by the
+fact that it is known that  the remaining datum will fit.  Either
+it  re-uses the  space in  which the old  datum was  stored or it
+frees that space and allocates  new space for the remaining datum
+in that control interval.
+
+     The  actions taken  when the  existing element  is already a
+multi-datum  element  are only  slightly  different.  In  step 2,
+instead of allocating a new  overlength tail, the storage held by
+the  old  overlength  tail is  re-used.   Each datum  of  the old
+overlength  tail  that  is  not re-used  is  freed.   If  the new
+overlength  tail  requires more  space  than the  old,  then each
+remaining datum  is stored in a  newly allocated control interval
+in  the same  manner as  when allocating  a whole  new overlength
+tail.  In a BESM collection, it  is possible for the second datum
+of  the  element (the  first continued_continuation_datum)  to be
+less  than maximum-sized.   If at  the time  of modification this
+datum can  now fit in  the first datum's control  interval, it is
+freed and stored as the first datum.
+
+5 CONTROL INTERVAL STORAGE MANAGEMENT
+
+     There are two levels  of control interval storge management:
+managing the control  intervals (CIs) in a file  and managing the
+CIs in  a collection.  File  CI management consists  of reserving
+CIs  to  a  collection  from  a  pool  of  CIs  available  to all
+collections of the  file, and releasing CIs back  into that pool.
+Collection CI  management consists of allocating  CIs from a pool
+of CIs reserved  by a collection, and freeing  CIs back into that
+pool.
+
+     CIs in a file can be in  one of three states:  reserved by a
+collection  and  allocated  for   use  (in-use),  reserved  by  a
+collection but not allocated for  use (un-used), and not reserved
+by   any   collection.   Collection_manager_   maintains   a  map
+(file_reservation_map)  which   indicates  whether  each   CI  is
+
+
+MTB-552                                Multics Technical Bulletin
+                                   DM: collection_manager_ design
+
+available for reservation.   Collection_manager_ also maintains a
+map  (collection_allocation_map) for  each collection  which uses
+collection CI management.   which holds a bit for  each CI in the
+collection indicating whether the CI is un-used or in-use.
+
+     There  are  two  control interval  storage  methods (CISMs):
+Blocked  and Unblocked.   BCISM collections employ  both file and
+collection  CI management.   UCISM collections  only use  file CI
+management.
+
+5.1 Allocating a CI
+
+     A UCISM  collection couples reservation  and allocation CIs.
+CIs   are   reserved/allocated   one   at   a   time   using  the
+file_reservation_map.   CIs in  the collection are  threaded in a
+chronological   list   based   on   time   of   allocation.   The
+reservation/allocation of a CI consists of the following steps:
+  1) Find a free CI in the file_reservation_map;
+  2) Initialize a CI header;
+  3) Add a  backward pointer to  the CI that is  currently at the
+     end of the list of CIs;
+  4) Write the header and pointer into the file;
+  5) Update the last  CI of the list to point  forward to the new
+     CI;
+  6) Update the  collection's header to indicate  that the new CI
+     is now at the end of the collection.
+
+     BCISM  collections consist  of blocks  of reserved  CIs from
+which  individual  CIs  are  allocated.   Each  BCISM  collection
+maintains  a collection_allocation_map,  divided into  a block of
+map for each block of reserved  CIs.  Allocating a CI consists of
+the  following  steps,  where  steps 1-5  allocate  a  CI  from a
+collection and steps 6-9 reserve a block of CIs:
+  1) Find a free CI in the collection_allocation_map.  If no free
+     CI is found, skip to step 6;
+  2) Initialize a local CI header;
+  3) Write the header into the file;
+  4) Update the collection_allocation_map;
+  5) Quit.
+  6) Find a block of free CIs in the file_reservation_map;
+  7) Update the file_reservation_map, reserving the CIs;
+  8) Create  a new  block in  the collection_allocation_map which
+     indicates that all of its CIs are free;
+  9) Go to step 1.
+
+
+Multics Technical Bulletin                                MTB-552
+DM: collection_manager_ design
+
+5.2 Freeing a CI
+
+     Freeing a CI in a UCISM collection consists of the following
+steps:
+  1) Re-thread the previous and next CIs;
+  2) Update  the file_reservation_map  to indicate the  CI is now
+     free;
+  3) Zero out the CI.;
+  4) If the CI was the first or last CI of the collection, update
+     the collection's  header to indicate  the new first  or last
+     CI.
+
+     Freeing a  CI in a  BCISM collection consists  the following
+steps:
+  1) Update the collection_allocation_map;
+  2) Zero out the CI;
+  3) If the block now contains  no in-use CIs and this collection
+     holds another block containing no in-use CIs, release all of
+     the  CIs  in the  block  back to  the  file by  updating the
+     file_reservation_map to indicate that  they are now free and
+     delete   the   block  from   the  collection_allocation_map.
+     Holding    on   to    one   free   block    cuts   down   on
+     reservation/release  overhead  and  prevents  a  scenario in
+     which a collection  wavering between N and N+1  CIs long can
+     cause a block to be reserved/released on each allocate/free.
+
+5.3 Supporting control structures
+
+The file_reservation_map is divided into fixed sized fragments to
+increase concurrent access to the  map.  Each fragment of the map
+is simply  a string of  bits stored as  an element in  the Header
+Collection.  The location of each fragment is recorded in another
+element  containing  the  file_reservation_map  structure,  which
+follows:
+
+     dcl 1 file_reservation_map  (frm_number_of_fragments) aligned
+                                 based (file_reservation_map_ptr),
+         2 flags                 unaligned,
+           3 no_control_intervals_are_available
+                                 bit (1),
+           3 must_be_zero        bit (11),
+         2 lowest_numbered_control_interval
+                                 fixed bin (24) uns unal,
+         2 element_id            bit (36) aligned;
+
+where  each entry  in the  file_reservtion_map array  describes a
+fragment    located     at    element_id.     The     value    of
+frm_number_of_fragments  is  obtained   from  the  cm_file_header
+described in the section titled "THE HEADER COLLECTION".
+
+
+MTB-552                                Multics Technical Bulletin
+                                   DM: collection_manager_ design
+
+     The  collection_allocation_map,  identical  in  structure to
+file_reservation_map, keeps  track of the blocks  of a collection
+allocation map.
+
+6 DATUM STRUCTURES
+
+     Datums are the storage units in which elements are stored in
+control intervals.  If the element is too long to fit in a single
+control interval, it is continued  in another control interval by
+dividing element  into multiple datums.  There  can be any number
+of continuation datums for a single element.
+
+     Datums are stored in 4 kinds of structures, depending on the
+use   of  continuations:    datum  (D),   continued_datum  (CdD),
+continuation_datum  (CnD),  continued_continuation_datum (CdCnD).
+If an element  fits within a single control  interval of the page
+file, it is allocated within a single datum, or D, structure.  If
+it does not  fit within a single control  interval, the first (or
+left-most)   portion   of   the   element  is   allocated   in  a
+continued_datum (CdD)  structure, succeeding portions  except for
+the  final  one  are  allocated  in  continued_continuation_datum
+(CdCnD)  structures,  and the  final  portion is  allocated  in a
+continuation_datum (CnD) structure.  If  an element requires only
+one continuation to  be allocated, then it is  allocated with the
+first portion in a CdD structure  and the second portion in a CnD
+structure.
+     These structures are as follows:
+
+     dcl       datum                bit (d_length_in_bits)
+                                    aligned based (datum_ptr),
+
+     dcl     1 continued_datum    aligned based (datum_ptr),
+               2 full_length        fixed bin (35),
+               2 continuation       like datum_id,
+               2 contents           bit (cdd_length_in_bits);
+
+     dcl       continuation_datum   bit (cnd_length_in_bits)
+                                    aligned
+                                    based (
+                                    continuation_datum_ptr),
+
+     dcl     1 continued_continuation_datum
+                                    aligned
+                                    based (
+                                    continuation_datum_ptr),
+               2 continuation       like datum_id,
+               2 contents           bit (
+                                    cdcnd_length_in_bits);
+
+
+Multics Technical Bulletin                                MTB-552
+DM: collection_manager_ design
+
+     dcl     1 datum_id             aligned
+                                    based (datum_id_ptr),
+               2 control_interval_id
+                                    fixed bin (24) unal unsigned,
+               2 index              fixed bin (12) unal unsigned;
+
+7 THE HEADER COLLECTION
+
+     The  collection_manager_  module maintains  a  collection in
+which it stores control information called the Header Collection.
+It's  collection  identifier  is  HEADER_COLLECTION_ID,  found in
+dm_cm_hdr_collection_id.incl.pl1.  The Header  Collection is used
+to  keep internal  per-file information,  internal per-collection
+information and  caller-defined information.  The  information is
+stored in  elements and accessed  via the same  mechanisms as for
+other collections, using the Basic Element Storage Method and the
+Unblocked Control Interval Method.   The Header Collection always
+includes CI 0 and CI 1, but may include more CIs.
+
+     The  major structures  kept in  the Header  Collection which
+describe the file are the cm_file_header, the collection_id_table
+and the file_reservation_map.   The cm_file_header contains basic
+per-file information and its declaration follows:
+
+  dcl  1 cm_file_header     aligned based (cm_file_header_ptr),
+       2 version            char (8),
+       2 highest_numbered_ci
+                            fixed bin (24) unsigned,
+       2 number_of_collections
+                            fixed bin (17) unal,
+       2 number_of_blocks   fixed bin (17) unal,
+       2 number_of_control_intervals_per_block
+                            fixed bin (17),
+       2 allocation_map_element_id
+                            bit (36) aligned,
+       2 collection_id_table_element_id
+                            bit (36) aligned;
+
+where allocation_map_element_id is the  identifier of the element
+holding the  file_reservation_map; collection_id_table_element_id
+is the identifier of  the element holding the collection_id_table
+and  number_of_blocks  and  number_of_control_intervals_per_block
+describe  the  shape  of the  file_reservation_map.   The element
+identifier  of  the cm_file_header  is CM_FILE_HEADER_ELEMENT_ID,
+found in dm_cm_file_header.incl.pl1.
+
+     The  collection_id_table contains  the collection identifier
+of each collection in the  file, excluding the Header Collection.
+The collection_id_table follows:
+
+
+MTB-552                                Multics Technical Bulletin
+                                   DM: collection_manager_ design
+
+  dcl collection_id_table    (cit_number_of_collections)
+                             bit (36) aligned
+                             based (collection_id_table_ptr);
+
+The  file_reservation_map is  described under  the section titled
+"CONTROL INTERVAL STORAGE MANAGEMENT".
+
+     Associated  with  each  collection  is  a  collection_header
+structure, a  header supplied by  the user and  a storage record.
+The collection_header structure contains stable information about
+a   collection.   The   collection  identifier   is  the  element
+identifier of the element in which this structure is stored.
+
+    dcl      1 collection_header    aligned based
+                                    (collection_header_ptr),
+               2 version            char (8),
+               2 flags              unaligned,
+                 3 fixed_size_elements
+                                    bit (1),
+                 3 thread_elements  bit (1),
+                 3 thread_control_intervals
+                                    bit (1),
+                 3 must_be_zero1    bit (15),
+               2 control_interval_storage_method
+                                    fixed bin (17) unaligned,
+               2 element_storage_method
+                                    fixed bin (17),
+               2 maximum_element_size
+                                    fixed bin (35),
+               2 header_record_element_id
+                                    bit (36) aligned,
+               2 storage_record_element_id
+                                    bit (36) aligned;
+
+The storage_record_element_id  refers to an  element containing a
+storage record.  The storage  record contains dynamic information
+about the collection, such as the first and last CI numbers.  The
+storage  record  is  separated  from  collection_header  for  two
+reasons:   different  types   of  collections  require  different
+control  information  and  separating   the  stable  and  dynamic
+portions increases concurrent access  to header information.  The
+header_record_element_id  refers to  a caller-supplied collection
+header accessed via the $put_header and $get_header entries.
+
+     The caller may store any  elements in the Header Collection,
+but  the  location  of  the   elements,  and  hence  the  element
+identifier cannot be guaranteed.  For  this reason, an element is
+reserved in  the third slot of  CI 0 for use  by the caller.  The
+
+
+Multics Technical Bulletin                                MTB-552
+DM: collection_manager_ design
+
+element    identifier    is    CALLER_FILE_HEADER_ELEMENT_ID   in
+dm_cm_caller_hdr_id.incl.pl1.
+
+8 COLLECTION_MANAGER_ USE OF COLLECTION_MANAGER_
+
+     The  collection_manager_  module makes  considerable  use of
+itself to  manage the Header  Collection.  For example,  to add a
+collection to a file:
+
+     call collection_manager_$allocate_element
+                    (         /* Allocate new storage_record. */
+                    file_opening_id, HEADER_COLLECTION_ID,
+                    storage_record_ptr, storage_record_length,
+                    collection_header.storage_record_element_id,
+                    (0), code
+                    );
+     call collection_manager_$allocate_element
+                    (         /* Allocate new collection_header. */
+                    file_opening_id, HEADER_COLLECTION_ID,
+                    collection_header_ptr, collection_header_length,
+                    collection_id, (0), code
+                    );
+
+And to get the first fragment of the file_reservation_map:
+
+     call collection_manager_$get_element
+                    (      /* Get cm_file_header. */
+                    file_opening_id, HEADER_COLLECTION_ID,
+                    CM_FILE_HEADER_ELEMENT_ID, 0,
+                    buffer_ptr, buffer_length, work_area_ptr, ("0"b),
+                    cm_file_header_ptr, cm_file_header_length,
+                    code
+                    );
+     call collection_manager_$get_element
+                    (      /* Get file_reservation_map. */
+                    file_opening_id, HEADER_COLLECTION_ID,
+                    cm_file_header.allocation_map_element_id, 0
+                    buffer_ptr, buffer_length, area_ptr, ("0"b),
+                    file_reservation_map_ptr,
+                    file_reservtion_map_length, code
+                    );
+     call collection_manager_$get_element
+                    (      /* Get first file_reservtion_map_fragment. */
+                    file_opening_id, HEADER_COLLECTION_ID,
+                    (file_reservation_map.element_id (1)), 0,
+                    buffer_ptr, buffer_length, area_ptr, ("0"b),
+                    file_reservation_map_fragment_ptr,
+                    file_reservtion_map_fragment_length,
+
+
+MTB-552                                Multics Technical Bulletin
+                                   DM: collection_manager_ design
+
+                    code
+                    );
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>

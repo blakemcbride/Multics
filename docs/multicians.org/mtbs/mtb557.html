@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Multics MTB-557 Rev. 1</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="description" content="Multics internal development memo MTB-557 Rev. 1: Data Management: Lock Manager Functional Specification.">
+    <meta name="keywords" content="operating system, system programming, software engineering, computer, software, process">
+    <!-- not setting viewport, because page cannot reflow -->
+    <link rel="stylesheet" href="mxstyle.css">
+<style>
+/* mxstdfmt.htmi */
+ body {background-color: #999999; padding: 0; margin: 0; text-align: center;}
+ .outer {text-align: left; background-color: #ffffff;}
+ .main {padding: 20px 3em 5px 3em;}
+ .tail {text-align: center; margin: 10px auto; padding: 15px 0 0px 0;}
+ @media print {
+  body {font-size: 10pt;}
+  .tail {display: none;}
+  .redmenubar {display: block;}
+  a {text-decoration: none;}
+  a:link {color: black;}
+ }
+ .redmenubar {clear: left; background-color: #cc0000; margin: 0; float: left; width: 100%; height: 25px;}
+ .redmenubar {padding: 0px 0px 0px 0px;}
+ .redmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+ #nav {margin: 0; padding: 0; list-style: none;} 
+ #nav li {float: left; display: block; width: 100px; background: #cc0000; position: relative; z-index: 500; border-right: 1px solid white; z-index: 1000; zoom: 1;} 
+ #nav li a {display: block; padding: 2px 5px 0 5px; font-weight: 100; height: 23px; text-decoration: none; color: white;} 
+ #nav li a:visited {background: #ff0000;}
+ #nav li a:hover {background: darkred;}
+ #nav ul {position: absolute; left: 0; display: none; margin: 0 0 0 -1px; padding: 0; list-style: none;} 
+ #nav ul li {width: 130px; float: left; border-top: 1px solid #fff;} 
+ #nav ul a {display: block; height: 15px; padding: 4px 5px; color: white;} 
+ *html #nav ul {margin: 0 0 0 -2px;}
+
+ /* --- for small screen --- */
+  .altmenubar {display: none; padding: 0; margin: 0; height: 25px;}
+  .peekaboo {display: none;} /* menu hide/show */
+  .altmenubar {font-family: Verdana,'lucida grande',helvetica,arial,sans-serif; font-size: 11pt;}
+  @media (max-width: 600px) {
+    .redmenubar {display: none;}
+    .altmenubar {display: block; margin: 0; background-color: #cc0000;}
+    .altmenuword {height: 25px; padding: 5px 0 0 0; color: white;}
+    .main {margin-top: 0; padding: 5px 5px 5px 5px;}
+  }
+  /* code from Erik Terwan https://erikterwan.com/ * 24th of November 2015 * MIT License */
+  #menuToggle {display: block; position: relative; z-index: 1; -webkit-user-select: none; user-select: none;}
+  #menuToggle a {color: #232323; transition: color 0.3s ease;}
+
+  #menuToggle input {display: block; width: 40px; height: 32px; position: absolute; top: -7px; left: -5px; cursor: pointer;
+  opacity: 0; /* hide this */
+  z-index: 2; /* and place it over the "MENU" */ -webkit-touch-callout: none;}
+
+  /* background: #ededed; list-style: none; -webkit-font-smoothing: antialiased;
+  transform-origin: 0% 0%; transform: translate(-100%, 0); transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0);} */
+
+  .altmenubar {background: #cc0000;}
+  .altmenubar li {padding: 10px 0; font-size: 22px;}
+  .altmenubar li peekaboo {padding: 0; font-size: 10px; color: black;}
+
+  /*
+  * when the box is checked, show the navs
+  */
+  #menuToggle input:checked ~ .peekaboo {display: block; color: black; padding: 5px; background: #ededed;}
+  #menuToggle input:checked ~ .peekaboo a:link {color: black;}
+  #menuToggle input:checked ~ .peekaboo a:visited {color: black;}
+  #menuToggle input:checked ~ .peekaboo span {font-size: 12px; list-style: none;}
+
+</style>
+<script src="js/jquery-3.6.1.min.js"></script>
+<script>
+$(document).ready(function () {
+  $('#nav li').on({
+    mouseenter: function() { // show submenu
+        var el=this; 
+        $('ul', this).stop().show(); 
+        setTimeout( function() { $(el).find('>ul').hide(); }, 15000 ); // hide submenu after 15 seconds .. so it works on ipad
+      },
+    mouseleave: function() { $('ul', this).stop().hide(); } // hide submenu
+  })
+});
+</script>
+<!-- end  mxstdfmt.htmi -->
+<style>
+ .tty {font-family: monospace; font-size: 10pt;}
+ H1 {font-weight: normal; font-family: monospace; font-size: 100%; margin: 0;}
+ .heading {font-weight: bold;}
+ .outer {max-width: 800px; min-width: 200px; margin: 0 auto; padding: 15px;}
+</style>
+ </head>
+  <body>
+    <div class="outer">
+      <div class="main">
+        <pre>
+
+  Multics Technical Bulletin                         MTB-557 Rev. 1
+  DM: Lock Manager Functional Spec
+
+  To:       Distribution
+
+  From:     R. Michael Tague
+
+  Date:     04/03/84
+
+  Subject:  Data Management: Lock Manager Functional Specification
+
+  1 ABSTRACT
+
+  This  document  describes  the  functions  provided  by  the Lock
+  Manager.   For  each of  these  functions, a  description  of the
+  services provided by  the function and the user  interface to the
+  function is given.
+
+  This  revision describes  several new  lock manager  functions to
+  facilitate  initialization,  metering, copying  the  lock manager
+  data base, and concurrency control of the lock manager data base.
+
+  Send comments on this MTB by one of the following means:
+
+       By Multics Mail, on MIT or System M:
+          Tague.Multics
+
+       By Telephone:
+          HVN 261-9358 or (617)-492-9358
+
+  _________________________________________________________________
+
+  Multics  project  internal  working  documentation.   Not  to  be
+  reproduced or distributed outside the Multics project without the
+  consent of the author or the author's management.
+
+
+
+                            CONTENTS
+
+                                                         Page
+
+                 1 Abstract . . . . . . . . . . . . . .     i
+                 2 Introduction . . . . . . . . . . . .     1
+                 3 Summary of changes for Revision 1  .     1
+                 4 Locking Characteristics  . . . . . .     2
+                    Locking Objects . . . . . . . . . .     2
+                    Locking Modes . . . . . . . . . . .     2
+                    Lock Identifier . . . . . . . . . .     4
+                    Fast Locks  . . . . . . . . . . . .     4
+                    lock_manager_ . . . . . . . . . . .     6
+                       Fast Locks . . . . . . . . . . .     6
+                       Data management locks  . . . . .     6
+                       Lock modes . . . . . . . . . . .     6
+                       The lock hierarchy . . . . . . .     7
+                       Lock mode names  . . . . . . . .     7
+                       Deadlock detection . . . . . . .     8
+                       Locking and Transactions . . . .     8
+                       $lock  . . . . . . . . . . . . .     9
+                       $unlock_all  . . . . . . . . . .    11
+                       $unlock  . . . . . . . . . . . .    12
+                       $init_per_system . . . . . . . .    13
+                       $reset_system_meters . . . . . .    14
+                       $lock_lock_data  . . . . . . . .    15
+                       $unlock_lock_data  . . . . . . .    16
+                       $system_segment_count  . . . . .    17
+                       $copy_data . . . . . . . . . . .    18
+                       The lm_copy_data structure . . .    18
+                       $lock_fast . . . . . . . . . . .    20
+                       $unlock_fast . . . . . . . . . .    21
+
+  Multics Technical Bulletin                         MTB-557 Rev. 1
+  DM: Lock Manager Functional Spec
+
+  2 INTRODUCTION
+
+  The  purpose  of  Lock  Management  within  the  Data  Management
+  Architecture is  to provide concurrency protection  for access to
+  data base objects (files and records within files).
+
+  This document contains a  detailed functional description of Lock
+  Management, as  viewed by a  user of Lock Management.   A user in |
+  this context is not an end user, but other subsystems of the Data |
+  Management Architecture.  This document contains a description of
+  all externally available entries  into Lock Management.  For each
+  entry, a  complete description of the  calling sequence is given,
+  along  with additional  information required  for a  user to make
+  proper use of the entry.
+
+  3 SUMMARY OF CHANGES FOR REVISION 1                               |
+
+  An entry point has been added for initialization:                 |
+
+  o    init_per_system                                              |
+
+  Two entry points  have been added to facilitate  copying the lock |
+  manager data base:                                                |
+
+  o    system_segment_count                                         |
+  o    copy_data                                                    |
+
+  A  pair of  entry points  have been added  to fast  lock the lock |
+  manager data base:                                                |
+
+  o    lock_lock_data                                               |
+  o    unlock_lock_data                                             |
+
+  One entry  point for reseting  system meters on  lock manager was |
+  added:                                                            |
+
+  o    reset_system_meters                                          |
+
+  Three entrypoints were not needed, so they have been removed:     |
+
+  o    cleanup_process                                              |
+  o    priv_clean_up_process                                        |
+  o    init_fast_lock                                               |
+
+  Three  entrypoints  remain unimplemented,  and have  been removed |
+  from the revised MTB:                                             |
+
+
+  MTB-557 Rev. 1                         Multics Technical Bulletin
+                                   DM: Lock Manager Functional Spec
+
+| o    checkpoint
+| o    unlock_to_checkpoint
+| o    resolve_deadlock
+
+| A  reference  to  Container  Access  Layer  was  removed  and all
+| occurences of "page file" were changed to "file".
+
+| 4 LOCKING CHARACTERISTICS
+
+| Locking Objects
+
+| A data base is implemented as a set of files.  Each file consists
+| of a number  of physical records of the  same size called control
+| intervals.  Logical records in the data base are stored in one or
+  more control intervals, and a  given control interval may contain
+  more than one logical record.
+
+| Two types of objects may be locked - control intervals and files.
+| Any  lock held  on a file  applies by implication  to all control
+| intervals in the file.
+
+  Locking Modes
+
+| A lock may be held in either of the modes:
+
+  o    S - Share
+  o    X - Exclusive
+
+| Additionally locks on  files may be held in  one of the following
+| modes:
+
+  o    IS - Intend Share
+  o    IX - Intend Exclusive
+  o    SIX - Share with Intend Exclusive
+
+  To ensure concurrency protection, a  user of Lock Management must
+  adhere to the following conventions:
+
+|      Before reading  a control interval,  the user must  lock the
+|      control interval or the file containing the control interval
+|      in either share(S) or exclusive(X) mode.
+
+
+  Multics Technical Bulletin                         MTB-557 Rev. 1
+  DM: Lock Manager Functional Spec
+
+       Before modifying a control interval,  the user must lock the |
+       control  interval  or  the containing  file  in exclusive(X) |
+       mode.                                                        |
+
+  For most users of Lock Management, only share(S) and exclusive(X) |
+  modes  are  relevant.  The  remaining  file lock  modes  are used |
+  internally by Lock Management to  indicate the type of locks that |
+  are  held  on  control  intervals  within  the  file.   When Lock |
+  Management intends  to acquire a control  interval lock, it first |
+  acquires  an  intend  lock  on the  file  containing  the control |
+  interval,  and then  acquires the  actual control  interval lock, |
+  hence the intend name.  These  additional modes are available for |
+  more  sophisticated   applications.   They  have   the  following |
+  meanings:                                                         |
+
+       IS - The  transaction   has  locked  one   or  more  control |
+            intervals in share(S) mode,  and no control interval in |
+            exclusive(X) mode.                                      |
+
+       IX - The  transaction  has  locked   at  least  one  control |
+            interval in exclusive(X) mode.                          |
+
+       SIX -                                                        |
+            The transaction  has locked the file  in share(S) mode, |
+            and at  least one control interval  within the file has |
+            been locked is exclusive(X) mode.                       |
+
+  For  communication  with  Lock  Management,  the  lock  modes are
+  referenced as  integers.  The correspondence of  modes to integer
+  values is described in Attachment 1.
+
+
+  MTB-557 Rev. 1                         Multics Technical Bulletin
+                                   DM: Lock Manager Functional Spec
+
+  Lock Identifier
+
+  Associated with each object which  may be locked is an identifier
+  which  is  unique  within  the  system.   For  the  user  of Lock
+  Management, this identifier is an  ordered pair (UID, CI Number),
+  which is interpreted as follows:
+
+       UID
+|           is the Multics File System unique identifier associated
+|           with  the file  or with the  file to  which the control
+|           interval belongs.  In the initial implementation of the
+|           Data  Management  Architecture,  a  file  is  a Multics
+|           Multi-Segment   File.    For  the   purposes   of  Lock
+            Management,  the unique  identifier of  a Multi-Segment
+            File  is the  Multics File System  unique identifier of
+            component zero.
+
+       CI Number
+|           is the relative control interval number within the file
+|           (with 0 representing the  first control interval in the
+|           file).   For the  purposes of  Lock Management, control
+|           interval  number -1  refers to the  file itself, rather
+            than to a specific control interval.
+
+  Fast Locks
+
+  Many  of  the  Data  Management  subsystems  require  concurrency
+  protection  on internal,  per-system tables  which they maintain.
+  The type  of concurrency protection required  for these tables is
+| qualitatively  different  from  that  required  for  user objects
+| (control intervals or files):
+
+       Tables need be locked only  for predictably short amounts of
+       time.
+
+       Deadlocks  can  be  avoided,  as  tables  can  be  locked in
+       predictable sequences.
+
+       Data in the tables is neither journalized nor recovered.
+
+  Fast Locks  provide this type of  concurrency protection.  A Fast
+  Lock is  a double-word of  virtual memory (the  lock double-word)
+  which  by  convention protects  a  shared table  or  other shared
+  object.  The  lock double-word is  shared by all  processes which
+  require access  to the shared  object.  By convention,  a process
+  must obtain a  lock on the lock double-word  before accessing the
+  shared object.  Lock Management  supports Fast Locks by providing
+
+
+  Multics Technical Bulletin                         MTB-557 Rev. 1
+  DM: Lock Manager Functional Spec
+
+  services  to  lock  and  unlock Fast  Locks,  and  to synchronize
+  processes contending for Fast Locks.
+
+  _____________                                       _____________
+
+  lock_manager_                                       lock_manager_
+  _____________                                       _____________
+
+  Name:  lock_manager_
+
+  Provides  concurrency control  for data  management internal data
+  bases and data management objects.
+
+  The lock_manager_  provides two kinds of  locking services:  fast
+  locks, and data management locks.  Fast locks are used to control
+  concurrent  access  by  processes  to  data  management  internal
+  databases.  Data management locks  are used to control concurrent
+  access by transaction to files and control intervals.
+
+  Few entries in the lock_manager_  may be called by user programs.
+  Most  of  the entries  are  only available  from within  the data
+  management  protected  ring.   Some  are  available  to  the data
+  management  daemon or  other privileged  users in  the user ring.
+  Those entries that  may be called by user  programs are concerned
+  with metering and tracing.
+
+  Fast Locks
+
+       Fast  locks  are  locks   maintained  for  control  of  data
+  management  internal databases.   In the  current implementation,
+  fast  locks are  two word  objects.  Fast  locks are conceptually
+  similiar  to  the  set_lock_  interface,  save  that  they  offer
+  improved  efficiency.   No deadlock  detection  is done  for fast
+  locks.  They must  be locked and unlocked in  accordance with the
+  established hierarchy of locks.
+
+  Data management locks
+
+       Data management locks are  locks on data management objects.
+  In the  current implementation, only files  and control intervals
+  within  files  may be  locked.   In general,  locks on  files and
+  control  intervals are  obtained by  the file  manager as needed.
+  For example,  the file manager  will get a share  lock whenever a
+  control  interval is  fetched, and an  exclusive lock  when it is
+  put.
+
+  Lock modes
+
+       Data  management  locking  provides  multiple-reader, single
+  writer  concurrent  access control.   A "read  lock" is  called a
+  Share, or "S" lock.  A write  lock is called an Exclusive, or "X"
+  lock.  Files  or control intervals  may be locked  for is S  or X
+  mode.  In  addition, there are  other special modes  which may be
+  used for files, as explained  below under "Lock hierarchy".  An S
+
+  _____________                                       _____________
+
+  lock_manager_                                       lock_manager_
+  _____________                                       _____________
+
+  lock allows other  transactions to get S locks,  but not X locks.
+  An X lock allows no other transaction to acquire a lock.
+
+  The lock hierarchy
+
+       When a control interval is locked, the file it belongs to is
+  implicitly   locked   as  well.    For   example,  it   would  be
+  inappropriate to  allow a transaction  to acquire an X  lock on a
+  file  within  which  another transaction  holds  an S  lock  on a
+  control  interval.  To  avoid having to  investigate the possible
+  existence  of  control  interval  locks   when  a  file  lock  is
+  requested, special "Intend" locks are provided for files.  Before
+  a transaction may lock a  control interval, it must first acquire
+  an appropriate  intend lock on  the file.  The  intend lock modes
+  are:  "Intend  Share (IS)", indicating  that one or  more control
+  intervals  are  locked  is   S  mode;  "Intend  Exclusive  (IX)",
+  indicating that one or more control  intervals are locked in S or
+  X mode; and "Shared Intend  Exclusive (SIX)", indicating that all
+  of the control  intervals are to be considered  locked in S mode,
+  and that one or more are explicitly locked in X mode.
+
+  Lock mode names
+
+       Named  constants  for the  lock  modes are  provided  in the
+  include file dm_lock_modes.incl.pl1
+
+  dcl  LOCK_MODE_S          fixed bin static options (constant) init|(2);
+  dcl  LOCK_MODE_X          fixed bin static options (constant) init|(3);
+  dcl  LOCK_MODE_IS         fixed bin static options (constant) init|(4);
+  dcl  LOCK_MODE_IX         fixed bin static options (constant) init|(5);
+  dcl  LOCK_MODE_SIX        fixed bin static options (constant) init|(6);
+
+  dcl  LOCK_ENTIRE_FILE     fixed bin (24) static options (constant)|init (-1);
+
+  dcl  LOCK_MODE_NAMES (2:6)  char (3) int static options (constant)|
+                              init ("S", "X", "IS", "IX", "SIX");   |
+
+       S     Share                                                  |
+             Let others read it but not modify it.                  |
+
+       X     Exclusive                                              |
+             Let nobody else read or modify it.                     |
+
+       IS    Intend Share                                           |
+             I am only using S locks, because I am only reading CIs.|
+
+  _____________                                       _____________
+
+  lock_manager_                                       lock_manager_
+  _____________                                       _____________
+
+|      IX    Intend Exclusive
+|            I am using S and X locks, because I am reading and modifying CIs.
+
+|      SIX   Share with Intend Exclusive
+|            I am reading control intervals, but only locking the ones I modify.
+
+  Deadlock detection
+
+       The lock_manager_ detects deadlock situations involving data
+  management locks.   If a transaction attempts  to acquire a lock,
+  and  waiting  for  that  lock would  result  in  a  deadlock, the
+  youngest transaction involved in the  deadlock will have an error
+  reflected to it, so that it can roll back or abort.
+
+  Locking and Transactions
+
+       It is important to remember that  all locks are held for the
+  duration  of the  transaction that  obtains them.   All locks are
+  automatically released when a  transaction commits, aborts, rolls
+  back,  or is  killed.  Thus a  transaction builds a  set of locks
+  accretively; and any  given call to lock an  object may find that
+  it is already  locked with a suitable lock.   No error indication
+  is returned in these circumstances, but the actual lock mode held
+  is returned as it may be stronger than the mode requested.
+
+  _____________                                       _____________
+
+  lock_manager_                                       lock_manager_
+  _____________                                       _____________
+
+  Entry:  lock_manager_$lock
+
+       Attempts to acquire a lock on  a file or control interval in
+  a  given mode.   If the transaction  already holds a  lock on the
+  object that is  as least as strong as the  desired mode, the that
+  locks is considered sufficient.
+
+  If a  control interval lock  is requested through  this entry, an
+  appropriate   Intend   lock  on   the   file  will   be  acquired
+  automatically.
+
+  Usage
+
+       dcl lock_manager_$lock entry (bit (36) aligned, fixed bin
+            (24), fixed bin, fixed bin (71), fixed bin, fixed bin
+            (35));
+
+       call lock_manager_$lock (file_uid, control_interval,
+            desired_mode, timeout_time, mode_obtained, code);
+
+  where:
+
+         file_uid                     (Input)
+              is the data management Unique Identifier of the file.
+              In the current MSF implementation, this is the UID of
+              the first component of the file MSF.
+
+         control_interval             (Input)
+              is the  numeric index of  the control interval  to be
+              locked.   If it  is LOCK_ENTIRE_FILE (-1),  a lock is
+              obtained on the entire file.
+
+         desired_mode                 (Input)
+              is the lock mode required.  Lock modes are documented
+              above,   and   named   constants   are   declared  in
+              dm_lock_modes.incl.pl1.
+
+         timeout_time                 (Input)
+              is the maximum time, in microseconds, to wait for the
+              lock  to  be  available.   If this  much  time passes
+              before     the     lock      can     be     acquired,
+              dm_error_$lock_timeout is returned.
+
+         mode_obtained                (Output)
+              is the actual lock mode obtained.  If the transaction
+              already held a stronger  lock than Desired_Mode, that
+              mode   will  be   returned.   For   example,  if  the
+              transaction held  an X lock and  requested an S lock,
+
+  _____________                                       _____________
+
+  lock_manager_                                       lock_manager_
+  _____________                                       _____________
+
+              LOCK_MODE_X would be returned here.
+
+         code                         (Output)
+              will be nonzero if the arguments were not valid or if
+              the lock could not be  acquired after waiting for the
+              timeout  time.  If  the Desired_Mode  is not  a valid
+              mode,  dm_error_$lock_invalid_mode  is  returned.  If
+              the  timeout  time  passes  and  the  lock  cannot be
+              acquired,  dm_error_$lock_timeout is  returned.  If a
+              deadlock is detected, and the calling transaction has
+              been  selected to  roll back, dm_error_$lock_deadlock
+              is returned.
+
+  _____________                                       _____________
+
+  lock_manager_                                       lock_manager_
+  _____________                                       _____________
+
+  Entry:  lock_manager_$unlock_all
+
+       unlocks all locks held by  a transaction.  This entry may be
+  called from other processes than the one in which the transaction
+  was  started,  to clean  up the  transaction.  However,  it still
+  depends  on the  values of  variables in  dm_data_ to  define the
+  transaction to be cleaned up.
+
+  Usage
+
+       dcl lock_manager_$unlock_all entry ();                       |
+
+       call lock_manager_$unlock_all ();                            |
+
+  where:
+              This entry has no arguments its contract is to unlock
+              all  locks,  and there  are no  defined circumstances
+              under which it may fail to do so.
+
+  _____________                                       _____________
+
+  lock_manager_                                       lock_manager_
+  _____________                                       _____________
+
+  Entry:  lock_manager_$unlock
+
+       Unlocks  a  single data  management lock.   This entrypoint,
+  while implemented, is NOT YET  SUPPORTED FOR USE.  It is indended
+  for  a  future "soft  concurrency"  service in  which transaction
+  would unlock control intervals on which they obtained S locks, or
+  were using concurrency control without integrity control.
+
+  Usage
+
+       dcl lock_manager_$unlock entry (bit (36) aligned, fixed bin
+            (24), fixed bin (35));
+
+       call lock_manager_$unlock (file_uid, control_interval,
+            code);
+
+  where:
+
+         file_uid                     (Input)
+              is the unique identifier of the file in question.
+
+         control_interval             (Input)
+              is the control interval index of the control interval
+              in question, or LOCK_ENTIRE_FILE.
+
+         code                         (Output)
+              is  a standard  status code,  which should  always be
+              zero.
+
+  _____________                                       _____________
+
+  lock_manager_                                       lock_manager_
+  _____________                                       _____________
+
+  Entry:  lock_manager_$init_per_system
+
+       runs per-system initialization for the lock manager for both
+  fast and data management locks.
+
+  Usage
+
+       dcl lock_manager_$init_per_system entry (fixed bin (35));
+
+       call lock_manager_$init_per_system (code);
+
+  where:
+
+         code                         (Output)
+              is  nonzero  if   initialization  fails.   Note  that
+              sub_err_ is  used to provide  more illuminating error
+              diagnostics in this case.
+
+  _____________                                       _____________
+
+  lock_manager_                                       lock_manager_
+  _____________                                       _____________
+
+| Entry:  lock_manager_$reset_system_meters
+
+|      resets lock manager system meters to zero.
+
+| Usage
+
+|      dcl lock_manager_$reset_system_meters entry ();
+
+|      call lock_manager_$reset_system_meters ();
+
+  _____________                                       _____________
+
+  lock_manager_                                       lock_manager_
+  _____________                                       _____________
+
+  Entry:  lock_manager_$lock_lock_data
+
+       is an internal interface that allows programs within the
+  lock manager to lock its internal databases.
+
+  Usage
+
+       dcl lock_manager_$lock_lock_data entry (fixed bin (35));
+
+       call lock_manager_$lock_lock_data (code);
+
+  where:
+
+         code                         (Output)
+              is nonzero if an error  was returned locking the fast
+              lock on the lock manager's database.
+
+  _____________                                       _____________
+
+  lock_manager_                                       lock_manager_
+  _____________                                       _____________
+
+  Entry:  lock_manager_$unlock_lock_data
+
+       is an  internal interface of  the lock manager  that unlocks
+  its internal database.
+
+  Usage
+
+       dcl lock_manager_$unlock_lock_data entry (fixed bin (35));
+
+       call lock_manager_$unlock_lock_data (code);
+
+  where:
+
+         code                         (Output)
+              is  nonzero if  an error  was returned  unlocking the
+              fast lock on the lock manager's database.
+
+  _____________                                       _____________
+
+  lock_manager_                                       lock_manager_
+  _____________                                       _____________
+
+  Entry:  lock_manager_$system_segment_count
+
+       is a metering interface that  returns the number of segments
+  that  make  up the  lock  manager's database  of  data management
+  locks.     This    entry    is   used    in    conjunction   with
+  lock_manager_$copy_data to get consistent copies of the database.
+
+  Usage
+
+       dcl lock_manager_$system_segment_count entry (fixed bin
+            (35)) returns (fixed bin);
+
+       segment_count = lock_manager_$system_segment_count (code);
+
+  where:
+
+         segment_count                (Output)
+              is  the  number  of   segments  that  constitute  the
+              database.
+
+         code                         (Output)
+              is a standard system status code.
+
+  _____________                                       _____________
+
+  lock_manager_                                       lock_manager_
+  _____________                                       _____________
+
+  Entry:  lock_manager_$copy_data
+
+       makes a  consistent copy of  the lock manager's  database of
+  data  management locks  into a set  of user  ring segments.  This
+  entry  is  used  by  metering  and  tuning  programs.   The entry
+  lock_manager_$system_segment_count  should  be  used  to  get the
+  number of  segments required.  Since new  segments may be created
+  at any time, this entry may  return an error code indicating that
+  a larger  set of segments  is required.  It still  copies as many
+  segments as it can, however.
+
+  Usage
+
+       dcl lock_manager_$copy_data entry (pointer, fixed bin (35));
+
+       call lock_manager_$copy_data (copy_info_ptr, code);
+
+  where:
+
+         copy_info_ptr                (Input)
+              is a pointer to the lm_copy_data structure, described
+              below, and found in dm_lm_copy_data.incl.pl1.
+
+         code                         (Output)
+              is  a   standard  system  status  code.    If  it  is
+              error_table_$smallarg,   not  enough   segments  were
+              provided.  copy_data.n_segments is set to the correct
+              number.
+
+  The lm_copy_data structure
+
+       The declaration  of the lm_copy_data  structure follows, and
+  is found in dm_lm_copy_data.incl.pl1.
+
+       dcl lm_copy_data_ptr      pointer;
+
+       dcl 1 lm_copy_data        aligned based (lm_copy_data_ptr),
+             2 version           char (8) aligned,
+             2 n_system_segments fixed bin,
+             2 n_segments        fixed bin,
+             2 segment_ptrs      (lm_copy_data_n_segments refer
+                                 (lm_copy_data.n_segments)) ptr;
+
+       dcl lm_copy_data_n_segments fixed bin;
+       dcl LM_COPY_DATA_VERSION_1  char(8) aligned init ("lmdt0001")
+                                   int static options (constant);
+
+  _____________                                       _____________
+
+  lock_manager_                                       lock_manager_
+  _____________                                       _____________
+
+  where:
+
+         version
+              should be set to LM_COPY_DATA_VERSION_1.
+
+         n_system_segments
+              (Output) is set on output  to the number of segments.
+              If  there  are  more   system  segments  than  output
+              segments provided, then this variable is still set.
+
+         n_segments
+              is the  number of segments provided  by the caller to
+              copy data into.
+
+         segment_ptrs
+              is an  array of pointers  to segments into  which the
+              data will be copied.
+
+  _____________                                       _____________
+
+  lock_manager_                                       lock_manager_
+  _____________                                       _____________
+
+  Entry:  lock_manager_$lock_fast
+
+       locks a double-word fast lock  to the calling process.  This
+  entry  returns error  codes if  the lock  is already  held to the
+  calling process, or if the lock was held by a dead process.
+
+  Usage
+
+       dcl lock_manager_$lock_fast entry (pointer, fixed bin (71),
+            fixed bin (35));
+
+       call lock_manager_$lock_fast (lock_pointer, timeout_time,
+            code);
+
+  where:
+
+         lock_pointer                 (Input)
+              is a  pointer to a double  word to be used  as a fast
+              lock.
+
+         timeout_time                 (Input)
+              is  the  maximum  time to  wait  for the  lock  to be
+              available, in microseconds.
+
+         code                         (Output)
+              is zero, or one of the following error codes:
+
+              dm_error_$fast_lock_invalid_reset
+                   is returned if the lock was previously held by a
+                   daed process.  The lock is locked to the calling
+                   process in this case.
+
+              dm_error_$fast_lock_mylock
+                   is  returned  if the  process already  holds the
+                   requested fast lock.
+
+              dm_error_$fast_lock_timeout
+                   is returned if the fast lock could not be locked
+                   in the specified time.
+
+              All fast_lock_mylock and fast_lock_timeout errors are
+              logged in the data management system log.
+
+  _____________                                       _____________
+
+  lock_manager_                                       lock_manager_
+  _____________                                       _____________
+
+  Entry:  lock_manager_$unlock_fast
+
+       Unlocks a fast lock.
+
+  Usage
+
+       dcl lock_manager_$unlock_fast entry (pointer, fixed bin
+            (35));
+
+       call lock_manager_$unlock_fast (lock_pointer, code);
+
+  where:
+
+         lock_pointer                 (Input)
+              is a pointer to the lock to be unlocked.
+
+         code                         (Output)
+              is   a   standard   status    code.    It   will   be
+              dm_error_$fast_lock_not_locked  if  the lock  was not
+              locked.
+
+        </pre>
+        <div class="tail">
+          <div class="tailnavbar">
+            <div class="textnav">
+       <a href="../multics.html">Home</a> | 
+       <a href="../history.html">History</a> | 
+       <a href="../multicians.html">People</a> | 
+       <a href="../biblio.html">Library</a> | 
+       <a href="../sites.html">Sites</a> |
+       <a href="../about-multics.html">About</a>  | 
+         <a href="../sitemap.html">Site Map</a> | 
+         <a href="../changes.html">Changes</a>
+            </div> <!-- textnav -->
+          </div> <!-- tailnavbar -->
+      <form method="post" action="https://multicians.org/cgi-sys/cgiwrap/thvv/squirnet.cgi" class="mf"><address><input type="hidden" name="formtpt" value="mxmft.txt"><input type="hidden" name="name" value="editor"><input type="hidden" name="sortkey" value="editor"><input type="text" name="approved" size="9" class="mfx"><input name="send" type="submit" value="mail to editor" title="send mail to site editor" class="mfaddr"></address></form>
+        </div> <!-- tail -->
+      </div> <!-- main -->
+    </div> <!-- outer -->
+  </body>
+</html>
